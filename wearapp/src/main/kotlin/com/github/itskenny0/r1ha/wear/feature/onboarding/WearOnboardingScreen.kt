@@ -28,13 +28,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.Button
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
-import androidx.wear.input.RemoteInputIntentHelper
+import com.github.itskenny0.r1ha.wear.common.WearRemoteInputChip
 import com.github.itskenny0.r1ha.core.prefs.ServerConfig
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
@@ -102,7 +100,7 @@ fun WearOnboardingScreen(
             // keyboard dialog — the only reliable text input method on Wear OS,
             // especially on Samsung Galaxy Watch where the standard TextField
             // IME connection resets to one character per keystroke.
-            WearInputChip(
+            WearRemoteInputChip(
                 label = "Server URL",
                 value = serverUrl,
                 placeholder = "hass.example.com",
@@ -120,7 +118,7 @@ fun WearOnboardingScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            WearInputChip(
+            WearRemoteInputChip(
                 label = "Username",
                 value = username,
                 placeholder = "homeassistant",
@@ -129,7 +127,7 @@ fun WearOnboardingScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            WearInputChip(
+            WearRemoteInputChip(
                 label = "Password",
                 value = password,
                 placeholder = "tap to enter",
@@ -198,80 +196,6 @@ fun WearOnboardingScreen(
         }
     }
 }
-
-/**
- * A Chip that opens the Wear OS native keyboard dialog (RemoteInput) when tapped.
- *
- * Unlike Material3's TextField, which loses IME state on Samsung Galaxy Watch
- * (Samsung's keyboard operates as a separate Activity that returns text via
- * ActivityResult, not via the inline InputConnection protocol), RemoteInput is
- * the official Wear OS text-input mechanism and works correctly on all devices.
- *
- * Tapping the chip opens the watch's input method (keyboard / voice / emoji),
- * the user completes input and taps "Done", and the full text is returned to
- * [onValueChange] in one shot — no per-character accumulation issues.
- */
-@Composable
-private fun WearInputChip(
-    label: String,
-    value: String,
-    placeholder: String,
-    inputKey: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    maskValue: Boolean = false,
-    inputType: Int = InputType.TYPE_CLASS_TEXT,
-) {
-    val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val bundle = RemoteInput.getResultsFromIntent(result.data ?: return@rememberLauncherForActivityResult)
-            val text = bundle?.getCharSequence(inputKey)?.toString()
-            if (text != null) onValueChange(text)
-        }
-    }
-
-    Chip(
-        onClick = {
-            val extras = Bundle().apply { putInt("android.view.inputmethod.InputType", inputType) }
-            val remoteInput = RemoteInput.Builder(inputKey).setLabel(label).addExtras(extras).build()
-            val intent = RemoteInputIntentHelper.createActionRemoteInputIntent()
-            RemoteInputIntentHelper.putRemoteInputsExtra(intent, listOf(remoteInput))
-            // Also put the type hint directly on the intent in case the
-            // keyboard activity reads it there instead of from the RemoteInput bundle.
-            intent.putExtra("android.view.inputmethod.InputType", inputType)
-            launcher.launch(intent)
-        },
-        label = {
-            Column {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.caption2,
-                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.6f),
-                    fontSize = 9.sp,
-                )
-                val display = when {
-                    value.isBlank() -> placeholder
-                    maskValue       -> "•".repeat(minOf(value.length, 12))
-                    else            -> value
-                }
-                Text(
-                    text = display,
-                    style = MaterialTheme.typography.body2,
-                    color = if (value.isBlank())
-                        MaterialTheme.colors.onSurface.copy(alpha = 0.4f)
-                    else
-                        MaterialTheme.colors.onSurface,
-                    maxLines = 1,
-                )
-            }
-        },
-        colors = ChipDefaults.secondaryChipColors(),
-        modifier = modifier,
-    )
-}
-
 
 /**
  * Performs HA's three-step credential login flow and returns

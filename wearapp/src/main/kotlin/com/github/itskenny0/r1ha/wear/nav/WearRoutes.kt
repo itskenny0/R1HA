@@ -16,4 +16,5 @@ object WearRoutes {
     const val HELPERS            = "wear_helpers"
     const val SEARCH             = "wear_search"
     const val SETTINGS           = "wear_settings"
+    const val REMOTE             = "wear_remote"
 }

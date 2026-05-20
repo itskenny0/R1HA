@@ -19,6 +19,7 @@ import com.github.itskenny0.r1ha.wear.feature.helpers.WearHelpersScreen
 import com.github.itskenny0.r1ha.wear.feature.menu.WearMenuScreen
 import com.github.itskenny0.r1ha.wear.feature.notifications.WearNotificationsScreen
 import com.github.itskenny0.r1ha.wear.feature.onboarding.WearOnboardingScreen
+import com.github.itskenny0.r1ha.wear.feature.remote.WearRemoteScreen
 import com.github.itskenny0.r1ha.wear.feature.scenes.WearScenesScreen
 import com.github.itskenny0.r1ha.wear.feature.search.WearSearchScreen
 import com.github.itskenny0.r1ha.wear.feature.settings.WearSettingsScreen
@@ -67,6 +68,7 @@ fun WearNavGraph(
                 onOpenMenu = { nav(WearRoutes.MENU) },
                 onOpenSettings = { nav(WearRoutes.SETTINGS) },
                 onOpenFavoritesPicker = { nav(WearRoutes.FAVORITES_PICKER) },
+                onOpenRemote = { nav(WearRoutes.REMOTE) },
             )
         }
 
@@ -154,6 +156,13 @@ fun WearNavGraph(
                         popUpTo(0) { inclusive = true }
                     }
                 },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(WearRoutes.REMOTE) {
+            WearRemoteScreen(
+                haRepository = haRepository,
                 onBack = { navController.popBackStack() },
             )
         }

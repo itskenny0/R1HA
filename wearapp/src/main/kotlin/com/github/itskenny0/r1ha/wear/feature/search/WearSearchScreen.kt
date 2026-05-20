@@ -4,16 +4,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,11 +24,10 @@ import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.feature.search.SearchViewModel
+import com.github.itskenny0.r1ha.wear.common.WearRemoteInputChip
 
 /**
  * Wear OS Quick Search screen.
@@ -56,7 +51,6 @@ fun WearSearchScreen(
     val ui by vm.ui.collectAsState()
     val results = vm.results
     val listState = rememberScalingLazyListState()
-    val keyboard = LocalSoftwareKeyboardController.current
 
     LaunchedEffect(Unit) { vm.refresh() }
 
@@ -85,36 +79,23 @@ fun WearSearchScreen(
                     modifier = Modifier.fillMaxSize(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // Search field
+                    // Search chip — uses RemoteInput so there are no Samsung keyboard
+                    // single-character issues. Opens the watch keyboard as a separate
+                    // Activity and returns the full text in one shot.
                     item {
-                        TextField(
+                        WearRemoteInputChip(
+                            label = "Search entities",
                             value = ui.query,
+                            placeholder = "Tap to type…",
+                            inputKey = "search_query",
                             onValueChange = { vm.setQuery(it) },
-                            placeholder = {
-                                Text(
-                                    "Search…",
-                                    style = MaterialTheme.typography.caption2,
-                                )
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(
-                                onSearch = { keyboard?.hide() },
-                            ),
-                            colors = TextFieldDefaults.colors(
-                                unfocusedContainerColor = MaterialTheme.colors.surface,
-                                focusedContainerColor = MaterialTheme.colors.surface,
-                            ),
-                            textStyle = MaterialTheme.typography.caption1.copy(
-                                color = MaterialTheme.colors.onSurface,
-                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp),
                         )
                     }
 
-                    // Empty state: show hint when no query typed yet
+                    // Empty state
                     if (ui.query.isBlank()) {
                         item {
                             Text(
@@ -156,7 +137,6 @@ fun WearSearchScreen(
                                     )
                                 },
                                 onClick = {
-                                    keyboard?.hide()
                                     vm.activate(entity)
                                 },
                                 colors = ChipDefaults.secondaryChipColors(),

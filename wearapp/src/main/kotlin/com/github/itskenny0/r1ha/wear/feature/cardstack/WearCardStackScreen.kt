@@ -1,6 +1,5 @@
 package com.github.itskenny0.r1ha.wear.feature.cardstack
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +23,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,51 +30,51 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.material.Button
+import androidx.wear.compose.material.ButtonDefaults
+import androidx.wear.compose.material.Chip
+import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.CircularProgressIndicator
-import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import com.github.itskenny0.r1ha.core.ha.Domain
+import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.LovelaceViewInfo
+import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.wear.theme.WearColors
 
 /**
- * Main screen of the Wear OS app.
+ * Main watch screen — Lovelace-tab navigation.
  *
- * Displays the user's Home Assistant favourites as a vertical card pager —
- * one entity per page, full-screen.  Swiping up/down navigates between
- * cards. The rotary crown or outer-rim swipe adjusts the value of scalar
- * entities (light brightness, fan speed, cover position, media volume).
- *
- * ## Card layout
+ * The screen mirrors the user's HA dashboard tabs (Home, Mouse, Lights…):
+ *  - **Bezel / crown** rotates to switch between tabs.
+ *  - **Swipe up/down** scrolls the entity list within the current tab.
+ *  - Each entity chip shows a domain emoji, friendly name and live state;
+ *    tapping it toggles the entity.
+ *  - Tabs that have a custom card (e.g. the Mouse touchpad) show a
+ *    "Remote Control" shortcut chip at the top in addition to any
+ *    standard entities in that tab.
  *
  * ```
- *   ┌────────────────────────────────────┐
- *   │  12:34               [•••] menu    │  ← TimeText (watch time)
- *   │                                    │
- *   │        ☀ Living Room Light         │  ← Entity name
- *   │                                    │
- *   │         ████████░░░░░  73 %        │  ← Scalar value bar (if applicable)
- *   │                                    │
- *   │             [ ON ]                 │  ← State label
- *   │                                    │
- *   │    [⚙ Settings]  [▶ Scenes]        │  ← Bottom action chips
- *   └────────────────────────────────────┘
+ *   ┌─────────────────────────┐
+ *   │  12:34                  │  ← TimeText
+ *   │  🏠 Home  (1/6)         │  ← tab title + position
+ *   │  ─────────────────────  │
+ *   │  💡 LR Lights      ON   │  ← entity chip
+ *   │  🔌 Front Door Lock OFF │
+ *   │  📺 Living Room TV  off │
+ *   │  …                      │
+ *   │         [≡] [⚙]         │  ← bottom action chips
+ *   └─────────────────────────┘
  * ```
- *
- * The scalar value bar doubles as a visual feedback indicator for rotary input:
- * it updates optimistically before the HA round-trip completes.
- *
- * ## Navigation
- *
- * - Swipe left edge → system back (Wear OS swipe-dismiss, handled by nav host)
- * - Tap card → toggle entity (on/off for switches, lights; activate for scenes)
- * - Long press → future: entity detail (not yet implemented)
  */
 @Composable
 fun WearCardStackScreen(
@@ -86,56 +84,62 @@ fun WearCardStackScreen(
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
+    onOpenRemote: () -> Unit,
 ) {
     val vm: WearCardStackViewModel = viewModel(
-        factory = WearCardStackViewModel.factory(haRepository, settings, wheelInput),
+        factory = WearCardStackViewModel.factory(haRepository),
     )
     val state by vm.uiState.collectAsStateWithLifecycle()
 
-    val pagerState = rememberPagerState(pageCount = { state.cards.size.coerceAtLeast(1) })
+    val pagerState = rememberPagerState(pageCount = { state.views.size.coerceAtLeast(1) })
 
-    // Keep VM's currentIndex in sync with the pager position.
+    // Sync tab index back to VM when the pager settles.
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            vm.onPageChanged(page)
+            vm.onTabChanged(page)
+        }
+    }
+
+    // Bezel / crown navigates between tabs.
+    LaunchedEffect(wheelInput, pagerState) {
+        wheelInput.events.collect { event ->
+            val delta = if (event.direction == WheelEvent.Direction.DOWN) 1 else -1
+            val target = (pagerState.currentPage + delta)
+                .coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0))
+            if (target != pagerState.currentPage) {
+                pagerState.animateScrollToPage(target)
+            }
         }
     }
 
     Scaffold(timeText = { TimeText() }) {
         when {
-            !state.settingsLoaded -> {
-                // DataStore still loading.
+            state.loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(8.dp))
+                        Text("Loading dashboard…", style = MaterialTheme.typography.caption1)
+                    }
                 }
             }
 
-            state.favouritesCount == 0 -> {
-                // No favourites configured — guide user to the on-watch picker.
+            state.error != null -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     ) {
                         Text(
-                            text = "No favourites.",
-                            style = MaterialTheme.typography.body2,
+                            text = state.error!!,
+                            style = MaterialTheme.typography.caption2,
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                            color = MaterialTheme.colors.error,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Spacer(Modifier.height(12.dp))
-                        SmallChip(label = "+ Add Favourites", onClick = onOpenFavoritesPicker)
-                    }
-                }
-            }
-
-            state.cards.isEmpty() -> {
-                // Favourites configured but HA hasn't sent state yet (connecting).
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(Modifier.height(8.dp))
-                        Text("Connecting…", style = MaterialTheme.typography.caption1)
+                        SmallChip(label = "Retry", onClick = { vm.retry() })
                     }
                 }
             }
@@ -145,17 +149,17 @@ fun WearCardStackScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
-                    val entity = state.cards.getOrNull(page) ?: return@VerticalPager
-                    val displayPct = state.optimisticPercents[entity.id] ?: entity.percent
-
-                    EntityCardPage(
-                        entity = entity,
-                        displayPct = displayPct,
-                        totalPages = state.cards.size,
-                        currentPage = page,
-                        onTap = { vm.onCardTap(entity) },
+                    val view = state.views.getOrNull(page)
+                        ?: return@VerticalPager
+                    TabPage(
+                        view = view,
+                        tabIndex = page,
+                        totalTabs = state.views.size,
+                        entityStates = state.entityStates,
+                        onEntityTap = { vm.onEntityTap(it) },
                         onOpenMenu = onOpenMenu,
                         onOpenSettings = onOpenSettings,
+                        onOpenRemote = onOpenRemote,
                     )
                 }
             }
@@ -163,90 +167,89 @@ fun WearCardStackScreen(
     }
 }
 
-// ── Individual entity card page ──────────────────────────────────────────────
+// ── Tab page ─────────────────────────────────────────────────────────────────
 
 @Composable
-private fun EntityCardPage(
-    entity: EntityState,
-    displayPct: Int?,
-    totalPages: Int,
-    currentPage: Int,
-    onTap: () -> Unit,
+private fun TabPage(
+    view: LovelaceViewInfo,
+    tabIndex: Int,
+    totalTabs: Int,
+    entityStates: Map<EntityId, EntityState>,
+    onEntityTap: (EntityState) -> Unit,
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenRemote: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(WearColors.Bg)
-            .clickable(onClick = onTap),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 36.dp),
+    val listState = rememberScalingLazyListState()
+
+    Box(Modifier.fillMaxSize()) {
+        ScalingLazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                top = 28.dp,
+                bottom = 56.dp,   // leave room for bottom action row
+                start = 8.dp,
+                end = 8.dp,
+            ),
         ) {
-            // Domain icon glyph
-            DomainIcon(
-                domain = entity.id.domain,
-                isOn = entity.isOn,
-                modifier = Modifier.size(28.dp),
-            )
-
-            Spacer(Modifier.height(6.dp))
-
-            // Entity friendly name
-            Text(
-                text = entity.friendlyName,
-                style = MaterialTheme.typography.title3,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colors.onBackground,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            // Scalar progress bar (brightness, volume, etc.)
-            if (displayPct != null && entity.supportsScalar) {
-                ScalarBar(
-                    percent = displayPct,
-                    isOn = entity.isOn,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "$displayPct%",
-                    style = MaterialTheme.typography.caption2,
-                    color = MaterialTheme.colors.onBackground.copy(alpha = 0.8f),
-                )
-                Spacer(Modifier.height(6.dp))
+            // Tab title header
+            item {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                ) {
+                    Text(
+                        text = view.title.uppercase(),
+                        style = MaterialTheme.typography.title3,
+                        fontWeight = FontWeight.Bold,
+                        color = WearColors.Primary,
+                        textAlign = TextAlign.Center,
+                    )
+                    TabDots(total = totalTabs, current = tabIndex)
+                }
             }
 
-            // State label (ON / OFF / unavailable / raw state for sensors)
-            Text(
-                text = friendlyStatLabel(entity),
-                style = MaterialTheme.typography.body2,
-                color = if (entity.isOn) WearColors.Primary
-                else MaterialTheme.colors.onBackground.copy(alpha = 0.5f),
-            )
+            // Remote Control shortcut (Mouse tab / any tab with custom cards)
+            if (view.hasRemoteCard) {
+                item {
+                    Chip(
+                        label = { Text("🖥 Remote Control") },
+                        onClick = onOpenRemote,
+                        colors = ChipDefaults.primaryChipColors(
+                            backgroundColor = WearColors.Primary.copy(alpha = 0.25f),
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
 
-            // Page dots indicator
-            if (totalPages > 1) {
-                Spacer(Modifier.height(8.dp))
-                PageDots(total = totalPages, current = currentPage)
+            // Entity chips
+            val entities = view.entityIds.mapNotNull { entityStates[EntityId(it)] }
+            if (entities.isEmpty() && !view.hasRemoteCard) {
+                item {
+                    Text(
+                        text = "Connecting…",
+                        style = MaterialTheme.typography.caption2,
+                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.5f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            } else {
+                items(entities.size) { i ->
+                    val entity = entities[i]
+                    EntityChip(entity = entity, onTap = { onEntityTap(entity) })
+                }
             }
         }
 
-        // Bottom action row: menu + settings chips
+        // Bottom action row: always visible above the list
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 10.dp),
+                .padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SmallChip(label = "≡", onClick = onOpenMenu)
@@ -255,35 +258,66 @@ private fun EntityCardPage(
     }
 }
 
-// ── Helper composables ───────────────────────────────────────────────────────
+// ── Entity chip ───────────────────────────────────────────────────────────────
 
 @Composable
-private fun ScalarBar(percent: Int, isOn: Boolean) {
-    val fraction by animateFloatAsState(
-        targetValue = percent / 100f,
-        label = "ScalarBar",
-    )
-    Box(
-        modifier = Modifier
-            .fillMaxWidth(0.8f)
-            .height(6.dp)
-            .clip(RoundedCornerShape(3.dp))
-            .background(MaterialTheme.colors.surface),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(if (isOn) WearColors.Primary else WearColors.OnSurface.copy(alpha = 0.4f)),
-        )
+private fun EntityChip(entity: EntityState, onTap: () -> Unit) {
+    val stateLabel = when {
+        !entity.isAvailable -> "unavailable"
+        entity.unit != null -> "${entity.raw ?: "—"} ${entity.unit}"
+        entity.isOn         -> "ON"
+        else                -> "off"
     }
+    val labelColor = if (entity.isOn) WearColors.Primary
+    else MaterialTheme.colors.onBackground.copy(alpha = 0.55f)
+
+    Chip(
+        label = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = domainEmoji(entity.id.domain, entity.isOn),
+                        fontSize = 14.sp,
+                    )
+                    Text(
+                        text = entity.friendlyName,
+                        style = MaterialTheme.typography.caption1,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    text = stateLabel,
+                    style = MaterialTheme.typography.caption2,
+                    color = labelColor,
+                    maxLines = 1,
+                )
+            }
+        },
+        onClick = onTap,
+        colors = ChipDefaults.secondaryChipColors(),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 @Composable
-private fun PageDots(total: Int, current: Int) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        repeat(total.coerceAtMost(8)) { i ->
+private fun TabDots(total: Int, current: Int) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 4.dp),
+    ) {
+        repeat(total.coerceAtMost(10)) { i ->
             Box(
                 modifier = Modifier
                     .size(if (i == current) 6.dp else 4.dp)
@@ -294,34 +328,7 @@ private fun PageDots(total: Int, current: Int) {
                     ),
             )
         }
-        if (total > 8) {
-            Text("…", fontSize = 8.sp, color = MaterialTheme.colors.onBackground.copy(alpha = 0.4f))
-        }
     }
-}
-
-@Composable
-private fun DomainIcon(domain: Domain, isOn: Boolean, modifier: Modifier = Modifier) {
-    val emoji = when (domain) {
-        Domain.LIGHT          -> if (isOn) "💡" else "🔦"
-        Domain.SWITCH         -> if (isOn) "🔌" else "⭕"
-        Domain.INPUT_BOOLEAN  -> if (isOn) "✅" else "⬜"
-        Domain.FAN            -> "🌀"
-        Domain.COVER          -> if (isOn) "⬆" else "⬇"
-        Domain.SCENE          -> "🎬"
-        Domain.SCRIPT         -> "▶"
-        Domain.AUTOMATION     -> "⚙"
-        Domain.MEDIA_PLAYER   -> if (isOn) "🔊" else "🔇"
-        Domain.CLIMATE        -> "🌡"
-        Domain.LOCK           -> if (isOn) "🔓" else "🔒"
-        Domain.SENSOR,
-        Domain.BINARY_SENSOR  -> "📊"
-        Domain.CAMERA         -> "📷"
-        Domain.WEATHER        -> "⛅"
-        Domain.PERSON         -> "👤"
-        else                  -> "●"
-    }
-    Text(text = emoji, fontSize = 24.sp, modifier = modifier)
 }
 
 @Composable
@@ -342,9 +349,22 @@ private fun SmallChip(label: String, onClick: () -> Unit) {
     }
 }
 
-private fun friendlyStatLabel(entity: EntityState): String = when {
-    !entity.isAvailable      -> "unavailable"
-    entity.unit != null      -> "${entity.raw ?: "—"} ${entity.unit}"
-    entity.isOn              -> "ON"
-    else                     -> "off"
+private fun domainEmoji(domain: Domain, isOn: Boolean): String = when (domain) {
+    Domain.LIGHT         -> if (isOn) "💡" else "🔦"
+    Domain.SWITCH        -> if (isOn) "🔌" else "⭕"
+    Domain.INPUT_BOOLEAN -> if (isOn) "✅" else "⬜"
+    Domain.FAN           -> "🌀"
+    Domain.COVER         -> if (isOn) "⬆" else "⬇"
+    Domain.SCENE         -> "🎬"
+    Domain.SCRIPT        -> "▶"
+    Domain.AUTOMATION    -> "⚙"
+    Domain.MEDIA_PLAYER  -> if (isOn) "🔊" else "🔇"
+    Domain.CLIMATE       -> "🌡"
+    Domain.LOCK          -> if (isOn) "🔓" else "🔒"
+    Domain.SENSOR,
+    Domain.BINARY_SENSOR -> "📊"
+    Domain.CAMERA        -> "📷"
+    Domain.WEATHER       -> "⛅"
+    Domain.PERSON        -> "👤"
+    else                 -> "●"
 }

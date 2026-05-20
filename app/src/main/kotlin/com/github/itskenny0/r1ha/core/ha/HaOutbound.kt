@@ -51,4 +51,7 @@ sealed interface HaOutbound {
 
     @Serializable @SerialName("get_states")
     data class GetStates(val id: Int) : HaOutbound
+
+    @Serializable @SerialName("lovelace/config")
+    data class GetLovelaceConfig(val id: Int) : HaOutbound
 }

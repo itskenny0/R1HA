@@ -90,6 +90,7 @@ class DefaultHaRepository(
 
     private val cache = MutableStateFlow<Map<EntityId, EntityState>>(emptyMap())
     private val pendingCalls = ConcurrentHashMap<Int, CompletableDeferred<Result<Unit>>>()
+    private val pendingQueries = ConcurrentHashMap<Int, CompletableDeferred<HaInbound.Result>>()
     private var supervisorJob: Job? = null
     // Volatile because the WS listener thread (OkHttp dispatch) reads it from the
     // AuthRequired handler while the repo coroutine writes it from connectFromSettings
@@ -263,6 +264,7 @@ class DefaultHaRepository(
                             // out of the default log level, but visible during triage.
                             R1Log.d("HaRepo.late", "result for unknown id=${msg.id}; success=${msg.success}")
                         }
+                        pendingQueries.remove(msg.id)?.complete(msg)
                     }
                     is HaInbound.Event -> applyEvent(msg)
                     else -> Unit
@@ -315,6 +317,12 @@ class DefaultHaRepository(
                             }
                             pendingCalls.clear()
                         }
+                        if (pendingQueries.isNotEmpty()) {
+                            pendingQueries.values.forEach {
+                                it.completeExceptionally(IllegalStateException("WS disconnected mid-query"))
+                            }
+                            pendingQueries.clear()
+                        }
                         // If we just transitioned out of AuthLost (which fired its own
                         // refresh + connectFromSettings) the Disconnected handler must NOT
                         // also schedule a reconnect; both timers would otherwise race and
@@ -339,6 +347,12 @@ class DefaultHaRepository(
                                 it.complete(Result.failure(IllegalStateException("WS auth lost")))
                             }
                             pendingCalls.clear()
+                        }
+                        if (pendingQueries.isNotEmpty()) {
+                            pendingQueries.values.forEach {
+                                it.completeExceptionally(IllegalStateException("WS auth lost"))
+                            }
+                            pendingQueries.clear()
                         }
                         val attempt = authLostRefreshAttempt
                         if (attempt >= MAX_AUTHLOST_RETRIES) {
@@ -411,6 +425,10 @@ class DefaultHaRepository(
                             it.complete(Result.failure(IllegalStateException("Signed out")))
                         }
                         pendingCalls.clear()
+                        pendingQueries.values.forEach {
+                            it.completeExceptionally(IllegalStateException("Signed out"))
+                        }
+                        pendingQueries.clear()
                         ws.disconnect()
                         return@onEach
                     }
@@ -1594,6 +1612,94 @@ class DefaultHaRepository(
             }.sortedBy { it.domain }
         }.onFailure { t ->
             R1Log.w("HaRepo.services", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun fetchLovelaceViews(): Result<List<LovelaceViewInfo>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                // Lovelace config is only available over WebSocket (lovelace/config command).
+                // Wait until the connection is authenticated before sending.
+                ws.state.first { it is ConnectionState.Connected }
+                val id = ws.nextRequestId()
+                val deferred = CompletableDeferred<HaInbound.Result>()
+                pendingQueries[id] = deferred
+                ws.send(HaOutbound.GetLovelaceConfig(id))
+                val result = try {
+                    withTimeout(10_000L) { deferred.await() }
+                } catch (_: TimeoutCancellationException) {
+                    pendingQueries.remove(id)
+                    error("Timed out waiting for lovelace/config WS response")
+                }
+                if (!result.success) error("lovelace/config WS command failed: ${result.error?.message}")
+                val root = result.result as? kotlinx.serialization.json.JsonObject
+                    ?: error("lovelace/config result is not a JSON object")
+                parseLovelaceViews(root)
+            }.onFailure { t ->
+                R1Log.w("HaRepo.lovelace", "fetch failed: ${t.message}")
+            }
+        }
+
+    /**
+     * Parses a Lovelace config [JsonObject] into a list of [LovelaceViewInfo].
+     * Handles standard card types: `entities`, `entity`, `glance`, `button`,
+     * `light`, `thermostat`, `media-control`, `grid`, `vertical-stack`, and
+     * `horizontal-stack`. Custom cards with no extractable entity produce no
+     * entity IDs; if ALL cards in a view were custom/non-entity,
+     * [LovelaceViewInfo.hasRemoteCard] is set.
+     */
+    private fun parseLovelaceViews(root: kotlinx.serialization.json.JsonObject): List<LovelaceViewInfo> {
+        val viewsArr = root["views"]
+            ?.let { it as? kotlinx.serialization.json.JsonArray } ?: return emptyList()
+
+        return viewsArr.mapNotNull { viewEl ->
+            val view = viewEl as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+            val title = (view["title"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                ?: (view["path"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            val cards = view["cards"]
+                ?.let { it as? kotlinx.serialization.json.JsonArray } ?: return@mapNotNull null
+            val entityIds = mutableListOf<String>()
+            var hasCustomCards = false
+            for (card in cards) {
+                val cardObj = card as? kotlinx.serialization.json.JsonObject ?: continue
+                val type = (cardObj["type"] as? JsonPrimitive)?.content.orEmpty()
+                if (type.startsWith("custom:")) hasCustomCards = true
+                lovelaceExtractEntities(cardObj, entityIds)
+            }
+            LovelaceViewInfo(
+                title = title,
+                entityIds = entityIds.distinct(),
+                hasRemoteCard = hasCustomCards && entityIds.isEmpty(),
+            )
+        }
+    }
+
+    /** Recursively extract entity IDs from a single Lovelace card object. */
+    private fun lovelaceExtractEntities(
+        card: kotlinx.serialization.json.JsonObject,
+        out: MutableList<String>,
+    ) {
+        // Single entity field
+        (card["entity"] as? JsonPrimitive)?.content?.takeIf { '.' in it }?.let { out.add(it) }
+
+        // entities array — items are either plain strings or {entity: ...} objects
+        (card["entities"] as? kotlinx.serialization.json.JsonArray)?.forEach { item ->
+            when (item) {
+                is JsonPrimitive -> if ('.' in item.content) out.add(item.content)
+                is kotlinx.serialization.json.JsonObject -> {
+                    (item["entity"] as? JsonPrimitive)?.content
+                        ?.takeIf { '.' in it }?.let { out.add(it) }
+                }
+                else -> Unit
+            }
+        }
+
+        // Nested card containers: vertical-stack, horizontal-stack, grid
+        (card["cards"] as? kotlinx.serialization.json.JsonArray)?.forEach { nested ->
+            (nested as? kotlinx.serialization.json.JsonObject)?.let {
+                lovelaceExtractEntities(it, out)
+            }
         }
     }
 

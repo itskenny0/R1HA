@@ -172,6 +172,19 @@ interface HaRepository {
      * domain. Used by the Services Browser power-user surface.
      */
     suspend fun listServices(): Result<List<HaServiceDomain>>
+
+    /**
+     * GET `/api/lovelace/config` — parses the user's Lovelace dashboard
+     * into a flat list of [LovelaceViewInfo] (one per tab/view). Each entry
+     * contains the view title and the ordered list of entity IDs extracted
+     * from standard card types (entities, entity, glance, button, grid,
+     * vertical-stack, horizontal-stack). Custom cards with no parseable
+     * entity are skipped; views that contain at least one custom card but
+     * no entity IDs set [LovelaceViewInfo.hasRemoteCard] = true so the
+     * Wear OS screen can show a dedicated "Remote Control" shortcut there.
+     */
+    suspend fun fetchLovelaceViews(): Result<List<LovelaceViewInfo>>
+
     suspend fun start()
     suspend fun stop()
 
