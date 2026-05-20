@@ -2,16 +2,18 @@ package com.github.itskenny0.r1ha.wear.nav
 
 /**
  * Route string constants for the Wear OS nav graph.
- *
- * The watch exposes a focused subset of the full phone app's navigation:
- * - [ONBOARDING]  — first-run server URL + LLAT token entry
- * - [CARD_STACK]  — main screen: swipeable entity card pager
- * - [SCENES]      — flat list of scenes/scripts for quick activation
- * - [SETTINGS]    — server URL, token, disconnect
  */
 object WearRoutes {
-    const val ONBOARDING = "wear_onboarding"
-    const val CARD_STACK = "wear_card_stack"
-    const val SCENES     = "wear_scenes"
-    const val SETTINGS   = "wear_settings"
+    const val ONBOARDING         = "wear_onboarding"
+    const val CARD_STACK         = "wear_card_stack"
+    const val MENU               = "wear_menu"
+    const val FAVORITES_PICKER   = "wear_favorites_picker"
+    const val SCENES             = "wear_scenes"
+    const val ASSIST             = "wear_assist"
+    const val AUTOMATIONS        = "wear_automations"
+    const val NOTIFICATIONS      = "wear_notifications"
+    const val DASHBOARD          = "wear_dashboard"
+    const val HELPERS            = "wear_helpers"
+    const val SEARCH             = "wear_search"
+    const val SETTINGS           = "wear_settings"
 }

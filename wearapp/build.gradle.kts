@@ -10,17 +10,19 @@ plugins {
 }
 
 android {
-    namespace = "com.github.itskenny0.r1ha.wear"
-    compileSdk = 35
+    namespace = "com.github.itskenny0.r1ha"
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.github.itskenny0.r1ha.wear"
         minSdk = 30    // Wear OS 3 = API 30
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "0.1.0-wear"
 
         buildConfigField("String", "SOURCE_URL", "\"https://github.com/itskenny0/Rabbit-R1-HA\"")
+        buildConfigField("String", "GIT_SHA", "\"unknown\"")
+        buildConfigField("boolean", "IS_FDROID_BUILD", "false")
     }
 
     buildTypes {
@@ -86,6 +88,7 @@ dependencies {
     implementation(libs.wear.compose.foundation)
     implementation(libs.wear.compose.navigation)
     debugImplementation(libs.wear.tooling.preview)
+    implementation(libs.wear.input)
 
     // ─── Shared with :app (needed to compile the shared core source set) ────
     implementation(libs.androidx.core.ktx)

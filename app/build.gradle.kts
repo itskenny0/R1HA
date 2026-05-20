@@ -34,12 +34,12 @@ ktlint {
 
 android {
     namespace = "com.github.itskenny0.r1ha"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.github.itskenny0.r1ha"
         minSdk = 30
-        targetSdk = 34
+        targetSdk = 36
         // Versions are date-based to match the `r1ha-YYYYMMDD` release tag scheme.
         // CI passes APP_VERSION_CODE / APP_VERSION_NAME on tag builds; local builds fall back to today's date.
         versionCode = (System.getenv("APP_VERSION_CODE") ?: defaultVersionCode()).toInt()

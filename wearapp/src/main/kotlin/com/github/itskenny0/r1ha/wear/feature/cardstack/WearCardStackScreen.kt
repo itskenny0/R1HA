@@ -83,8 +83,9 @@ fun WearCardStackScreen(
     haRepository: HaRepository,
     settings: SettingsRepository,
     wheelInput: WheelInput,
-    onOpenScenes: () -> Unit,
+    onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFavoritesPicker: () -> Unit,
 ) {
     val vm: WearCardStackViewModel = viewModel(
         factory = WearCardStackViewModel.factory(haRepository, settings, wheelInput),
@@ -110,15 +111,21 @@ fun WearCardStackScreen(
             }
 
             state.favouritesCount == 0 -> {
-                // No favourites configured.
+                // No favourites configured — guide user to the on-watch picker.
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No favourites.\nSet them in the phone app.",
-                        style = MaterialTheme.typography.body2,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    ) {
+                        Text(
+                            text = "No favourites.",
+                            style = MaterialTheme.typography.body2,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        SmallChip(label = "+ Add Favourites", onClick = onOpenFavoritesPicker)
+                    }
                 }
             }
 
@@ -147,7 +154,7 @@ fun WearCardStackScreen(
                         totalPages = state.cards.size,
                         currentPage = page,
                         onTap = { vm.onCardTap(entity) },
-                        onOpenScenes = onOpenScenes,
+                        onOpenMenu = onOpenMenu,
                         onOpenSettings = onOpenSettings,
                     )
                 }
@@ -165,7 +172,7 @@ private fun EntityCardPage(
     totalPages: Int,
     currentPage: Int,
     onTap: () -> Unit,
-    onOpenScenes: () -> Unit,
+    onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     Box(
@@ -235,14 +242,14 @@ private fun EntityCardPage(
             }
         }
 
-        // Bottom action row: scenes + settings chips
+        // Bottom action row: menu + settings chips
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            SmallChip(label = "Scenes", onClick = onOpenScenes)
+            SmallChip(label = "≡", onClick = onOpenMenu)
             SmallChip(label = "⚙", onClick = onOpenSettings)
         }
     }

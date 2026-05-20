@@ -30,7 +30,9 @@ package com.github.itskenny0.r1ha.feature.onboarding
  * UrlNormalizerTest exercise every branch.
  */
 internal fun normalizeServerUrl(raw: String): String {
-    val trimmed = raw.trim().trimEnd('/')
+    // Replace any backslashes with forward slashes first — Windows users and
+    // copy-paste from some sources can produce https:\\host instead of https://host.
+    val trimmed = raw.trim().replace('\\', '/').trimEnd('/')
     if (trimmed.isBlank()) return ""
 
     val alreadyHasProtocol =

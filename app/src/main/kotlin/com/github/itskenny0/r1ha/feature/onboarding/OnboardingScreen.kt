@@ -242,8 +242,9 @@ private fun UrlEntryForm(
             isError = error != null,
             enabled = !isProbing,
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
+                keyboardType = KeyboardType.Text,
                 imeAction = ImeAction.Go,
+                autoCorrect = false,
             ),
             keyboardActions = KeyboardActions(onGo = { onProbe(urlText) }),
             modifier = Modifier.fillMaxWidth(),

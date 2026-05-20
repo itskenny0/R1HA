@@ -609,6 +609,7 @@ class DefaultHaRepository(
             // pin-to-favorites + tap could be wired later without further
             // changes to isOn semantics.
             Domain.TIMER -> stateStr.equals("active", ignoreCase = true)
+            Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> false
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
         val pct = computePercentWithState(id.domain, raw.attributes, stateStr)
@@ -740,7 +741,8 @@ class DefaultHaRepository(
         // for these. Counter / timer have integer / time values that
         // don't map to a 0..100 percent; input_text / input_datetime
         // are text-shaped.
-        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> null
+        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> null
     }
 
     /**
@@ -827,7 +829,8 @@ class DefaultHaRepository(
         // service-call time keeps the precision intact.
         Domain.NUMBER, Domain.INPUT_NUMBER -> null
         // Helper-only domains: no numeric raw the card stack needs.
-        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> null
+        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> null
     }
 
     /**
@@ -905,7 +908,8 @@ class DefaultHaRepository(
         Domain.SELECT, Domain.INPUT_SELECT -> false
         // Helper-only domains rendered exclusively on the Helpers screen; not
         // scalar from the card stack's perspective.
-        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> false
+        Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> false
     }
 
     override fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>> =
@@ -1036,7 +1040,8 @@ class DefaultHaRepository(
                         // Settable enums — no on/off concept.
                         Domain.SELECT, Domain.INPUT_SELECT -> false
                         // Helper-only — Helpers screen renders these bespoke.
-                        Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> false
+                        Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+                        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> false
                         Domain.TIMER -> stateStr.equals("active", ignoreCase = true)
                     },
                     percent = pct,

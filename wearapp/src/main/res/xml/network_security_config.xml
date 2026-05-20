@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is allowed unconditionally because the typical Home Assistant
+  install is on a LAN behind the user's own router, reached either via raw IP
+  (e.g. http://192.168.1.100:8123) or mDNS hostname (homeassistant.local). Android's
+  network-security-config <domain> matcher does literal hostname matching, not
+  CIDR — so a config that enumerates LAN ranges via "192.168.0.0/16" would only
+  match the literal string "192.168.0.0/16", which is useless. Permitting cleartext
+  at the base level is simpler and lets the user point the app at whatever
+  hostname their HA listens on.
+
+  The user can still use HTTPS for remote / public access; this config doesn't
+  weaken HTTPS behavior, it only permits cleartext when the URL is http://.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

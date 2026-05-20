@@ -27,14 +27,13 @@ import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.TextField
+import androidx.compose.material3.TextField
 import androidx.wear.compose.material.TimeText
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.ServerConfig
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.prefs.Tokens
-import com.github.itskenny0.r1ha.feature.onboarding.UrlNormalizer
 import kotlinx.coroutines.launch
 
 /**
@@ -147,7 +146,7 @@ fun WearSettingsScreen(
                         saving = true
                         scope.launch {
                             runCatching {
-                                val normalized = UrlNormalizer.normalize(url)
+                            val normalized = com.github.itskenny0.r1ha.feature.onboarding.normalizeServerUrl(url)
                                     ?: throw IllegalArgumentException("Invalid URL")
                                 if (accessToken.isNotBlank()) {
                                     tokens.save(

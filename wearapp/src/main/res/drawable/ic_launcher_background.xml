@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Solid R1 orange. The previous deep-blue + dim-orange combo had terrible contrast on
+  dark launchers (see user's CipherOS photo where the bunny was nearly invisible). The
+  orange-on-white-foreground inversion ramps the contrast to maximum: bright orange
+  reads as the dominant disc against any wallpaper, and the white silhouette pops out
+  of it even under heavy launcher masks.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0 H108 V108 H0 Z" android:fillColor="#F36F21"/>
+</vector>

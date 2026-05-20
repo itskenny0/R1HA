@@ -66,6 +66,9 @@ class WearCardStackViewModel(
     private val _uiState = MutableStateFlow(WearCardStackUiState())
     val uiState: StateFlow<WearCardStackUiState> = _uiState
 
+    private var _latestSettings: com.github.itskenny0.r1ha.core.prefs.AppSettings = com.github.itskenny0.r1ha.core.prefs.AppSettings()
+    private val latestSettings get() = _latestSettings
+
     init {
         // Keep a local snapshot of settings for the wheel handler (called from a
         // hot flow callback that can't suspend to read DataStore).
@@ -94,14 +97,14 @@ class WearCardStackViewModel(
                     favouritesCount = favIds.size,
                 )
                 if (favIds.isEmpty()) {
-                    flowOf(emptyMap())
+                    flowOf(emptyMap<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>())
                 } else {
-                    haRepository.observe(favIds.toSet())
+                    haRepository.observe(favIds.map { com.github.itskenny0.r1ha.core.ha.EntityId(it) }.toSet())
                 }
             }
             .onEach { stateMap ->
                 val orderedIds = latestSettings
-                    .pages.firstOrNull()?.favorites.orEmpty()
+                    .pages.firstOrNull()?.favorites.orEmpty().map { com.github.itskenny0.r1ha.core.ha.EntityId(it) }
                 val orderedCards = orderedIds.mapNotNull { stateMap[it] }
                 _uiState.value = _uiState.value.copy(
                     cards = orderedCards,

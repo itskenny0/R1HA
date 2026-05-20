@@ -116,6 +116,7 @@ class WearMainActivity : ComponentActivity() {
                         tokens = graph.tokens,
                         wheelInput = graph.wheelInput,
                         currentSettings = settings,
+                        http = graph.okHttp,
                     )
                 }
             }
