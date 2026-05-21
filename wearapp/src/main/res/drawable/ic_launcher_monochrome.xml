@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed-icons silhouette — same rabbit head + ears as the foreground but solid black,
+  so Android's adaptive-icon theming layer can recolour it cleanly on devices that use
+  the monochrome layer (Material You themed icons on Android 13+). Eye dot omitted —
+  themed icons render as a single tint, and a same-tint eye would just disappear.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- Head — same geometry as foreground, fillColor=black for monochrome theming. -->
+    <path android:fillColor="#000000"
+        android:pathData="M54,40 C67.25,40 78,50.75 78,64 C78,77.25 67.25,88 54,88 C40.75,88 30,77.25 30,64 C30,50.75 40.75,40 54,40 Z"/>
+
+    <path android:fillColor="#000000"
+        android:pathData="M36,31 C36,27 39,24 43,24 C47,24 50,27 50,31 L50,56 L36,56 Z"/>
+
+    <path android:fillColor="#000000"
+        android:pathData="M58,31 C58,27 61,24 65,24 C69,24 72,27 72,31 L72,56 L58,56 Z"/>
+</vector>

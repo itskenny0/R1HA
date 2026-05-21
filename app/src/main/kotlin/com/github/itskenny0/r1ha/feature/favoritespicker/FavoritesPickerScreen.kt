@@ -713,7 +713,8 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     // entry is only reached on the niche path of a user manually
     // adding their entity_id to favorites JSON. Neutral tint.
     Domain.COUNTER, Domain.TIMER,
-    Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> R1.AccentNeutral
+    Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+    Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> R1.AccentNeutral
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
@@ -745,4 +746,7 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.TIMER -> "TIMER"
     Domain.INPUT_TEXT -> "TEXT"
     Domain.INPUT_DATETIME -> "DATETIME"
+    Domain.CAMERA -> "CAMERA"
+    Domain.WEATHER -> "WEATHER"
+    Domain.PERSON -> "PERSON"
 }

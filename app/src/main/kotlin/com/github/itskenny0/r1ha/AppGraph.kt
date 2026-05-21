@@ -12,6 +12,7 @@ import com.github.itskenny0.r1ha.core.prefs.WheelKeySource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import com.github.itskenny0.r1ha.core.util.TrustHelper.trustingIsrgRootX1
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -35,6 +36,9 @@ class AppGraph(context: Context) {
             // OkHttp surfaces a missing PONG as onFailure, which our state machine treats as
             // a Disconnected and schedules a backoff reconnect.
             .pingInterval(30, TimeUnit.SECONDS)
+            // Older Wear OS / Android < 7.1 trust stores don't include ISRG Root X1
+            // (Let's Encrypt's current root). Inject it so HTTPS/WSS works on all devices.
+            .trustingIsrgRootX1()
             .build()
     }
 

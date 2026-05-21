@@ -127,7 +127,8 @@ data class ServiceCall(
                 // stack doesn't reach setPercent for these; defensive
                 // homeassistant.update_entity no-op keeps the call safe.
                 Domain.COUNTER, Domain.TIMER,
-                Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> ServiceCall(
+                Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+                Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> ServiceCall(
                     target,
                     "update_entity",
                     JsonObject(emptyMap()),
@@ -339,7 +340,8 @@ data class ServiceCall(
             // stack never reaches tapAction for these so this is purely
             // defensive.
             Domain.COUNTER, Domain.TIMER,
-            Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> ServiceCall(
+            Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+            Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> ServiceCall(
                 target,
                 "update_entity",
                 JsonObject(emptyMap()),
@@ -413,7 +415,8 @@ data class ServiceCall(
             )
             // Helper-only — Helpers screen owns dispatch for these.
             Domain.COUNTER, Domain.TIMER,
-            Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> ServiceCall(
+            Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+            Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> ServiceCall(
                 target,
                 "update_entity",
                 JsonObject(emptyMap()),

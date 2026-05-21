@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "rabbit-r1-ha"
 include(":app")
+include(":wearapp")

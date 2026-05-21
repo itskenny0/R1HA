@@ -68,6 +68,7 @@ class SearchViewModel(
         // perspective; group them under SENSORS so they match the
         // 'just a value to display' user mental model.
         Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> Bucket.SENSORS
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> Bucket.OTHER
         Domain.SCENE, Domain.SCRIPT, Domain.BUTTON, Domain.INPUT_BUTTON,
         Domain.AUTOMATION -> Bucket.ACTIONS
     }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">HA Watch</string>
+    <string name="onboarding_title">Connect to HA</string>
+    <string name="onboarding_server_hint">https://homeassistant.local:8123</string>
+    <string name="onboarding_token_hint">Long-lived access token</string>
+    <string name="onboarding_connect">Connect</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_server">Server URL</string>
+    <string name="settings_token">Access Token</string>
+    <string name="settings_disconnect">Disconnect</string>
+    <string name="scenes_title">Scenes</string>
+    <string name="no_favorites">No favorites.\nAdd some in the phone app.</string>
+    <string name="connecting">Connecting…</string>
+    <string name="error_connection">Connection failed</string>
+</resources>

@@ -72,7 +72,8 @@ fun EntityCard(
         // normal favourites flow (kind-filtered ★ on Helpers excludes
         // them); the glyph value is only used when the when is
         // exhaustive. Pick something sensible-but-irrelevant.
-        Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> CardRenderModel.Glyph.NUMBER
+        Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> CardRenderModel.Glyph.NUMBER
         Domain.TIMER -> CardRenderModel.Glyph.SWITCH
     }
     val accentRole = when (state.id.domain) {
@@ -115,7 +116,8 @@ fun EntityCard(
         // stack (e.g. via raw favourites JSON), neutral is least
         // confusing.
         Domain.COUNTER, Domain.TIMER,
-        Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> CardRenderModel.AccentRole.NEUTRAL
+        Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        Domain.CAMERA, Domain.WEATHER, Domain.PERSON -> CardRenderModel.AccentRole.NEUTRAL
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour

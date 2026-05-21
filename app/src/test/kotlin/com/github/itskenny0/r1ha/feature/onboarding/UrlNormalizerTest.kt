@@ -50,6 +50,15 @@ class UrlNormalizerTest {
             .isEqualTo("HTTP://192.168.1.10:8123")
     }
 
+    @Test
+    fun `backslashes in scheme separator are normalised to forward slashes`() {
+        // Windows copy-paste or typo: https:\\host -> https://host
+        assertThat(normalizeServerUrl("https:\\\\hass.example.com"))
+            .isEqualTo("https://hass.example.com")
+        assertThat(normalizeServerUrl("http:\\\\192.168.1.10:8123"))
+            .isEqualTo("http://192.168.1.10:8123")
+    }
+
     // ──────────────────────────────────────────────────────────────────────────────
     // Protocol inference for unprefixed inputs
     // ──────────────────────────────────────────────────────────────────────────────

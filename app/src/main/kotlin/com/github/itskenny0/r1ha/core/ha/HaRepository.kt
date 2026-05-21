@@ -181,6 +181,18 @@ interface HaRepository {
     suspend fun listServices(): Result<List<HaServiceDomain>>
 
     /**
+     * GET `/api/lovelace/config` — parses the user's Lovelace dashboard
+     * into a flat list of [LovelaceViewInfo] (one per tab/view). Each entry
+     * contains the view title and the ordered list of entity IDs extracted
+     * from standard card types (entities, entity, glance, button, grid,
+     * vertical-stack, horizontal-stack). Custom cards with no parseable
+     * entity are skipped; views that contain at least one custom card but
+     * no entity IDs set [LovelaceViewInfo.hasRemoteCard] = true so the
+     * Wear OS screen can show a dedicated "Remote Control" shortcut there.
+     */
+    suspend fun fetchLovelaceViews(): Result<List<LovelaceViewInfo>>
+
+    /**
      * List every `todo.*` entity the server exposes. Used by the To-do
      * screen to populate its list-picker. Backs onto [listRawEntitiesByDomain]
      * so we don't have to model todos in the [Domain] enum (the dashboard
@@ -216,6 +228,7 @@ interface HaRepository {
 
     /** Bulk-delete every completed item from the named list. */
     suspend fun clearCompletedTodoItems(entityId: String): Result<Unit>
+
     suspend fun start()
     suspend fun stop()
 

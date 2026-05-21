@@ -126,6 +126,9 @@ enum class Domain(val prefix: String) {
      * Helpers VM's domain loop.
      */
     INPUT_DATETIME("input_datetime"),
+    CAMERA("camera"),
+    WEATHER("weather"),
+    PERSON("person"),
     ;
 
     /** Action-only domains — UI renders them as fire-and-forget ActionCard tiles. */

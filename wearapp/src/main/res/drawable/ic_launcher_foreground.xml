@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Bold WHITE rabbit silhouette on the orange background. Every element thicker and
+  shorter than the previous (blue-on-orange) draft so the mark survives even the most
+  aggressive launcher mask:
+    * Head: r=24 circle at (54, 64) — bigger than before, fills more of the safe zone.
+    * Ears: 14-wide pills (was 10), shorter (top at y=24 not y=22), so they tuck within
+      a 30-radius circle around centre rather than poking right at the safe-zone edge.
+    * Eye accent: a single small orange disc inside the head reads as "rabbit face"
+      even when the launcher rendering blurs the silhouette down to a few dozen pixels.
+  Everything fits within a radius-32 circle around centre (54, 54) so any mask shape
+  (square, rounded square, circle, squircle) keeps the silhouette legible.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- Head: r=24 white disc at (54, 64). Cubic beziers approximating the circle. -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M54,40 C67.25,40 78,50.75 78,64 C78,77.25 67.25,88 54,88 C40.75,88 30,77.25 30,64 C30,50.75 40.75,40 54,40 Z"/>
+
+    <!-- Left ear: thick rounded pill from (36, 24) to (50, 56). Width 14, height 32. -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M36,31 C36,27 39,24 43,24 C47,24 50,27 50,31 L50,56 L36,56 Z"/>
+
+    <!-- Right ear: mirror of the left at x=58..72. -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M58,31 C58,27 61,24 65,24 C69,24 72,27 72,31 L72,56 L58,56 Z"/>
+
+    <!-- Single orange eye disc inside the head — placed slightly above centre + right of
+         vertical axis so the silhouette reads as "rabbit face" rather than "white blob"
+         when launchers blur the icon down. r=5 at (60, 60). -->
+    <path android:fillColor="#F36F21"
+        android:pathData="M60,55 C62.76,55 65,57.24 65,60 C65,62.76 62.76,65 60,65 C57.24,65 55,62.76 55,60 C55,57.24 57.24,55 60,55 Z"/>
+</vector>
