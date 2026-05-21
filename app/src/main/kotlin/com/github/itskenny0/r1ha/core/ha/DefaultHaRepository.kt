@@ -213,6 +213,32 @@ class DefaultHaRepository(
         }
     }
 
+    override fun unifiedRemoteCommand(
+        t: String,
+        dx: Double?,
+        dy: Double?,
+        action: String?,
+        text: String?,
+        key: String?,
+    ) {
+        // Fire-and-forget: enqueue onto the outgoing WS channel and return
+        // immediately. No response tracking — the HA integration acks with an
+        // empty result that we intentionally discard to keep the hot path fast
+        // (mouse moves arrive at ~60 Hz and we don't want a CompletableDeferred
+        // per frame polluting the pendingCalls map).
+        ws.send(
+            HaOutbound.UnifiedRemoteCommand(
+                id = ws.nextRequestId(),
+                t = t,
+                dx = dx,
+                dy = dy,
+                action = action,
+                text = text,
+                key = key,
+            ),
+        )
+    }
+
     override suspend fun start() {
         if (supervisorJob != null) return
         // Seed the in-memory cache from disk BEFORE we start the WS — IF the
@@ -1787,9 +1813,11 @@ class DefaultHaRepository(
      * Parses a Lovelace config [JsonObject] into a list of [LovelaceViewInfo].
      * Handles standard card types: `entities`, `entity`, `glance`, `button`,
      * `light`, `thermostat`, `media-control`, `grid`, `vertical-stack`, and
-     * `horizontal-stack`. Custom cards with no extractable entity produce no
-     * entity IDs; if ALL cards in a view were custom/non-entity,
-     * [LovelaceViewInfo.hasRemoteCard] is set.
+     * `horizontal-stack`. Also handles the newer `sections` view layout where
+     * cards are nested inside `sections[].cards` rather than a top-level
+     * `cards` array. Custom cards (type starts with "custom:") set
+     * [LovelaceViewInfo.hasRemoteCard] = true so the Wear screen shows the
+     * Remote Control shortcut chip alongside any extracted entity chips.
      */
     private fun parseLovelaceViews(root: kotlinx.serialization.json.JsonObject): List<LovelaceViewInfo> {
         val viewsArr = root["views"]
@@ -1800,12 +1828,31 @@ class DefaultHaRepository(
             val title = (view["title"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
                 ?: (view["path"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
-            val cards = view["cards"]
-                ?.let { it as? kotlinx.serialization.json.JsonArray } ?: return@mapNotNull null
+
+            // Collect all cards regardless of view layout type:
+            //  • default/masonry/panel views → top-level `cards` array
+            //  • sections views (HA 2024.x+)  → `sections[].cards` arrays
+            val allCards = mutableListOf<kotlinx.serialization.json.JsonObject>()
+            val topCards = view["cards"] as? kotlinx.serialization.json.JsonArray
+            if (topCards != null) {
+                topCards.filterIsInstance<kotlinx.serialization.json.JsonObject>()
+                    .forEach { allCards.add(it) }
+            }
+            val sections = view["sections"] as? kotlinx.serialization.json.JsonArray
+            if (sections != null) {
+                for (sectionEl in sections) {
+                    val section = sectionEl as? kotlinx.serialization.json.JsonObject ?: continue
+                    (section["cards"] as? kotlinx.serialization.json.JsonArray)
+                        ?.filterIsInstance<kotlinx.serialization.json.JsonObject>()
+                        ?.forEach { allCards.add(it) }
+                }
+            }
+            // A view with no cards AND no sections has nothing to show — skip it.
+            if (allCards.isEmpty() && topCards == null && sections == null) return@mapNotNull null
+
             val entityIds = mutableListOf<String>()
             var hasCustomCards = false
-            for (card in cards) {
-                val cardObj = card as? kotlinx.serialization.json.JsonObject ?: continue
+            for (cardObj in allCards) {
                 val type = (cardObj["type"] as? JsonPrimitive)?.content.orEmpty()
                 if (type.startsWith("custom:")) hasCustomCards = true
                 lovelaceExtractEntities(cardObj, entityIds)
@@ -1813,7 +1860,9 @@ class DefaultHaRepository(
             LovelaceViewInfo(
                 title = title,
                 entityIds = entityIds.distinct(),
-                hasRemoteCard = hasCustomCards && entityIds.isEmpty(),
+                // Show the Remote Control shortcut whenever any custom card is present,
+                // regardless of whether there are also normal entity chips.
+                hasRemoteCard = hasCustomCards,
             )
         }
     }

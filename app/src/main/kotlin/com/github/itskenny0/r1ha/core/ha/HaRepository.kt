@@ -222,6 +222,29 @@ interface HaRepository {
     /** Bulk-delete every completed item from the named list. */
     suspend fun clearCompletedTodoItems(entityId: String): Result<Unit>
 
+    /**
+     * Fire-and-forget: send a `unified_remote/command` through the HA WebSocket.
+     * The HA integration (`custom_components/unified_remote`) receives the command
+     * and forwards it to the Unified Remote server on the local network.
+     * Non-suspend — the outgoing WS channel enqueue is synchronous and the caller
+     * never needs to wait for a server ACK.
+     *
+     * @param t      Command discriminator (e.g. "move", "click", "volume", "media")
+     * @param dx     X delta for move/scroll commands
+     * @param dy     Y delta for move/scroll commands
+     * @param action Sub-action for volume ("up"/"down"/"mute") and media commands
+     * @param text   Text to type for the "text" command
+     * @param key    Key name for the "key" command (UR key identifiers)
+     */
+    fun unifiedRemoteCommand(
+        t: String,
+        dx: Double? = null,
+        dy: Double? = null,
+        action: String? = null,
+        text: String? = null,
+        key: String? = null,
+    )
+
     suspend fun start()
     suspend fun stop()
 

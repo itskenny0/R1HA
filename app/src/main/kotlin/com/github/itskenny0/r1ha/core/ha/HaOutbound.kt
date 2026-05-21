@@ -54,4 +54,32 @@ sealed interface HaOutbound {
 
     @Serializable @SerialName("lovelace/config")
     data class GetLovelaceConfig(val id: Int) : HaOutbound
+
+    /**
+     * Custom WebSocket command registered by the unified_remote HA integration.
+     * HA receives this and synchronously dispatches it to the Unified Remote
+     * server running on the local network (UDP/TCP port 9512).
+     *
+     * [t] is the command discriminator:
+     *   "move"         — relative mouse move; [dx]/[dy] in pixels
+     *   "scroll"       — wheel scroll;        [dx]/[dy] in pixels
+     *   "click"        — left button click
+     *   "right_click"  — right button click
+     *   "double_click" — double left click
+     *   "down"/"up"    — button press/release (for drag)
+     *   "volume"       — [action] = "up" | "down" | "mute"
+     *   "media"        — [action] = "play_pause" | "previous" | "next" | "stop"
+     *   "key"          — [key] = UR key name (e.g. "escape", "tab", "return")
+     *   "text"         — [text] = string to type
+     */
+    @Serializable @SerialName("unified_remote/command")
+    data class UnifiedRemoteCommand(
+        val id: Int,
+        val t: String,
+        val dx: Double? = null,
+        val dy: Double? = null,
+        val action: String? = null,
+        val text: String? = null,
+        val key: String? = null,
+    ) : HaOutbound
 }
