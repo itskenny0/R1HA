@@ -45,7 +45,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -182,6 +181,16 @@ fun CardStackScreen(
     // VM's own deque (which accelerates scalar percent steps) but lives at the screen
     // layer because navigation is a screen concern, not a per-card one.
     val navTimestamps = remember { ArrayDeque<Long>() }
+    // Per-card accumulator for select-option cycling. Needs two same-direction
+    // detents (or one same-direction detent within 800 ms of the last) to
+    // fire, so a brushing motion doesn't accidentally cycle a select. Tracks
+    // the entity it's accumulating for so a tab swap doesn't carry a stale
+    // partial count into the new card.
+    val selectAccumulatorEntity = remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
+    val selectAccumulatorSum = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val selectAccumulatorAt = remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     // Transient hint shown on read-only / explicit-button-only cards when the user
     // spins the wheel — they previously expected nav, but the wheel no longer moves
     // between cards (swipe / pip-tap are the deck-nav affordances). The hint surfaces
@@ -319,8 +328,23 @@ fun CardStackScreen(
                 curve = appSettings.wheel.accelerationCurve,
             ).coerceIn(1, 8)
             val navDelta = sign * navStep
+            // Per-card wheel override: explicit On / Off / Inherit. Defaults
+            // depend on the domain — select / input_select default OFF
+            // because cycling on every detent was too easy to trigger
+            // accidentally; every other domain defaults ON. The user can
+            // flip either side from the card's customize dialog.
+            val perCardOverride = active?.id?.value?.let { appSettings.entityOverrides[it] }
+                ?: com.github.itskenny0.r1ha.core.prefs.EntityOverride.NONE
+            val wheelEnabledHere = active?.let {
+                perCardOverride.resolvedWheelEnabled(it.id.domain.prefix)
+            } ?: false
             when {
                 active == null -> Unit
+                // Per-card wheel-disabled override (or per-domain default for
+                // select). Show the hint so the user understands the wheel
+                // is intentionally inert here.
+                !wheelEnabledHere ->
+                    wheelHintAt.longValue = now
                 // Sensors / actions have nothing to drive — show the hint.
                 active.id.domain.isSensor || active.id.domain.isAction ->
                     wheelHintAt.longValue = now
@@ -331,15 +355,30 @@ fun CardStackScreen(
                 // vm.onWheel for the actual toggle.
                 !active.supportsScalar && !appSettings.behavior.wheelTogglesSwitches ->
                     wheelHintAt.longValue = now
-                // Select entities — wheel is intentionally a no-op. Cycling through
-                // options on every detent meant a quick spin would skip past the
-                // desired option and (because the wheel double-as-scroll-driver
-                // anywhere else) accidentally change HVAC mode / source / preset
-                // when the user was just trying to navigate. The picker overlay
-                // (tap to open) is the deliberate selection path; the wheel just
-                // shows the hint to confirm it's not broken.
-                active.id.domain.isSelect ->
-                    wheelHintAt.longValue = now
+                // Select entities — wheel steps one option per accumulated
+                // pair of detents. Accumulator threshold mitigates the
+                // "too easy to trigger accidentally" feel: a brushing
+                // motion of one or two detents won't cycle, a deliberate
+                // spin of three+ will. Anchor resets after 800 ms of no
+                // wheel events (a deliberate slow rotate still counts).
+                active.id.domain.isSelect -> {
+                    val anchor = selectAccumulatorEntity.value
+                    val activeId = active.id
+                    if (anchor != activeId || now - selectAccumulatorAt.longValue > 800L) {
+                        selectAccumulatorEntity.value = activeId
+                        selectAccumulatorSum.intValue = 0
+                    }
+                    selectAccumulatorAt.longValue = now
+                    selectAccumulatorSum.intValue += sign
+                    val accum = selectAccumulatorSum.intValue
+                    if (accum >= 2) {
+                        selectAccumulatorSum.intValue = 0
+                        vm.cycleSelectOption(activeId, +1)
+                    } else if (accum <= -2) {
+                        selectAccumulatorSum.intValue = 0
+                        vm.cycleSelectOption(activeId, -1)
+                    }
+                }
                 else -> vm.onWheel(event)
             }
             }.onFailure { t ->
@@ -366,7 +405,17 @@ fun CardStackScreen(
     // earlier key (percent only) double-fired). For scalar entities the value is the
     // percent itself; for switches it's 0 or 1 keyed on isOn.
     val hapticKey = state.activeState?.let { active ->
-        if (active.supportsScalar) active.percent else if (active.isOn) 1 else 0
+        when {
+            // Select / input_select: the meaningful change is the picked
+            // option string. Keying on it makes the haptic fire once per
+            // accepted wheel-cycle (optimistic snap immediately, then again
+            // only if HA echoes a different string — we coalesce that via
+            // the optimistic clearing logic so the second tick is rare).
+            active.id.domain.isSelect -> active.currentOption
+            active.supportsScalar -> active.percent
+            active.isOn -> 1
+            else -> 0
+        }
     }
     LaunchedEffect(state.activeState?.id, hapticKey) {
         // Defensive: View.performHapticFeedback can theoretically fail when
@@ -385,6 +434,21 @@ fun CardStackScreen(
     DisposableEffect(appSettings.behavior.keepScreenOn) {
         view.keepScreenOn = appSettings.behavior.keepScreenOn
         onDispose { view.keepScreenOn = false }
+    }
+
+    // Surface a toast when the area-driven page generator completes so the
+    // user sees how many tabs were created (zero = no HA areas had
+    // controllable entities; common on a fresh HA install).
+    androidx.compose.runtime.LaunchedEffect(vm) {
+        vm.pagesGenerated.collect { count ->
+            val msg = when {
+                count < 0 -> "Couldn't reach HA. Try again when you're back online."
+                count == 0 -> "No HA areas with controllable entities. Set areas in HA first."
+                count == 1 -> "1 page generated from HA areas."
+                else -> "$count pages generated from HA areas."
+            }
+            com.github.itskenny0.r1ha.core.util.Toaster.show(msg)
+        }
     }
 
     // Auto-surface the last crash report if one exists on disk. Fires once
@@ -486,10 +550,15 @@ fun CardStackScreen(
     val onSetEntityPercent = androidx.compose.runtime.remember(vm) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId, pct: Int -> vm.setEntityPercent(id, pct) }
     }
+    val onEntityCall = androidx.compose.runtime.remember(vm) {
+        { call: com.github.itskenny0.r1ha.core.ha.ServiceCall -> vm.callService(call) }
+    }
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides appSettings.server?.url,
         com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides provides appSettings.entityOverrides,
+        com.github.itskenny0.r1ha.core.theme.LocalThemeAccentOverride provides appSettings.themeAccentArgb
+            ?.let { androidx.compose.ui.graphics.Color(it) },
         com.github.itskenny0.r1ha.core.theme.LocalOnCycleLightMode provides onCycleLightMode,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetLightWheelMode provides onSetLightWheelMode,
         com.github.itskenny0.r1ha.core.theme.LocalOnCycleLightEffect provides onCycleLightEffect,
@@ -499,23 +568,21 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker provides onOpenSelectPicker,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetSelectOption provides onSetSelectOption,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
+        com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,
     ) {
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
-        // On wide displays (tablets in landscape) cap the card column at 600 dp and
-        // centre it. This prevents a single card stretching to 1280 dp while keeping
-        // the dark background filling the full screen. The overlays (dialogs, sheets)
-        // sit at the outer Box level so they cover the full screen independently.
-        val screenWidthDp = LocalConfiguration.current.screenWidthDp
+        // No max-width cap on the card column. An earlier 600 dp clamp here
+        // was meant to keep a card from stretching across a 1280 dp tablet,
+        // but it letterboxed the cardstack on every wide display, leaving
+        // the deck occupying roughly half the screen. Cards (and their
+        // theme renderers) adapt naturally to any width via the existing
+        // weight-based interior layout, so the cap was more harmful than
+        // helpful. Matches the earlier fix that turned ResponsiveColumn
+        // into a passthrough for the same reason.
         // displayedCards is hoisted here (outside the island Box) so the full-screen
         // overlays (customize dialog, jump picker, etc.) can reference it too.
         val cards = state.displayedCards
-        Box(
-            modifier = if (screenWidthDp > 600) {
-                Modifier.widthIn(max = 600.dp).fillMaxHeight().align(Alignment.Center)
-            } else {
-                Modifier.fillMaxSize()
-            },
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
         when {
             // Cold-start splash. DataStore is async on first read so for a brief
             // window the VM has its default state. Without this branch the user
@@ -767,6 +834,27 @@ fun CardStackScreen(
                     solidBackdrop = appSettings.ui.hideCardTailAbove,
                 )
             }
+            // Guest-mode banner — small read-only indicator surfaced
+            // immediately below the tab strip so the user has a constant
+            // visual reminder that the app won't fire service calls. Tap
+            // jumps to Settings so they can flip it off if they actually
+            // wanted to control something.
+            if (appSettings.guestModeEnabled) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(R1.AccentWarm.copy(alpha = 0.18f))
+                        .r1Pressable(onClick = onOpenSettings)
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "READ ONLY  ·  TAP TO DISABLE",
+                        style = R1.labelMicro,
+                        color = R1.AccentWarm,
+                    )
+                }
+            }
         }
 
         // ── Wheel-no-op hint ────────────────────────────────────────────────────────
@@ -1014,6 +1102,10 @@ fun CardStackScreen(
                 canMoveRight = targetIdx >= 0 && targetIdx < appSettings.pages.lastIndex,
                 onAdd = { name ->
                     vm.addPage(name)
+                    tabManagementForId.value = null
+                },
+                onGenerateFromAreas = {
+                    vm.generatePagesFromAreas()
                     tabManagementForId.value = null
                 },
                 onRename = { id, name ->
@@ -1823,6 +1915,7 @@ private fun TabManageDialog(
     /** Mirror of [canMoveLeft] for the right side. */
     canMoveRight: Boolean,
     onAdd: (String) -> Unit,
+    onGenerateFromAreas: () -> Unit,
     onRename: (String, String) -> Unit,
     onDelete: (String) -> Unit,
     onMoveLeft: (String) -> Unit,
@@ -1910,6 +2003,21 @@ private fun TabManageDialog(
                         if (isAdd) onAdd(trimmed) else page?.let { onRename(it.id, trimmed) }
                     },
                     modifier = Modifier.weight(1f),
+                )
+            }
+            // Bulk generator — only in add mode. Pulls every HA area with at
+            // least one controllable entity and creates one tab per area,
+            // pre-populated with that area's lights, switches, climate, etc.
+            // Faster than naming and populating a tab manually for each
+            // room. The user can rename / re-accent / delete the generated
+            // tabs afterwards through the same dialog.
+            if (isAdd) {
+                Spacer(Modifier.height(8.dp))
+                R1Button(
+                    text = "GENERATE FROM HA AREAS",
+                    onClick = onGenerateFromAreas,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
                 )
             }
             // MOVE LEFT / MOVE RIGHT — shifts the page one slot in either

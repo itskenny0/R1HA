@@ -34,6 +34,7 @@ object Routes {
     const val ZONES = "zones"
     const val LOVELACE = "lovelace"
     const val DEVICE = "device"
+    const val TODO = "todo"
 
     /** "Modified settings" subscreen — lists every registry entry whose
      *  current value differs from its default. Reached from a chip near

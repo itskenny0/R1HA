@@ -117,6 +117,14 @@ class SettingsViewModel(
         update { it.copy(behavior = it.behavior.copy(orientationMode = mode)) }
 
     /**
+     * Read-only "guest" mode. When set, every outbound service call is
+     * refused at the repository so a guest holding the phone can't toggle
+     * anything by accident.
+     */
+    fun setGuestModeEnabled(enabled: Boolean) =
+        update { it.copy(guestModeEnabled = enabled) }
+
+    /**
      * Generic mutator for the [AdvancedSettings] sub-struct. The dev-menu screen
      * uses this to update fields one at a time without each field needing its own
      * VM method — there are roughly two dozen advanced toggles and writing a setter

@@ -49,6 +49,13 @@ fun SelectCard(
      * strings of varying length all sit on a single card without truncation.
      */
     textSizeSp: Int? = null,
+    /**
+     * When the resolved per-card [EntityOverride.wheelEnabled] is false (either explicit
+     * per-card or via the per-domain default for select / input_select), the
+     * "WHEEL CYCLES OPTIONS" hint is suppressed so it doesn't lie about an affordance
+     * the user has turned off.
+     */
+    wheelEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val onOpenPicker = com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker.current
@@ -123,14 +130,19 @@ fun SelectCard(
                     color = R1.InkSoft,
                 )
             }
-            Spacer(Modifier.height(6.dp))
-            // Hint about the wheel — first-time users won't know the wheel cycles
-            // options unless we tell them. Subtle InkMuted so it doesn't dominate.
-            Text(
-                text = "WHEEL CYCLES OPTIONS",
-                style = R1.labelMicro,
-                color = R1.InkMuted,
-            )
+            if (wheelEnabled) {
+                Spacer(Modifier.height(6.dp))
+                // Hint about the wheel — first-time users won't know the wheel cycles
+                // options unless we tell them. Subtle InkMuted so it doesn't dominate.
+                // Suppressed when wheel-cycling is off for this card (per-card override
+                // or per-domain default) so the hint never claims an affordance that
+                // doesn't work.
+                Text(
+                    text = "WHEEL CYCLES OPTIONS",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
         }
 
         Spacer(Modifier.weight(1f))

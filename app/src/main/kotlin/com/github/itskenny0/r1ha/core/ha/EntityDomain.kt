@@ -83,6 +83,11 @@ enum class Domain(val prefix: String) {
      */
     WATER_HEATER("water_heater"),
     /**
+     * Robot lawn mowers — same control-state shape as vacuum (mowing / docked /
+     * returning / paused / error). Services: lawn_mower.start_mowing, pause, dock.
+     */
+    LAWN_MOWER("lawn_mower"),
+    /**
      * `select` entities — a settable enum from HA's `options` attribute (e.g. fan mode
      * controllers offering auto/manual, mode switchers offering eco/normal/turbo).
      * State is the currently-selected option string; service is `select.select_option`

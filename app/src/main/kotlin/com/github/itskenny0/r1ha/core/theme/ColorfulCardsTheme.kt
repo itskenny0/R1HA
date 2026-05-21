@@ -60,6 +60,7 @@ object ColorfulCardsTheme : R1Theme {
         CardRenderModel.Glyph.VALVE -> "VALVE"
         CardRenderModel.Glyph.VACUUM -> "VACUUM"
         CardRenderModel.Glyph.WATER_HEATER -> "WATER HEATER"
+        CardRenderModel.Glyph.LAWN_MOWER -> "MOWER"
     }
 
     @Composable
@@ -69,7 +70,11 @@ object ColorfulCardsTheme : R1Theme {
         // Accent is white for body text + slider, with a per-card override (from
         // EntityOverride.accentColor) winning when set. The gradient backdrop already
         // carries the colour identity so we don't need a coloured accent on top.
-        val accent = model.accentOverride ?: Color.White
+        // Per-card override wins, then the global accent picker, then white
+        // (the readable default on every gradient backdrop).
+        val accent = model.accentOverride
+            ?: LocalThemeAccentOverride.current
+            ?: Color.White
 
         Row(
             modifier = modifier
@@ -180,6 +185,39 @@ object ColorfulCardsTheme : R1Theme {
                         isMuted = model.mediaIsMuted,
                         supportedFeatures = model.mediaSupportedFeatures,
                     )
+                    if (model.entityState != null) {
+                        Spacer(Modifier.height(8.dp))
+                        com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel(
+                            state = model.entityState,
+                            accent = accent,
+                        )
+                    }
+                }
+                if (model.entityState != null) {
+                    when (model.domainGlyph) {
+                        CardRenderModel.Glyph.CLIMATE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ClimatePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.WATER_HEATER -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.VALVE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ValvePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        else -> Unit
+                    }
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) {

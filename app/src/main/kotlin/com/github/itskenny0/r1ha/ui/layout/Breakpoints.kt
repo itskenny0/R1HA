@@ -1,10 +1,7 @@
 package com.github.itskenny0.r1ha.ui.layout
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
@@ -86,46 +83,24 @@ fun ResponsiveColumn(
 }
 
 /**
- * Centers list/form screens to a comfortable reading width on large displays.
+ * Wraps screen content in a [Column] that fills the available space on
+ * every tier — no max-width cap. An earlier version capped tablet content
+ * at 800 dp, but that letterboxed list / form screens on wide displays
+ * (roughly half the screen on a 1920 dp panel), and the card-based UI
+ * already adapts naturally to any width via weight-based and fillMaxWidth
+ * interior layouts. Now a pure passthrough — call sites stay unchanged so
+ * future tier-specific behaviour can re-land here without touching every
+ * screen.
  *
- * On R1 and phones the content fills its parent naturally — no change.
- * On tablets (≥ 600 dp) the content is horizontally centred and capped at
- * [maxWidth] so list rows, settings items, and form fields don't stretch
- * uncomfortably across a 1280 dp panel. The parent's background already
- * covers the full screen, so the side gutters match the app background.
- *
- * Use this on list/form screens (Settings, Search, Logbook, Helpers, etc.).
- * Do NOT use it on the card stack or dashboard where content should expand.
- *
- * Default [maxWidth] of 800 dp is wide enough for comfortable reading without
- * feeling cramped on a 10" tablet.
+ * The [maxWidth] parameter is retained for API compatibility but ignored.
  */
 @Composable
 fun AdaptiveContent(
     modifier: Modifier = Modifier,
-    maxWidth: Dp = 800.dp,
+    @Suppress("UNUSED_PARAMETER") maxWidth: Dp = 800.dp,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    val tier = currentWidthTier()
-    if (tier != WidthTier.TABLET) {
-        // On R1 / phones: wrap in a Column so call sites can put multiple
-        // sibling composables inside without them stacking in a Box. The
-        // caller's modifier (e.g. Modifier.weight(1f)) is honoured via the
-        // Column so the composable occupies the right space in its parent.
-        Column(modifier = modifier.fillMaxSize()) { content() }
-        return
-    }
-    // On tablets: centre a max-width Column. Using Column here means callers
-    // can put multiple sibling composables directly inside AdaptiveContent
-    // and have them flow vertically (same behaviour as wrapping in a Column).
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(modifier = Modifier.widthIn(max = maxWidth).fillMaxHeight()) {
-            content()
-        }
-    }
+    Column(modifier = modifier.fillMaxSize()) { content() }
 }
 
 /** Column count for grid surfaces (Cameras GRID, future favourites

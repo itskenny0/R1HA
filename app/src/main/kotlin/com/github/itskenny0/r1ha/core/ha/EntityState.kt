@@ -158,6 +158,93 @@ data class EntityState(
      * can still see a useful UI even if the integration omits the bitmask.
      */
     val mediaSupportedFeatures: Int = 0,
+    /** Media-player-only: `shuffle` attr (true when shuffle is active). */
+    val mediaShuffle: Boolean = false,
+    /**
+     * Media-player-only: `repeat` attr. HA values: "off" / "one" / "all". Stored
+     * verbatim so the UI can render the current state without re-translating.
+     */
+    val mediaRepeat: String? = null,
+    /** Media-player-only: currently-selected input source (e.g. "Spotify"). */
+    val mediaSource: String? = null,
+    /** Media-player-only: `source_list` attr — every selectable input. */
+    val mediaSourceList: List<String> = emptyList(),
+    /**
+     * Vacuum-only: HA's `supported_features` bitmask. Used to gate the START /
+     * PAUSE / RETURN / SPOT / LOCATE / FAN-SPEED buttons.
+     */
+    val vacuumSupportedFeatures: Int = 0,
+    /**
+     * Generic `supported_features` int for domains other than media_player /
+     * vacuum (which keep their own dedicated fields for back-compat). Populated
+     * for lawn_mower / climate / valve / water_heater so the per-domain
+     * `hasXFeature` helpers below have a uniform source. 0 = unknown / unset
+     * (the panel falls back to showing every button so an integration without
+     * a bitmask still has a usable UI).
+     */
+    val supportedFeatures: Int = 0,
+    /** Vacuum-only: `battery_level` (0..100) when the integration reports it. */
+    val vacuumBatteryLevel: Int? = null,
+    /**
+     * Vacuum-only: `status` or `state` string (cleaning / docked / returning / paused /
+     * idle / error). Surfaced on the card as the human-readable status word; never use
+     * this for behavioural branching since integrations spell things differently.
+     */
+    val vacuumStatus: String? = null,
+    /** Vacuum-only: current `fan_speed` string (off / quiet / standard / max / turbo). */
+    val vacuumFanSpeed: String? = null,
+    /** Vacuum-only: `fan_speed_list` — every speed the integration accepts. */
+    val vacuumFanSpeedList: List<String> = emptyList(),
+    /**
+     * Climate / water_heater: current HVAC mode ("heat" / "cool" / "auto" / "off"…).
+     * For water heaters this is the operation mode ("eco" / "electric" / "gas" / …).
+     */
+    val climateHvacMode: String? = null,
+    /** Climate / water_heater: every mode the integration accepts. */
+    val climateHvacModes: List<String> = emptyList(),
+    /** Climate / water_heater: current fan mode (climate-only; null elsewhere). */
+    val climateFanMode: String? = null,
+    /** Climate / water_heater: every fan mode the integration accepts. */
+    val climateFanModes: List<String> = emptyList(),
+    /** Climate / water_heater: live current temperature reading. */
+    val climateCurrentTemperature: Double? = null,
+    /** Climate / water_heater: target setpoint (single-target mode). */
+    val climateTargetTemperature: Double? = null,
+    /** Climate range mode: lower bound when the entity advertises HEAT_COOL. */
+    val climateTargetTempLow: Double? = null,
+    /** Climate range mode: upper bound when the entity advertises HEAT_COOL. */
+    val climateTargetTempHigh: Double? = null,
+    /** Climate / water_heater: `target_temp_step` granularity (e.g. 0.5 °C). */
+    val climateTempStep: Double? = null,
+    /** Climate / water_heater: `min_temp` for the wheel range. */
+    val climateMinTemp: Double? = null,
+    /** Climate / water_heater: `max_temp` for the wheel range. */
+    val climateMaxTemp: Double? = null,
+    /**
+     * Climate / water_heater / number: HA's `unit_of_measurement` for the
+     * temperature display. "°C" / "°F" / "K" etc. Falls back to the entity's
+     * top-level `unit` when not set.
+     */
+    val temperatureUnit: String? = null,
+    /**
+     * Climate-only: HA's `preset_mode` attribute (eco / away / boost /
+     * comfort / sleep). Surfaced on the dedicated climate card under the
+     * HVAC mode picker when the entity advertises [ClimateFeature.PRESET_MODE].
+     */
+    val climatePresetMode: String? = null,
+    /**
+     * Climate-only: `preset_modes` list from HA. Empty for thermostats that
+     * don't expose any presets.
+     */
+    val climatePresetModes: List<String> = emptyList(),
+    /**
+     * Lock-only: `code_format` attribute — a regex pattern (e.g. "^\\d{4}$") that
+     * specifies the accepted PIN shape. Non-null means the lock requires a code on
+     * lock/unlock; null means tap toggles directly.
+     */
+    val lockCodeFormat: String? = null,
+    /** Lock-only: `changed_by` attribute — last user / source that flipped it. */
+    val lockChangedBy: String? = null,
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)
@@ -176,13 +263,112 @@ data class EntityState(
         const val TURN_OFF = 256
         const val PLAY_MEDIA = 512
         const val VOLUME_STEP = 1024
+        const val SELECT_SOURCE = 2048
         const val STOP = 4096
         const val PLAY = 16384
+        const val SHUFFLE_SET = 32768
+        const val SELECT_SOUND_MODE = 65536
+        const val REPEAT_SET = 262144
+        const val GROUPING = 524288
     }
 
     /** Convenience: does this entity advertise the given [MediaPlayerFeature] bit? */
     fun hasMediaFeature(featureBit: Int): Boolean =
         mediaSupportedFeatures != 0 && (mediaSupportedFeatures and featureBit) != 0
+
+    /**
+     * Subset of HA's `VacuumEntityFeature` bitmask used to gate vacuum-card chips.
+     * `supported_features` value comes straight from the integration; we hide chips
+     * whose corresponding bit is clear so HA doesn't reject the call with "Entity
+     * doesn't support service".
+     */
+    object VacuumFeature {
+        const val TURN_ON = 1
+        const val TURN_OFF = 2
+        const val PAUSE = 4
+        const val STOP = 8
+        const val RETURN_HOME = 16
+        const val FAN_SPEED = 32
+        const val BATTERY = 64
+        const val STATUS = 128
+        const val SEND_COMMAND = 256
+        const val LOCATE = 512
+        const val CLEAN_SPOT = 1024
+        const val MAP = 2048
+        const val STATE = 4096
+        const val START = 8192
+    }
+
+    /**
+     * Bitmask check for vacuums. Returns `true` when the integration
+     * didn't advertise a bitmask (== 0) so panels stay usable on
+     * minimally-configured MQTT vacuums — same forgive-an-omission
+     * rule as [hasFeature].
+     */
+    fun hasVacuumFeature(featureBit: Int): Boolean =
+        vacuumSupportedFeatures == 0 || (vacuumSupportedFeatures and featureBit) != 0
+
+    /**
+     * Generic bitmask check for lawn_mower / climate / valve / water_heater. Mirrors
+     * [hasVacuumFeature] but reads the shared [supportedFeatures] field. When the
+     * bitmask is 0 (unknown), returns `true` so panels stay usable on integrations
+     * that don't advertise their bitmask — the same forgive-an-omission rule we
+     * apply to vacuums and media_players.
+     */
+    fun hasFeature(featureBit: Int): Boolean =
+        supportedFeatures == 0 || (supportedFeatures and featureBit) != 0
+
+    /**
+     * Subset of HA's `ClimateEntityFeature` bitmask. Drives the dedicated climate
+     * card's UI gating — a thermostat without TARGET_TEMPERATURE_RANGE doesn't get
+     * the low/high split controls, etc.
+     */
+    object ClimateFeature {
+        const val TARGET_TEMPERATURE = 1
+        const val TARGET_TEMPERATURE_RANGE = 2
+        const val TARGET_HUMIDITY = 4
+        const val FAN_MODE = 8
+        const val PRESET_MODE = 16
+        const val SWING_MODE = 32
+        const val AUX_HEAT = 64
+        const val TURN_OFF = 128
+        const val TURN_ON = 256
+    }
+
+    fun hasClimateFeature(featureBit: Int): Boolean =
+        supportedFeatures == 0 || (supportedFeatures and featureBit) != 0
+
+    /**
+     * Subset of HA's `LawnMowerEntityFeature` bitmask. The lawn mower card surfaces
+     * START / PAUSE / DOCK; each chip is hidden when the corresponding bit is clear.
+     */
+    object LawnMowerFeature {
+        const val START_MOWING = 1
+        const val PAUSE = 2
+        const val DOCK = 4
+    }
+
+    /**
+     * Subset of HA's `ValveEntityFeature`. Drives the valve card's OPEN / CLOSE /
+     * STOP and the optional position slider gate.
+     */
+    object ValveFeature {
+        const val OPEN = 1
+        const val CLOSE = 2
+        const val SET_POSITION = 4
+        const val STOP = 8
+    }
+
+    /**
+     * Subset of HA's `WaterHeaterEntityFeature`. Drives the water heater card's
+     * setpoint chip, mode picker, and away-mode toggle.
+     */
+    object WaterHeaterFeature {
+        const val TARGET_TEMPERATURE = 1
+        const val OPERATION_MODE = 2
+        const val AWAY_MODE = 4
+        const val ON_OFF = 8
+    }
 
     companion object {
         fun normaliseLightBrightness(raw: Int): Int = ((raw.coerceIn(0, 255)) * 100.0 / 255.0).roundToInt()

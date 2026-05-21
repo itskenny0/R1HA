@@ -110,6 +110,14 @@ data class CardRenderModel(
      * represents.
      */
     val meterLabels: List<String>? = null,
+    /**
+     * Live [EntityState] backing this card. Themes that render dedicated
+     * per-domain panels (LockPanel, VacuumPanel, ClimatePanel, etc.) reach
+     * into the per-domain attribute set on this object instead of plumbing
+     * every field through the model. Null only on synthetic preview cards
+     * (e.g. theme picker samples) where there's no real entity backing.
+     */
+    val entityState: com.github.itskenny0.r1ha.core.ha.EntityState? = null,
 ) {
     enum class Glyph {
         LIGHT, FAN, COVER, MEDIA_PLAYER,
@@ -123,6 +131,7 @@ data class CardRenderModel(
         VALVE,
         VACUUM,
         WATER_HEATER,
+        LAWN_MOWER,
     }
     enum class AccentRole { WARM, COOL, GREEN, NEUTRAL }
 }

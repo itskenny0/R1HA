@@ -50,6 +50,7 @@ object MinimalDarkTheme : R1Theme {
         CardRenderModel.Glyph.VALVE -> "VALVE"
         CardRenderModel.Glyph.VACUUM -> "VACUUM"
         CardRenderModel.Glyph.WATER_HEATER -> "WATER HEATER"
+        CardRenderModel.Glyph.LAWN_MOWER -> "MOWER"
     }
 
     @Composable
@@ -58,7 +59,10 @@ object MinimalDarkTheme : R1Theme {
         // Per-card accent override (from EntityOverride.accentColor) takes precedence
         // over MinimalDark's single warm accent. Lets the user tint a card without
         // switching themes.
-        val accent = model.accentOverride ?: themeAccent
+        // Per-card override > global theme-accent override > theme native accent.
+        val accent = model.accentOverride
+            ?: LocalThemeAccentOverride.current
+            ?: themeAccent
         Row(
             modifier = modifier
                 .fillMaxSize()
@@ -173,6 +177,39 @@ object MinimalDarkTheme : R1Theme {
                         isMuted = model.mediaIsMuted,
                         supportedFeatures = model.mediaSupportedFeatures,
                     )
+                    if (model.entityState != null) {
+                        Spacer(Modifier.height(8.dp))
+                        com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel(
+                            state = model.entityState,
+                            accent = accent,
+                        )
+                    }
+                }
+                if (model.entityState != null) {
+                    when (model.domainGlyph) {
+                        CardRenderModel.Glyph.CLIMATE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ClimatePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.WATER_HEATER -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.VALVE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ValvePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        else -> Unit
+                    }
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) {

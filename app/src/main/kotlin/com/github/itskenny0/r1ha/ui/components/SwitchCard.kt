@@ -141,6 +141,10 @@ fun SwitchCard(
             // robot, tapping DOCK sends it back to base. Matches the actual
             // services dispatched (vacuum.start and vacuum.return_to_base).
             com.github.itskenny0.r1ha.core.ha.Domain.VACUUM -> "CLEAN" to "DOCK"
+            // Lawn mowers map identically — MOW kicks off the start_mowing
+            // service, DOCK sends the mower back. The DOCK label matches the
+            // service name `lawn_mower.dock` so the affordance reads true.
+            com.github.itskenny0.r1ha.core.ha.Domain.LAWN_MOWER -> "MOW" to "DOCK"
             // Media players reach the SwitchCard path when they don't advertise
             // VOLUME_SET (radio streams, simple players). Tapping the top
             // end-stop dispatches media_play, bottom dispatches media_pause —
@@ -149,14 +153,51 @@ fun SwitchCard(
             com.github.itskenny0.r1ha.core.ha.Domain.MEDIA_PLAYER -> "PLAY" to "PAUSE"
             else -> "ON" to "OFF"
         }
-        SwitchTrack(
-            isOn = state.isOn,
-            accent = accent,
-            onSetOn = onSetOn,
-            onLabel = onLabel,
-            offLabel = offLabel,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        // Hide the SwitchTrack for code-required locks. The LockPanel below
+        // surfaces explicit LOCK / UNLOCK chips that open the PIN keypad;
+        // tapping the SwitchTrack here would otherwise fire lock.unlock
+        // without the code and HA would reject with `code_required`,
+        // looking like the app silently lost the tap. For locks without a
+        // code_format the track still drives the entity directly since
+        // there's no keypad to gate it.
+        val needsLockCode = state.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK &&
+            !state.lockCodeFormat.isNullOrBlank()
+        if (!needsLockCode) {
+            SwitchTrack(
+                isOn = state.isOn,
+                accent = accent,
+                onSetOn = onSetOn,
+                onLabel = onLabel,
+                offLabel = offLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        // Dedicated per-domain panels under the switch track. Each panel
+        // self-gates on the entity's `supported_features` bitmask so unused
+        // chip sets vanish quietly. The order mirrors the SwitchCard's domain
+        // priority (vacuum → mower → lock → valve → water_heater → climate);
+        // only one of these renders for a given entity since the domains are
+        // disjoint.
+        // Each panel renders its own leading Spacer inline rather than us
+        // hard-coding 12 dp here; that way panels that early-return on no
+        // feature support don't leave a dangling 12 dp gap below the
+        // switch track.
+        when (state.id.domain) {
+            com.github.itskenny0.r1ha.core.ha.Domain.VACUUM ->
+                VacuumPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.LAWN_MOWER ->
+                LawnMowerPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.LOCK ->
+                LockPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.VALVE ->
+                ValvePanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.WATER_HEATER ->
+                WaterHeaterPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.CLIMATE ->
+                ClimatePanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            else -> Unit
+        }
 
         // Media-player extras — when a media_player lands on the SwitchCard path
         // (no VOLUME_SET feature / null volume_level), it would otherwise have no
@@ -177,6 +218,10 @@ fun SwitchCard(
                 isMuted = state.isVolumeMuted,
                 supportedFeatures = state.mediaSupportedFeatures,
             )
+            // Shuffle / repeat / source row — same panel as the scalar
+            // path so a non-VOLUME_SET media player still gets the
+            // discrete media controls.
+            MediaExtrasPanel(state = state, accent = accent, modifier = Modifier.padding(top = 8.dp))
         }
 
         Spacer(Modifier.weight(1f))
@@ -356,6 +401,14 @@ private fun friendlySwitchStateWord(state: EntityState): String {
             "returning" -> "RETURNING"
             "paused" -> "PAUSED"
             "idle" -> "IDLE"
+            "error" -> "ERROR"
+            else -> raw.uppercase()
+        }
+        com.github.itskenny0.r1ha.core.ha.Domain.LAWN_MOWER -> when (raw) {
+            "mowing" -> "MOWING"
+            "docked" -> "DOCKED"
+            "returning" -> "RETURNING"
+            "paused" -> "PAUSED"
             "error" -> "ERROR"
             else -> raw.uppercase()
         }

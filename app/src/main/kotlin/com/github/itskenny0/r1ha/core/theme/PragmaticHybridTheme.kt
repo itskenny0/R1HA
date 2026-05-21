@@ -72,6 +72,7 @@ object PragmaticHybridTheme : R1Theme {
         CardRenderModel.Glyph.VALVE -> "VALVE"
         CardRenderModel.Glyph.VACUUM -> "VACUUM"
         CardRenderModel.Glyph.WATER_HEATER -> "WATER HEATER"
+        CardRenderModel.Glyph.LAWN_MOWER -> "MOWER"
     }
 
     @Composable
@@ -79,7 +80,13 @@ object PragmaticHybridTheme : R1Theme {
         // Per-card accent override (from EntityOverride.accentColor) takes precedence
         // over the domain-derived role colour. Lets users tint individual cards without
         // touching their HA setup.
-        val accent = model.accentOverride ?: accentColor(model.accent)
+        // Resolution order for the card's accent colour:
+        //   1. Per-card override (EntityOverride.accentColor) — most specific.
+        //   2. Global theme-accent override (Settings → Theme → accent picker).
+        //   3. Domain-derived role colour for this theme.
+        val accent = model.accentOverride
+            ?: LocalThemeAccentOverride.current
+            ?: accentColor(model.accent)
         val ui = LocalUiOptions.current
 
         Row(
@@ -241,6 +248,44 @@ object PragmaticHybridTheme : R1Theme {
                         isMuted = model.mediaIsMuted,
                         supportedFeatures = model.mediaSupportedFeatures,
                     )
+                    if (model.entityState != null) {
+                        Spacer(Modifier.height(8.dp))
+                        com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel(
+                            state = model.entityState,
+                            accent = accent,
+                        )
+                    }
+                }
+                // Dedicated per-domain panels for scalar entities. Climate /
+                // water_heater / valve land here when their setpoint range is
+                // present (see DefaultHaRepository.supportsScalar); the panels
+                // surface the discrete mode/command chips that the wheel + meter
+                // can't represent.
+                if (model.entityState != null) {
+                    when (model.domainGlyph) {
+                        CardRenderModel.Glyph.CLIMATE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ClimatePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.WATER_HEATER -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.VALVE -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.ValvePanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        else -> Unit
+                    }
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) OnOffPill(isOn = model.isOn, accent = accent)

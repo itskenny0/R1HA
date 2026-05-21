@@ -477,6 +477,24 @@ data class AppSettings(
     val behavior: Behavior = Behavior(),
     val theme: ThemeId = ThemeId.PRAGMATIC_HYBRID,
     /**
+     * Optional global accent colour override (ARGB int). When set, replaces
+     * every theme's domain-derived accent role (WARM / COOL / GREEN /
+     * NEUTRAL) with this single colour. Individual cards can still override
+     * via [EntityOverride.accentColor]. Null = use the theme's native
+     * accent palette unchanged. Lets the user re-skin a theme without
+     * editing one card at a time.
+     */
+    val themeAccentArgb: Int? = null,
+    /**
+     * Read-only "guest" mode. When true, the app refuses every outbound
+     * service call (lights, switches, locks, media transport, scripts) and
+     * surfaces a small banner so the user knows why. State observation
+     * keeps working; only the dispatch path is gated. Toggleable from
+     * Settings; persisted alongside the other behaviour flags so a guest
+     * handing the device back doesn't have to remember.
+     */
+    val guestModeEnabled: Boolean = false,
+    /**
      * Client-side display-name overrides keyed by entity_id. When present, the UI prefers
      * this label to HA's `friendly_name` for that entity. Persistent (lives in DataStore)
      * but never synced back to HA — the override is local-only so users can disambiguate

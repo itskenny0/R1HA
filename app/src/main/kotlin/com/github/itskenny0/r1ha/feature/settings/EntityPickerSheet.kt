@@ -262,6 +262,7 @@ private val PICKABLE_DOMAINS = setOf(
     Domain.CLIMATE,
     Domain.WATER_HEATER,
     Domain.VACUUM,
+    Domain.LAWN_MOWER,
     Domain.VALVE,
     Domain.SCENE,
     Domain.SCRIPT,

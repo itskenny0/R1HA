@@ -185,6 +185,43 @@ interface HaRepository {
      */
     suspend fun fetchLovelaceViews(): Result<List<LovelaceViewInfo>>
 
+    /**
+     * List every `todo.*` entity the server exposes. Used by the To-do
+     * screen to populate its list-picker. Backs onto [listRawEntitiesByDomain]
+     * so we don't have to model todos in the [Domain] enum (the dashboard
+     * card stack doesn't show them; they live on their own screen).
+     */
+    suspend fun listTodoEntities(): Result<List<ToDoList>>
+
+    /**
+     * Fetch the items inside a single todo entity via the
+     * `/api/services/todo/get_items?return_response=true` REST endpoint.
+     * HA returns the items as part of the service-call response body
+     * since 2024.1.
+     */
+    suspend fun fetchTodoItems(entityId: String): Result<List<ToDoItem>>
+
+    /** Append a new item to the named todo list. */
+    suspend fun addTodoItem(entityId: String, summary: String): Result<Unit>
+
+    /**
+     * Flip an item's completed status. Targets by HA's stable `uid` so
+     * lists with duplicate summaries (legitimate on shopping lists where
+     * "Apples" can appear twice) still route the call to the right row.
+     */
+    suspend fun updateTodoItem(
+        entityId: String,
+        uid: String,
+        completed: Boolean,
+    ): Result<Unit>
+
+    /** Remove an item by uid. Same duplicate-summary rationale as the
+     *  update path. */
+    suspend fun removeTodoItem(entityId: String, uid: String): Result<Unit>
+
+    /** Bulk-delete every completed item from the named list. */
+    suspend fun clearCompletedTodoItems(entityId: String): Result<Unit>
+
     suspend fun start()
     suspend fun stop()
 

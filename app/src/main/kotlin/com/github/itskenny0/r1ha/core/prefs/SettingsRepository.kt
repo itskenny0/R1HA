@@ -162,6 +162,10 @@ class SettingsRepository private constructor(
         val uiShowZeroPercentWhenOff = booleanPreferencesKey("ui.show_zero_percent_when_off")
 
         val theme = stringPreferencesKey("theme")
+        /** Optional global accent ARGB override (Int.MIN_VALUE sentinel = unset). */
+        val themeAccentArgb = intPreferencesKey("theme.accent_argb")
+        /** "Read-only guest mode" toggle — refuses outbound service calls. */
+        val guestModeEnabled = booleanPreferencesKey("guest_mode_enabled")
         /**
          * Encoded as a single newline-separated string of `entityId=customName` pairs;
          * names are URL-encoded so newlines/equals inside a name can't break the
@@ -253,6 +257,8 @@ class SettingsRepository private constructor(
                         ?: OrientationMode.FOLLOW_DEVICE,
                 ),
                 theme = p[K.theme]?.let { runCatching { ThemeId.valueOf(it) }.getOrNull() } ?: ThemeId.PRAGMATIC_HYBRID,
+                themeAccentArgb = p[K.themeAccentArgb],
+                guestModeEnabled = p[K.guestModeEnabled] ?: false,
                 nameOverrides = decodeNameOverrides(p[K.nameOverrides]),
                 entityOverrides = decodeEntityOverrides(p[K.entityOverrides]),
                 advanced = p[K.advancedJson]
@@ -366,6 +372,9 @@ class SettingsRepository private constructor(
                 p[K.uiChromeButtons] = encodeChromeButtons(next.ui.chromeButtons)
                 p[K.uiShowZeroPercentWhenOff] = next.ui.showZeroPercentWhenOff
                 p[K.theme] = next.theme.name
+                val accent = next.themeAccentArgb
+                if (accent == null) p.remove(K.themeAccentArgb) else p[K.themeAccentArgb] = accent
+                p[K.guestModeEnabled] = next.guestModeEnabled
                 p[K.nameOverrides] = encodeNameOverrides(next.nameOverrides)
                 p[K.entityOverrides] = encodeEntityOverrides(next.entityOverrides)
                 p[K.advancedJson] = advancedJson.encodeToString(
@@ -415,6 +424,35 @@ class SettingsRepository private constructor(
             updated[idx] = transform(updated[idx])
             s.copy(pages = updated)
         }
+    }
+
+    /**
+     * Append one [FavoritePage] per HA area, each pre-populated with the
+     * caller-supplied entity ids for that area. Existing pages are left
+     * intact; the new pages are appended at the end and the first newly-
+     * created page becomes the active tab so the user can see the result
+     * immediately. Empty areas are skipped so a HA install with 30
+     * declared areas but only 5 with entities doesn't produce 25 empty
+     * tabs. Returns the count of pages actually created.
+     */
+    suspend fun generatePagesFromAreas(areas: List<Pair<String, List<String>>>): Int {
+        val nonEmpty = areas.filter { it.second.isNotEmpty() }
+        if (nonEmpty.isEmpty()) return 0
+        val newPages = nonEmpty.map { (area, entityIds) ->
+            val newId = "p" + java.util.UUID.randomUUID().toString().replace("-", "").take(8)
+            FavoritePage(
+                id = newId,
+                name = area.replace('_', ' ').uppercase().take(20),
+                favorites = entityIds,
+            )
+        }
+        update { s ->
+            s.copy(
+                pages = s.pages + newPages,
+                activePageId = newPages.first().id,
+            )
+        }
+        return newPages.size
     }
 
     /** Append a fresh empty page and switch the active id to it. Returns the new
@@ -683,7 +721,9 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
             else o.lightButtonsHidden.map { it.code }.sorted().joinToString("")
         // Per-card tap-to-toggle override. Same tri-state encoding as pill/area.
         val tapStr = when (o.tapToToggle) { true -> "1"; false -> "0"; null -> "?" }
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr"
+        // Per-card wheel-enabled override. Tri-state shape mirrors tap.
+        val whStr = when (o.wheelEnabled) { true -> "1"; false -> "0"; null -> "?" }
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr"
     }
 }
 
@@ -726,6 +766,7 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             val buttons = if (btnsBlob.isBlank()) emptySet()
                 else btnsBlob.mapNotNull { com.github.itskenny0.r1ha.core.prefs.LightCardButton.fromCode(it) }.toSet()
             val tap = when (parts.getOrNull(8)) { "1" -> true; "0" -> false; else -> null }
+            val wheel = when (parts.getOrNull(9)) { "1" -> true; "0" -> false; else -> null }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -736,6 +777,7 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 lightColorTempK = ct,
                 lightButtonsHidden = buttons,
                 tapToToggle = tap,
+                wheelEnabled = wheel,
             )
         }.getOrNull()
     }.toMap()

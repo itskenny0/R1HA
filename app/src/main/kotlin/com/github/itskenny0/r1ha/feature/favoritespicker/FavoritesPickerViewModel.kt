@@ -45,7 +45,7 @@ enum class PickerFilter(val label: String, val matches: (Domain) -> Boolean) {
     // speeds, calibration knobs, manual setpoints). Previously hidden inside ALL
     // because no chip filtered for them.
     NUMBERS("NUMBERS", { it == Domain.NUMBER || it == Domain.INPUT_NUMBER }),
-    VACUUMS("VACUUMS", { it == Domain.VACUUM }),
+    VACUUMS("VACUUMS", { it == Domain.VACUUM || it == Domain.LAWN_MOWER }),
     // Settable-enum entities — select / input_select. Useful for fan-mode selectors,
     // operating-mode pickers, room-target selectors for vacuums, etc.
     SELECTS("SELECTS", { it.isSelect }),

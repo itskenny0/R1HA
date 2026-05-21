@@ -16,7 +16,10 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.WheelSettings
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -55,6 +58,14 @@ data class CardStackUiState(
     val currentIndex: Int = 0,
     /** Optimistic percent overrides per entity, applied while waiting for HA state_changed. */
     val optimisticPercents: Map<EntityId, Int> = emptyMap(),
+    /**
+     * Optimistic select-option overrides per select / input_select entity.
+     * Applied to the rendered card so the wheel-cycle feels instant
+     * (no waiting for HA's state_changed echo, which can be 200-400 ms
+     * away on a busy server). Cleared by the cache observer once HA
+     * confirms the new option matches what the user picked.
+     */
+    val optimisticSelectOptions: Map<EntityId, String> = emptyMap(),
     /**
      * Number of entity IDs in the user's favourites list, regardless of whether HA has
      * sent state for them yet. Distinguishes "no favourites set" (zero) from "favourites
@@ -112,7 +123,7 @@ data class CardStackUiState(
      * doesn't bounce.
      */
     val displayedCards: List<EntityState>
-        get() = if (optimisticPercents.isEmpty()) {
+        get() = if (optimisticPercents.isEmpty() && optimisticSelectOptions.isEmpty()) {
             // Common case: no wheel/tap is in flight. Skip the allocation of
             // the mapped list entirely — recompositions during static viewing
             // (e.g. swiping between pages, just looking at the deck) were
@@ -121,7 +132,12 @@ data class CardStackUiState(
             // with a null override returns the same instance.
             cards
         } else {
-            cards.map { state -> state.applyOptimistic(optimisticPercents[state.id]) }
+            cards.map { state ->
+                state.applyOptimistic(
+                    optimisticPercents[state.id],
+                    optimisticSelectOptions[state.id],
+                )
+            }
         }
 
     val activeState: EntityState?
@@ -131,8 +147,10 @@ data class CardStackUiState(
             // Short-circuit the optimistic application when nothing is in
             // flight for the active card.
             val card = cards.getOrNull(currentIndex) ?: return null
-            val override = optimisticPercents[card.id] ?: return card
-            return card.applyOptimistic(override)
+            val pctOverride = optimisticPercents[card.id]
+            val selOverride = optimisticSelectOptions[card.id]
+            if (pctOverride == null && selOverride == null) return card
+            return card.applyOptimistic(pctOverride, selOverride)
         }
 
     /**
@@ -143,18 +161,22 @@ data class CardStackUiState(
         get() = displayedCards.getOrNull(currentIndex)
 }
 
-/** Layer the optimistic override onto a cached state. */
-private fun EntityState.applyOptimistic(override: Int?): EntityState {
-    if (override == null) return this
-    return if (supportsScalar) {
-        // Scalar entity: optimistic just overrides the percent.
-        copy(percent = override)
-    } else {
-        // Switch entity: encode desired ON in optimistic >= 1, OFF in 0. Flip isOn
-        // immediately so the switch card snaps to the chosen position rather than
-        // waiting for HA's state broadcast.
-        copy(percent = override, isOn = override > 0)
+/** Layer the optimistic override(s) onto a cached state. */
+private fun EntityState.applyOptimistic(
+    percentOverride: Int?,
+    selectOverride: String? = null,
+): EntityState {
+    val pctApplied = when {
+        percentOverride == null -> this
+        supportsScalar -> copy(percent = percentOverride)
+        else -> copy(percent = percentOverride, isOn = percentOverride > 0)
     }
+    if (selectOverride == null) return pctApplied
+    // For select / input_select entities the displayed value is
+    // currentOption. We also rewrite rawState so themes that fall back to
+    // it (SelectCard does, for the "unavailable" path) reflect the pick
+    // optimistically too.
+    return pctApplied.copy(currentOption = selectOverride, rawState = selectOverride)
 }
 
 class CardStackViewModel(
@@ -322,6 +344,7 @@ class CardStackViewModel(
                 R1Log.w("CardStack.failure", "$id rejected by HA — reverting optimistic")
                 _state.value = _state.value.copy(
                     optimisticPercents = _state.value.optimisticPercents - id,
+                    optimisticSelectOptions = _state.value.optimisticSelectOptions - id,
                 )
             }
             .launchIn(viewModelScope)
@@ -457,11 +480,20 @@ class CardStackViewModel(
                         cached.isOn != (optPct > 0)
                     }
                 }
+                // Same shape for the select-option overrides: keep the
+                // override while HA still reports the old option, drop it
+                // once the cached value catches up.
+                val newSelectOpt = cur.optimisticSelectOptions.filter { (id, optVal) ->
+                    if (id !in favoriteSet) return@filter false
+                    val cached = entityMap[id] ?: return@filter true
+                    cached.currentOption != optVal
+                }
                 _state.value = cur.copy(
                     cards = ordered,
                     cardsById = ordered.associateBy { it.id },
                     currentIndex = clampedIndex,
                     optimisticPercents = newOptimistic,
+                    optimisticSelectOptions = newSelectOpt,
                     favouritesCount = favouriteIds.size,
                     settingsLoaded = true,
                     cardsByPage = cardsByPage,
@@ -487,6 +519,12 @@ class CardStackViewModel(
         // a phantom percent — wheels are deliberately a no-op there. Same story for
         // sensors / binary_sensors which are read-only.
         if (activeState.id.domain.isAction || activeState.id.domain.isSensor) return
+        // Code-required locks would route a wheel spin into setSwitch which
+        // fires lock.lock / lock.unlock without the code, and HA rejects
+        // with `code_required` — the user sees a silent failure. Skip the
+        // wheel here so the LockPanel's PIN keypad stays the only path.
+        if (activeState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK &&
+            !activeState.lockCodeFormat.isNullOrBlank()) return
 
         val sign = WheelInput.applyDirection(event.direction, wheel.invertDirection)
 
@@ -606,6 +644,55 @@ class CardStackViewModel(
     /** Add a fresh empty page and make it the active one. */
     fun addPage(name: String) {
         viewModelScope.launch { settings.addPage(name) }
+    }
+
+    /**
+     * Build one [FavoritePage] per HA area from the currently-loaded entity
+     * cache. Each generated page's name is the area display name (uppercased,
+     * truncated to 20 chars); its favourites list is every controllable
+     * entity HA reports as belonging to that area. Skips areas with no
+     * controllable entities so the user doesn't end up with a swarm of
+     * empty tabs. Surfaces the new-page count via a one-shot SharedFlow so
+     * the caller can toast the result.
+     */
+    private val _pagesGenerated = MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val pagesGenerated: SharedFlow<Int> = _pagesGenerated.asSharedFlow()
+    fun generatePagesFromAreas() {
+        viewModelScope.launch {
+            // Pull a fresh entity listing rather than relying on the live
+            // card cache — the cache is filtered to a single page's
+            // favourites, but we want every entity HA reports.
+            val result = haRepository.listAllEntities()
+            if (result.isFailure) {
+                // Distinguish "fetch failed" from "no areas have entities" by
+                // emitting -1 so the screen can show a network-error toast
+                // instead of the misleading "no areas with entities" one.
+                _pagesGenerated.tryEmit(-1)
+                return@launch
+            }
+            val all = result.getOrNull().orEmpty()
+            val controllable = all.filter { e ->
+                val d = e.id.domain
+                // Surface domains the SwitchCard / theme.Card can actually
+                // operate on. Sensors / binary_sensors / cameras would just
+                // bloat the page since they aren't toggleable.
+                d == Domain.LIGHT || d == Domain.SWITCH || d == Domain.FAN ||
+                    d == Domain.COVER || d == Domain.MEDIA_PLAYER ||
+                    d == Domain.CLIMATE || d == Domain.HUMIDIFIER ||
+                    d == Domain.VALVE || d == Domain.WATER_HEATER ||
+                    d == Domain.LOCK || d == Domain.VACUUM ||
+                    d == Domain.LAWN_MOWER || d == Domain.INPUT_BOOLEAN ||
+                    d == Domain.INPUT_NUMBER || d == Domain.NUMBER
+            }
+            val byArea = controllable
+                .filter { !it.area.isNullOrBlank() }
+                .groupBy { it.area!! }
+            val ordered = byArea.toSortedMap().map { (area, list) ->
+                area to list.map { it.id.value }.sorted()
+            }
+            val created = settings.generatePagesFromAreas(ordered)
+            _pagesGenerated.tryEmit(created)
+        }
     }
 
     /** Rename an existing page in place. */
@@ -935,17 +1022,26 @@ class CardStackViewModel(
      * when the entity has no options or only one (nothing to choose).
      */
     fun cycleSelectOption(entityId: EntityId, delta: Int) {
-        val entity = _state.value.cardsById[entityId] ?: return
+        val cur = _state.value
+        val entity = cur.cardsById[entityId] ?: return
         if (!entity.id.domain.isSelect) return
         val options = entity.selectOptions
         if (options.size < 2) return
-        val curIdx = options.indexOf(entity.currentOption).let { if (it == -1) 0 else it }
+        // Use the optimistic option (if any) as the cycle anchor so a quick
+        // back-to-back wheel detent advances from where the user left off,
+        // not from the stale HA-confirmed value.
+        val anchor = cur.optimisticSelectOptions[entityId] ?: entity.currentOption
+        val curIdx = options.indexOf(anchor).let { if (it == -1) 0 else it }
         val nextIdx = ((curIdx + delta) % options.size + options.size) % options.size
         val next = options[nextIdx]
-        R1Log.i("CardStack.cycleSelect", "$entityId: ${entity.currentOption ?: "?"} → $next")
-        // No optimistic update because select state IS the entity state (no separate
-        // attribute to nudge); the next state_changed will arrive within a couple
-        // hundred ms and re-render the card.
+        R1Log.i("CardStack.cycleSelect", "$entityId: ${anchor ?: "?"} → $next")
+        // Optimistic update so the card snaps to the new option immediately
+        // instead of waiting for HA's state_changed echo (typically 200-400 ms
+        // away on a busy server). The cache observer in observeFavorites
+        // clears the override when HA confirms the new value matches.
+        _state.value = cur.copy(
+            optimisticSelectOptions = cur.optimisticSelectOptions + (entityId to next),
+        )
         viewModelScope.launch {
             haRepository.call(com.github.itskenny0.r1ha.core.ha.ServiceCall.setSelectOption(entityId, next))
         }
@@ -968,6 +1064,22 @@ class CardStackViewModel(
      * one-shot service call with no payload; the volume wheel is still the primary way
      * to set absolute volume, but discrete +/- taps are easier for small adjustments.
      */
+    /**
+     * Generic service-call dispatch from a card panel — vacuum chips, climate
+     * mode picker, lock/unlock, valve open/close, water_heater mode, media
+     * shuffle/repeat/source. Each panel composes its own [ServiceCall] (with
+     * the right service name, target, and data payload) and routes it through
+     * here. Identical to [haRepository.call] from the panel's perspective; the
+     * indirection keeps panels free of repo references and lets failures
+     * surface uniformly via the existing [callFailures] observer.
+     */
+    fun callService(call: com.github.itskenny0.r1ha.core.ha.ServiceCall) {
+        R1Log.i("CardStack.callService", "${call.target} ${call.service}")
+        viewModelScope.launch {
+            haRepository.call(call)
+        }
+    }
+
     fun mediaTransport(entityId: EntityId, action: com.github.itskenny0.r1ha.core.ha.MediaTransport) {
         val entity = _state.value.cardsById[entityId] ?: return
         if (entity.id.domain != Domain.MEDIA_PLAYER) return
@@ -1069,6 +1181,13 @@ class CardStackViewModel(
     fun tapToggle() {
         val activeState = _state.value.activeState ?: return
         if (!activeState.isAvailable) return  // can't toggle an unreachable entity
+        // Code-required locks: the SwitchTrack is hidden and the PIN keypad
+        // surfaced from LockPanel is the only path. A passthrough tapToggle
+        // here would fire lock.lock / lock.unlock with no code attached
+        // and HA would reject — same silent-failure shape we just fixed
+        // for the wheel handler.
+        if (activeState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK &&
+            !activeState.lockCodeFormat.isNullOrBlank()) return
         viewModelScope.launch {
             val stopService = when (activeState.id.domain) {
                 com.github.itskenny0.r1ha.core.ha.Domain.COVER -> "stop_cover"
@@ -1100,6 +1219,10 @@ class CardStackViewModel(
     fun setSwitchOn(on: Boolean) {
         val activeState = _state.value.activeState ?: return
         if (!activeState.isAvailable) return
+        // Same code-required-lock guard as [tapToggle] and [onWheel] — the
+        // PIN keypad in LockPanel is the only path for those entities.
+        if (activeState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK &&
+            !activeState.lockCodeFormat.isNullOrBlank()) return
         val newPct = if (on) 100 else 0
         _state.value = _state.value.copy(
             optimisticPercents = _state.value.optimisticPercents + (activeState.id to newPct)

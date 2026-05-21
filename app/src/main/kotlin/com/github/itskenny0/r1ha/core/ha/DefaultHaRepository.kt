@@ -614,6 +614,11 @@ class DefaultHaRepository(
             Domain.VACUUM -> stateStr.equals("cleaning", ignoreCase = true) ||
                 stateStr.equals("returning", ignoreCase = true) ||
                 stateStr.equals("on", ignoreCase = true)
+            // Lawn mower: parallel state taxonomy to vacuum. Treat any active
+            // state (mowing, returning) as "on" so card visuals reflect motion.
+            Domain.LAWN_MOWER -> stateStr.equals("mowing", ignoreCase = true) ||
+                stateStr.equals("returning", ignoreCase = true) ||
+                stateStr.equals("on", ignoreCase = true)
             // Select / input_select have no on/off: they're settable enums. Pin
             // isOn to false so tap-toggle doesn't try to flip them; the dedicated
             // picker overlay is the only way to change the option.
@@ -692,6 +697,70 @@ class DefaultHaRepository(
             mediaSupportedFeatures = if (id.domain == Domain.MEDIA_PLAYER)
                 raw.attributes["supported_features"].asInt() ?: 0
             else 0,
+            mediaShuffle = id.domain == Domain.MEDIA_PLAYER &&
+                (raw.attributes["shuffle"].asBoolean() ?: false),
+            mediaRepeat = if (id.domain == Domain.MEDIA_PLAYER)
+                raw.attributes["repeat"].asString() else null,
+            mediaSource = if (id.domain == Domain.MEDIA_PLAYER)
+                raw.attributes["source"].asString() else null,
+            mediaSourceList = if (id.domain == Domain.MEDIA_PLAYER)
+                extractStringList(raw.attributes["source_list"]) else emptyList(),
+            vacuumSupportedFeatures = if (id.domain == Domain.VACUUM)
+                raw.attributes["supported_features"].asInt() ?: 0 else 0,
+            // Generic supported_features for the domains that get a dedicated
+            // panel but don't share fields with the vacuum/media branches.
+            // Lawn-mower / climate / valve / water_heater each read this field
+            // via [EntityState.hasFeature] to gate their respective chips.
+            supportedFeatures = when (id.domain) {
+                Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER ->
+                    raw.attributes["supported_features"].asInt() ?: 0
+                else -> 0
+            },
+            vacuumBatteryLevel = if (id.domain == Domain.VACUUM)
+                raw.attributes["battery_level"].asInt() else null,
+            vacuumStatus = if (id.domain == Domain.VACUUM)
+                raw.attributes["status"].asString() ?: stateStr else null,
+            vacuumFanSpeed = if (id.domain == Domain.VACUUM)
+                raw.attributes["fan_speed"].asString() else null,
+            vacuumFanSpeedList = if (id.domain == Domain.VACUUM)
+                extractStringList(raw.attributes["fan_speed_list"]) else emptyList(),
+            climateHvacMode = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                (if (id.domain == Domain.CLIMATE) stateStr
+                else raw.attributes["operation_mode"].asString()) else null,
+            climateHvacModes = if (id.domain == Domain.CLIMATE)
+                extractStringList(raw.attributes["hvac_modes"])
+            else if (id.domain == Domain.WATER_HEATER)
+                extractStringList(raw.attributes["operation_list"])
+            else emptyList(),
+            climateFanMode = if (id.domain == Domain.CLIMATE)
+                raw.attributes["fan_mode"].asString() else null,
+            climateFanModes = if (id.domain == Domain.CLIMATE)
+                extractStringList(raw.attributes["fan_modes"]) else emptyList(),
+            climatePresetMode = if (id.domain == Domain.CLIMATE)
+                raw.attributes["preset_mode"].asString() else null,
+            climatePresetModes = if (id.domain == Domain.CLIMATE)
+                extractStringList(raw.attributes["preset_modes"]) else emptyList(),
+            climateCurrentTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["current_temperature"].asDouble() else null,
+            climateTargetTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["temperature"].asDouble() else null,
+            climateTargetTempLow = if (id.domain == Domain.CLIMATE)
+                raw.attributes["target_temp_low"].asDouble() else null,
+            climateTargetTempHigh = if (id.domain == Domain.CLIMATE)
+                raw.attributes["target_temp_high"].asDouble() else null,
+            climateTempStep = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["target_temp_step"].asDouble() else null,
+            climateMinTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["min_temp"].asDouble() else null,
+            climateMaxTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["max_temp"].asDouble() else null,
+            temperatureUnit = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                raw.attributes["temperature_unit"].asString()
+                    ?: raw.attributes["unit_of_measurement"].asString() else null,
+            lockCodeFormat = if (id.domain == Domain.LOCK)
+                raw.attributes["code_format"].asString() else null,
+            lockChangedBy = if (id.domain == Domain.LOCK)
+                raw.attributes["changed_by"].asString() else null,
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -742,7 +811,7 @@ class DefaultHaRepository(
         // Valve: same shape as cover — `current_position` 0..100 (closed..open).
         Domain.VALVE -> attrs["current_position"].asInt()?.coerceIn(0, 100)
         // Vacuums: percent abstraction doesn't apply (states are categorical).
-        Domain.VACUUM -> null
+        Domain.VACUUM, Domain.LAWN_MOWER -> null
         // Number / input_number: state is the value. We don't have access to row.state
         // here (computePercent takes only attrs), but we can read the entity's range
         // from attributes; the actual conversion uses minRaw/maxRaw at the VM layer
@@ -835,7 +904,7 @@ class DefaultHaRepository(
         Domain.CLIMATE, Domain.WATER_HEATER -> climateTargetTemp(attrs)
         Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION, Domain.LOCK,
         Domain.SCENE, Domain.SCRIPT, Domain.BUTTON, Domain.INPUT_BUTTON,
-        Domain.BINARY_SENSOR, Domain.VACUUM,
+        Domain.BINARY_SENSOR, Domain.VACUUM, Domain.LAWN_MOWER,
         Domain.SELECT, Domain.INPUT_SELECT -> null
         // For plain sensors the *state* IS the reading — there's no attribute to read from.
         // The SensorCard renders the rawState string directly; we don't try to coerce it
@@ -914,8 +983,8 @@ class DefaultHaRepository(
         Domain.NUMBER, Domain.INPUT_NUMBER -> true
         // Pure on/off domains — no scalar; rendered as switch cards.
         Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION, Domain.LOCK -> false
-        // Vacuums map naturally to switch cards (start/return-to-base on tap).
-        Domain.VACUUM -> false
+        // Vacuums + lawn mowers map naturally to switch cards (start/dock on tap).
+        Domain.VACUUM, Domain.LAWN_MOWER -> false
         // Action-only domains — no scalar; rendered as ActionCard tiles.
         Domain.SCENE, Domain.SCRIPT, Domain.BUTTON, Domain.INPUT_BUTTON -> false
         // Sensors are read-only — rendered as SensorCard, no wheel.
@@ -934,6 +1003,17 @@ class DefaultHaRepository(
         cache.map { it.filterKeys { id -> id in entities } }
 
     override suspend fun call(call: ServiceCall): Result<Unit> {
+        // Read-only "guest mode": if the user has flipped the Settings toggle,
+        // refuse every outbound service call and surface a toast/log so the
+        // UX explains the silence. Observation paths (state subscriptions,
+        // /api/states, history fetches) are unaffected — only this dispatch
+        // entry is gated.
+        val current = settings.settings.first()
+        if (current.guestModeEnabled) {
+            R1Log.i("HaRepo.guest", "blocked ${call.target.value}/${call.service} in guest mode")
+            _callFailures.tryEmit(call.target)
+            return Result.failure(IllegalStateException("Guest mode is on. Toggle it off in Settings to control your home."))
+        }
         // Optimistic update was already applied by the ViewModel — the repo just forwards.
         // Key includes the service name so rapid taps of distinct buttons on the same
         // entity (PLAY then NEXT then VOL+ on a media_player) don't cancel each other.
@@ -1055,6 +1135,9 @@ class DefaultHaRepository(
                         Domain.VACUUM -> stateStr.equals("cleaning", ignoreCase = true) ||
                             stateStr.equals("returning", ignoreCase = true) ||
                             stateStr.equals("on", ignoreCase = true)
+                        Domain.LAWN_MOWER -> stateStr.equals("mowing", ignoreCase = true) ||
+                            stateStr.equals("returning", ignoreCase = true) ||
+                            stateStr.equals("on", ignoreCase = true)
                         // Settable enums — no on/off concept.
                         Domain.SELECT, Domain.INPUT_SELECT -> false
                         // Helper-only — Helpers screen renders these bespoke.
@@ -1112,6 +1195,66 @@ class DefaultHaRepository(
                     mediaSupportedFeatures = if (id.domain == Domain.MEDIA_PLAYER)
                         attrs["supported_features"].asInt() ?: 0
                     else 0,
+                    mediaShuffle = id.domain == Domain.MEDIA_PLAYER &&
+                        (attrs["shuffle"].asBoolean() ?: false),
+                    mediaRepeat = if (id.domain == Domain.MEDIA_PLAYER)
+                        attrs["repeat"].asString() else null,
+                    mediaSource = if (id.domain == Domain.MEDIA_PLAYER)
+                        attrs["source"].asString() else null,
+                    mediaSourceList = if (id.domain == Domain.MEDIA_PLAYER)
+                        extractStringList(attrs["source_list"]) else emptyList(),
+                    vacuumSupportedFeatures = if (id.domain == Domain.VACUUM)
+                        attrs["supported_features"].asInt() ?: 0 else 0,
+                    supportedFeatures = when (id.domain) {
+                        Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER ->
+                            attrs["supported_features"].asInt() ?: 0
+                        else -> 0
+                    },
+                    vacuumBatteryLevel = if (id.domain == Domain.VACUUM)
+                        attrs["battery_level"].asInt() else null,
+                    vacuumStatus = if (id.domain == Domain.VACUUM)
+                        attrs["status"].asString() ?: stateStr else null,
+                    vacuumFanSpeed = if (id.domain == Domain.VACUUM)
+                        attrs["fan_speed"].asString() else null,
+                    vacuumFanSpeedList = if (id.domain == Domain.VACUUM)
+                        extractStringList(attrs["fan_speed_list"]) else emptyList(),
+                    climateHvacMode = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        (if (id.domain == Domain.CLIMATE) stateStr
+                        else attrs["operation_mode"].asString()) else null,
+                    climateHvacModes = if (id.domain == Domain.CLIMATE)
+                        extractStringList(attrs["hvac_modes"])
+                    else if (id.domain == Domain.WATER_HEATER)
+                        extractStringList(attrs["operation_list"])
+                    else emptyList(),
+                    climateFanMode = if (id.domain == Domain.CLIMATE)
+                        attrs["fan_mode"].asString() else null,
+                    climateFanModes = if (id.domain == Domain.CLIMATE)
+                        extractStringList(attrs["fan_modes"]) else emptyList(),
+                    climatePresetMode = if (id.domain == Domain.CLIMATE)
+                        attrs["preset_mode"].asString() else null,
+                    climatePresetModes = if (id.domain == Domain.CLIMATE)
+                        extractStringList(attrs["preset_modes"]) else emptyList(),
+                    climateCurrentTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["current_temperature"].asDouble() else null,
+                    climateTargetTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["temperature"].asDouble() else null,
+                    climateTargetTempLow = if (id.domain == Domain.CLIMATE)
+                        attrs["target_temp_low"].asDouble() else null,
+                    climateTargetTempHigh = if (id.domain == Domain.CLIMATE)
+                        attrs["target_temp_high"].asDouble() else null,
+                    climateTempStep = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["target_temp_step"].asDouble() else null,
+                    climateMinTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["min_temp"].asDouble() else null,
+                    climateMaxTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["max_temp"].asDouble() else null,
+                    temperatureUnit = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                        attrs["temperature_unit"].asString()
+                            ?: attrs["unit_of_measurement"].asString() else null,
+                    lockCodeFormat = if (id.domain == Domain.LOCK)
+                        attrs["code_format"].asString() else null,
+                    lockChangedBy = if (id.domain == Domain.LOCK)
+                        attrs["changed_by"].asString() else null,
                 )
                 }.getOrElse { t ->
                     R1Log.w("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")
@@ -1909,6 +2052,9 @@ class DefaultHaRepository(
         runCatching {
             require(eventType.matches(Regex("[a-z0-9_]+"))) { "Invalid event_type: '$eventType'" }
             val s = settings.settings.first()
+            if (s.guestModeEnabled) {
+                error("Guest mode is on. Toggle it off in Settings to fire events.")
+            }
             val server = s.server ?: error("Server URL not configured.")
             refresher?.ensureFresh()
             val url = "${server.url.trimEnd('/')}/api/events/$eventType"
@@ -1936,6 +2082,9 @@ class DefaultHaRepository(
             require(domain.matches(Regex("[a-z0-9_]+"))) { "Invalid service domain: '$domain'" }
             require(service.matches(Regex("[a-z0-9_]+"))) { "Invalid service name: '$service'" }
             val s = settings.settings.first()
+            if (s.guestModeEnabled) {
+                error("Guest mode is on. Toggle it off in Settings to call services.")
+            }
             val server = s.server ?: error("Server URL not configured.")
             refresher?.ensureFresh()
             val url = "${server.url.trimEnd('/')}/api/services/$domain/$service"
@@ -2155,4 +2304,144 @@ class DefaultHaRepository(
             subscriptionId = newId
         }
     }
+
+    override suspend fun listTodoEntities(): Result<List<ToDoList>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val rows = fetchRawRowsForDomain("todo")
+            rows.map { row ->
+                // HA stores the item count in the entity's state as a numeric
+                // string. Fall back to 0 if it's missing or unparseable.
+                val count = row.state.toIntOrNull() ?: 0
+                ToDoList(
+                    entityId = row.entityId,
+                    friendlyName = row.friendlyName,
+                    itemCount = count,
+                )
+            }.sortedBy { it.friendlyName.lowercase() }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "list entities failed: ${t.message}")
+        }
+    }
+
+    override suspend fun fetchTodoItems(entityId: String): Result<List<ToDoItem>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val s = settings.settings.first()
+                // Guest mode gates writes (call / callRawService / fireEvent),
+                // not reads. fetchTodoItems is a read — a guest holding the
+                // device still needs to see what's on the shopping list.
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val payload = kotlinx.serialization.json.buildJsonObject {
+                    put("entity_id", JsonPrimitive(entityId))
+                }
+                // HA 2024.1+ supports return_response on the REST service-call
+                // endpoint. The query param is what flips the response from
+                // "list of state changes" to "service's response data".
+                val url = "${server.url.trimEnd('/')}/api/services/todo/get_items?return_response=true"
+                val body = serviceCallRawBody(url, payload) ?: run {
+                    if (refresher?.forceRefresh() == true) {
+                        serviceCallRawBody(url, payload)
+                            ?: error("HTTP 401 for todo.get_items after refresh.")
+                    } else {
+                        error("HTTP 401 for todo.get_items.")
+                    }
+                }
+                // The response body looks like:
+                // {"changed_states":[...],"service_response":{"todo.shopping":{"items":[...]}}}
+                val root = listStatesJson.decodeFromString<kotlinx.serialization.json.JsonObject>(body)
+                val serviceResponse = root["service_response"] as? kotlinx.serialization.json.JsonObject
+                    ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                val entityResponse = serviceResponse[entityId] as? kotlinx.serialization.json.JsonObject
+                    ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                val items = entityResponse["items"] as? kotlinx.serialization.json.JsonArray
+                    ?: kotlinx.serialization.json.JsonArray(emptyList())
+                items.mapIndexedNotNull { idx, el ->
+                    val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapIndexedNotNull null
+                    // Prefer HA's stable `uid`; this is what update_item /
+                    // remove_item should target. When the provider doesn't
+                    // expose a uid (rare on Local To-do / Google Tasks /
+                    // Shopping List, but happens on some CalDAV providers)
+                    // we still need a LazyColumn key, so synthesise one
+                    // from summary + array index. The synthetic key never
+                    // leaves the ViewModel — service calls already use
+                    // the actual summary on items without a real uid.
+                    val rawUid = (obj["uid"] as? JsonPrimitive)?.content
+                    val summary = (obj["summary"] as? JsonPrimitive)?.content ?: return@mapIndexedNotNull null
+                    val uid = rawUid ?: summary
+                    val status = (obj["status"] as? JsonPrimitive)?.content ?: "needs_action"
+                    ToDoItem(uid = uid, summary = summary, completed = status == "completed")
+                }
+                    // Dedupe by uid as a final guard: a misbehaving integration
+                    // that returns two items with the same uid would otherwise
+                    // crash LazyColumn on its duplicate-key check. distinctBy
+                    // keeps the first occurrence.
+                    .distinctBy { it.uid }
+            }.onFailure { t ->
+                R1Log.w("HaRepo.todo", "fetch items for $entityId failed: ${t.message}")
+            }
+        }
+
+    override suspend fun addTodoItem(entityId: String, summary: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val payload = kotlinx.serialization.json.buildJsonObject {
+                    put("entity_id", JsonPrimitive(entityId))
+                    put("item", JsonPrimitive(summary))
+                }
+                callRawService("todo", "add_item", payload).getOrThrow()
+                Unit
+            }.onFailure { t ->
+                R1Log.w("HaRepo.todo", "add to $entityId failed: ${t.message}")
+            }
+        }
+
+    override suspend fun updateTodoItem(
+        entityId: String,
+        uid: String,
+        completed: Boolean,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+                // HA's update_item / remove_item services accept the `item`
+                // field as either the summary string OR the stable uid; we
+                // pass the uid so duplicate-summary lists ("Apples" twice
+                // on a shopping list) target the right row.
+                put("item", JsonPrimitive(uid))
+                put("status", JsonPrimitive(if (completed) "completed" else "needs_action"))
+            }
+            callRawService("todo", "update_item", payload).getOrThrow()
+            Unit
+        }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "update on $entityId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun removeTodoItem(entityId: String, uid: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val payload = kotlinx.serialization.json.buildJsonObject {
+                    put("entity_id", JsonPrimitive(entityId))
+                    put("item", JsonPrimitive(uid))
+                }
+                callRawService("todo", "remove_item", payload).getOrThrow()
+                Unit
+            }.onFailure { t ->
+                R1Log.w("HaRepo.todo", "remove from $entityId failed: ${t.message}")
+            }
+        }
+
+    override suspend fun clearCompletedTodoItems(entityId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val payload = kotlinx.serialization.json.buildJsonObject {
+                    put("entity_id", JsonPrimitive(entityId))
+                }
+                callRawService("todo", "remove_completed_items", payload).getOrThrow()
+                Unit
+            }.onFailure { t ->
+                R1Log.w("HaRepo.todo", "clear completed on $entityId failed: ${t.message}")
+            }
+        }
 }

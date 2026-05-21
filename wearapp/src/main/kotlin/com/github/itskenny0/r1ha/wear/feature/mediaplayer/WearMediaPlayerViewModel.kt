@@ -95,7 +95,7 @@ class WearMediaPlayerViewModel(
     fun onSelectSource(source: String) {
         _uiState.value = _uiState.value.copy(currentSource = source)
         viewModelScope.launch {
-            haRepository.call(ServiceCall.selectMediaSource(entityId, source))
+            haRepository.call(ServiceCall.mediaSelectSource(entityId, source))
             refresh()
         }
     }

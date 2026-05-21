@@ -441,7 +441,7 @@ private fun SearchResultRow(
             Domain.LIGHT, Domain.SWITCH, Domain.FAN, Domain.COVER, Domain.LOCK,
             Domain.MEDIA_PLAYER, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
             Domain.HUMIDIFIER, Domain.CLIMATE, Domain.WATER_HEATER, Domain.VACUUM,
-            Domain.VALVE -> if (entity.isOn) "OFF" else "ON"
+            Domain.LAWN_MOWER, Domain.VALVE -> if (entity.isOn) "OFF" else "ON"
             else -> "INFO"
         }
         Text(text = actionLabel, style = R1.labelMicro, color = R1.AccentWarm)

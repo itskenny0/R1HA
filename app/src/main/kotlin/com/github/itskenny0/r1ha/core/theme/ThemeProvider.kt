@@ -150,6 +150,27 @@ val LocalOnSetEntityPercent = staticCompositionLocalOf<
     ((com.github.itskenny0.r1ha.core.ha.EntityId, Int) -> Unit)?
 > { null }
 
+/**
+ * Generic service-call dispatch from inside a card panel. Dedicated panels
+ * (VacuumPanel, ClimatePanel, LockPanel, ValvePanel, WaterHeaterPanel,
+ * LawnMowerPanel, MediaExtrasPanel) build a [com.github.itskenny0.r1ha.core.ha.ServiceCall]
+ * and invoke this; the screen layer wires it to the repository so panels stay
+ * free of repo references. Null in previews / non-card contexts — panels skip
+ * dispatch when not set.
+ */
+val LocalOnEntityCall = staticCompositionLocalOf<
+    ((com.github.itskenny0.r1ha.core.ha.ServiceCall) -> Unit)?
+> { null }
+
+/**
+ * Optional global accent colour override surfaced from
+ * [com.github.itskenny0.r1ha.core.prefs.AppSettings.themeAccentArgb]. When
+ * non-null, every theme's domain-derived accent is replaced by this colour
+ * for cards that don't carry a per-card override (which still wins). Null =
+ * use the theme's native accent palette unchanged.
+ */
+val LocalThemeAccentOverride = staticCompositionLocalOf<androidx.compose.ui.graphics.Color?> { null }
+
 @Composable
 fun R1ThemeHost(themeId: ThemeId, content: @Composable () -> Unit) {
     val theme = when (themeId) {

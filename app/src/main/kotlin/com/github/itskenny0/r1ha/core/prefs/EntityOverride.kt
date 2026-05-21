@@ -73,6 +73,17 @@ data class EntityOverride(
      * smart-plug behind a thin chrome strip) without having to flip the global.
      */
     val tapToToggle: Boolean? = null,
+    /**
+     * Per-card override for "the wheel drives this card". Three-state:
+     *  - null: inherit the per-domain default. Select / input_select default
+     *    to OFF (cycling options is too easy to trigger accidentally); every
+     *    other domain (lights, switches, climate, fans, covers, etc.)
+     *    defaults to ON.
+     *  - true: wheel ENABLED regardless of the per-domain default.
+     *  - false: wheel DISABLED regardless of the per-domain default.
+     * The customize dialog surfaces this as Inherit / On / Off chips.
+     */
+    val wheelEnabled: Boolean? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
@@ -117,7 +128,29 @@ data class EntityOverride(
         )
 
         val NONE = EntityOverride()
+
+        /**
+         * Per-domain default for whether the wheel acts on a card when the user
+         * hasn't set a per-card override. Selects default OFF — cycling
+         * through options on every detent was too easy to trigger
+         * accidentally and the tap-to-open picker is the deliberate path.
+         * Every other domain defaults ON because the wheel is the R1's
+         * primary input and a brightness / volume / setpoint dial is the
+         * whole reason for the wheel.
+         */
+        fun wheelEnabledByDefault(domainPrefix: String): Boolean = when (domainPrefix) {
+            "select", "input_select" -> false
+            else -> true
+        }
     }
+
+    /**
+     * Resolve the effective wheel-enabled flag for this card's domain. The
+     * explicit override wins when set; otherwise the per-domain default
+     * applies.
+     */
+    fun resolvedWheelEnabled(domainPrefix: String): Boolean =
+        wheelEnabled ?: wheelEnabledByDefault(domainPrefix)
 }
 
 /**

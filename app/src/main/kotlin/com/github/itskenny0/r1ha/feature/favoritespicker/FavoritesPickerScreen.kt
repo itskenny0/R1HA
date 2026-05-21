@@ -74,6 +74,8 @@ fun FavoritesPickerScreen(
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides provides appSettingsForOverrides.entityOverrides,
+        com.github.itskenny0.r1ha.core.theme.LocalThemeAccentOverride provides appSettingsForOverrides.themeAccentArgb
+            ?.let { androidx.compose.ui.graphics.Color(it) },
     ) {
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
         Column(
@@ -691,7 +693,7 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     Domain.LIGHT, Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
     Domain.CLIMATE, Domain.WATER_HEATER, Domain.BUTTON, Domain.INPUT_BUTTON,
     Domain.NUMBER, Domain.INPUT_NUMBER -> R1.AccentWarm
-    Domain.FAN, Domain.SCENE, Domain.VACUUM -> R1.AccentGreen
+    Domain.FAN, Domain.SCENE, Domain.VACUUM, Domain.LAWN_MOWER -> R1.AccentGreen
     Domain.COVER, Domain.LOCK -> R1.AccentNeutral
     Domain.MEDIA_PLAYER, Domain.HUMIDIFIER, Domain.SCRIPT, Domain.SENSOR,
     Domain.VALVE, Domain.SELECT, Domain.INPUT_SELECT -> R1.AccentCool
@@ -725,6 +727,7 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.INPUT_NUMBER -> "NUMBER"
     Domain.VALVE -> "VALVE"
     Domain.VACUUM -> "VACUUM"
+    Domain.LAWN_MOWER -> "MOWER"
     Domain.WATER_HEATER -> "HEATER"
     Domain.SELECT -> "SELECT"
     Domain.INPUT_SELECT -> "SELECT"

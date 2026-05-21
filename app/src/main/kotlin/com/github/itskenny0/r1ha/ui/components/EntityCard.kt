@@ -58,6 +58,7 @@ fun EntityCard(
         Domain.NUMBER, Domain.INPUT_NUMBER -> CardRenderModel.Glyph.NUMBER
         Domain.VALVE -> CardRenderModel.Glyph.VALVE
         Domain.VACUUM -> CardRenderModel.Glyph.VACUUM
+        Domain.LAWN_MOWER -> CardRenderModel.Glyph.LAWN_MOWER
         // Action entities don't reach the theme card path — handled below — so the glyph
         // mapping never lands on theme.Card. Routed to ActionCard which has its own label
         // ("SCENE"/"SCRIPT"/"BUTTON") via domainLabel above. The Glyph value is unused but
@@ -99,6 +100,7 @@ fun EntityCard(
         Domain.NUMBER, Domain.INPUT_NUMBER -> CardRenderModel.AccentRole.WARM
         Domain.VALVE -> CardRenderModel.AccentRole.COOL
         Domain.VACUUM -> CardRenderModel.AccentRole.GREEN
+        Domain.LAWN_MOWER -> CardRenderModel.AccentRole.GREEN
         Domain.WATER_HEATER -> CardRenderModel.AccentRole.WARM
         // Sensors — colour by the most common device_class so the deck doesn't read as a
         // wall of orange. Temperature/humidity reads cool, motion/door reads green ("safe
@@ -209,6 +211,12 @@ fun EntityCard(
                 domainLabel = if (state.id.domain == Domain.INPUT_SELECT) "SELECT" else "SELECT",
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 textSizeSp = perCardOverride.textSizeSp,
+                // Hint copy below the CHOOSE button only makes sense if the
+                // wheel is actually wired to this card. Resolves the
+                // three-state override to a concrete boolean so the picker is
+                // the only affordance visible when the user has explicitly
+                // turned wheel-cycling off (or the per-domain default does).
+                wheelEnabled = perCardOverride.resolvedWheelEnabled(state.id.domain.prefix),
                 modifier = Modifier.fillMaxSize().alpha(themeAlpha),
             )
         } else if (state.id.domain.isAction) {
@@ -310,6 +318,7 @@ fun EntityCard(
                     mediaIsMuted = state.id.domain == Domain.MEDIA_PLAYER && state.isVolumeMuted,
                     mediaSupportedFeatures = state.mediaSupportedFeatures,
                     lastChangedAt = state.lastChanged,
+                    entityState = state,
                 ),
                 modifier = Modifier
                     .fillMaxSize()
@@ -372,6 +381,7 @@ private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
     CardRenderModel.Glyph.NUMBER -> "NUMBER"
     CardRenderModel.Glyph.VALVE -> "VALVE"
     CardRenderModel.Glyph.VACUUM -> "VACUUM"
+    CardRenderModel.Glyph.LAWN_MOWER -> "MOWER"
     CardRenderModel.Glyph.WATER_HEATER -> "WATER HEATER"
 }
 

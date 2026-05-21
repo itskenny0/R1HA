@@ -81,6 +81,11 @@ data class ServiceCall(
                     if (clamped == 0) "return_to_base" else "start",
                     JsonObject(emptyMap()),
                 )
+                Domain.LAWN_MOWER -> ServiceCall(
+                    target,
+                    if (clamped == 0) "dock" else "start_mowing",
+                    JsonObject(emptyMap()),
+                )
                 // Action-only domains shouldn't reach setPercent — the wheel is ignored on
                 // ActionCards. Defensive fallback: just fire the action.
                 Domain.SCENE, Domain.SCRIPT -> ServiceCall(target, "turn_on", JsonObject(emptyMap()))
@@ -286,6 +291,15 @@ data class ServiceCall(
                 if (isOn) "return_to_base" else "start",
                 JsonObject(emptyMap()),
             )
+            // Robot lawn mower — same intent as vacuum's tap-toggle: send it out
+            // when docked, dock it when active. State semantics match (`mowing` =
+            // active, `docked` = parked); the dedicated card exposes a finer
+            // PAUSE option that this minimal tap doesn't.
+            Domain.LAWN_MOWER -> ServiceCall(
+                target,
+                if (isOn) "dock" else "start_mowing",
+                JsonObject(emptyMap()),
+            )
             // Lock entity — `isOn` here means "unlocked". Tap to flip: lock if unlocked,
             // unlock if locked.
             Domain.LOCK -> ServiceCall(
@@ -350,6 +364,11 @@ data class ServiceCall(
             Domain.VACUUM -> ServiceCall(
                 target,
                 if (on) "start" else "return_to_base",
+                JsonObject(emptyMap()),
+            )
+            Domain.LAWN_MOWER -> ServiceCall(
+                target,
+                if (on) "start_mowing" else "dock",
                 JsonObject(emptyMap()),
             )
             Domain.COVER -> ServiceCall(
@@ -425,27 +444,153 @@ data class ServiceCall(
         }
 
         /**
-         * Set the HVAC operating mode on a `climate.*` entity.
-         * Common modes: "off", "heat", "cool", "auto", "dry", "fan_only", "heat_cool".
-         * HA rejects modes not in the entity's `hvac_modes` list — the caller should
-         * gate the available options on [EntityState.attributesJson]'s `hvac_modes`.
+         * Climate range-mode setter — used when the thermostat advertises
+         * `TARGET_TEMPERATURE_RANGE`. HA's `set_temperature` accepts a
+         * `target_temp_low` + `target_temp_high` pair instead of a single value.
          */
-        fun setHvacMode(target: EntityId, mode: String): ServiceCall =
+        fun setTemperatureRange(target: EntityId, low: Double, high: Double): ServiceCall {
+            val lo = (Math.round(low * 10.0) / 10.0)
+            val hi = (Math.round(high * 10.0) / 10.0)
+            return ServiceCall(
+                target,
+                "set_temperature",
+                buildJsonObject {
+                    put("target_temp_low", JsonPrimitive(lo))
+                    put("target_temp_high", JsonPrimitive(hi))
+                },
+            )
+        }
+
+        /** Climate `set_hvac_mode` with one of the modes from `hvac_modes`. */
+        fun setHvacMode(target: EntityId, mode: String): ServiceCall = ServiceCall(
+            target,
+            "set_hvac_mode",
+            buildJsonObject { put("hvac_mode", JsonPrimitive(mode)) },
+        )
+
+        /** Climate `set_fan_mode`. */
+        fun setFanMode(target: EntityId, mode: String): ServiceCall = ServiceCall(
+            target,
+            "set_fan_mode",
+            buildJsonObject { put("fan_mode", JsonPrimitive(mode)) },
+        )
+
+        /** Climate `set_preset_mode` — eco / away / boost / comfort / sleep / etc. */
+        fun setPresetMode(target: EntityId, mode: String): ServiceCall = ServiceCall(
+            target,
+            "set_preset_mode",
+            buildJsonObject { put("preset_mode", JsonPrimitive(mode)) },
+        )
+
+        /** Water heater `set_operation_mode` (eco / electric / heat_pump / off …). */
+        fun setOperationMode(target: EntityId, mode: String): ServiceCall = ServiceCall(
+            target,
+            "set_operation_mode",
+            buildJsonObject { put("operation_mode", JsonPrimitive(mode)) },
+        )
+
+        /**
+         * Vacuum command dispatch. Maps a [VacuumAction] to the appropriate HA
+         * service. All services take no data beyond the entity target.
+         */
+        fun vacuumCommand(target: EntityId, action: VacuumAction): ServiceCall =
             ServiceCall(
                 target,
-                "set_hvac_mode",
-                buildJsonObject { put("hvac_mode", JsonPrimitive(mode)) },
+                when (action) {
+                    VacuumAction.START -> "start"
+                    VacuumAction.PAUSE -> "pause"
+                    VacuumAction.STOP -> "stop"
+                    VacuumAction.RETURN_TO_BASE -> "return_to_base"
+                    VacuumAction.LOCATE -> "locate"
+                    VacuumAction.CLEAN_SPOT -> "clean_spot"
+                },
+                JsonObject(emptyMap()),
+            )
+
+        /** Vacuum `set_fan_speed` with one of the strings from `fan_speed_list`. */
+        fun vacuumSetFanSpeed(target: EntityId, fanSpeed: String): ServiceCall =
+            ServiceCall(
+                target,
+                "set_fan_speed",
+                buildJsonObject { put("fan_speed", JsonPrimitive(fanSpeed)) },
+            )
+
+        /** Lawn-mower command dispatch — start_mowing / pause / dock. */
+        fun lawnMowerCommand(target: EntityId, action: LawnMowerAction): ServiceCall =
+            ServiceCall(
+                target,
+                when (action) {
+                    LawnMowerAction.START_MOWING -> "start_mowing"
+                    LawnMowerAction.PAUSE -> "pause"
+                    LawnMowerAction.DOCK -> "dock"
+                },
+                JsonObject(emptyMap()),
             )
 
         /**
-         * Select a source/input on a `media_player.*` entity.
-         * The source string must match an entry in the entity's `source_list` attribute.
+         * Lock with optional code. HA's `lock.lock` / `lock.unlock` services
+         * accept an optional `code` field; integrations that require a code
+         * (Yale, Schlage Encode) error out with `code_required` when it's
+         * absent. Pass `code` = null for locks that don't require it.
          */
-        fun selectMediaSource(target: EntityId, source: String): ServiceCall =
+        fun lockSet(target: EntityId, lock: Boolean, code: String? = null): ServiceCall =
+            ServiceCall(
+                target,
+                if (lock) "lock" else "unlock",
+                if (code.isNullOrBlank()) {
+                    JsonObject(emptyMap())
+                } else {
+                    buildJsonObject { put("code", JsonPrimitive(code)) }
+                },
+            )
+
+        /** Valve `set_valve_position` (0..100, closed → open). */
+        fun valveSetPosition(target: EntityId, position: Int): ServiceCall =
+            ServiceCall(
+                target,
+                "set_valve_position",
+                buildJsonObject { put("position", JsonPrimitive(position.coerceIn(0, 100))) },
+            )
+
+        /** Valve `stop_valve` — stops a valve mid-travel. */
+        fun valveStop(target: EntityId): ServiceCall =
+            ServiceCall(target, "stop_valve", JsonObject(emptyMap()))
+
+        /** Media-player shuffle toggle. */
+        fun mediaShuffleSet(target: EntityId, shuffle: Boolean): ServiceCall =
+            ServiceCall(
+                target,
+                "shuffle_set",
+                buildJsonObject { put("shuffle", JsonPrimitive(shuffle)) },
+            )
+
+        /**
+         * Media-player repeat setter. HA values: "off" / "one" / "all". The card
+         * cycles through these three so a single button suffices instead of three.
+         */
+        fun mediaRepeatSet(target: EntityId, repeat: String): ServiceCall =
+            ServiceCall(
+                target,
+                "repeat_set",
+                buildJsonObject { put("repeat", JsonPrimitive(repeat)) },
+            )
+
+        /** Media-player `select_source` — switches the active input. */
+        fun mediaSelectSource(target: EntityId, source: String): ServiceCall =
             ServiceCall(
                 target,
                 "select_source",
                 buildJsonObject { put("source", JsonPrimitive(source)) },
             )
     }
+}
+
+/** Vacuum command set surfaced on VacuumCard. */
+enum class VacuumAction {
+    START, PAUSE, STOP, RETURN_TO_BASE, LOCATE, CLEAN_SPOT,
+}
+
+/** Lawn-mower command set surfaced on LawnMowerCard. */
+enum class LawnMowerAction {
+    START_MOWING, PAUSE, DOCK,
 }

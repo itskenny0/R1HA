@@ -58,7 +58,7 @@ class SearchViewModel(
     fun bucketOf(d: Domain): Bucket = when (d) {
         Domain.LIGHT, Domain.SWITCH, Domain.FAN, Domain.COVER, Domain.MEDIA_PLAYER,
         Domain.LOCK, Domain.INPUT_BOOLEAN, Domain.HUMIDIFIER, Domain.CLIMATE,
-        Domain.WATER_HEATER, Domain.VACUUM, Domain.VALVE, Domain.NUMBER,
+        Domain.WATER_HEATER, Domain.VACUUM, Domain.LAWN_MOWER, Domain.VALVE, Domain.NUMBER,
         Domain.INPUT_NUMBER, Domain.SELECT, Domain.INPUT_SELECT,
         // Counter + timer are controllable too (counter.increment etc.,
         // timer.start etc.) so they live under CONTROLS for filtering.
@@ -191,6 +191,7 @@ class SearchViewModel(
                     target.domain == Domain.INPUT_BOOLEAN || target.domain == Domain.AUTOMATION ||
                     target.domain == Domain.HUMIDIFIER || target.domain == Domain.CLIMATE ||
                     target.domain == Domain.WATER_HEATER || target.domain == Domain.VACUUM ||
+                    target.domain == Domain.LAWN_MOWER ||
                     target.domain == Domain.VALVE -> {
                     haRepository.call(ServiceCall.tapAction(target, entity.isOn))
                     Toaster.show("${if (entity.isOn) "Off" else "On"}: ${entity.friendlyName}")
