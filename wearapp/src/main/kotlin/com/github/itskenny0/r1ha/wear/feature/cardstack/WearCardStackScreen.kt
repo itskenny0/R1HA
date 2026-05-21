@@ -19,9 +19,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.rotary.onPreRotaryScrollEvent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,7 +51,10 @@ import com.github.itskenny0.r1ha.core.ha.LovelaceViewInfo
 import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
+import com.github.itskenny0.r1ha.wear.common.WearEntityChip
+import com.github.itskenny0.r1ha.wear.common.domainEmoji
 import com.github.itskenny0.r1ha.wear.theme.WearColors
+import kotlinx.coroutines.launch
 
 /**
  * Main watch screen — Lovelace-tab navigation.
@@ -85,6 +90,8 @@ fun WearCardStackScreen(
     onOpenSettings: () -> Unit,
     onOpenFavoritesPicker: () -> Unit,
     onOpenRemote: () -> Unit,
+    onOpenMediaPlayer: (EntityState) -> Unit = {},
+    onOpenClimate: (EntityState) -> Unit = {},
 ) {
     val vm: WearCardStackViewModel = viewModel(
         factory = WearCardStackViewModel.factory(haRepository),
@@ -92,6 +99,7 @@ fun WearCardStackScreen(
     val state by vm.uiState.collectAsStateWithLifecycle()
 
     val pagerState = rememberPagerState(pageCount = { state.views.size.coerceAtLeast(1) })
+    val scope = rememberCoroutineScope()
 
     // Sync tab index back to VM when the pager settles.
     LaunchedEffect(pagerState) {
@@ -100,7 +108,7 @@ fun WearCardStackScreen(
         }
     }
 
-    // Bezel / crown navigates between tabs.
+    // Outer-rim touch swipe also navigates between tabs (non-Classic models).
     LaunchedEffect(wheelInput, pagerState) {
         wheelInput.events.collect { event ->
             val delta = if (event.direction == WheelEvent.Direction.DOWN) 1 else -1
@@ -112,7 +120,21 @@ fun WearCardStackScreen(
         }
     }
 
-    Scaffold(timeText = { TimeText() }) {
+    // Intercept the bezel / crown at this level with onPreRotaryScrollEvent so the
+    // physical rotating ring changes tabs rather than scrolling the entity list.
+    // "Pre" fires before any descendant (including ScalingLazyColumn) sees the event.
+    Scaffold(
+        timeText = { TimeText() },
+        modifier = Modifier.onPreRotaryScrollEvent { event ->
+            val delta = if (event.verticalScrollPixels < 0f) -1 else 1
+            val target = (pagerState.currentPage + delta)
+                .coerceIn(0, (pagerState.pageCount - 1).coerceAtLeast(0))
+            if (target != pagerState.currentPage) {
+                scope.launch { pagerState.animateScrollToPage(target) }
+            }
+            true  // always consume — bezel controls tabs, not the list
+        },
+    ) {
         when {
             state.loading -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -156,7 +178,13 @@ fun WearCardStackScreen(
                         tabIndex = page,
                         totalTabs = state.views.size,
                         entityStates = state.entityStates,
-                        onEntityTap = { vm.onEntityTap(it) },
+                        onEntityTap = { entity ->
+                            when (entity.id.domain) {
+                                Domain.MEDIA_PLAYER -> onOpenMediaPlayer(entity)
+                                Domain.CLIMATE      -> onOpenClimate(entity)
+                                else                -> vm.onEntityTap(entity)
+                            }
+                        },
                         onOpenMenu = onOpenMenu,
                         onOpenSettings = onOpenSettings,
                         onOpenRemote = onOpenRemote,
@@ -230,7 +258,7 @@ private fun TabPage(
             if (entities.isEmpty() && !view.hasRemoteCard) {
                 item {
                     Text(
-                        text = "Connecting…",
+                        text = if (view.entityIds.isEmpty()) "No entities" else "Connecting…",
                         style = MaterialTheme.typography.caption2,
                         color = MaterialTheme.colors.onBackground.copy(alpha = 0.5f),
                         textAlign = TextAlign.Center,
@@ -240,7 +268,7 @@ private fun TabPage(
             } else {
                 items(entities.size) { i ->
                     val entity = entities[i]
-                    EntityChip(entity = entity, onTap = { onEntityTap(entity) })
+                    WearEntityChip(entity = entity, onTap = { onEntityTap(entity) })
                 }
             }
         }
@@ -256,56 +284,6 @@ private fun TabPage(
             SmallChip(label = "⚙", onClick = onOpenSettings)
         }
     }
-}
-
-// ── Entity chip ───────────────────────────────────────────────────────────────
-
-@Composable
-private fun EntityChip(entity: EntityState, onTap: () -> Unit) {
-    val stateLabel = when {
-        !entity.isAvailable -> "unavailable"
-        entity.unit != null -> "${entity.raw ?: "—"} ${entity.unit}"
-        entity.isOn         -> "ON"
-        else                -> "off"
-    }
-    val labelColor = if (entity.isOn) WearColors.Primary
-    else MaterialTheme.colors.onBackground.copy(alpha = 0.55f)
-
-    Chip(
-        label = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(
-                        text = domainEmoji(entity.id.domain, entity.isOn),
-                        fontSize = 14.sp,
-                    )
-                    Text(
-                        text = entity.friendlyName,
-                        style = MaterialTheme.typography.caption1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    text = stateLabel,
-                    style = MaterialTheme.typography.caption2,
-                    color = labelColor,
-                    maxLines = 1,
-                )
-            }
-        },
-        onClick = onTap,
-        colors = ChipDefaults.secondaryChipColors(),
-        modifier = Modifier.fillMaxWidth(),
-    )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -349,22 +327,4 @@ private fun SmallChip(label: String, onClick: () -> Unit) {
     }
 }
 
-private fun domainEmoji(domain: Domain, isOn: Boolean): String = when (domain) {
-    Domain.LIGHT         -> if (isOn) "💡" else "🔦"
-    Domain.SWITCH        -> if (isOn) "🔌" else "⭕"
-    Domain.INPUT_BOOLEAN -> if (isOn) "✅" else "⬜"
-    Domain.FAN           -> "🌀"
-    Domain.COVER         -> if (isOn) "⬆" else "⬇"
-    Domain.SCENE         -> "🎬"
-    Domain.SCRIPT        -> "▶"
-    Domain.AUTOMATION    -> "⚙"
-    Domain.MEDIA_PLAYER  -> if (isOn) "🔊" else "🔇"
-    Domain.CLIMATE       -> "🌡"
-    Domain.LOCK          -> if (isOn) "🔓" else "🔒"
-    Domain.SENSOR,
-    Domain.BINARY_SENSOR -> "📊"
-    Domain.CAMERA        -> "📷"
-    Domain.WEATHER       -> "⛅"
-    Domain.PERSON        -> "👤"
-    else                 -> "●"
-}
+

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -82,9 +83,30 @@ class WearCardStackViewModel(
             .map { EntityId(it) }
             .toSet()
         if (allIds.isEmpty()) return
+
+        // Eagerly fetch current states via REST. The WS cache only seeds the user's
+        // favourites, so Lovelace entities not in the favourites list would otherwise
+        // show "Connecting…" forever. This one-shot REST call primes entityStates so
+        // the tabs paint immediately on first open.
+        viewModelScope.launch {
+            haRepository.listAllEntities().onSuccess { all ->
+                val initial = all.filter { it.id in allIds }.associateBy { it.id }
+                if (initial.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(entityStates = initial)
+                }
+            }
+        }
+
+        // Also watch the WS cache for live updates (e.g. entities that ARE favourited).
+        // Merge onto the REST baseline — don't replace — so a partial cache emission
+        // doesn't clobber states for entities the cache doesn't know about yet.
         haRepository.observe(allIds)
             .onEach { stateMap ->
-                _uiState.value = _uiState.value.copy(entityStates = stateMap)
+                if (stateMap.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        entityStates = _uiState.value.entityStates + stateMap,
+                    )
+                }
             }
             .launchIn(viewModelScope)
     }
@@ -106,8 +128,27 @@ class WearCardStackViewModel(
     }
 
     fun onEntityTap(entity: EntityState) {
+        // Optimistic flip so the UI reacts instantly without waiting for a network round-trip.
+        val optimistic = entity.copy(isOn = !entity.isOn)
+        _uiState.value = _uiState.value.copy(
+            entityStates = _uiState.value.entityStates + (entity.id to optimistic),
+        )
         viewModelScope.launch {
             haRepository.call(ServiceCall.tapAction(entity.id, entity.isOn))
+            // After HA processes the command it pushes a state_changed over WS, but the
+            // WS subscription only covers favourites.  Do a lightweight REST refresh of
+            // ALL entities to confirm the new state and correct any optimistic mismatch.
+            delay(1_200)
+            haRepository.listAllEntities().onSuccess { all ->
+                val relevant = all
+                    .filter { it.id in _uiState.value.entityStates }
+                    .associateBy { it.id }
+                if (relevant.isNotEmpty()) {
+                    _uiState.value = _uiState.value.copy(
+                        entityStates = _uiState.value.entityStates + relevant,
+                    )
+                }
+            }
         }
     }
 

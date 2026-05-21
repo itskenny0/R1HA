@@ -103,6 +103,9 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     // core-splashscreen is referenced by the phone App.kt in the shared srcDir.
     implementation(libs.androidx.splashscreen)
+    // androidx.webkit + androidx.tracing referenced by phone sources in the shared srcDir.
+    implementation(libs.androidx.webkit)
+    implementation(libs.androidx.tracing)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
@@ -110,7 +113,6 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
-    implementation(libs.compose.material.icons)
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.kotlinx.coroutines.core)

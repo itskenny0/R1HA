@@ -2,8 +2,11 @@ package com.github.itskenny0.r1ha.wear.nav
 
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
+import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
@@ -13,9 +16,12 @@ import okhttp3.OkHttpClient
 import com.github.itskenny0.r1ha.wear.feature.assist.WearAssistScreen
 import com.github.itskenny0.r1ha.wear.feature.automations.WearAutomationsScreen
 import com.github.itskenny0.r1ha.wear.feature.cardstack.WearCardStackScreen
+import com.github.itskenny0.r1ha.wear.feature.climate.WearClimateScreen
 import com.github.itskenny0.r1ha.wear.feature.dashboard.WearDashboardScreen
+import com.github.itskenny0.r1ha.wear.feature.favorites.WearFavoritesScreen
 import com.github.itskenny0.r1ha.wear.feature.favoritespicker.WearFavoritesPickerScreen
 import com.github.itskenny0.r1ha.wear.feature.helpers.WearHelpersScreen
+import com.github.itskenny0.r1ha.wear.feature.mediaplayer.WearMediaPlayerScreen
 import com.github.itskenny0.r1ha.wear.feature.menu.WearMenuScreen
 import com.github.itskenny0.r1ha.wear.feature.notifications.WearNotificationsScreen
 import com.github.itskenny0.r1ha.wear.feature.onboarding.WearOnboardingScreen
@@ -69,12 +75,14 @@ fun WearNavGraph(
                 onOpenSettings = { nav(WearRoutes.SETTINGS) },
                 onOpenFavoritesPicker = { nav(WearRoutes.FAVORITES_PICKER) },
                 onOpenRemote = { nav(WearRoutes.REMOTE) },
+                onOpenMediaPlayer = { entity -> nav(WearRoutes.mediaPlayerDetail(entity.id.value)) },
+                onOpenClimate = { entity -> nav(WearRoutes.climateDetail(entity.id.value)) },
             )
         }
 
         composable(WearRoutes.MENU) {
             WearMenuScreen(
-                onOpenFavouritesPicker = { nav(WearRoutes.FAVORITES_PICKER) },
+                onOpenFavourites = { nav(WearRoutes.FAVORITES_VIEW) },
                 onOpenSearch = { nav(WearRoutes.SEARCH) },
                 onOpenAssist = { nav(WearRoutes.ASSIST) },
                 onOpenScenes = { nav(WearRoutes.SCENES) },
@@ -82,6 +90,17 @@ fun WearNavGraph(
                 onOpenNotifications = { nav(WearRoutes.NOTIFICATIONS) },
                 onOpenDashboard = { nav(WearRoutes.DASHBOARD) },
                 onOpenHelpers = { nav(WearRoutes.HELPERS) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(WearRoutes.FAVORITES_VIEW) {
+            WearFavoritesScreen(
+                haRepository = haRepository,
+                settings = settings,
+                onOpenPicker = { nav(WearRoutes.FAVORITES_PICKER) },
+                onOpenMediaPlayer = { entity -> nav(WearRoutes.mediaPlayerDetail(entity.id.value)) },
+                onOpenClimate = { entity -> nav(WearRoutes.climateDetail(entity.id.value)) },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -163,6 +182,30 @@ fun WearNavGraph(
         composable(WearRoutes.REMOTE) {
             WearRemoteScreen(
                 haRepository = haRepository,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = WearRoutes.MEDIA_PLAYER_DETAIL,
+            arguments = listOf(navArgument("entityId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val rawId = backStackEntry.arguments?.getString("entityId") ?: return@composable
+            WearMediaPlayerScreen(
+                haRepository = haRepository,
+                entityId = EntityId(rawId),
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = WearRoutes.CLIMATE_DETAIL,
+            arguments = listOf(navArgument("entityId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val rawId = backStackEntry.arguments?.getString("entityId") ?: return@composable
+            WearClimateScreen(
+                haRepository = haRepository,
+                entityId = EntityId(rawId),
                 onBack = { navController.popBackStack() },
             )
         }

@@ -423,5 +423,29 @@ data class ServiceCall(
                 buildJsonObject { put("temperature", JsonPrimitive(rounded)) },
             )
         }
+
+        /**
+         * Set the HVAC operating mode on a `climate.*` entity.
+         * Common modes: "off", "heat", "cool", "auto", "dry", "fan_only", "heat_cool".
+         * HA rejects modes not in the entity's `hvac_modes` list — the caller should
+         * gate the available options on [EntityState.attributesJson]'s `hvac_modes`.
+         */
+        fun setHvacMode(target: EntityId, mode: String): ServiceCall =
+            ServiceCall(
+                target,
+                "set_hvac_mode",
+                buildJsonObject { put("hvac_mode", JsonPrimitive(mode)) },
+            )
+
+        /**
+         * Select a source/input on a `media_player.*` entity.
+         * The source string must match an entry in the entity's `source_list` attribute.
+         */
+        fun selectMediaSource(target: EntityId, source: String): ServiceCall =
+            ServiceCall(
+                target,
+                "select_source",
+                buildJsonObject { put("source", JsonPrimitive(source)) },
+            )
     }
 }

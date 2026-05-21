@@ -1680,16 +1680,19 @@ class DefaultHaRepository(
         card: kotlinx.serialization.json.JsonObject,
         out: MutableList<String>,
     ) {
+        fun addIfSupported(id: String) {
+            if ('.' in id && Domain.isSupportedPrefix(id.substringBefore('.'))) out.add(id)
+        }
+
         // Single entity field
-        (card["entity"] as? JsonPrimitive)?.content?.takeIf { '.' in it }?.let { out.add(it) }
+        (card["entity"] as? JsonPrimitive)?.content?.let { addIfSupported(it) }
 
         // entities array — items are either plain strings or {entity: ...} objects
         (card["entities"] as? kotlinx.serialization.json.JsonArray)?.forEach { item ->
             when (item) {
-                is JsonPrimitive -> if ('.' in item.content) out.add(item.content)
+                is JsonPrimitive -> addIfSupported(item.content)
                 is kotlinx.serialization.json.JsonObject -> {
-                    (item["entity"] as? JsonPrimitive)?.content
-                        ?.takeIf { '.' in it }?.let { out.add(it) }
+                    (item["entity"] as? JsonPrimitive)?.content?.let { addIfSupported(it) }
                 }
                 else -> Unit
             }

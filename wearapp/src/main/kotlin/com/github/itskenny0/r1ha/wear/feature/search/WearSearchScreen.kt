@@ -49,7 +49,7 @@ fun WearSearchScreen(
         factory = SearchViewModel.factory(haRepository, settings),
     )
     val ui by vm.ui.collectAsState()
-    val results = vm.results
+    val results by vm.results.collectAsState()
     val listState = rememberScalingLazyListState()
 
     LaunchedEffect(Unit) { vm.refresh() }

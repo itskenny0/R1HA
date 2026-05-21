@@ -17,4 +17,10 @@ object WearRoutes {
     const val SEARCH             = "wear_search"
     const val SETTINGS           = "wear_settings"
     const val REMOTE             = "wear_remote"
+    const val FAVORITES_VIEW     = "wear_favorites_view"
+    const val MEDIA_PLAYER_DETAIL = "wear_media_player/{entityId}"
+    const val CLIMATE_DETAIL     = "wear_climate/{entityId}"
+
+    fun mediaPlayerDetail(entityId: String) = "wear_media_player/$entityId"
+    fun climateDetail(entityId: String) = "wear_climate/$entityId"
 }

@@ -26,7 +26,7 @@ import androidx.wear.compose.material.TimeText
  */
 @Composable
 fun WearMenuScreen(
-    onOpenFavouritesPicker: () -> Unit,
+    onOpenFavourites: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAssist: () -> Unit,
     onOpenScenes: () -> Unit,
@@ -55,7 +55,7 @@ fun WearMenuScreen(
                 )
             }
 
-            item { MenuChip(icon = "⭐", label = "Favourites", onClick = onOpenFavouritesPicker) }
+            item { MenuChip(icon = "⭐", label = "Favourites",  onClick = onOpenFavourites) }
             item { MenuChip(icon = "🔍", label = "Search",      onClick = onOpenSearch) }
             item { MenuChip(icon = "🎤", label = "Assist",      onClick = onOpenAssist) }
             item { MenuChip(icon = "🎬", label = "Scenes",      onClick = onOpenScenes) }
