@@ -534,6 +534,20 @@ data class ServiceCall(
             buildJsonObject { put("operation_mode", JsonPrimitive(mode)) },
         )
 
+        /** Fan `oscillate` toggle. HA's service takes the new state as a bool. */
+        fun fanOscillate(target: EntityId, oscillating: Boolean): ServiceCall = ServiceCall(
+            target,
+            "oscillate",
+            buildJsonObject { put("oscillating", JsonPrimitive(oscillating)) },
+        )
+
+        /** Fan `set_direction` — "forward" or "reverse". HA rejects anything else. */
+        fun fanSetDirection(target: EntityId, direction: String): ServiceCall = ServiceCall(
+            target,
+            "set_direction",
+            buildJsonObject { put("direction", JsonPrimitive(direction)) },
+        )
+
         /**
          * Vacuum command dispatch. Maps a [VacuumAction] to the appropriate HA
          * service. All services take no data beyond the entity target.

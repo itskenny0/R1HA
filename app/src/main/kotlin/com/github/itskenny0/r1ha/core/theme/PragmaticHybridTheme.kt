@@ -284,6 +284,13 @@ object PragmaticHybridTheme : R1Theme {
                                 accent = accent,
                             )
                         }
+                        CardRenderModel.Glyph.FAN -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.FanPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
                         else -> Unit
                     }
                 }

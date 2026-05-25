@@ -836,6 +836,14 @@ class DefaultHaRepository(
                 raw.attributes["code_format"].asString() else null,
             lockChangedBy = if (id.domain == Domain.LOCK)
                 raw.attributes["changed_by"].asString() else null,
+            fanPresetMode = if (id.domain == Domain.FAN)
+                raw.attributes["preset_mode"].asString() else null,
+            fanPresetModes = if (id.domain == Domain.FAN)
+                extractStringList(raw.attributes["preset_modes"]) else emptyList(),
+            fanOscillating = if (id.domain == Domain.FAN)
+                raw.attributes["oscillating"].asBoolean() else null,
+            fanDirection = if (id.domain == Domain.FAN)
+                raw.attributes["direction"].asString() else null,
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -1340,6 +1348,14 @@ class DefaultHaRepository(
                         attrs["code_format"].asString() else null,
                     lockChangedBy = if (id.domain == Domain.LOCK)
                         attrs["changed_by"].asString() else null,
+                    fanPresetMode = if (id.domain == Domain.FAN)
+                        attrs["preset_mode"].asString() else null,
+                    fanPresetModes = if (id.domain == Domain.FAN)
+                        extractStringList(attrs["preset_modes"]) else emptyList(),
+                    fanOscillating = if (id.domain == Domain.FAN)
+                        attrs["oscillating"].asBoolean() else null,
+                    fanDirection = if (id.domain == Domain.FAN)
+                        attrs["direction"].asString() else null,
                 )
                 }.getOrElse { t ->
                     R1Log.w("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")

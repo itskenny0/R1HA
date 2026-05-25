@@ -245,6 +245,18 @@ data class EntityState(
     val lockCodeFormat: String? = null,
     /** Lock-only: `changed_by` attribute — last user / source that flipped it. */
     val lockChangedBy: String? = null,
+    /** Fan-only: HA's `preset_mode` attribute (Smart / Sleep / Level 1..4 / etc.).
+     *  Surfaced as the selected chip in the FanPanel's PRESET row. */
+    val fanPresetMode: String? = null,
+    /** Fan-only: `preset_modes` list — the chips the panel renders. Empty
+     *  when the fan doesn't advertise [FanFeature.PRESET_MODE]. */
+    val fanPresetModes: List<String> = emptyList(),
+    /** Fan-only: current `oscillating` attribute. Null when the fan doesn't
+     *  expose [FanFeature.OSCILLATE] (the panel hides the toggle in that case). */
+    val fanOscillating: Boolean? = null,
+    /** Fan-only: `direction` attribute — "forward" or "reverse". Null when
+     *  the fan doesn't expose [FanFeature.DIRECTION]. */
+    val fanDirection: String? = null,
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)
@@ -336,6 +348,22 @@ data class EntityState(
     }
 
     fun hasClimateFeature(featureBit: Int): Boolean =
+        supportedFeatures == 0 || (supportedFeatures and featureBit) != 0
+
+    /**
+     * Subset of HA's `FanEntityFeature` bitmask. Used by FanPanel to decide
+     * whether to render preset / direction / oscillate chips.
+     */
+    object FanFeature {
+        const val SET_SPEED = 1
+        const val OSCILLATE = 2
+        const val DIRECTION = 4
+        const val PRESET_MODE = 8
+        const val TURN_OFF = 16
+        const val TURN_ON = 32
+    }
+
+    fun hasFanFeature(featureBit: Int): Boolean =
         supportedFeatures == 0 || (supportedFeatures and featureBit) != 0
 
     /**

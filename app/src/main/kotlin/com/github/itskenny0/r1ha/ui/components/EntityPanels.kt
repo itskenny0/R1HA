@@ -465,6 +465,89 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
 }
 
 /**
+ * Fan control panel — gives the HA web-UI's preset-mode picker, oscillate
+ * toggle, and direction toggle to fans on the card stack. The percentage
+ * setpoint is still wheel-driven via the SensorCard meter that sits above
+ * this panel; this composable only adds the discrete controls HA exposes
+ * alongside `set_percentage`.
+ *
+ * Each chip is gated on the corresponding bit of `supported_features`. A
+ * fan that advertises SET_SPEED only (no preset / direction / oscillate)
+ * renders nothing here, matching the existing meter-only experience.
+ */
+@Composable
+fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    if (state.id.domain != Domain.FAN) return
+    val dispatch = LocalOnEntityCall.current
+    val hasPreset = state.fanPresetModes.isNotEmpty() &&
+        state.hasFanFeature(EntityState.FanFeature.PRESET_MODE)
+    val hasOscillate = state.fanOscillating != null ||
+        state.hasFanFeature(EntityState.FanFeature.OSCILLATE)
+    val hasDirection = state.fanDirection != null ||
+        state.hasFanFeature(EntityState.FanFeature.DIRECTION)
+    if (!hasPreset && !hasOscillate && !hasDirection) return
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (hasPreset) {
+            Text(text = "PRESET", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.fanPresetModes.forEach { preset ->
+                    PanelChip(
+                        label = preset.replace('_', ' ').uppercase(),
+                        accent = accent,
+                        selected = state.fanPresetMode.equals(preset, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(ServiceCall.setPresetMode(state.id, preset))
+                        },
+                    )
+                }
+            }
+        }
+        if (hasOscillate) {
+            if (hasPreset) Spacer(Modifier.height(8.dp))
+            val on = state.fanOscillating == true
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                PanelChip(
+                    label = if (on) "OSCILLATING" else "OSCILLATE",
+                    accent = accent,
+                    selected = on,
+                    onClick = {
+                        dispatch?.invoke(ServiceCall.fanOscillate(state.id, !on))
+                    },
+                )
+            }
+        }
+        if (hasDirection) {
+            if (hasPreset || hasOscillate) Spacer(Modifier.height(8.dp))
+            val forward = state.fanDirection.equals("forward", ignoreCase = true) ||
+                state.fanDirection == null
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                PanelChip(
+                    label = if (forward) "FORWARD" else "REVERSE",
+                    accent = accent,
+                    selected = true,
+                    onClick = {
+                        val next = if (forward) "reverse" else "forward"
+                        dispatch?.invoke(ServiceCall.fanSetDirection(state.id, next))
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
  * Valve control panel. The SwitchCard's OPEN/CLOSE end-stops cover the
  * primary toggle; this panel surfaces STOP (mid-travel halt) for valves
  * whose integration advertises the bit. When SET_POSITION is supported and
