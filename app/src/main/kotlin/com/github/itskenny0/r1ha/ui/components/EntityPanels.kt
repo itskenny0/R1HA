@@ -527,19 +527,32 @@ fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
         }
         if (hasDirection) {
             if (hasPreset || hasOscillate) Spacer(Modifier.height(8.dp))
-            val forward = state.fanDirection.equals("forward", ignoreCase = true) ||
-                state.fanDirection == null
+            Text(text = "DIRECTION", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            // Two explicit chips rather than a single toggle: matches HA web
+            // dashboards that wire one fan.set_direction button per direction
+            // (forward / reverse), so a tap is always unambiguous about which
+            // way the fan ends up spinning even if the current attribute is
+            // stale.
+            val current = state.fanDirection?.lowercase()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 PanelChip(
-                    label = if (forward) "FORWARD" else "REVERSE",
+                    label = "FORWARD",
                     accent = accent,
-                    selected = true,
+                    selected = current == "forward",
                     onClick = {
-                        val next = if (forward) "reverse" else "forward"
-                        dispatch?.invoke(ServiceCall.fanSetDirection(state.id, next))
+                        dispatch?.invoke(ServiceCall.fanSetDirection(state.id, "forward"))
+                    },
+                )
+                PanelChip(
+                    label = "REVERSE",
+                    accent = accent,
+                    selected = current == "reverse",
+                    onClick = {
+                        dispatch?.invoke(ServiceCall.fanSetDirection(state.id, "reverse"))
                     },
                 )
             }
