@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shortcut_search_short">Szukaj</string>
+    <string name="shortcut_search_long">Szybkie wyszukiwanie encji HA</string>
+    <string name="shortcut_assist_short">Asystent</string>
+    <string name="shortcut_assist_long">Rozmawiaj z Home Assistant</string>
+    <string name="shortcut_today_short">Dzisiaj</string>
+    <string name="shortcut_today_long">Otwórz panel DZISIAJ</string>
+    <string name="shortcut_automations_short">Automatyzacje</string>
+    <string name="shortcut_automations_long">Przeglądaj i uruchamiaj automatyzacje</string>
+
+    <string name="quick_tile_label">Przełącznik HA</string>
+    <string name="quick_tile_label_b">Przełącznik HA 2</string>
+    <string name="quick_tile_label_c">Przełącznik HA 3</string>
+    <string name="quick_tile_label_d">Przełącznik HA 4</string>
+
+    <string name="widget_description">Szybkie uruchamianie R1HA</string>
+    <string name="widget_button_label">R1HA</string>
+
+    <string name="dialog_cancel">ANULUJ</string>
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_save">ZAPISZ</string>
+    <string name="dialog_close">ZAMKNIJ</string>
+    <string name="dialog_delete">USUŃ</string>
+    <string name="dialog_remove">USUŃ</string>
+    <string name="dialog_retry">PONÓW</string>
+    <string name="dialog_confirm">POTWIERDŹ</string>
+    <string name="dialog_share">UDOSTĘPNIJ</string>
+    <string name="dialog_reset">RESETUJ</string>
+    <string name="dialog_clear">WYCZYŚĆ</string>
+    <string name="dialog_done">GOTOWE</string>
+    <string name="dialog_back">WSTECZ</string>
+    <string name="dialog_next">DALEJ</string>
+    <string name="dialog_export">EKSPORTUJ</string>
+    <string name="dialog_yes">Tak</string>
+    <string name="dialog_no">Nie</string>
+
+    <string name="chrome_settings">Ustawienia</string>
+    <string name="chrome_assist">Asystent</string>
+    <string name="chrome_battery">Bateria</string>
+    <string name="chrome_menu">Menu</string>
+    <string name="chrome_edit_favorites">Edytuj ulubione</string>
+    <string name="chrome_back">Wstecz</string>
+
+    <string name="title_today">DZISIAJ</string>
+    <string name="title_search">SZUKAJ</string>
+    <string name="title_assist">ASYSTENT</string>
+    <string name="title_scenes">SCENY</string>
+    <string name="title_automations">AUTOMATYZACJE</string>
+    <string name="title_helpers">POMOCNICY</string>
+    <string name="title_notifications">POWIADOMIENIA</string>
+    <string name="title_logbook">DZIENNIK</string>
+    <string name="title_areas">OBSZARY</string>
+    <string name="title_devices">URZĄDZENIA</string>
+    <string name="title_cameras">KAMERY</string>
+    <string name="title_history">HISTORIA</string>
+    <string name="title_calendars">KALENDARZE</string>
+    <string name="title_weather">POGODA</string>
+    <string name="title_persons">DOMOWNICY</string>
+    <string name="title_zones">STREFY</string>
+    <string name="title_energy">ENERGIA</string>
+    <string name="title_todo">DO ZROBIENIA</string>
+    <string name="title_services">USŁUGI</string>
+    <string name="title_about">O APLIKACJI</string>
+    <string name="title_dev_menu">MENU DEV</string>
+    <string name="title_themes">MOTYWY</string>
+    <string name="title_backups">KOPIE ZAPASOWE</string>
+    <string name="title_updates">AKTUALIZACJE</string>
+    <string name="title_repairs">NAPRAWY</string>
+    <string name="title_labels">ETYKIETY</string>
+    <string name="title_floors">PIĘTRA</string>
+
+    <string name="cardstack_empty_title">Nie ma jeszcze ulubionych</string>
+    <string name="cardstack_empty_hint">Wybierz encje z konfiguracji HA, którymi chcesz sterować.</string>
+    <string name="cardstack_empty_action">WYBIERZ ULUBIONE</string>
+    <string name="conn_disconnected">Rozłączono</string>
+    <string name="conn_reconnecting">Ponowne łączenie…</string>
+    <string name="conn_connecting">Łączenie…</string>
+    <string name="conn_auth_lost">Utracono autoryzację; zaloguj się ponownie</string>
+
+    <string name="onboarding_url_label">Adres URL Home Assistant</string>
+    <string name="onboarding_url_placeholder">http://homeassistant.local:8123</string>
+    <string name="onboarding_continue">DALEJ</string>
+    <string name="onboarding_sign_in_browser">Zaloguj przez przeglądarkę</string>
+    <string name="onboarding_sign_in_token">Zaloguj tokenem długoterminowym</string>
+    <string name="onboarding_open_ha">Otwórz HA w przeglądarce</string>
+
+    <string name="pull_to_refresh">Pociągnij, aby odświeżyć</string>
+    <string name="loading">Ładowanie…</string>
+    <string name="empty_no_results">Brak wyników</string>
+    <string name="error_generic">Coś poszło nie tak</string>
+</resources>
