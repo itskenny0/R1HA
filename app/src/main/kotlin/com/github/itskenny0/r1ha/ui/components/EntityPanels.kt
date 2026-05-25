@@ -488,24 +488,25 @@ fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
     if (!hasPreset && !hasOscillate && !hasDirection) return
     Column(modifier = modifier.fillMaxWidth()) {
         if (hasPreset) {
+            // Single button that opens a fullscreen preset picker instead of a
+            // horizontally-scrolling chip row. The chip row competed with the
+            // card stack's left/right tab-swipe gesture; the picker sheet is
+            // the same pattern the light FX button uses (LocalOnOpenEffectPicker)
+            // so users only learn one popup shape.
+            val openPicker = com.github.itskenny0.r1ha.core.theme.LocalOnOpenFanPresetPicker.current
+            val currentLabel = state.fanPresetMode?.replace('_', ' ')?.uppercase() ?: "—"
             Text(text = "PRESET", style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.height(4.dp))
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                state.fanPresetModes.forEach { preset ->
-                    PanelChip(
-                        label = preset.replace('_', ' ').uppercase(),
-                        accent = accent,
-                        selected = state.fanPresetMode.equals(preset, ignoreCase = true),
-                        onClick = {
-                            dispatch?.invoke(ServiceCall.setPresetMode(state.id, preset))
-                        },
-                    )
-                }
+                PanelChip(
+                    label = currentLabel,
+                    accent = accent,
+                    selected = state.fanPresetMode != null,
+                    onClick = { openPicker?.invoke(state.id) },
+                )
             }
         }
         if (hasOscillate) {

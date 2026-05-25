@@ -958,6 +958,66 @@ internal fun EffectPickerSheet(
 }
 
 /**
+ * Fullscreen overlay listing every advertised preset_mode for a fan. Tapping a
+ * row fires `fan.set_preset_mode` and dismisses; the active mode is highlighted
+ * in accent. Same UX shape as [EffectPickerSheet] / [SelectPickerSheet] so the
+ * user only learns one picker convention. Lifted out of the card body because
+ * a horizontally-scrolling chip row in the fan panel fought with the card
+ * stack's left/right tab-swipe gesture.
+ */
+@Composable
+internal fun FanPresetPickerSheet(
+    entityId: com.github.itskenny0.r1ha.core.ha.EntityId,
+    current: String?,
+    presets: List<String>,
+    accent: Color,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.96f))
+            .r1Pressable(onClick = onDismiss),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "PRESET", style = R1.sectionHeader, color = R1.Ink)
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .r1Pressable(onClick = onDismiss)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(text = "CLOSE", style = R1.labelMicro, color = R1.InkSoft)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            val scroll = androidx.compose.foundation.rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .androidxVerticalScroll(scroll),
+            ) {
+                presets.forEach { name ->
+                    EffectRow(label = name, isActive = name.equals(current, ignoreCase = true), accent = accent) {
+                        onPick(name)
+                    }
+                }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
+/**
  * Fullscreen overlay listing every option from a `select.*` / `input_select.*`
  * entity's `options` attribute. The active option is highlighted in accent. Same
  * UX shape as [EffectPickerSheet] (tap row to apply, CLOSE chip / system back to

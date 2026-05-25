@@ -515,6 +515,13 @@ fun CardStackScreen(
     val selectPickerFor = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
     }
+    // Fan preset-mode picker overlay. Lifted to screen scope for the same reason as
+    // the effect picker (full-screen list rather than a card-bound popup) and also
+    // because the in-card chip row was eating the horizontal swipe used to switch
+    // tabs on the card stack.
+    val fanPresetPickerFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
     // Stable callback holders — each lambda is remembered keyed on `vm` (which
     // doesn't change across recompositions) so the reference identity stays
     // stable. The local-provider stack is staticCompositionLocalOf which
@@ -546,6 +553,9 @@ fun CardStackScreen(
     val onOpenSelectPicker = androidx.compose.runtime.remember(selectPickerFor) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId -> selectPickerFor.value = id }
     }
+    val onOpenFanPresetPicker = androidx.compose.runtime.remember(fanPresetPickerFor) {
+        { id: com.github.itskenny0.r1ha.core.ha.EntityId -> fanPresetPickerFor.value = id }
+    }
     val onSetSelectOption = androidx.compose.runtime.remember(vm) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId, option: String -> vm.setSelectOption(id, option) }
     }
@@ -568,6 +578,7 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenEffectPicker provides onOpenEffectPicker,
         com.github.itskenny0.r1ha.core.theme.LocalOnMediaTransport provides onMediaTransport,
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker provides onOpenSelectPicker,
+        com.github.itskenny0.r1ha.core.theme.LocalOnOpenFanPresetPicker provides onOpenFanPresetPicker,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetSelectOption provides onSetSelectOption,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
         com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,
@@ -1008,6 +1019,31 @@ fun CardStackScreen(
                 )
             } else {
                 selectPickerFor.value = null
+            }
+        }
+
+        // ── Fan preset-mode picker overlay ──────────────────────────────────────────
+        // Same shape as the select / effect pickers. Reads the entity's current
+        // preset_mode + preset_modes list from the cards; on pick fires
+        // fan.set_preset_mode via the same callRawService path the panel chips used.
+        val fanPresetId = fanPresetPickerFor.value
+        if (fanPresetId != null) {
+            val entity = state.displayedCards.firstOrNull { it.id == fanPresetId }
+                ?: state.cards.firstOrNull { it.id == fanPresetId }
+            if (entity != null && entity.fanPresetModes.isNotEmpty()) {
+                com.github.itskenny0.r1ha.core.theme.FanPresetPickerSheet(
+                    entityId = fanPresetId,
+                    current = entity.fanPresetMode,
+                    presets = entity.fanPresetModes,
+                    accent = com.github.itskenny0.r1ha.core.theme.R1.AccentWarm,
+                    onPick = { preset ->
+                        vm.callService(com.github.itskenny0.r1ha.core.ha.ServiceCall.setPresetMode(fanPresetId, preset))
+                        fanPresetPickerFor.value = null
+                    },
+                    onDismiss = { fanPresetPickerFor.value = null },
+                )
+            } else {
+                fanPresetPickerFor.value = null
             }
         }
 

@@ -119,6 +119,16 @@ val LocalOnOpenEffectPicker = staticCompositionLocalOf<
 > { null }
 
 /**
+ * Open the fan-preset picker overlay for [entityId]. FanPanel calls this so the
+ * preset chips aren't a horizontally-scrolling row that competes with the card
+ * stack's left/right tab-swipe gesture. CardStackScreen owns the visibility
+ * state and renders the actual sheet at the top of its layer stack.
+ */
+val LocalOnOpenFanPresetPicker = staticCompositionLocalOf<
+    ((com.github.itskenny0.r1ha.core.ha.EntityId) -> Unit)?
+> { null }
+
+/**
  * Media-player transport callback — used by the media_player card's control row to
  * fire play/pause/next/prev/vol+/vol-/mute. Null = previews / non-card contexts.
  */
