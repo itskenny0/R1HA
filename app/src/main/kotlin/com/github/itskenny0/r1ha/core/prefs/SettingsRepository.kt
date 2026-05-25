@@ -768,7 +768,19 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         val whStr = when (o.wheelEnabled) { true -> "1"; false -> "0"; null -> "?" }
         // Per-card hide-when-unavailable. Tri-state same as the other booleans.
         val hideStr = when (o.hideWhenUnavailable) { true -> "1"; false -> "0"; null -> "?" }
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr"
+        // Custom action buttons — JSON-encoded then URL-encoded so the inner
+        // payload's arbitrary characters (commas, quotes, pipes, the user's
+        // service_data JSON) survive the pipe-separated row format. Empty list
+        // collapses to "" so the existing parser's getOrNull stays safe.
+        val customStr = if (o.customActions.isEmpty()) ""
+            else java.net.URLEncoder.encode(
+                kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.builtins.ListSerializer(CustomAction.serializer()),
+                    o.customActions,
+                ),
+                "UTF-8",
+            )
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr"
     }
 }
 
@@ -813,6 +825,18 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             val tap = when (parts.getOrNull(8)) { "1" -> true; "0" -> false; else -> null }
             val wheel = when (parts.getOrNull(9)) { "1" -> true; "0" -> false; else -> null }
             val hideUnavail = when (parts.getOrNull(10)) { "1" -> true; "0" -> false; else -> null }
+            // Custom actions — URL-decoded JSON list. Decode failures fall
+            // back to an empty list so a malformed save doesn't drop the rest
+            // of the override's fields with it. Older saves (no slot 11)
+            // also land here as empty via the same path.
+            val customRaw = parts.getOrNull(11).orEmpty()
+            val customActions: List<CustomAction> = if (customRaw.isBlank()) emptyList()
+                else runCatching {
+                    kotlinx.serialization.json.Json.decodeFromString(
+                        kotlinx.serialization.builtins.ListSerializer(CustomAction.serializer()),
+                        java.net.URLDecoder.decode(customRaw, "UTF-8"),
+                    )
+                }.getOrDefault(emptyList())
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -825,6 +849,7 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 tapToToggle = tap,
                 wheelEnabled = wheel,
                 hideWhenUnavailable = hideUnavail,
+                customActions = customActions,
             )
         }.getOrNull()
     }.toMap()

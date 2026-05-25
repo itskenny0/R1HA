@@ -293,6 +293,11 @@ object PragmaticHybridTheme : R1Theme {
                         }
                         else -> Unit
                     }
+                    Spacer(Modifier.height(10.dp))
+                    com.github.itskenny0.r1ha.ui.components.CustomActionsPanel(
+                        state = model.entityState,
+                        accent = accent,
+                    )
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) OnOffPill(isOn = model.isOn, accent = accent)

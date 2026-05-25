@@ -1098,6 +1098,28 @@ class CardStackViewModel(
         }
     }
 
+    /**
+     * Fire an arbitrary HA service whose domain isn't tied to a specific entity's
+     * domain prefix. Used by the per-card custom action buttons so a fan card can
+     * dispatch e.g. `xiaomi_miio_fan.fan_set_natural_mode_on` (vendor service,
+     * different domain than the entity's `fan.`). Failures land in the same toast
+     * surface as the rest of the service-call path via [haRepository.callRawService].
+     */
+    fun callRawService(
+        domain: String,
+        service: String,
+        data: kotlinx.serialization.json.JsonObject,
+    ) {
+        R1Log.i("CardStack.callRaw", "$domain.$service")
+        viewModelScope.launch {
+            haRepository.callRawService(domain, service, data).onFailure { t ->
+                com.github.itskenny0.r1ha.core.util.Toaster.error(
+                    "Custom action failed: ${t.message ?: t::class.java.simpleName}",
+                )
+            }
+        }
+    }
+
     fun mediaTransport(entityId: EntityId, action: com.github.itskenny0.r1ha.core.ha.MediaTransport) {
         val entity = _state.value.cardsById[entityId] ?: return
         if (entity.id.domain != Domain.MEDIA_PLAYER) return

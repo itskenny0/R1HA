@@ -556,6 +556,11 @@ fun CardStackScreen(
     val onOpenFanPresetPicker = androidx.compose.runtime.remember(fanPresetPickerFor) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId -> fanPresetPickerFor.value = id }
     }
+    val onCustomServiceCall = androidx.compose.runtime.remember(vm) {
+        { domain: String, service: String, data: kotlinx.serialization.json.JsonObject ->
+            vm.callRawService(domain, service, data)
+        }
+    }
     val onSetSelectOption = androidx.compose.runtime.remember(vm) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId, option: String -> vm.setSelectOption(id, option) }
     }
@@ -579,6 +584,7 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnMediaTransport provides onMediaTransport,
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker provides onOpenSelectPicker,
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenFanPresetPicker provides onOpenFanPresetPicker,
+        com.github.itskenny0.r1ha.core.theme.LocalOnCustomServiceCall provides onCustomServiceCall,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetSelectOption provides onSetSelectOption,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
         com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,

@@ -129,6 +129,17 @@ val LocalOnOpenFanPresetPicker = staticCompositionLocalOf<
 > { null }
 
 /**
+ * Fire a user-defined custom service-call attached to a card. The custom
+ * action's domain can differ from the card's entity domain (vendor-specific
+ * services like xiaomi_miio_fan.* on a fan.* entity), so this can't piggyback
+ * on LocalOnEntityCall which derives the haDomain from the entity. Wired by
+ * CardStackScreen to CardStackViewModel.callRawService.
+ */
+val LocalOnCustomServiceCall = staticCompositionLocalOf<
+    ((domain: String, service: String, data: kotlinx.serialization.json.JsonObject) -> Unit)?
+> { null }
+
+/**
  * Media-player transport callback — used by the media_player card's control row to
  * fire play/pause/next/prev/vol+/vol-/mute. Null = previews / non-card contexts.
  */

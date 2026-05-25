@@ -94,6 +94,18 @@ data class EntityOverride(
      * otherwise carry dead stubs.
      */
     val hideWhenUnavailable: Boolean? = null,
+    /**
+     * User-defined service-call buttons that render as chips below the
+     * per-domain panel on the card. Each entry is a single tap → fire HA
+     * service. Use cases: vendor-specific services HA's standard schema
+     * doesn't surface (e.g. `xiaomi_miio_fan.fan_set_natural_mode_on`),
+     * one-off scripts, integration-specific helpers.
+     *
+     * Stored per-entity (not globally) because the buttons make sense only
+     * in the context of one entity; "natural mode" means nothing on a kettle.
+     * Empty list = no extra chips render, no overhead.
+     */
+    val customActions: List<CustomAction> = emptyList(),
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
@@ -162,6 +174,23 @@ data class EntityOverride(
     fun resolvedWheelEnabled(domainPrefix: String): Boolean =
         wheelEnabled ?: wheelEnabledByDefault(domainPrefix)
 }
+
+/**
+ * One user-defined service-call button bound to a card. [label] is what the
+ * user sees on the chip; [service] is HA's dotted `domain.service` (e.g.
+ * `xiaomi_miio_fan.fan_set_natural_mode_on`); [dataJson] is the optional
+ * `service_data` payload as a raw JSON object (parsed at fire time so a
+ * malformed string fails loudly to the user once, not on every render);
+ * [targetEntityId] overrides the card's own entity_id when the service
+ * needs to act on a different entity (rare; usually the card's own entity).
+ */
+@kotlinx.serialization.Serializable
+data class CustomAction(
+    val label: String,
+    val service: String,
+    val dataJson: String? = null,
+    val targetEntityId: String? = null,
+)
 
 /**
  * Light-card button identity for [EntityOverride.lightButtonsHidden]. Stored by its

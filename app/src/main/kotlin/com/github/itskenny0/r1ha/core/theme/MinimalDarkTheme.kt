@@ -217,6 +217,14 @@ object MinimalDarkTheme : R1Theme {
                         }
                         else -> Unit
                     }
+                    // Per-card custom action buttons — render under any
+                    // domain-specific panel above. The composable itself no-ops
+                    // when the entity has no customActions configured.
+                    Spacer(Modifier.height(10.dp))
+                    com.github.itskenny0.r1ha.ui.components.CustomActionsPanel(
+                        state = model.entityState,
+                        accent = accent,
+                    )
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) {

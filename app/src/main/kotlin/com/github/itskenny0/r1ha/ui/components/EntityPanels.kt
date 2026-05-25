@@ -562,6 +562,76 @@ fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
 }
 
 /**
+ * Per-card user-defined action buttons. Reads the entity's [EntityOverride.customActions]
+ * from the CompositionLocal map and renders one chip per entry; tap fires the configured
+ * service via [LocalOnCustomServiceCall].
+ *
+ * Lives below the per-domain panel so vendor-specific or one-off actions (e.g.
+ * `xiaomi_miio_fan.fan_set_natural_mode_on` on a fan card) sit next to the standard
+ * controls without polluting the per-domain panel's gating logic — every fan card
+ * shows the same standard chips; only fans the user has configured custom actions
+ * for show extras here.
+ */
+@Composable
+fun CustomActionsPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    val overrides = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current
+    val actions = overrides[state.id.value]?.customActions.orEmpty()
+    if (actions.isEmpty()) return
+    val dispatch = com.github.itskenny0.r1ha.core.theme.LocalOnCustomServiceCall.current
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(text = "CUSTOM", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(4.dp))
+        // Wrap chips into a flow row so a deck with five or six custom actions
+        // doesn't push the layout off-screen. Fall back to a Row with horizontal
+        // scroll on older Compose versions — Compose 1.7+ ships FlowRow in the
+        // foundation.layout package which is what we use here.
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            actions.forEach { action ->
+                PanelChip(
+                    label = action.label.uppercase(),
+                    accent = accent,
+                    selected = false,
+                    onClick = {
+                        val (domain, service) = parseDottedService(action.service) ?: return@PanelChip
+                        // Merge entity_id into the data payload — required by HA
+                        // for the vast majority of services. If the action
+                        // already specifies entity_id in its data, the explicit
+                        // value wins (overwrite semantics).
+                        val targetId = action.targetEntityId?.takeIf { it.isNotBlank() }
+                            ?: state.id.value
+                        val baseData = action.dataJson
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { runCatching {
+                                kotlinx.serialization.json.Json.parseToJsonElement(it)
+                                    as? kotlinx.serialization.json.JsonObject
+                            }.getOrNull() }
+                            ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                        val data = kotlinx.serialization.json.buildJsonObject {
+                            put("entity_id", kotlinx.serialization.json.JsonPrimitive(targetId))
+                            baseData.forEach { (k, v) -> put(k, v) }
+                        }
+                        dispatch?.invoke(domain, service, data)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** Split "domain.service" into the pair, or null if the input is malformed
+ *  (no dot, empty halves). Used by the custom-action chip dispatcher so a
+ *  user typo doesn't crash; the chip just no-ops until they fix it. */
+private fun parseDottedService(dotted: String): Pair<String, String>? {
+    val idx = dotted.indexOf('.')
+    if (idx <= 0 || idx == dotted.length - 1) return null
+    return dotted.substring(0, idx) to dotted.substring(idx + 1)
+}
+
+/**
  * Valve control panel. The SwitchCard's OPEN/CLOSE end-stops cover the
  * primary toggle; this panel surfaces STOP (mid-travel halt) for valves
  * whose integration advertises the bit. When SET_POSITION is supported and

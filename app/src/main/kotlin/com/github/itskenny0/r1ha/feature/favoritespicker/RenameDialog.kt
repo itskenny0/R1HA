@@ -349,6 +349,19 @@ fun RenameDialog(
                 ),
             )
 
+            // ── CUSTOM BUTTONS ───────────────────────────────────────────────────────
+            SectionHeader("CUSTOM BUTTONS")
+            Text(
+                text = "Tap-to-fire chips for vendor or script services (e.g. `xiaomi_miio_fan.fan_set_natural_mode_on`). entity_id of this card is added to the data payload automatically.",
+                style = R1.body,
+                color = R1.InkMuted,
+            )
+            Spacer(Modifier.height(6.dp))
+            CustomActionsEditor(
+                actions = override.customActions,
+                onChange = { next -> override = override.copy(customActions = next) },
+            )
+
             Spacer(Modifier.height(18.dp))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 // Reset clears every override back to its default — the user gets a fast
@@ -757,6 +770,106 @@ private fun DecimalSegmentedRow(
             )
             if (idx < 4) CellDivider()
         }
+    }
+}
+
+/**
+ * CUSTOM BUTTONS section editor. Lists existing actions as rows with a small
+ * REMOVE chip, then offers an inline add form (label + service + optional
+ * JSON data). ADD commits to the list and clears the form. Kept inline rather
+ * than as a separate dialog because the surrounding RenameDialog is already a
+ * full-screen modal — a nested modal would feel like over-engineering for
+ * what's mostly two text fields.
+ */
+@Composable
+private fun CustomActionsEditor(
+    actions: List<com.github.itskenny0.r1ha.core.prefs.CustomAction>,
+    onChange: (List<com.github.itskenny0.r1ha.core.prefs.CustomAction>) -> Unit,
+) {
+    var newLabel by remember { mutableStateOf("") }
+    var newService by remember { mutableStateOf("") }
+    var newData by remember { mutableStateOf("") }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Existing entries.
+        actions.forEachIndexed { index, action ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = action.label, style = R1.bodyEmph, color = R1.Ink)
+                    Text(
+                        text = action.service,
+                        style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                        color = R1.InkMuted,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.StatusRed.copy(alpha = 0.18f))
+                        .r1Pressable(
+                            onClick = { onChange(actions.toMutableList().also { it.removeAt(index) }) },
+                            contentDescription = "Remove ${action.label}",
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(text = "REMOVE", style = R1.labelMicro, color = R1.StatusRed)
+                }
+            }
+        }
+        if (actions.isNotEmpty()) {
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(R1.Hairline))
+            Spacer(Modifier.height(8.dp))
+        }
+        // Inline add form.
+        R1TextField(
+            value = newLabel,
+            onValueChange = { newLabel = it },
+            placeholder = "Label (e.g. Natural mode)",
+            monospace = false,
+        )
+        Spacer(Modifier.height(6.dp))
+        R1TextField(
+            value = newService,
+            onValueChange = { newService = it.trim() },
+            placeholder = "domain.service (e.g. xiaomi_miio_fan.fan_set_natural_mode_on)",
+            monospace = true,
+        )
+        Spacer(Modifier.height(6.dp))
+        R1TextField(
+            value = newData,
+            onValueChange = { newData = it },
+            placeholder = "Optional data JSON (e.g. {\"speed\":3})",
+            monospace = true,
+            singleLine = false,
+        )
+        Spacer(Modifier.height(6.dp))
+        R1Button(
+            text = "ADD",
+            onClick = {
+                val label = newLabel.trim()
+                val service = newService.trim()
+                if (label.isEmpty() || !service.contains('.')) return@R1Button
+                val data = newData.trim().takeIf { it.isNotEmpty() }
+                val next = actions + com.github.itskenny0.r1ha.core.prefs.CustomAction(
+                    label = label,
+                    service = service,
+                    dataJson = data,
+                )
+                onChange(next)
+                newLabel = ""
+                newService = ""
+                newData = ""
+            },
+            enabled = newLabel.isNotBlank() && newService.contains('.'),
+            variant = R1ButtonVariant.Outlined,
+        )
     }
 }
 
