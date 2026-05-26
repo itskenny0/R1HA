@@ -198,6 +198,13 @@ fun AppNavGraph(
                 category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ADVANCED,
             )
         }
+        composable(Routes.SETTINGS_KEY_BINDINGS) {
+            com.github.itskenny0.r1ha.feature.settings.KeyBindingsScreen(
+                settings = settings,
+                tokens = tokens,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.SETTINGS_BROWSE) {
             SettingsRouteContent(
                 navController = navController,
@@ -640,6 +647,7 @@ private fun SettingsRouteContent(
         onOpenLovelace = { navController.navigate(Routes.LOVELACE) { launchSingleTop = true } },
         onOpenDevice = { navController.navigate(Routes.DEVICE) { launchSingleTop = true } },
         onOpenModifiedSettings = { navController.navigate(Routes.MODIFIED_SETTINGS) { launchSingleTop = true } },
+        onOpenKeyBindings = { navController.navigate(Routes.SETTINGS_KEY_BINDINGS) { launchSingleTop = true } },
         onSignedOut = {
             navController.navigate(Routes.ONBOARDING) {
                 popUpTo(0) { inclusive = true }

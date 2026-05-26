@@ -15,6 +15,8 @@ import android.view.KeyEvent
 enum class KeyAction(val displayLabel: String, val description: String) {
     WHEEL_UP("Wheel up", "Scroll up / increase value"),
     WHEEL_DOWN("Wheel down", "Scroll down / decrease value"),
+    CARD_UP("Card up", "Jump to the previous card on the stack"),
+    CARD_DOWN("Card down", "Jump to the next card on the stack"),
     PAGE_LEFT("Page left", "Swipe to the previous card-stack tab"),
     PAGE_RIGHT("Page right", "Swipe to the next card-stack tab"),
     ACTIVATE("Activate", "Press / tap the focused card"),

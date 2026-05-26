@@ -17,6 +17,8 @@ object Routes {
     const val SETTINGS_INTEGRATIONS = "settings/integrations"
     const val SETTINGS_ADVANCED = "settings/advanced"
     const val SETTINGS_BROWSE = "settings/browse"
+    /** Hardware-key bindings editor — drilled into from Settings → Behaviour. */
+    const val SETTINGS_KEY_BINDINGS = "settings/key_bindings"
     const val THEME_PICKER = "theme_picker"
     const val ABOUT = "about"
     const val DEV_MENU = "dev_menu"

@@ -714,6 +714,38 @@ fun CardStackScreen(
                         .distinctUntilChanged()
                         .collect { horizontalPagerAnimating.value = it }
                 }
+                // Hardware-key actions that target the card stack: CARD_UP/DOWN
+                // push a ±1 delta into the same pagerNavRequests channel the
+                // wheel uses (so the active PageDeck animates its VerticalPager
+                // by one card), and PAGE_LEFT/RIGHT animate the horizontal
+                // pager directly. Scoped to this composable so it auto-cancels
+                // when the screen leaves composition.
+                androidx.compose.runtime.LaunchedEffect(horizontalPagerState) {
+                    com.github.itskenny0.r1ha.core.input.KeyActionBus.events.collect { action ->
+                        when (action) {
+                            com.github.itskenny0.r1ha.core.input.KeyAction.CARD_UP ->
+                                pagerNavRequests.tryEmit(-1)
+                            com.github.itskenny0.r1ha.core.input.KeyAction.CARD_DOWN ->
+                                pagerNavRequests.tryEmit(+1)
+                            com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_LEFT -> {
+                                val target = (horizontalPagerState.currentPage - 1)
+                                    .coerceAtLeast(0)
+                                if (target != horizontalPagerState.currentPage) {
+                                    horizontalPagerState.animateScrollToPage(target)
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_RIGHT -> {
+                                val last = (state.pages.size - 1).coerceAtLeast(0)
+                                val target = (horizontalPagerState.currentPage + 1)
+                                    .coerceAtMost(last)
+                                if (target != horizontalPagerState.currentPage) {
+                                    horizontalPagerState.animateScrollToPage(target)
+                                }
+                            }
+                            else -> Unit
+                        }
+                    }
+                }
                 androidx.compose.foundation.pager.HorizontalPager(
                     state = horizontalPagerState,
                     modifier = Modifier.fillMaxSize(),

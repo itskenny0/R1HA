@@ -259,10 +259,12 @@ class MainActivity : ComponentActivity() {
                                         graph.haRepository.reconnectNow()
                                     com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_LEFT,
                                     com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_RIGHT,
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.CARD_UP,
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.CARD_DOWN,
                                     com.github.itskenny0.r1ha.core.input.KeyAction.ACTIVATE,
                                     com.github.itskenny0.r1ha.core.input.KeyAction.REFRESH -> {
                                         // Picked up by per-screen collectors
-                                        // (CardStackScreen for PAGE_*/ACTIVATE,
+                                        // (CardStackScreen for PAGE_*/CARD_*/ACTIVATE,
                                         // pull-to-refresh-capable screens for REFRESH).
                                         // Nothing for the activity-level handler to do.
                                     }
