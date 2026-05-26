@@ -681,15 +681,25 @@ data class IotCameraSettings(
      *  reasonable visual/byte trade-off for surveillance-ish streams. */
     val jpegQuality: Int = 70,
 
-    /** MJPEG sink: HTTP server with Basic auth on the device. */
+    /** MJPEG sink: HTTP server with optional Basic auth on the device. */
     val mjpegEnabled: Boolean = false,
     /** Unprivileged TCP port. 8181 to stay clear of the webhook default
      *  (8765) and the usual web/dev ports. */
     val mjpegPort: Int = 8181,
+    /**
+     * Require HTTP Basic authentication on every request. Default ON
+     * because the LAN isn't always trusted — a shared Wi-Fi network turns
+     * an unauthenticated stream into a privacy regression. Turning it off
+     * is supported (some users want an open URL HA can hit without
+     * embedding credentials, or a dashboard tile that can't store auth);
+     * we just don't recommend it.
+     */
+    val mjpegAuthEnabled: Boolean = true,
     /** Basic-auth credentials surfaced in HA's generic camera URL field. The
      *  password is generated on first enable (so a freshly-flipped install
      *  isn't broadcasting an open camera onto the LAN) and the user can
-     *  rotate it from the settings screen. */
+     *  rotate it from the settings screen. Ignored when [mjpegAuthEnabled]
+     *  is off. */
     val mjpegUsername: String = "r1ha",
     val mjpegPassword: String = "",
 

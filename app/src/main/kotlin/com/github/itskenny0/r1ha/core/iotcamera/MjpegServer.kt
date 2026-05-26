@@ -45,6 +45,12 @@ import kotlin.concurrent.thread
  */
 class MjpegServer(
     private val port: Int,
+    /** When false, every request is served without checking Authorization.
+     *  Users opt into this for HA setups that can't embed credentials in
+     *  the camera URL, or for dashboards / kiosks where the LAN is trusted
+     *  end-to-end. Off-default at the settings layer; explicit opt-in
+     *  surfaced as a switch with a warning subtitle. */
+    private val authRequired: Boolean,
     private val username: String,
     private val password: String,
     private val frames: SharedFlow<ByteArray>,
@@ -126,10 +132,11 @@ class MjpegServer(
                 client.respond(405, "Method Not Allowed", "text/plain", "GET only".toByteArray())
                 return
             }
-            if (authHeader != expectedAuthHeader) {
+            if (authRequired && authHeader != expectedAuthHeader) {
                 // 401 with WWW-Authenticate so browsers prompt; HA generic
                 // camera uses the http://user:pw@host shorthand so it never
-                // sees the realm string.
+                // sees the realm string. Skipped entirely when the user has
+                // opted into an open server.
                 client.respondWith401()
                 return
             }

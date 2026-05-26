@@ -136,9 +136,15 @@ class IotCameraService : Service() {
                 updateNotification("Camera error: $msg")
             },
         ).also { it.start() }
-        if (cfg.mjpegEnabled && cfg.mjpegPassword.isNotBlank()) {
+        // Two ways the MJPEG server can run: with auth (requires a
+        // password) or without (anyone on the LAN can hit it). The
+        // pwd-blank check only gates the auth path so a user who
+        // explicitly opts out of auth doesn't get blocked by an empty
+        // password field they'll never use.
+        if (cfg.mjpegEnabled && (!cfg.mjpegAuthEnabled || cfg.mjpegPassword.isNotBlank())) {
             mjpeg = MjpegServer(
                 port = cfg.mjpegPort,
+                authRequired = cfg.mjpegAuthEnabled,
                 username = cfg.mjpegUsername,
                 password = cfg.mjpegPassword,
                 frames = bus.frames,
@@ -279,6 +285,7 @@ class IotCameraService : Service() {
         val jpegQuality: Int,
         val mjpegEnabled: Boolean,
         val mjpegPort: Int,
+        val mjpegAuthEnabled: Boolean,
         val mjpegUsername: String,
         val mjpegPassword: String,
         val mqttEnabled: Boolean,
@@ -305,6 +312,7 @@ class IotCameraService : Service() {
                 jpegQuality = c.jpegQuality.coerceIn(1, 100),
                 mjpegEnabled = c.mjpegEnabled,
                 mjpegPort = c.mjpegPort.coerceIn(1024, 65535),
+                mjpegAuthEnabled = c.mjpegAuthEnabled,
                 mjpegUsername = c.mjpegUsername,
                 mjpegPassword = c.mjpegPassword,
                 mqttEnabled = c.mqttEnabled,

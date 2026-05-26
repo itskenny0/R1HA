@@ -411,54 +411,94 @@ fun IotCameraSettingsScreen(
                             placeholder = "8181",
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text("Username", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.mjpegUsername,
-                            onValueChange = { v ->
-                                vm.updateIotCamera { it.copy(mjpegUsername = v) }
-                            },
-                            placeholder = "r1ha",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("Password", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.mjpegPassword,
-                            onValueChange = { v ->
-                                vm.updateIotCamera { it.copy(mjpegPassword = v) }
-                            },
-                            placeholder = "auto-generated on first enable",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable({
-                                        val pw = randomPassword()
-                                        vm.updateIotCamera { it.copy(mjpegPassword = pw) }
-                                        Toaster.show("New MJPEG password set")
-                                    })
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Text("REGEN PASSWORD", style = R1.labelMicro, color = R1.AccentWarm)
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Require auth", style = R1.bodyEmph, color = R1.Ink)
+                                Text(
+                                    text = if (cam.mjpegAuthEnabled) {
+                                        "Basic auth on every request (recommended)"
+                                    } else {
+                                        "Open — anyone on the LAN can view the stream"
+                                    },
+                                    style = R1.body,
+                                    color = if (cam.mjpegAuthEnabled) R1.InkMuted else R1.StatusAmber,
+                                    modifier = Modifier.padding(top = 1.dp),
+                                )
                             }
+                            R1Switch(
+                                checked = cam.mjpegAuthEnabled,
+                                onCheckedChange = { v ->
+                                    vm.updateIotCamera { it.copy(mjpegAuthEnabled = v) }
+                                },
+                            )
+                        }
+                        if (cam.mjpegAuthEnabled) {
+                            Spacer(Modifier.height(8.dp))
+                            Text("Username", style = R1.labelMicro, color = R1.InkSoft)
+                            R1TextField(
+                                value = cam.mjpegUsername,
+                                onValueChange = { v ->
+                                    vm.updateIotCamera { it.copy(mjpegUsername = v) }
+                                },
+                                placeholder = "r1ha",
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text("Password", style = R1.labelMicro, color = R1.InkSoft)
+                            R1TextField(
+                                value = cam.mjpegPassword,
+                                onValueChange = { v ->
+                                    vm.updateIotCamera { it.copy(mjpegPassword = v) }
+                                },
+                                placeholder = "auto-generated on first enable",
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(R1.ShapeS)
+                                        .background(R1.SurfaceMuted)
+                                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                                        .r1Pressable({
+                                            val pw = randomPassword()
+                                            vm.updateIotCamera { it.copy(mjpegPassword = pw) }
+                                            Toaster.show("New MJPEG password set")
+                                        })
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                ) {
+                                    Text("REGEN PASSWORD", style = R1.labelMicro, color = R1.AccentWarm)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(R1.ShapeS)
+                                        .background(R1.SurfaceMuted)
+                                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                                        .r1Pressable({
+                                            val url = "http://${cam.mjpegUsername}:" +
+                                                "${cam.mjpegPassword}@<device-ip>:" +
+                                                "${cam.mjpegPort}/stream"
+                                            clipboard.setText(AnnotatedString(url))
+                                            Toaster.show("Stream URL template copied")
+                                        })
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                ) {
+                                    Text("COPY URL", style = R1.labelMicro, color = R1.AccentWarm)
+                                }
+                            }
+                        } else {
+                            Spacer(Modifier.height(8.dp))
                             Box(
                                 modifier = Modifier
                                     .clip(R1.ShapeS)
                                     .background(R1.SurfaceMuted)
                                     .border(1.dp, R1.Hairline, R1.ShapeS)
                                     .r1Pressable({
-                                        val url = "http://${cam.mjpegUsername}:" +
-                                            "${cam.mjpegPassword}@<device-ip>:" +
-                                            "${cam.mjpegPort}/stream"
+                                        val url = "http://<device-ip>:${cam.mjpegPort}/stream"
                                         clipboard.setText(AnnotatedString(url))
                                         Toaster.show("Stream URL template copied")
                                     })

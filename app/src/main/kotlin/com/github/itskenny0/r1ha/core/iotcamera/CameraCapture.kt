@@ -117,6 +117,15 @@ class CameraCapture(
 
         manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
+                // Race window: between openCamera() being called and onOpened
+                // landing, stop() may have run (settings change tearing the
+                // pipeline down, master toggle flipped off). Bail without
+                // touching the now-stale state — just close the camera the
+                // HAL handed us so we don't leak the FD.
+                if (!started.get()) {
+                    runCatching { camera.close() }
+                    return
+                }
                 device = camera
                 buildSession(camera, r)
             }
@@ -141,9 +150,26 @@ class CameraCapture(
         val surface = r.surface
         val configCallback = object : CameraCaptureSession.StateCallback() {
             override fun onConfigured(s: CameraCaptureSession) {
+                // Same race as onOpened: stop() may have closed the device
+                // between createCaptureSession() and onConfigured() firing.
+                // createCaptureRequest() on the closed device throws
+                // IllegalStateException, which crashed the iotcamera thread
+                // in an early-2026 build. Bail cleanly if we're no longer
+                // started or if the device has changed under us.
+                if (!started.get() || device !== camera) {
+                    runCatching { s.close() }
+                    return
+                }
                 session = s
-                val requestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
-                    .apply {
+                // Wrap the whole request build + dispatch in runCatching —
+                // the camera can be closed mid-flight even past the started
+                // check, since stop() can run on another thread. A late
+                // IllegalStateException here would otherwise tear down the
+                // service via the uncaught handler.
+                runCatching {
+                    val requestBuilder = camera.createCaptureRequest(
+                        CameraDevice.TEMPLATE_RECORD,
+                    ).apply {
                         addTarget(surface)
                         // Hint the HAL toward the user's chosen rate. Real
                         // delivered rate depends on hardware ceilings + the
@@ -155,10 +181,10 @@ class CameraCapture(
                         )
                         set(CaptureRequest.CONTROL_MODE, CameraCharacteristics.CONTROL_MODE_AUTO)
                     }
-                runCatching {
                     s.setRepeatingRequest(requestBuilder.build(), null, cameraHandler)
-                }.onFailure {
-                    onError("Capture session start failed: ${it.message}")
+                }.onFailure { t ->
+                    R1Log.d("IotCamera.capture", "session start failed: ${t.message}")
+                    onError("Capture session start failed: ${t.message}")
                 }
             }
 
