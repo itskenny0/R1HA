@@ -52,7 +52,7 @@ import kotlinx.serialization.json.buildJsonObject
  */
 class IotCameraService : Service() {
 
-    private val bus = FrameBus()
+    private val bus: FrameBus by lazy { (application as App).graph.iotCameraFrameBus }
     private var capture: CameraCapture? = null
     private var mjpeg: MjpegServer? = null
     private var mqtt: MqttStreamSession? = null

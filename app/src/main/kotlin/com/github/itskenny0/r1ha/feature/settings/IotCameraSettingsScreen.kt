@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,11 +30,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.App
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.withContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -180,6 +190,9 @@ fun IotCameraSettingsScreen(
                     )
                 }
             }
+
+            // ── Live preview ───────────────────────────────────────────────
+            item { LivePreviewTile(enabled = cam.enabled) }
 
             // ── Camera lens picker ────────────────────────────────────────
             item {
@@ -528,6 +541,142 @@ fun IotCameraSettingsScreen(
         }
     }
 }
+
+/**
+ * Live preview of whatever the capture pipeline is currently emitting.
+ * Subscribes to the shared [com.github.itskenny0.r1ha.core.iotcamera.FrameBus]
+ * on the [com.github.itskenny0.r1ha.AppGraph], samples down to ~3 fps so we
+ * don't burn the user's battery decoding 30 JPEGs per second just to feed
+ * a thumbnail, and renders the decoded bitmap inside a 16:9 tile.
+ *
+ * SHOW PREVIEW toggle: per-session switch (default ON). When off, the tile
+ * still renders so the section doesn't pop in/out as the user fiddles, but
+ * the JPEG-decode collector dies and the FrameBus loses a subscriber. That
+ * matters when *no* other sink is connected — the capture pipeline's
+ * subscriberCount-zero gate skips encoding entirely, so flipping preview
+ * off mid-config drops the encode workload to nothing on a settings-screen-
+ * only enable. Not persisted: this is UI affordance, not config.
+ *
+ * Tile states (when preview-on):
+ *   - master OFF → grey placeholder with "ENABLE TO PREVIEW" hint
+ *   - master ON but no frame yet → "STARTING…" while the camera warms up
+ *   - frame available → live JPEG, repainting at ~3 fps
+ *
+ * The collector also dies if the composable leaves composition (back-stack
+ * pop, screen rotate) thanks to LaunchedEffect's structured cancel.
+ */
+@OptIn(kotlinx.coroutines.FlowPreview::class)
+@Composable
+private fun LivePreviewTile(enabled: Boolean) {
+    val context = LocalContext.current
+    val frameBus = remember(context) {
+        (context.applicationContext as? App)?.graph?.iotCameraFrameBus
+    }
+    var previewOn by remember { mutableStateOf(true) }
+    var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    LaunchedEffect(enabled, previewOn, frameBus) {
+        if (!enabled || !previewOn || frameBus == null) {
+            bitmap = null
+            return@LaunchedEffect
+        }
+        // sample() takes the latest emission per window so we sip from the
+        // stream at preview cadence rather than draining every frame. 333
+        // ms = ~3 fps, plenty for "is the camera pointed at the right
+        // thing" verification without churning the GC.
+        frameBus.frames
+            .sample(PREVIEW_SAMPLE_MILLIS)
+            .collect { jpeg ->
+                val decoded = withContext(Dispatchers.Default) {
+                    // Subsample to ~480 px wide max — preview tile is
+                    // capped at ~360 dp on a phone, so any larger source
+                    // wastes memory on pixels we'll never paint. The
+                    // simple inSampleSize heuristic avoids parsing the
+                    // header twice on every frame.
+                    val opts = BitmapFactory.Options().apply {
+                        inSampleSize = 2
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+                    }
+                    runCatching {
+                        BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size, opts)?.asImageBitmap()
+                    }.getOrNull()
+                }
+                if (decoded != null) {
+                    bitmap = decoded
+                }
+            }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "PREVIEW",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (previewOn) "SHOW" else "HIDE",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                modifier = Modifier.padding(end = 8.dp),
+            )
+            R1Switch(
+                checked = previewOn,
+                onCheckedChange = { previewOn = it },
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS),
+            contentAlignment = Alignment.Center,
+        ) {
+            val img = bitmap
+            when {
+                !previewOn -> {
+                    Text(
+                        "PREVIEW HIDDEN",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+                img != null -> {
+                    Image(
+                        bitmap = img,
+                        contentDescription = "Live camera preview",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                !enabled -> {
+                    Text(
+                        "ENABLE TO PREVIEW",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+                else -> {
+                    Text(
+                        "STARTING…",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private const val PREVIEW_SAMPLE_MILLIS = 333L
 
 @Composable
 private fun StepperRow(value: String, onDec: () -> Unit, onInc: () -> Unit) {

@@ -215,6 +215,17 @@ class AppGraph(context: Context) {
     )
 
     /**
+     * Shared frame bus for IoT Camera Mode. Lives on the graph so both the
+     * service (publisher) and the settings preview tile (subscriber) read
+     * from the same instance — without this they'd be two parallel buses
+     * and the settings screen would never see frames. Lazy so devices that
+     * never enable the feature don't allocate the SharedFlow.
+     */
+    val iotCameraFrameBus: com.github.itskenny0.r1ha.core.iotcamera.FrameBus by lazy {
+        com.github.itskenny0.r1ha.core.iotcamera.FrameBus()
+    }
+
+    /**
      * Latest user [KeyBindings], kept up to date by a collector in [App.onCreate]. Read
      * from `MainActivity.dispatchKeyEvent`, which runs on the main thread and can't await a
      * suspend operation — so this volatile cache is the synchronous source of truth. Falls
