@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.App
+import com.github.itskenny0.r1ha.core.iotcamera.IotCameraStatus
+import com.github.itskenny0.r1ha.core.iotcamera.discoverLanIpv4
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.withContext
@@ -85,6 +87,17 @@ fun IotCameraSettingsScreen(
     val pickedCamera = cameras.firstOrNull { it.id == cam.cameraId }
         ?: cameras.firstOrNull()
     val supportedSizes = pickedCamera?.supportedJpegSizes ?: emptyList()
+
+    // Live status flow + LAN IP — recomputed once on entry. We don't tick
+    // the IP because flipping Wi-Fi network mid-config is rare and the user
+    // can pop the screen to refresh; the live status updates from the
+    // service's StateFlow without that.
+    val statusHolder = remember(context) {
+        (context.applicationContext as? App)?.graph?.iotCameraStatus
+    }
+    val status by (statusHolder?.snapshot?.collectAsStateWithLifecycle()
+        ?: remember { mutableStateOf(IotCameraStatus.Snapshot()) })
+    val lanIp = remember { discoverLanIpv4() }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -189,6 +202,15 @@ fun IotCameraSettingsScreen(
                         },
                     )
                 }
+            }
+
+            // ── Live status ────────────────────────────────────────────────
+            // Sits high in the screen so the user always sees the health
+            // of each sink + the LAN IP they need to point HA at. Hidden
+            // entirely when the master toggle is off — there's nothing
+            // meaningful to report.
+            if (cam.enabled) {
+                item { StatusCard(status = status, lanIp = lanIp) }
             }
 
             // ── Live preview ───────────────────────────────────────────────
@@ -480,7 +502,7 @@ fun IotCameraSettingsScreen(
                                         .border(1.dp, R1.Hairline, R1.ShapeS)
                                         .r1Pressable({
                                             val url = "http://${cam.mjpegUsername}:" +
-                                                "${cam.mjpegPassword}@<device-ip>:" +
+                                                "${cam.mjpegPassword}@${lanIp ?: "<device-ip>"}:" +
                                                 "${cam.mjpegPort}/stream"
                                             clipboard.setText(AnnotatedString(url))
                                             Toaster.show("Stream URL template copied")
@@ -498,7 +520,7 @@ fun IotCameraSettingsScreen(
                                     .background(R1.SurfaceMuted)
                                     .border(1.dp, R1.Hairline, R1.ShapeS)
                                     .r1Pressable({
-                                        val url = "http://<device-ip>:${cam.mjpegPort}/stream"
+                                        val url = "http://${lanIp ?: "<device-ip>"}:${cam.mjpegPort}/stream"
                                         clipboard.setText(AnnotatedString(url))
                                         Toaster.show("Stream URL template copied")
                                     })
@@ -577,8 +599,278 @@ fun IotCameraSettingsScreen(
                 }
             }
 
+            // ── How to add in HA ──────────────────────────────────────────
+            item { Spacer(Modifier.height(20.dp)) }
+            item { HowToAddInHa(cam = cam, lanIp = lanIp) }
+
             item { Spacer(Modifier.height(48.dp)) }
         }
+    }
+}
+
+/**
+ * At-a-glance health of each enabled sink, plus the LAN IPv4 we want the
+ * user to point HA at for MJPEG. Updates from [IotCameraStatus]'s flow as
+ * the service starts / fails / publishes the discovery payload.
+ */
+@Composable
+private fun StatusCard(status: IotCameraStatus.Snapshot, lanIp: String?) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("STATUS", style = R1.labelMicro, color = R1.InkSoft)
+        StatusRow(
+            label = "DEVICE IP",
+            value = lanIp ?: "no network",
+            tint = if (lanIp == null) R1.StatusAmber else R1.Ink,
+        )
+        val mjpegText = when (status.mjpeg) {
+            IotCameraStatus.SinkState.OFF -> "Off"
+            IotCameraStatus.SinkState.STARTING -> "Starting…"
+            IotCameraStatus.SinkState.ACTIVE -> "Listening"
+            IotCameraStatus.SinkState.FAILED -> status.mjpegError ?: "Failed"
+        }
+        StatusRow(
+            label = "MJPEG",
+            value = mjpegText,
+            tint = sinkTint(status.mjpeg),
+        )
+        val mqttText = when (status.mqtt) {
+            IotCameraStatus.SinkState.OFF -> "Off"
+            IotCameraStatus.SinkState.STARTING -> "Connecting…"
+            IotCameraStatus.SinkState.ACTIVE ->
+                if (status.mqttDiscoveryPublished) "Connected · discovery sent" else "Connected"
+            IotCameraStatus.SinkState.FAILED -> status.mqttError ?: "Failed"
+        }
+        StatusRow(
+            label = "MQTT",
+            value = mqttText,
+            tint = sinkTint(status.mqtt),
+        )
+    }
+}
+
+@Composable
+private fun StatusRow(
+    label: String,
+    value: String,
+    tint: androidx.compose.ui.graphics.Color,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.weight(1f),
+        )
+        Text(text = value, style = R1.labelMicro, color = tint)
+    }
+}
+
+private fun sinkTint(state: IotCameraStatus.SinkState): androidx.compose.ui.graphics.Color =
+    when (state) {
+        IotCameraStatus.SinkState.OFF -> R1.InkSoft
+        IotCameraStatus.SinkState.STARTING -> R1.AccentWarm
+        IotCameraStatus.SinkState.ACTIVE -> R1.AccentGreen
+        IotCameraStatus.SinkState.FAILED -> R1.StatusRed
+    }
+
+/**
+ * Expandable walk-through of how to surface the camera inside Home
+ * Assistant. Two paths because the two sinks reach HA very differently:
+ *
+ *   - MQTT discovery is HA's first-class auto-discover path; if the MQTT
+ *     integration is installed and pointed at the same broker R1HA is
+ *     publishing to, the camera entity registers itself.
+ *
+ *   - MJPEG has no native auto-discovery in HA; you add it manually as
+ *     a Generic Camera with the URL we built for you.
+ *
+ * Body is rendered as plain numbered steps; the URL row is tappable to
+ * copy. Kept inline rather than a separate route so the user doesn't
+ * lose the context of which toggles they set.
+ */
+@Composable
+private fun HowToAddInHa(
+    cam: com.github.itskenny0.r1ha.core.prefs.IotCameraSettings,
+    lanIp: String?,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val clipboard: ClipboardManager = LocalClipboardManager.current
+
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable({ expanded = !expanded })
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "WHERE TO FIND THIS IN HA",
+                style = R1.labelMicro,
+                color = R1.AccentWarm,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (expanded) "−" else "+",
+                style = R1.bodyEmph,
+                color = R1.AccentWarm,
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            if (cam.mqttEnabled) {
+                Text("MQTT AUTO-DISCOVERY", style = R1.labelMicro, color = R1.AccentGreen)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "1. In HA: Settings → Devices & Services. Confirm the MQTT " +
+                        "integration is installed and shows the same broker " +
+                        "R1HA is publishing to (Advanced → MQTT).",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "2. The entity registers automatically as " +
+                        "camera.r1ha_${cam.mqttNodeId.ifBlank { "<nodeid>" }}_${cam.mqttObjectId} " +
+                        "under MQTT → Devices → \"R1HA " +
+                        "${cam.mqttNodeId.ifBlank { "<nodeid>" }}\".",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "If the STATUS card above doesn't say \"discovery sent\", " +
+                        "the broker isn't reachable yet. Check Advanced → MQTT.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            if (cam.mjpegEnabled) {
+                Text(
+                    "MJPEG (GENERIC CAMERA)",
+                    style = R1.labelMicro,
+                    color = R1.AccentGreen,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "HA can't auto-discover arbitrary MJPEG streams; add it " +
+                        "manually:",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "1. HA → Settings → Devices & Services → + ADD INTEGRATION → " +
+                        "search \"Generic Camera\".",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "2. Still Image URL:",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                CopyableUrlRow(
+                    url = mjpegUrlFor(cam, lanIp, path = "snapshot"),
+                    clipboard = clipboard,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "3. Stream Source URL:",
+                    style = R1.body,
+                    color = R1.Ink,
+                )
+                CopyableUrlRow(
+                    url = mjpegUrlFor(cam, lanIp, path = "stream"),
+                    clipboard = clipboard,
+                )
+                if (cam.mjpegAuthEnabled) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "4. Username: ${cam.mjpegUsername} · Password: " +
+                            (if (cam.mjpegPassword.isBlank()) "(not set)" else "the password above"),
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                }
+                if (lanIp == null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Connect this device to Wi-Fi or Ethernet first — we " +
+                            "couldn't detect a LAN IP to put in the URL.",
+                        style = R1.body,
+                        color = R1.StatusAmber,
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            if (!cam.mjpegEnabled && !cam.mqttEnabled) {
+                Text(
+                    "No sinks enabled yet. Turn on MJPEG and/or MQTT above first.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+            }
+            Text(
+                "The camera also shows up under R1HA → Cameras once HA has " +
+                    "the entity, since that screen lists HA camera entities.",
+                style = R1.body,
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CopyableUrlRow(url: String, clipboard: ClipboardManager) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable({
+                clipboard.setText(AnnotatedString(url))
+                Toaster.show("Copied")
+            })
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = url,
+            style = R1.body,
+            color = R1.Ink,
+            modifier = Modifier.weight(1f),
+        )
+        Text("COPY", style = R1.labelMicro, color = R1.AccentWarm)
+    }
+}
+
+private fun mjpegUrlFor(
+    cam: com.github.itskenny0.r1ha.core.prefs.IotCameraSettings,
+    lanIp: String?,
+    path: String,
+): String {
+    val host = lanIp ?: "<device-ip>"
+    return if (cam.mjpegAuthEnabled) {
+        "http://${cam.mjpegUsername}:${cam.mjpegPassword.ifBlank { "<password>" }}@$host:${cam.mjpegPort}/$path"
+    } else {
+        "http://$host:${cam.mjpegPort}/$path"
     }
 }
 

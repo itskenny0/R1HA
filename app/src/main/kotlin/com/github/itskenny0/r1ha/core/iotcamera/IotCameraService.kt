@@ -53,6 +53,7 @@ import kotlinx.serialization.json.buildJsonObject
 class IotCameraService : Service() {
 
     private val bus: FrameBus by lazy { (application as App).graph.iotCameraFrameBus }
+    private val status: IotCameraStatus by lazy { (application as App).graph.iotCameraStatus }
     private var capture: CameraCapture? = null
     private var mjpeg: MjpegServer? = null
     private var mqtt: MqttStreamSession? = null
@@ -88,6 +89,7 @@ class IotCameraService : Service() {
         teardownPipeline()
         capture?.shutdown()
         capture = null
+        status.reset()
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -102,6 +104,7 @@ class IotCameraService : Service() {
         currentConfig = cfg
         if (prev == cfg) return
         teardownPipeline()
+        status.reset()
         if (!cfg.enabled) {
             updateNotification("Idle — no sinks enabled")
             return
@@ -142,6 +145,7 @@ class IotCameraService : Service() {
         // explicitly opts out of auth doesn't get blocked by an empty
         // password field they'll never use.
         if (cfg.mjpegEnabled && (!cfg.mjpegAuthEnabled || cfg.mjpegPassword.isNotBlank())) {
+            status.setMjpeg(IotCameraStatus.SinkState.STARTING)
             mjpeg = MjpegServer(
                 port = cfg.mjpegPort,
                 authRequired = cfg.mjpegAuthEnabled,
@@ -150,8 +154,22 @@ class IotCameraService : Service() {
                 frames = bus.frames,
                 latestFrame = { bus.latest() },
             ).also { it.start() }
+            // Bind-success isn't a callback we can observe directly from
+            // the server, but the ServerSocket constructor inside start()
+            // would have thrown if the port was busy and that would have
+            // surfaced via the catch in the accept thread. For the status
+            // we report ACTIVE as soon as we've spun the server up — the
+            // user-facing "is it reachable" check is in the settings copy
+            // alongside the URL ("Test in a browser").
+            status.setMjpeg(IotCameraStatus.SinkState.ACTIVE)
+        } else if (cfg.mjpegEnabled) {
+            status.setMjpeg(
+                IotCameraStatus.SinkState.FAILED,
+                "Auth on but password is blank",
+            )
         }
         if (cfg.mqttEnabled && cfg.mqttHost.isNotBlank()) {
+            status.setMqtt(IotCameraStatus.SinkState.STARTING)
             mqtt = MqttStreamSession(
                 host = cfg.mqttHost,
                 port = cfg.mqttPort,
@@ -160,14 +178,30 @@ class IotCameraService : Service() {
                 password = cfg.mqttPassword.ifBlank { null },
                 useTls = cfg.mqttUseTls,
             )
-            mqtt?.start()
-            // Discovery payload (retained) + frame fan-out collector.
-            publishMqttDiscovery(cfg)
+            // start() returns false on initial connect failure (broker
+            // unreachable, bad creds). Surface that synchronously so the
+            // settings screen can show "Broker unreachable" instead of a
+            // perpetual STARTING.
+            val mqttUp = mqtt?.start() ?: false
+            if (!mqttUp) {
+                status.setMqtt(
+                    IotCameraStatus.SinkState.FAILED,
+                    "Couldn't connect to ${cfg.mqttHost}:${cfg.mqttPort}",
+                )
+            } else {
+                status.setMqtt(IotCameraStatus.SinkState.ACTIVE)
+                publishMqttDiscovery(cfg)
+            }
             mqttJob = serviceScope.launch {
                 bus.frames.collect { jpeg ->
                     mqtt?.publish(mqttImageTopic(cfg), jpeg, retain = false)
                 }
             }
+        } else if (cfg.mqttEnabled) {
+            status.setMqtt(
+                IotCameraStatus.SinkState.FAILED,
+                "Configure broker under Advanced → MQTT first",
+            )
         }
         updateNotification(stateSummary(cfg))
     }
@@ -222,7 +256,16 @@ class IotCameraService : Service() {
         }
         val bytes = payload.toString().toByteArray(Charsets.UTF_8)
         // Discovery is retained so the broker replays it for HA on reconnect.
-        serviceScope.launch { mqtt?.publish(configTopic, bytes, retain = true) }
+        serviceScope.launch {
+            val ok = mqtt?.publish(configTopic, bytes, retain = true) ?: false
+            status.setMqttDiscoveryPublished(ok)
+            if (!ok) {
+                status.setMqtt(
+                    IotCameraStatus.SinkState.FAILED,
+                    "Discovery publish failed",
+                )
+            }
+        }
     }
 
     private fun startInForeground(notification: Notification) {

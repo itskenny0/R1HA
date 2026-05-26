@@ -226,6 +226,16 @@ class AppGraph(context: Context) {
     }
 
     /**
+     * Live status of each IoT Camera Mode sink + the MQTT discovery
+     * publish. Service writes; settings screen reads via the contained
+     * StateFlow. Lazy so a fresh install that never enables the feature
+     * doesn't allocate a SharedFlow that no-one observes.
+     */
+    val iotCameraStatus: com.github.itskenny0.r1ha.core.iotcamera.IotCameraStatus by lazy {
+        com.github.itskenny0.r1ha.core.iotcamera.IotCameraStatus()
+    }
+
+    /**
      * Latest user [KeyBindings], kept up to date by a collector in [App.onCreate]. Read
      * from `MainActivity.dispatchKeyEvent`, which runs on the main thread and can't await a
      * suspend operation — so this volatile cache is the synchronous source of truth. Falls
