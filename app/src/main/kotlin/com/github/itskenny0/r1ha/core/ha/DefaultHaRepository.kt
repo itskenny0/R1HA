@@ -2599,6 +2599,31 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun getUserData(key: String): Result<kotlinx.serialization.json.JsonElement?> =
+        withContext(Dispatchers.IO) {
+            val extras = kotlinx.serialization.json.buildJsonObject {
+                put("key", JsonPrimitive(key))
+            }
+            // HA wraps the value under a "value" property of the response payload;
+            // unwrap so callers can decode directly. Returns null when nothing
+            // has been written under [key] for the current user.
+            callWsExpectingPayload("frontend/get_user_data", extras).map { payload ->
+                val obj = payload as? kotlinx.serialization.json.JsonObject
+                obj?.get("value")?.takeUnless { it is kotlinx.serialization.json.JsonNull }
+            }
+        }
+
+    override suspend fun setUserData(
+        key: String,
+        value: kotlinx.serialization.json.JsonElement,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("key", JsonPrimitive(key))
+            put("value", value)
+        }
+        callWsExpectingPayload("frontend/set_user_data", extras).map { }
+    }
+
     override suspend fun listRepairs(): Result<List<RepairIssue>> = withContext(Dispatchers.IO) {
         callWsExpectingPayload("repairs/list_issues").mapCatching { payload ->
             val obj = payload as? kotlinx.serialization.json.JsonObject ?: return@mapCatching emptyList()

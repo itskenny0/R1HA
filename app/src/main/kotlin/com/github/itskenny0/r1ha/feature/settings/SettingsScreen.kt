@@ -67,6 +67,11 @@ enum class SettingsCategory {
     APPEARANCE,
     BEHAVIOUR,
     INTEGRATIONS,
+    /** Multi-device settings sync to/from Home Assistant. Has its own
+     *  top-level GroupCard rather than being tucked under INTEGRATIONS
+     *  because it's a discoverable feature with cross-device implications,
+     *  not a per-surface knob. */
+    SYNC,
     ADVANCED,
     BROWSE,
 }
@@ -95,6 +100,7 @@ private fun categoryTitle(category: SettingsCategory): String = when (category) 
     SettingsCategory.APPEARANCE -> "APPEARANCE"
     SettingsCategory.BEHAVIOUR -> "BEHAVIOUR"
     SettingsCategory.INTEGRATIONS -> "INTEGRATIONS"
+    SettingsCategory.SYNC -> "SYNC"
     SettingsCategory.ADVANCED -> "ADVANCED"
     SettingsCategory.BROWSE -> "BROWSE"
 }
@@ -443,6 +449,18 @@ fun SettingsScreen(
                         subtitle = "HA refresh tuning, cameras, defaults",
                         modifiedCount = groupBadge("INTEGRATIONS"),
                         onClick = { onOpenCategory(SettingsCategory.INTEGRATIONS) },
+                    )
+                }
+                item {
+                    GroupCard(
+                        title = "Sync",
+                        subtitle = if (s.integrations.haSyncEnabled) {
+                            "ON · ${s.integrations.haSyncIntervalSec}s interval"
+                        } else {
+                            "Mirror settings across devices via Home Assistant"
+                        },
+                        modifiedCount = 0,
+                        onClick = { onOpenCategory(SettingsCategory.SYNC) },
                     )
                 }
                 item {

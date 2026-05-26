@@ -193,6 +193,28 @@ class AppGraph(context: Context) {
     }
 
     /**
+     * Multi-device settings sync. Mirrors the user's preferences to/from
+     * HA's per-user JSON storage; idle (no WS traffic) until the user opts
+     * in via Settings → Integrations → "Sync with Home Assistant". Started
+     * from [com.github.itskenny0.r1ha.App.onCreate] on the same scope that
+     * owns the HA repository, so a stop()/start() cycle (e.g. sign-out)
+     * cancels its observers cleanly.
+     */
+    val haSettingsSync: com.github.itskenny0.r1ha.core.sync.HaSettingsSync by lazy {
+        com.github.itskenny0.r1ha.core.sync.HaSettingsSync(
+            settings = settings,
+            haRepository = haRepository,
+            scope = appScope,
+        )
+    }
+
+    /** Process-scope coroutine scope for long-lived collectors that should
+     *  outlive any single activity. Used by [haSettingsSync]. */
+    private val appScope: CoroutineScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default,
+    )
+
+    /**
      * Latest user [KeyBindings], kept up to date by a collector in [App.onCreate]. Read
      * from `MainActivity.dispatchKeyEvent`, which runs on the main thread and can't await a
      * suspend operation — so this volatile cache is the synchronous source of truth. Falls

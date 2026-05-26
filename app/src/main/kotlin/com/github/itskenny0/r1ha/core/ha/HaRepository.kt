@@ -375,6 +375,24 @@ interface HaRepository {
         onResult: (String) -> Unit,
     ): Result<TemplateSubscription>
 
+    /**
+     * Fetch the per-user JSON blob stored under [key] via HA's
+     * `frontend/get_user_data` WS command. Returns the JSON value
+     * (any shape, opaque to HA) or null when nothing has been
+     * written under that key for the current user. This is the same
+     * storage HA's own frontend uses for dashboard preferences, so
+     * the format is stable across HA versions.
+     */
+    suspend fun getUserData(key: String): Result<kotlinx.serialization.json.JsonElement?>
+
+    /**
+     * Persist [value] under [key] via HA's `frontend/set_user_data` WS
+     * command. Per-user storage; another HA user signed into the same
+     * server can't read or overwrite it. The whole [value] is replaced
+     * on each call (HA doesn't merge — this is a simple put).
+     */
+    suspend fun setUserData(key: String, value: kotlinx.serialization.json.JsonElement): Result<Unit>
+
     suspend fun start()
     suspend fun stop()
 

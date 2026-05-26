@@ -19,6 +19,8 @@ object Routes {
     const val SETTINGS_BROWSE = "settings/browse"
     /** Hardware-key bindings editor — drilled into from Settings → Behaviour. */
     const val SETTINGS_KEY_BINDINGS = "settings/key_bindings"
+    /** Multi-device settings sync — opt-in toggle, interval, manual triggers, stats. */
+    const val SETTINGS_SYNC = "settings/sync"
     const val THEME_PICKER = "theme_picker"
     const val ABOUT = "about"
     const val DEV_MENU = "dev_menu"

@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
 import com.github.itskenny0.r1ha.core.input.WheelEvent
@@ -272,6 +273,62 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        // First-run sync onboarding overlay. Renders only when
+                        // a server is configured AND the WS is connected AND
+                        // the user hasn't dismissed/accepted it before — see
+                        // [HaSyncOnboardingPrompt] for the gating logic.
+                        // Lives in the activity window (not a Dialog) so that
+                        // its capture overlay receives input events normally.
+                        val settingsForPrompt by graph.settings.settings
+                            .collectAsStateWithLifecycle(initialValue = initial)
+                        val connectionForPrompt by graph.haRepository.connection
+                            .collectAsStateWithLifecycle()
+                        val promptScope = androidx.compose.runtime.rememberCoroutineScope()
+                        com.github.itskenny0.r1ha.feature.sync.HaSyncOnboardingPrompt(
+                            settings = settingsForPrompt,
+                            connection = connectionForPrompt,
+                            onMarkSeen = {
+                                promptScope.launch {
+                                    graph.settings.update { s ->
+                                        s.copy(
+                                            integrations = s.integrations.copy(
+                                                haSyncPromptSeen = true,
+                                            ),
+                                        )
+                                    }
+                                }
+                            },
+                            onChooseImport = { excludedNames ->
+                                promptScope.launch {
+                                    graph.settings.update { s ->
+                                        s.copy(
+                                            integrations = s.integrations.copy(
+                                                haSyncEnabled = true,
+                                                haSyncExcludedCategories = excludedNames,
+                                            ),
+                                        )
+                                    }
+                                    // Enable observer fires the initial pull;
+                                    // pullNow() makes the import feel immediate
+                                    // rather than waiting for the collector to
+                                    // wake up.
+                                    graph.haSettingsSync.pullNow()
+                                }
+                            },
+                            onChoosePush = { excludedNames ->
+                                promptScope.launch {
+                                    graph.settings.update { s ->
+                                        s.copy(
+                                            integrations = s.integrations.copy(
+                                                haSyncEnabled = true,
+                                                haSyncExcludedCategories = excludedNames,
+                                            ),
+                                        )
+                                    }
+                                    graph.haSettingsSync.pushNow()
+                                }
+                            },
+                        )
                         // Toast host sits OUTSIDE the responsive column so
                         // toasts always pop at the device's true screen
                         // edges, not the centred column's edges.

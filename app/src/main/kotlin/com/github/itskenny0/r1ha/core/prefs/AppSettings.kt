@@ -389,6 +389,45 @@ data class IntegrationsSettings(
     /** Calendar drill-down — how many days ahead to fetch from
      *  /api/calendars. */
     val calendarLookaheadDays: Int = 14,
+    /**
+     * Opt-in: mirror this device's settings to/from Home Assistant so multiple
+     * R1 / phone installs sharing the same HA user converge on the same
+     * preferences (theme, card stack pages + favourites, name + entity
+     * overrides, key bindings, etc.). Storage is HA's per-user
+     * `frontend/set_user_data` bucket — no add-on or custom integration to
+     * install. Off by default so single-device installs incur zero WS chatter.
+     *
+     * Device-local fields (server URL + tokens, iBeacon major/minor/UUID,
+     * webhook port + id, MQTT host + auth) are NEVER synced regardless of
+     * this toggle — every R1 keeps its own network identity.
+     */
+    val haSyncEnabled: Boolean = false,
+    /** How often to pull the latest snapshot from HA when sync is on, in
+     *  seconds. Pushes on local edits fire independently (debounced ~5 s).
+     *  300 s = 5 min default; the user can dial down on a busy multi-device
+     *  household or up on a quiet one. Range coerced to 30..3600 by the
+     *  writer so a stray 0 doesn't burst-pull. */
+    val haSyncIntervalSec: Int = 300,
+    /**
+     * One-shot flag flipped true after the user has seen (and either accepted
+     * or dismissed) the HA-sync first-run prompt. Off by default so existing
+     * installs surface the prompt once after upgrading to a build that ships
+     * this feature; once true, the prompt never re-fires (the user can still
+     * flip [haSyncEnabled] manually from Settings → Integrations).
+     */
+    val haSyncPromptSeen: Boolean = false,
+    /**
+     * Sync categories the user has explicitly opted OUT of. Stored as
+     * [com.github.itskenny0.r1ha.core.sync.SyncCategory] enum names. Empty
+     * (the default) means every category syncs when [haSyncEnabled] is on;
+     * adding an entry preserves that category's local values across pull/push
+     * cycles (Sync UI surfaces this as a switch per category).
+     *
+     * Unknown names (added/removed across versions) are silently ignored by
+     * the sync filter, so a future build that introduces a new category
+     * decodes old settings cleanly.
+     */
+    val haSyncExcludedCategories: Set<String> = emptySet(),
 )
 
 /**

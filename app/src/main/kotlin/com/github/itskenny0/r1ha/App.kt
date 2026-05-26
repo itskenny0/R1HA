@@ -156,6 +156,12 @@ class App : Application() {
             R1Log.i("App.onCreate", "haRepository.start() returned")
         }
         androidx.tracing.Trace.endSection()
+        // Kick off the HA-backed settings sync manager. Idle until the user
+        // opts in via Settings → Integrations → "Sync with Home Assistant";
+        // once enabled, the manager pulls a baseline from HA, pushes local
+        // edits (debounced) and periodically polls for remote changes.
+        graph.haSettingsSync.start()
+
         // Mirror the user's hardware key bindings into a volatile field so MainActivity's
         // dispatchKeyEvent (which runs on the UI thread and can't suspend) can resolve a
         // keycode → action synchronously. Missing entries fall back to the built-in
