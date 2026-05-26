@@ -720,7 +720,29 @@ fun CardStackScreen(
                 // by one card), and PAGE_LEFT/RIGHT animate the horizontal
                 // pager directly. Scoped to this composable so it auto-cancels
                 // when the screen leaves composition.
+                //
+                // Each page-scroll runs in its own child coroutine, NOT inside
+                // the collect lambda. Two reasons:
+                //
+                //   1. animateScrollToPage suspends for ~300 ms; if the user
+                //      fires a second key press while the first is animating,
+                //      the second event sits in the bus buffer until the first
+                //      completes and a sequential collector would lag behind
+                //      every fast input.
+                //
+                //   2. animateScrollToPage cancels any in-flight scroll on the
+                //      same PagerState — that cancellation surfaces as a
+                //      CancellationException. If it propagates out of the
+                //      collect lambda, the entire collector dies and PAGE_LEFT
+                //      / PAGE_RIGHT stop responding entirely until the
+                //      composable recomposes. (Wheel scroll keeps working
+                //      because it goes through a separate, non-suspending
+                //      pagerNavRequests channel.) Launching into a child Job
+                //      and cancelling it explicitly on the next request keeps
+                //      the cancellation scoped to that child, never the
+                //      collector itself.
                 androidx.compose.runtime.LaunchedEffect(horizontalPagerState) {
+                    var pageScrollJob: kotlinx.coroutines.Job? = null
                     com.github.itskenny0.r1ha.core.input.KeyActionBus.events.collect { action ->
                         when (action) {
                             com.github.itskenny0.r1ha.core.input.KeyAction.CARD_UP ->
@@ -728,20 +750,28 @@ fun CardStackScreen(
                             com.github.itskenny0.r1ha.core.input.KeyAction.CARD_DOWN ->
                                 pagerNavRequests.tryEmit(+1)
                             com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_LEFT -> {
-                                val target = (horizontalPagerState.currentPage - 1)
-                                    .coerceAtLeast(0)
-                                if (target != horizontalPagerState.currentPage) {
-                                    horizontalPagerState.animateScrollToPage(target)
+                                pageScrollJob?.cancel()
+                                pageScrollJob = launch {
+                                    val target = (horizontalPagerState.currentPage - 1)
+                                        .coerceAtLeast(0)
+                                    if (target != horizontalPagerState.currentPage) {
+                                        horizontalPagerState.animateScrollToPage(target)
+                                    }
                                 }
                             }
                             com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_RIGHT -> {
-                                val last = (state.pages.size - 1).coerceAtLeast(0)
-                                val target = (horizontalPagerState.currentPage + 1)
-                                    .coerceAtMost(last)
-                                if (target != horizontalPagerState.currentPage) {
-                                    horizontalPagerState.animateScrollToPage(target)
+                                pageScrollJob?.cancel()
+                                pageScrollJob = launch {
+                                    val last = (state.pages.size - 1).coerceAtLeast(0)
+                                    val target = (horizontalPagerState.currentPage + 1)
+                                        .coerceAtMost(last)
+                                    if (target != horizontalPagerState.currentPage) {
+                                        horizontalPagerState.animateScrollToPage(target)
+                                    }
                                 }
                             }
+                            com.github.itskenny0.r1ha.core.input.KeyAction.ACTIVATE ->
+                                vm.tapToggle()
                             else -> Unit
                         }
                     }

@@ -19,7 +19,7 @@ enum class KeyAction(val displayLabel: String, val description: String) {
     CARD_DOWN("Card down", "Jump to the next card on the stack"),
     PAGE_LEFT("Page left", "Swipe to the previous card-stack tab"),
     PAGE_RIGHT("Page right", "Swipe to the next card-stack tab"),
-    ACTIVATE("Activate", "Press / tap the focused card"),
+    ACTIVATE("Toggle on/off", "Toggle the focused card on/off (same as tapping it)"),
     GO_BACK("Go back", "Equivalent to system Back"),
     OPEN_SETTINGS("Open Settings", "Jump to the Settings screen"),
     OPEN_ASSIST("Open Assist", "Open the voice/chat Assist screen"),
