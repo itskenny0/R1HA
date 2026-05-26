@@ -359,7 +359,7 @@ class DefaultHaRepository(
                         // The WS client always reports st.attempt=0 (it has no notion of
                         // consecutive failures); we track the run here.
                         val attempt = reconnectAttempt
-                        reconnectAttempt = (attempt + 1).coerceAtMost(20)
+                        reconnectAttempt = attempt + 1
                         // Fail any in-flight service-call deferreds whose Result will never
                         // arrive: without this they leak into pendingCalls until the process
                         // dies and any awaiter would hang indefinitely.
@@ -381,9 +381,29 @@ class DefaultHaRepository(
                         // double-connect. The AuthLost path owns the reconnect dispatch.
                         if (previous is ConnectionState.AuthLost) {
                             R1Log.i("HaRepo.disconnect", "suppressing reconnect; AuthLost handler owns it")
-                        } else {
-                            reconnectLater(attempt)
+                            return@onEach
                         }
+                        // Give-up gate: after [RECONNECT_GIVE_UP_THRESHOLD] consecutive
+                        // failures (~8 min of backed-off attempts with the default policy),
+                        // stop scheduling auto-retries. Without this the repository keeps
+                        // hammering a permanently-broken endpoint at the 30 s ceiling
+                        // forever, and reauth attempts on a stale token can trip HA's
+                        // `login_attempts_threshold` and get the device IP-banned.
+                        // The user retains a one-tap recovery path via the existing
+                        // "STILL LOADING · TAP TO RETRY" affordance, which calls
+                        // [reconnectNow] and resets the counter.
+                        if (attempt >= RECONNECT_GIVE_UP_THRESHOLD) {
+                            R1Log.w(
+                                "HaRepo.disconnect",
+                                "$attempt consecutive reconnect failures; pausing auto-retry to avoid IP-ban (tap retry to resume)",
+                            )
+                            com.github.itskenny0.r1ha.core.util.Toaster.error(
+                                "Home Assistant unreachable after $attempt attempts. Auto-reconnect paused; tap retry when ready.",
+                            )
+                            _reconnectAt.value = null
+                            return@onEach
+                        }
+                        reconnectLater(attempt)
                     }
                     is ConnectionState.AuthLost -> {
                         // Access token was rejected — most often because the 30-minute lifetime
@@ -2262,6 +2282,18 @@ class DefaultHaRepository(
 
     private companion object {
         const val MAX_AUTHLOST_RETRIES = 3
+        /**
+         * Maximum number of consecutive WS reconnect failures before the repository
+         * gives up and stops scheduling auto-retries. With the default BackoffPolicy
+         * (1 s base, 30 s cap, 0.25 jitter) this comes out to roughly 8 minutes of
+         * trying before pausing. Past that point a permanently-broken state (wrong
+         * URL, revoked token, HA service down) keeps the auto-retry loop slamming
+         * the server every 30 s indefinitely, which can trip HA's
+         * `login_attempts_threshold` and IP-ban the device. Recovery: the user
+         * taps the existing "STILL LOADING · TAP TO RETRY" affordance, which
+         * routes to [reconnectNow] and resets the counter.
+         */
+        const val RECONNECT_GIVE_UP_THRESHOLD = 20
         /**
          * Hard ceiling on how long the repository will wait for a `result` message after sending
          * a `call_service`. Set high enough to absorb a busy HA on a slow phone-to-broker link

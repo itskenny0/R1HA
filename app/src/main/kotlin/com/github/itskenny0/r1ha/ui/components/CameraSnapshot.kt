@@ -84,6 +84,11 @@ fun CameraSnapshot(
         val targetHeightPx = with(density) { maxHeight.toPx().toInt().coerceAtLeast(1) }
         LaunchedEffect(entityId, serverUrl, bearerToken, intervalMillis, lifecycleOwner, targetWidthPx, targetHeightPx) {
             lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                // Per-loop consecutive-failure counter. Stays inside repeatOnLifecycle so it
+                // resets when the lifecycle re-enters STARTED — coming back from background
+                // with a fresh token deserves a fast first attempt rather than inheriting
+                // backoff state from a previous failure run.
+                var failureCount = 0
                 while (true) {
                     val cb = System.currentTimeMillis()
                     val url = "${serverUrl.trimEnd('/')}/api/camera_proxy/$entityId?cb=$cb"
@@ -93,13 +98,27 @@ fun CameraSnapshot(
                     if (image != null) {
                         bitmap = image
                         failed = false
+                        failureCount = 0
                     } else if (bitmap == null) {
                         // Only flip into the failed-with-no-last-frame state if we never
                         // got anything. A transient failure mid-stream just keeps the
                         // previous frame visible until the next poll lands.
                         failed = true
                     }
-                    delay(intervalMillis)
+                    // Exponential backoff on consecutive failures so a broken camera entity
+                    // (offline integration, stale bearer → 401, broken proxy) doesn't pin
+                    // /api/camera_proxy at the full poll cadence. Default cadence is 4 s;
+                    // unchecked, a stale-token 401 every 4 s hits HA's
+                    // login_attempts_threshold (default 5) inside half a minute and IP-bans
+                    // the device. After 5 failures we plateau at 64 s ≈ HA-friendly cadence.
+                    val nextDelay = if (image == null) {
+                        failureCount = (failureCount + 1).coerceAtMost(4)
+                        val shifted = intervalMillis shl failureCount
+                        minOf(shifted, MAX_BACKOFF_MILLIS)
+                    } else {
+                        intervalMillis
+                    }
+                    delay(nextDelay)
                 }
             }
         }
@@ -120,6 +139,9 @@ fun CameraSnapshot(
         }
     }
 }
+
+/** Ceiling on the failure-backoff delay between poll attempts. */
+private const val MAX_BACKOFF_MILLIS: Long = 60_000L
 
 /**
  * Compute inSampleSize as the largest power of two that keeps the decoded image at
