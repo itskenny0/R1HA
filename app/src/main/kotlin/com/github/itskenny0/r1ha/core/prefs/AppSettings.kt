@@ -418,16 +418,23 @@ data class IntegrationsSettings(
     val haSyncPromptSeen: Boolean = false,
     /**
      * Sync categories the user has explicitly opted OUT of. Stored as
-     * [com.github.itskenny0.r1ha.core.sync.SyncCategory] enum names. Empty
-     * (the default) means every category syncs when [haSyncEnabled] is on;
-     * adding an entry preserves that category's local values across pull/push
+     * [com.github.itskenny0.r1ha.core.sync.SyncCategory] enum names.
+     * Adding an entry preserves that category's local values across pull/push
      * cycles (Sync UI surfaces this as a switch per category).
+     *
+     * Default: `WHEEL_INPUT` is excluded. Wheel step size, acceleration
+     * curve, invert direction, and key bindings are physical preferences
+     * that vary device-to-device — a hardware wheel on the R1 wants a
+     * different step than a fingertip-driven phone install, and key bindings
+     * tend to be tied to the specific hardware buttons available. Users who
+     * want to share these can flip the WHEEL_INPUT switch back on in
+     * Settings → Sync (or during the onboarding "pick what to sync" step).
      *
      * Unknown names (added/removed across versions) are silently ignored by
      * the sync filter, so a future build that introduces a new category
      * decodes old settings cleanly.
      */
-    val haSyncExcludedCategories: Set<String> = emptySet(),
+    val haSyncExcludedCategories: Set<String> = setOf("WHEEL_INPUT"),
 )
 
 /**

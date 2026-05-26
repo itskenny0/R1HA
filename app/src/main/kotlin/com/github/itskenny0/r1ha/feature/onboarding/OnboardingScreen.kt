@@ -61,29 +61,91 @@ fun OnboardingScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
 
-    // Navigate away as soon as tokens are stored.
+    // Sync onboarding step gate. Authentication completing (OAuth Done OR
+    // LLAT-write-detected-on-resume) flips this true; the sync step renders
+    // until the user makes a choice, then we call onComplete().
+    var awaitingSyncChoice by rememberSaveable { mutableStateOf(false) }
+    val syncScope = androidx.compose.runtime.rememberCoroutineScope()
+
     LaunchedEffect(state) {
-        if (state is OnboardingViewModel.State.Done) onComplete()
+        if (state is OnboardingViewModel.State.Done) awaitingSyncChoice = true
     }
 
     // The LLAT escape hatch saves directly to TokenStore without
     // running the OAuth state machine, so OnboardingViewModel never
     // transitions to Done. Observe the activity lifecycle and re-check
     // token presence on ON_RESUME — when the user comes back from the
-    // LLAT screen with a freshly-saved token, fire onComplete so they
-    // land on the card stack instead of being stranded on the URL form.
+    // LLAT screen with a freshly-saved token, route through the sync
+    // step so they get the same offer fresh OAuth users do.
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val resumeScope = androidx.compose.runtime.rememberCoroutineScope()
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 resumeScope.launch {
-                    if (tokens.load() != null) onComplete()
+                    if (tokens.load() != null) awaitingSyncChoice = true
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Render the sync step on top of whatever state the rest of the screen
+    // is in (it covers fullscreen anyway). Persisting the user's choice
+    // flips haSyncPromptSeen so the post-launch HaSyncOnboardingPrompt
+    // doesn't fire again on first card-stack render.
+    if (awaitingSyncChoice) {
+        com.github.itskenny0.r1ha.feature.sync.SyncOnboardingStep(
+            onAcceptAll = {
+                syncScope.launch {
+                    settings.update { s ->
+                        s.copy(
+                            integrations = s.integrations.copy(
+                                haSyncEnabled = true,
+                                // Recommended default — everything except
+                                // wheel + input, which is per-device.
+                                haSyncExcludedCategories = setOf(
+                                    com.github.itskenny0.r1ha.core.sync.SyncCategory.WHEEL_INPUT.name,
+                                ),
+                                haSyncPromptSeen = true,
+                            ),
+                        )
+                    }
+                    com.github.itskenny0.r1ha.core.util.Toaster.show(
+                        "Sync on (wheel + input stay local). Refine in Settings → Sync.",
+                    )
+                    onComplete()
+                }
+            },
+            onAcceptWithExclusions = { excludedNames ->
+                syncScope.launch {
+                    settings.update { s ->
+                        s.copy(
+                            integrations = s.integrations.copy(
+                                haSyncEnabled = true,
+                                haSyncExcludedCategories = excludedNames,
+                                haSyncPromptSeen = true,
+                            ),
+                        )
+                    }
+                    onComplete()
+                }
+            },
+            onDecline = {
+                syncScope.launch {
+                    settings.update { s ->
+                        s.copy(
+                            integrations = s.integrations.copy(
+                                haSyncPromptSeen = true,
+                            ),
+                        )
+                    }
+                    onComplete()
+                }
+            },
+        )
+        return
     }
 
     when (val s = state) {
