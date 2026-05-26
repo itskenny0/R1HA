@@ -179,6 +179,19 @@ fun CardStackScreen(
             onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
         )
     }
+    // Target page-id pushed from the tab strip's chip taps. Lives at screen scope
+    // because the chip strip and the horizontal pager render in different scopes
+    // (chips above the pager); the inner-branch composable that owns the pager
+    // collects this flow and animates the pager directly. Driving the pager
+    // straight from the tap avoids the round-trip through the settings store and
+    // the activePageId LaunchedEffect, which left rapid taps stranded an extra
+    // page short.
+    val tabTapRequests = remember {
+        kotlinx.coroutines.flow.MutableSharedFlow<String>(
+            extraBufferCapacity = 4,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+    }
     // Sliding-window of wheel timestamps for the nav acceleration ramp. Mirrors the
     // VM's own deque (which accelerates scalar percent steps) but lives at the screen
     // layer because navigation is a screen concern, not a per-card one.
@@ -675,7 +688,19 @@ fun CardStackScreen(
                     horizontalPagerState, state.activePageId, pageIds,
                 ) {
                     val idx = state.pages.indexOfFirst { it.id == state.activePageId }
-                    if (idx >= 0 && idx != horizontalPagerState.targetPage) {
+                    if (idx < 0) return@LaunchedEffect
+                    // If a scroll is already in flight (user tapped a chip /
+                    // pressed PAGE_LEFT/RIGHT / swiped), the original source
+                    // already chose a target and is animating toward it.
+                    // Calling animateScrollToPage again here cancels that
+                    // in-flight animation and re-aims from the current visual
+                    // offset — on rapid input that left the pager stranded
+                    // an extra page short, which the user perceived as a
+                    // "back one page" race. Skip and trust the existing
+                    // scroll; settledPage will write activePageId back when
+                    // it lands.
+                    if (horizontalPagerState.isScrollInProgress) return@LaunchedEffect
+                    if (idx != horizontalPagerState.targetPage) {
                         horizontalPagerState.animateScrollToPage(idx)
                     }
                 }
@@ -713,6 +738,24 @@ fun CardStackScreen(
                     snapshotFlow { horizontalPagerState.isScrollInProgress }
                         .distinctUntilChanged()
                         .collect { horizontalPagerAnimating.value = it }
+                }
+                // Tab-chip tap consumer: drives the pager directly. Same
+                // child-Job cancellation pattern as the hardware key handler
+                // so that a rapid sequence of taps (re-targeting mid-
+                // animation) cancels the prior scroll cleanly rather than
+                // leaving an in-flight animateScrollToPage CancellationException
+                // to kill the collector.
+                androidx.compose.runtime.LaunchedEffect(horizontalPagerState, pageIds) {
+                    var tabScrollJob: kotlinx.coroutines.Job? = null
+                    tabTapRequests.collect { id ->
+                        val targetIdx = state.pages.indexOfFirst { it.id == id }
+                        if (targetIdx >= 0 && targetIdx != horizontalPagerState.targetPage) {
+                            tabScrollJob?.cancel()
+                            tabScrollJob = launch {
+                                horizontalPagerState.animateScrollToPage(targetIdx)
+                            }
+                        }
+                    }
                 }
                 // Hardware-key actions that target the card stack: CARD_UP/DOWN
                 // push a ±1 delta into the same pagerNavRequests channel the
@@ -752,9 +795,18 @@ fun CardStackScreen(
                             com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_LEFT -> {
                                 pageScrollJob?.cancel()
                                 pageScrollJob = launch {
-                                    val target = (horizontalPagerState.currentPage - 1)
-                                        .coerceAtLeast(0)
-                                    if (target != horizontalPagerState.currentPage) {
+                                    // Compute the next target relative to where
+                                    // the pager is HEADING (targetPage), not
+                                    // where it currently sits (currentPage).
+                                    // currentPage lags during an in-flight
+                                    // animation, so a rapid second PAGE_LEFT
+                                    // would otherwise read the same source
+                                    // page as the first and re-aim at the
+                                    // same target — the user spam-presses and
+                                    // only advances once.
+                                    val from = horizontalPagerState.targetPage
+                                    val target = (from - 1).coerceAtLeast(0)
+                                    if (target != from) {
                                         horizontalPagerState.animateScrollToPage(target)
                                     }
                                 }
@@ -763,9 +815,9 @@ fun CardStackScreen(
                                 pageScrollJob?.cancel()
                                 pageScrollJob = launch {
                                     val last = (state.pages.size - 1).coerceAtLeast(0)
-                                    val target = (horizontalPagerState.currentPage + 1)
-                                        .coerceAtMost(last)
-                                    if (target != horizontalPagerState.currentPage) {
+                                    val from = horizontalPagerState.targetPage
+                                    val target = (from + 1).coerceAtMost(last)
+                                    if (target != from) {
                                         horizontalPagerState.animateScrollToPage(target)
                                     }
                                 }
@@ -908,7 +960,21 @@ fun CardStackScreen(
                 TabStrip(
                     pages = appSettings.pages,
                     activePageId = appSettings.activePageId,
-                    onTapPage = { id -> vm.setActivePage(id) },
+                    onTapPage = { id ->
+                        // Route through the shared flow rather than the
+                        // settings.update → state.activePageId → LaunchedEffect
+                        // round-trip. That round-trip's LaunchedEffect cancels
+                        // its prior animateScrollToPage on every activePageId
+                        // change, and the cancellation left rapid-tap sequences
+                        // stranded one page short — what the user perceived as
+                        // "back one page." vm.setActivePage still fires so the
+                        // active tab highlight updates immediately; the
+                        // LaunchedEffect that observes activePageId is now
+                        // gated by isScrollInProgress and stays out of the way
+                        // while the pager is already animating from here.
+                        tabTapRequests.tryEmit(id)
+                        vm.setActivePage(id)
+                    },
                     onLongPressPage = { id -> tabManagementForId.value = id },
                     onAddPage = { tabManagementForId.value = NEW_PAGE_SENTINEL },
                     onReorder = { from, to -> vm.reorderPages(from, to) },
