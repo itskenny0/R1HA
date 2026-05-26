@@ -257,6 +257,14 @@ data class EntityState(
     /** Fan-only: `direction` attribute — "forward" or "reverse". Null when
      *  the fan doesn't expose [FanFeature.DIRECTION]. */
     val fanDirection: String? = null,
+    /** Remote-only: `current_activity` attribute. Harmony Hub-style remotes
+     *  populate this; Broadlink RM Mini and other learned-command blasters
+     *  leave it null. */
+    val remoteCurrentActivity: String? = null,
+    /** Remote-only: `activity_list` attribute — list of named activities the
+     *  remote can switch to via `remote.turn_on { activity: <name> }`. Empty
+     *  for learned-command blasters that don't expose activities. */
+    val remoteActivityList: List<String> = emptyList(),
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)

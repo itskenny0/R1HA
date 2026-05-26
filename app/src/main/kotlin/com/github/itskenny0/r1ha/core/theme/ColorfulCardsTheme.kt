@@ -223,7 +223,15 @@ object ColorfulCardsTheme : R1Theme {
                                 accent = accent,
                             )
                         }
-                        else -> Unit
+                        else -> {
+                            if (model.entityState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.REMOTE) {
+                                Spacer(Modifier.height(10.dp))
+                                com.github.itskenny0.r1ha.ui.components.RemotePanel(
+                                    state = model.entityState,
+                                    accent = accent,
+                                )
+                            }
+                        }
                     }
                     Spacer(Modifier.height(10.dp))
                     com.github.itskenny0.r1ha.ui.components.CustomActionsPanel(

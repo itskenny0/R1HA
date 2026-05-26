@@ -717,6 +717,8 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     // Update entities live on the dedicated Updates screen; same niche
     // manual-favorites path applies.
     Domain.UPDATE -> R1.AccentCool
+    // Remote/IR blasters — cool accent matches the cardstack's REMOTE colour.
+    Domain.REMOTE -> R1.AccentCool
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
@@ -749,4 +751,5 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.INPUT_TEXT -> "TEXT"
     Domain.INPUT_DATETIME -> "DATETIME"
     Domain.UPDATE -> "UPDATE"
+    Domain.REMOTE -> "REMOTE"
 }

@@ -138,6 +138,13 @@ data class ServiceCall(
                 // service that pokes the integration to re-poll its source)
                 // so a stray dispatch is a harmless refresh.
                 Domain.UPDATE -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
+                // Remote: wheel doesn't drive an IR blaster's percent; defensive
+                // turn_on/turn_off keeps the call safe if anything ever reaches here.
+                Domain.REMOTE -> ServiceCall(
+                    target,
+                    if (clamped == 0) "turn_off" else "turn_on",
+                    JsonObject(emptyMap()),
+                )
             }
         }
 
@@ -387,6 +394,15 @@ data class ServiceCall(
             // dispatches never reach them today. Defensive no-op keeps every
             // generic dispatch path safe if a future surface routes here.
             Domain.UPDATE -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
+            // Remote: tap toggles turn_on/turn_off. For activity hubs (Harmony) the
+            // RemotePanel's activity chips are the real path; for learned-command
+            // blasters the user wires custom buttons. Tap on the card itself just
+            // flips the integration listener.
+            Domain.REMOTE -> ServiceCall(
+                target,
+                if (isOn) "turn_off" else "turn_on",
+                JsonObject(emptyMap()),
+            )
         }
 
         /**
@@ -397,7 +413,7 @@ data class ServiceCall(
          */
         fun setSwitch(target: EntityId, on: Boolean): ServiceCall = when (target.domain) {
             Domain.LIGHT, Domain.FAN, Domain.HUMIDIFIER, Domain.CLIMATE, Domain.WATER_HEATER,
-            Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION -> ServiceCall(
+            Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION, Domain.REMOTE -> ServiceCall(
                 target,
                 if (on) "turn_on" else "turn_off",
                 JsonObject(emptyMap()),
@@ -546,6 +562,31 @@ data class ServiceCall(
             target,
             "set_direction",
             buildJsonObject { put("direction", JsonPrimitive(direction)) },
+        )
+
+        /** Remote `send_command` — fires a learned IR / RF command by name.
+         *  Optional `device` slot when the integration scopes commands per
+         *  sub-device (e.g. Broadlink `device: "tv"`, `command: "power"`).
+         *  Pass null for `device` when the command lives at the remote root. */
+        fun remoteSendCommand(
+            target: EntityId,
+            command: String,
+            device: String? = null,
+        ): ServiceCall = ServiceCall(
+            target,
+            "send_command",
+            buildJsonObject {
+                put("command", JsonPrimitive(command))
+                if (device != null) put("device", JsonPrimitive(device))
+            },
+        )
+
+        /** Remote `turn_on` activity — used by Harmony Hub / activity remotes
+         *  to switch to a named activity (Watch TV, Listen to Music, etc.). */
+        fun remoteActivate(target: EntityId, activity: String): ServiceCall = ServiceCall(
+            target,
+            "turn_on",
+            buildJsonObject { put("activity", JsonPrimitive(activity)) },
         )
 
         /**

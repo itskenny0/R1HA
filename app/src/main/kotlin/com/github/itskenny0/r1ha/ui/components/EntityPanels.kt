@@ -562,6 +562,54 @@ fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
 }
 
 /**
+ * Remote / IR blaster panel. Two shapes depending on what HA's integration
+ * exposes:
+ *  - Activity-based remotes (Harmony Hub, ESPHome IR with activities) — render
+ *    one chip per `activity_list` entry; tap fires `remote.turn_on` with the
+ *    activity name. Current activity highlights.
+ *  - Learned-command blasters (Broadlink RM Mini, Xiaomi IR) — HA doesn't
+ *    expose learned commands as state attributes, so we render a hint pointing
+ *    the user at the per-card custom buttons feature (long-press card →
+ *    CUSTOMIZE → CUSTOM BUTTONS). Each chip becomes a `remote.send_command`.
+ */
+@Composable
+fun RemotePanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    if (state.id.domain != Domain.REMOTE) return
+    val dispatch = LocalOnEntityCall.current
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (state.remoteActivityList.isNotEmpty()) {
+            Text(text = "ACTIVITY", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                state.remoteActivityList.forEach { activity ->
+                    PanelChip(
+                        label = activity.uppercase(),
+                        accent = accent,
+                        selected = state.remoteCurrentActivity.equals(activity, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(ServiceCall.remoteActivate(state.id, activity))
+                        },
+                    )
+                }
+            }
+        } else {
+            // No activity list — likely a learned-command blaster. Surface the
+            // discovery hint once below the card so users find the custom
+            // buttons path rather than assuming the app can't drive IR at all.
+            Text(
+                text = "Add IR commands via long-press → CUSTOMIZE → CUSTOM BUTTONS. Service: remote.send_command, data: {\"command\":\"<learned name>\"}.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+/**
  * Per-card user-defined action buttons. Reads the entity's [EntityOverride.customActions]
  * from the CompositionLocal map and renders one chip per entry; tap fires the configured
  * service via [LocalOnCustomServiceCall].

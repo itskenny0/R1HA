@@ -708,6 +708,13 @@ class DefaultHaRepository(
             // screen can read isOn as "update available" without touching
             // attributesJson — useful for any future status surfacing.
             Domain.UPDATE -> stateStr.equals("on", ignoreCase = true)
+            // Remote/IR blasters: "on" when the integration's listener is
+            // active. Broadlink and most learned-command blasters report "on"
+            // by default; activity hubs (Harmony) report the activity name
+            // when running, "off" when idle. Treat anything non-off as on so
+            // the chrome pill reads sensibly.
+            Domain.REMOTE -> !stateStr.equals("off", ignoreCase = true) &&
+                stateStr != "unavailable" && stateStr != "unknown"
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
         val pct = computePercentWithState(id.domain, raw.attributes, stateStr)
@@ -844,6 +851,10 @@ class DefaultHaRepository(
                 raw.attributes["oscillating"].asBoolean() else null,
             fanDirection = if (id.domain == Domain.FAN)
                 raw.attributes["direction"].asString() else null,
+            remoteCurrentActivity = if (id.domain == Domain.REMOTE)
+                raw.attributes["current_activity"].asString() else null,
+            remoteActivityList = if (id.domain == Domain.REMOTE)
+                extractStringList(raw.attributes["activity_list"]) else emptyList(),
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -916,7 +927,9 @@ class DefaultHaRepository(
         // that's surfaced on the dedicated Updates screen — not a scalar
         // brightness/volume-style percent, so we leave the card-stack
         // percent null.
-        Domain.UPDATE -> null
+        Domain.UPDATE,
+        // Remote — IR / RF send-only; no scalar.
+        Domain.REMOTE -> null
     }
 
     /**
@@ -1006,7 +1019,9 @@ class DefaultHaRepository(
         Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> null
         // Update entities — version diff lives in attributes that the Updates
         // screen reads directly; no card-stack raw value to expose.
-        Domain.UPDATE -> null
+        Domain.UPDATE,
+        // Remote — IR / RF send-only; no numeric raw.
+        Domain.REMOTE -> null
     }
 
     /**
@@ -1089,6 +1104,9 @@ class DefaultHaRepository(
         // the card stack — return false so the Favourites picker filters them
         // out of "controllable" buckets, just like sensors.
         Domain.UPDATE -> false
+        // Remote — IR / RF blasters; send-only, no scalar. Renders as a
+        // switch card with the RemotePanel for activities + custom buttons.
+        Domain.REMOTE -> false
     }
 
     override fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>> =
@@ -1237,6 +1255,9 @@ class DefaultHaRepository(
                         Domain.TIMER -> stateStr.equals("active", ignoreCase = true)
                         // Update entity: "on" = update available.
                         Domain.UPDATE -> stateStr.equals("on", ignoreCase = true)
+                        // Remote: anything non-off / available counts as on.
+                        Domain.REMOTE -> !stateStr.equals("off", ignoreCase = true) &&
+                            stateStr != "unavailable" && stateStr != "unknown"
                     },
                     percent = pct,
                     raw = rawNum,
@@ -1356,6 +1377,10 @@ class DefaultHaRepository(
                         attrs["oscillating"].asBoolean() else null,
                     fanDirection = if (id.domain == Domain.FAN)
                         attrs["direction"].asString() else null,
+                    remoteCurrentActivity = if (id.domain == Domain.REMOTE)
+                        attrs["current_activity"].asString() else null,
+                    remoteActivityList = if (id.domain == Domain.REMOTE)
+                        extractStringList(attrs["activity_list"]) else emptyList(),
                 )
                 }.getOrElse { t ->
                     R1Log.w("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")

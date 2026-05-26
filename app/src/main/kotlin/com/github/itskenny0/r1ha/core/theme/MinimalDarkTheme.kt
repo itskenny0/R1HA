@@ -215,7 +215,18 @@ object MinimalDarkTheme : R1Theme {
                                 accent = accent,
                             )
                         }
-                        else -> Unit
+                        else -> {
+                            // Domain-agnostic panels — RemotePanel no-ops when
+                            // the entity isn't a remote, so cheaper than a
+                            // dedicated Glyph enum entry just for IR blasters.
+                            if (model.entityState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.REMOTE) {
+                                Spacer(Modifier.height(10.dp))
+                                com.github.itskenny0.r1ha.ui.components.RemotePanel(
+                                    state = model.entityState,
+                                    accent = accent,
+                                )
+                            }
+                        }
                     }
                     // Per-card custom action buttons — render under any
                     // domain-specific panel above. The composable itself no-ops

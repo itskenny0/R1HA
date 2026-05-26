@@ -138,6 +138,18 @@ enum class Domain(val prefix: String) {
      * surfaced from a dedicated review screen instead.
      */
     UPDATE("update"),
+    /**
+     * IR / RF blasters and activity remotes. Two flavours land here:
+     *  - Activity remotes (Harmony Hub, ESPHome IR with activities) — expose
+     *    `current_activity` + `activity_list`; the RemotePanel renders one chip
+     *    per activity, tap fires `remote.turn_on { activity: "<name>" }`.
+     *  - Learned-command blasters (Broadlink RM Mini, Xiaomi IR) — commands aren't
+     *    exposed via state attributes (they live in HA's storage per device), so
+     *    the panel surfaces a hint pointing the user at the per-card custom
+     *    actions feature: add chips with service `remote.send_command` and
+     *    data `{"command":"<learned name>"}`.
+     */
+    REMOTE("remote"),
     ;
 
     /** Action-only domains — UI renders them as fire-and-forget ActionCard tiles. */

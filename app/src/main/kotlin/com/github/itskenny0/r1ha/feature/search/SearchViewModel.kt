@@ -75,6 +75,9 @@ class SearchViewModel(
         // with them, but they remain findable via the ALL chip + free-text
         // search for users who know the entity_id.
         Domain.UPDATE -> Bucket.OTHER
+        // Remote/IR blasters control devices via send_command — sit them
+        // under CONTROLS alongside switches and the like.
+        Domain.REMOTE -> Bucket.CONTROLS
     }
 
     @androidx.compose.runtime.Stable

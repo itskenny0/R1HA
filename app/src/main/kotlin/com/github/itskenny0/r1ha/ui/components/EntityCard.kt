@@ -79,6 +79,10 @@ fun EntityCard(
         // glyph keeps the when exhaustive without crashing if a user pins
         // one manually via raw favourites JSON.
         Domain.UPDATE -> CardRenderModel.Glyph.SWITCH
+        // Remote (IR / RF blasters, activity hubs) — same SWITCH glyph as the
+        // generic on/off domains; the RemotePanel below the card carries the
+        // activity-chip / custom-button content.
+        Domain.REMOTE -> CardRenderModel.Glyph.SWITCH
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -123,6 +127,9 @@ fun EntityCard(
         Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> CardRenderModel.AccentRole.NEUTRAL
         // Update entity defensive accent — see the glyph branch for context.
         Domain.UPDATE -> CardRenderModel.AccentRole.COOL
+        // Remote — cool accent. IR/RF is a "send" affordance like media transport,
+        // and the colour cue mirrors media_player so the deck reads consistently.
+        Domain.REMOTE -> CardRenderModel.AccentRole.COOL
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour
@@ -237,7 +244,13 @@ fun EntityCard(
             SwitchCard(
                 state = state,
                 accent = resolvedAccent,
-                domainLabel = domainLabel(glyph),
+                // REMOTE shares the SWITCH glyph but should read as "REMOTE"
+                // on the card chip — otherwise an IR blaster reads as a
+                // generic switch and the user can't tell at a glance what
+                // the card represents. Domain-specific override here, all
+                // other glyphs fall through to the glyph-derived label.
+                domainLabel = if (state.id.domain == Domain.REMOTE) "REMOTE"
+                              else domainLabel(glyph),
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 onTapToggle = onTapToggle,
                 onSetOn = onSetOn ?: { _ -> onTapToggle() },
