@@ -123,21 +123,34 @@ class DeviceViewModel(app: App) : AndroidViewModel(app) {
         }.getOrNull()
     }
 
-    init {
-        refresh()
-        // Listen for torch state changes initiated by other apps so
-        // our card reflects external flips. The callback fires on a
-        // background thread; we hop back to the main thread via the
-        // viewModelScope's default Dispatcher.
-        runCatching {
-            cameraManager?.registerTorchCallback(torchCallback, null)
-        }
-    }
-
+    // Declared BEFORE [init] so the property initializer runs first — Kotlin
+    // executes property initializers and init blocks in textual order, so a
+    // torchCallback declared after `init { registerTorchCallback(...) }` would
+    // be null at registration time. We previously passed that null straight
+    // into CameraManager; some Android builds validate and throw (caught here),
+    // others silently accept it and later crash on a background thread when
+    // the torch state changes and the framework tries to invoke a method on
+    // the null callback — that uncaught NPE took the whole app down whenever
+    // the user opened the Device screen.
     private val torchCallback = object : CameraManager.TorchCallback() {
         override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
             if (cameraId == torchCameraId) {
                 _ui.value = _ui.value.copy(flashlightOn = enabled)
+            }
+        }
+    }
+
+    init {
+        refresh()
+        // Listen for torch state changes initiated by other apps so
+        // our card reflects external flips. Skipped on devices that don't
+        // expose a torch-capable camera at all — registerTorchCallback would
+        // either fail or fire zero events, and getting torchCameraId here
+        // forces the lazy to resolve before refresh()'s async fire reaches
+        // the same property (avoiding a benign double-evaluation).
+        runCatching {
+            if (torchCameraId != null) {
+                cameraManager?.registerTorchCallback(torchCallback, null)
             }
         }
     }
