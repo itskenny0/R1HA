@@ -21,6 +21,9 @@ object Routes {
     const val SETTINGS_KEY_BINDINGS = "settings/key_bindings"
     /** Multi-device settings sync — opt-in toggle, interval, manual triggers, stats. */
     const val SETTINGS_SYNC = "settings/sync"
+    /** IoT Camera Mode — opt-in surface that turns this device into an HA
+     *  camera entity via MJPEG and/or MQTT auto-discovery. Per-device only. */
+    const val SETTINGS_IOT_CAMERA = "settings/iot_camera"
     const val THEME_PICKER = "theme_picker"
     const val ABOUT = "about"
     const val DEV_MENU = "dev_menu"

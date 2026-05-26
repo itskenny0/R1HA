@@ -72,6 +72,12 @@ enum class SettingsCategory {
      *  because it's a discoverable feature with cross-device implications,
      *  not a per-surface knob. */
     SYNC,
+    /** IoT Camera Mode — opt-in surface that turns this device into an HA
+     *  camera entity via MJPEG and/or MQTT auto-discovery. Top-level slot
+     *  because it's a discoverable, distinct feature with security
+     *  implications (opens a port, holds the camera) — burying it under
+     *  Integrations would be a UX regression. */
+    IOT_CAMERA,
     ADVANCED,
     BROWSE,
 }
@@ -101,6 +107,7 @@ private fun categoryTitle(category: SettingsCategory): String = when (category) 
     SettingsCategory.BEHAVIOUR -> "BEHAVIOUR"
     SettingsCategory.INTEGRATIONS -> "INTEGRATIONS"
     SettingsCategory.SYNC -> "SYNC"
+    SettingsCategory.IOT_CAMERA -> "IOT CAMERA MODE"
     SettingsCategory.ADVANCED -> "ADVANCED"
     SettingsCategory.BROWSE -> "BROWSE"
 }
@@ -461,6 +468,22 @@ fun SettingsScreen(
                         },
                         modifiedCount = 0,
                         onClick = { onOpenCategory(SettingsCategory.SYNC) },
+                    )
+                }
+                item {
+                    GroupCard(
+                        title = "IoT Camera Mode",
+                        subtitle = if (s.iotCamera.enabled) {
+                            val sinks = buildList {
+                                if (s.iotCamera.mjpegEnabled) add("MJPEG")
+                                if (s.iotCamera.mqttEnabled) add("MQTT")
+                            }
+                            "ON · ${if (sinks.isEmpty()) "no sinks" else sinks.joinToString(" + ")}"
+                        } else {
+                            "Stream the device camera to Home Assistant"
+                        },
+                        modifiedCount = 0,
+                        onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
                     )
                 }
                 item {

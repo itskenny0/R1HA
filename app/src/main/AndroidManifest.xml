@@ -12,6 +12,17 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
+    <!-- Camera access for IoT Camera Mode — opt-in feature that turns the
+         device's camera into a Home Assistant camera entity (MJPEG over HTTP
+         and/or MQTT auto-discovery). The runtime permission is only requested
+         when the user enables the master toggle under Settings → IoT Camera
+         Mode; installs that never flip it on never see the prompt. Hardware
+         is declared optional so the app still installs on devices without a
+         camera (a few low-end tablets, headless dev boxes). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.any" android:required="false"/>
+
     <!-- NFC reading. Optional hardware: the NFC features still work when
          present but we don't require it, so the app installs on phones
          and tablets that don't ship with an NFC controller. -->
@@ -42,6 +53,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:targetApi="34"/>
+    <!-- Foreground-service subtype required on Android 14+ for any FGS that
+         actively holds the camera open. The IoT Camera Mode service uses this
+         type because it must keep the Camera2 session alive while the app is
+         backgrounded (kiosk / desk-tablet use case); without the subtype +
+         permission the OS would crash the service at startForeground(). -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_CAMERA"
         tools:targetApi="34"/>
     <!-- Needed for the in-app self-update flow: after we download a newer APK from
          GitHub Releases we fire ACTION_VIEW with a content:// URI, which Android's
@@ -164,6 +183,19 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="false"/>
         </service>
+
+        <!-- IoT Camera Mode foreground service. Owns the Camera2 session and
+             both sinks (MJPEG HTTP server + MQTT publisher) so frames keep
+             flowing while the app is backgrounded. foregroundServiceType is
+             "camera" because the service holds the camera open; Android 14+
+             requires both the type declaration here and the matching
+             FOREGROUND_SERVICE_CAMERA runtime permission above. Off by
+             default; the App.onCreate observer brings it up only when
+             integrations.iotCamera.enabled flips true. -->
+        <service
+            android:name=".core.iotcamera.IotCameraService"
+            android:exported="false"
+            android:foregroundServiceType="camera"/>
 
         <!-- Webhook listener foreground service. Opens a configurable TCP port
              (default 8765) so HA can POST automation webhooks at the device.

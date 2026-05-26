@@ -619,6 +619,99 @@ data class ServerConfig(
 )
 
 /**
+ * IoT Camera Mode — turn this device into a camera entity that Home Assistant
+ * can render in its frontend. Two parallel sinks, each independently
+ * toggleable so the user can run MJPEG without MQTT or vice versa:
+ *
+ *   - MJPEG: an HTTP server on the device exposes `multipart/x-mixed-replace`
+ *     at `http://device:<port>/stream` and a single-frame JPEG at `/snapshot`.
+ *     HA's `generic` camera platform consumes the stream URL; users add it
+ *     once and HA paints a true low-latency live view as long as the device
+ *     is reachable on the LAN. Always Basic-auth'd — the device is a camera,
+ *     the LAN is not always trusted.
+ *
+ *   - MQTT: with auto-discovery on, the device publishes a one-shot retained
+ *     config payload to `<discoveryPrefix>/camera/<uniqueId>/config` so HA
+ *     auto-registers the camera entity, then publishes raw JPEG bytes per
+ *     frame to the image topic. Works through NAT (device is the publisher),
+ *     trades latency for reach — practical at the few-fps end of the dial.
+ *
+ * Everything in this struct is per-device: ports, credentials, lens choice,
+ * broker auth are all things you tune for the hardware in front of you, not
+ * mirror across installs. The whole block is excluded from [AppBackup] /
+ * settings sync for that reason (an MJPEG password leaving the device would
+ * be a real security regression).
+ *
+ * Default is OFF across the board: enabling consumes the camera + opens a
+ * foreground notification + binds a TCP port, so the user should opt in
+ * deliberately. Sub-toggles default off so an over-eager master flip doesn't
+ * spray frames at a broker the user hasn't configured yet.
+ */
+@Stable
+@kotlinx.serialization.Serializable
+data class IotCameraSettings(
+    /** Master switch. Off → service stops, camera released, sinks torn down. */
+    val enabled: Boolean = false,
+    /**
+     * Camera2 logical-camera id selected by the user. Empty = pick the first
+     * back-facing camera at start time. Identifiers are the `cameraIdList`
+     * strings produced by the device's `CameraManager`; they're stable across
+     * boots on a given device but vary across OEMs so we don't hardcode.
+     *
+     * Multi-camera devices (phones with wide + tele + ultrawide on the back,
+     * tablets with stereo fronts) expose every lens as its own logical id;
+     * the settings picker walks the list with friendly labels so the user
+     * can pick the exact lens rather than just FRONT/BACK.
+     */
+    val cameraId: String = "",
+    /** Output JPEG width (px). The picker offers the configured camera's
+     *  supported output sizes; freeform integer here so a future build that
+     *  expands the picker doesn't need a schema change. */
+    val width: Int = 1280,
+    val height: Int = 720,
+    /**
+     * Target frames-per-second. Combined with width/height/quality this is
+     * effectively the bitrate dial: the encoder runs at this rate, the sinks
+     * fan out each encoded frame. No upper cap — the user asked for full
+     * control over what the hardware will attempt, even on R1 (which will
+     * heat up at 30 fps but that's their call).
+     */
+    val fps: Int = 10,
+    /** JPEG quality 1..100 — the second half of the bitrate dial. 70 is a
+     *  reasonable visual/byte trade-off for surveillance-ish streams. */
+    val jpegQuality: Int = 70,
+
+    /** MJPEG sink: HTTP server with Basic auth on the device. */
+    val mjpegEnabled: Boolean = false,
+    /** Unprivileged TCP port. 8181 to stay clear of the webhook default
+     *  (8765) and the usual web/dev ports. */
+    val mjpegPort: Int = 8181,
+    /** Basic-auth credentials surfaced in HA's generic camera URL field. The
+     *  password is generated on first enable (so a freshly-flipped install
+     *  isn't broadcasting an open camera onto the LAN) and the user can
+     *  rotate it from the settings screen. */
+    val mjpegUsername: String = "r1ha",
+    val mjpegPassword: String = "",
+
+    /** MQTT sink: publish frames to a topic with HA auto-discovery config. */
+    val mqttEnabled: Boolean = false,
+    /** Broker config — reuses the same MQTT host/port/auth as the existing
+     *  publish surface (under Advanced → MQTT) so the user configures the
+     *  broker once. This struct only carries the camera-specific bits below;
+     *  the actual `mqttHost`/`mqttPort` etc. live on [AdvancedSettings]. */
+    val mqttDiscoveryPrefix: String = "homeassistant",
+    /** Stable id under the discovery prefix. Combined with [mqttObjectId] to
+     *  form the discovery topic; defaults to a per-install random suffix so
+     *  two devices on the same broker don't collide unless the user
+     *  explicitly aligns them. Materialised on first enable. */
+    val mqttNodeId: String = "",
+    val mqttObjectId: String = "camera",
+    /** Friendly name HA shows for the auto-discovered entity. Empty =
+     *  derive from `Build.MODEL` at start time. */
+    val entityName: String = "",
+)
+
+/**
  * One tab on the card stack — a named page of entity IDs that get rendered as a
  * vertical deck of cards. The user can swipe left/right between pages to switch
  * decks; within a deck, swipe up/down navigates cards as before. Pages let users
@@ -748,4 +841,12 @@ data class AppSettings(
      * that captures the next physical key press via [KeyCaptureBus].
      */
     val keyBindings: Map<String, List<Int>> = emptyMap(),
+    /**
+     * IoT Camera Mode — turn the device's camera into an HA camera entity
+     * via MJPEG over HTTP and/or MQTT auto-discovery. Per-device by design
+     * (ports + credentials + lens choice are physical) so this block is
+     * excluded from the sync payload + portable [AppBackup] — copying an
+     * MJPEG password between devices would be a regression.
+     */
+    val iotCamera: IotCameraSettings = IotCameraSettings(),
 )

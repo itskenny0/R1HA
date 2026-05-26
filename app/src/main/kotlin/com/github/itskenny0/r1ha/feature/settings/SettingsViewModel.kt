@@ -203,6 +203,11 @@ class SettingsViewModel(
     fun updateIntegrations(transform: (com.github.itskenny0.r1ha.core.prefs.IntegrationsSettings) -> com.github.itskenny0.r1ha.core.prefs.IntegrationsSettings) =
         update { it.copy(integrations = transform(it.integrations)) }
 
+    /** Generic mutator for IoT Camera Mode (device-local camera streaming
+     *  config). Used by the IOT_CAMERA settings subpage. */
+    fun updateIotCamera(transform: (com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) -> com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) =
+        update { it.copy(iotCamera = transform(it.iotCamera)) }
+
     // ── Appearance ──────────────────────────────────────────────────────────
 
     fun setTheme(themeId: ThemeId) = update { it.copy(theme = themeId) }

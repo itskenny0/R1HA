@@ -163,6 +163,7 @@ class SettingsRepository private constructor(
          * users can intentionally unbind a key without resetting the rest.
          */
         val keyBindingsJson = stringPreferencesKey("input.key_bindings.json")
+        val iotCameraJson = stringPreferencesKey("iot_camera.json")
         val uiTextHistoryLen = intPreferencesKey("ui.text_history_length")
         val uiHideCardTail = booleanPreferencesKey("ui.hide_card_tail")
         val uiMaxDecimals = intPreferencesKey("ui.max_decimals")
@@ -322,6 +323,13 @@ class SettingsRepository private constructor(
                 pages = decodePages(p[K.pagesJson], favorites),
                 activePageId = p[K.activePageId].orEmpty(),
                 keyBindings = decodeKeyBindings(p[K.keyBindingsJson]),
+                iotCamera = p[K.iotCameraJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(IotCameraSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: IotCameraSettings(),
             )
         }
         .onEach { s ->
@@ -450,6 +458,10 @@ class SettingsRepository private constructor(
                 )
                 p[K.activePageId] = next.activePageId
                 p[K.keyBindingsJson] = encodeKeyBindings(next.keyBindings)
+                p[K.iotCameraJson] = advancedJson.encodeToString(
+                    IotCameraSettings.serializer(),
+                    next.iotCamera,
+                )
             }
             R1Log.i("SettingsRepo.update", "DataStore edit completed; next.server=${next.server?.url ?: "null"}")
         } catch (t: Throwable) {

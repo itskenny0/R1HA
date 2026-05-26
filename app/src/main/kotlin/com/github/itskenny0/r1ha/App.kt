@@ -241,6 +241,37 @@ class App : Application() {
                 }
         }
 
+        // IoT Camera Mode — observe the master toggle. The service itself
+        // re-reads structural settings (camera id, resolution, fps, sink
+        // toggles) from the same flow, so flipping any sub-toggle just
+        // restarts the pipeline; the App-level observer only decides
+        // service alive vs dead. Before starting, seed the per-device
+        // secrets (random MJPEG password + node id) if the user hasn't
+        // set them — never broadcast an open MJPEG stream.
+        appScope.launch {
+            graph.settings.settings
+                .map { it.iotCamera.enabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (enabled) {
+                        // Seed missing per-device fields under the settings
+                        // mutex so a concurrent edit can't clobber what we
+                        // just wrote. No-op when the user already set them.
+                        graph.settings.update { current ->
+                            val c = current.iotCamera
+                            val patched = c.copy(
+                                mjpegPassword = c.mjpegPassword.ifBlank { randomToken(16) },
+                                mqttNodeId = c.mqttNodeId.ifBlank { randomToken(8).lowercase() },
+                            )
+                            if (patched == c) current else current.copy(iotCamera = patched)
+                        }
+                        com.github.itskenny0.r1ha.core.iotcamera.IotCameraService.start(this@App)
+                    } else {
+                        com.github.itskenny0.r1ha.core.iotcamera.IotCameraService.stop(this@App)
+                    }
+                }
+        }
+
         // iBeacon — observe the four backing fields (enabled + UUID + major +
         // minor) together so a UUID change while the toggle is on tears down
         // and re-starts with the new payload. Distinct on the full tuple so
@@ -272,4 +303,12 @@ class App : Application() {
      *  the iBeacon enabled flag + the three identity fields so the settings
      *  observer can react to any combination changing. */
     private data class Quad<A, B, C, D>(val a: A, val b: B, val c: C, val d: D)
+
+    /** Random alphanumeric token. Used to seed the IoT Camera Mode MJPEG
+     *  password + MQTT node id on first enable so the user never broadcasts
+     *  an auth-less stream onto their LAN. */
+    private fun randomToken(length: Int): String {
+        val chars = ('a'..'z') + ('A'..'Z') + ('0'..'9')
+        return (1..length).map { chars.random() }.joinToString("")
+    }
 }
