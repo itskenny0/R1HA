@@ -155,12 +155,15 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { if (it.wheel.invertDirection) "ON" else "OFF" },
     ),
     SettingEntry(
-        id = "wheel.keySource",
+        id = "input.keyBindings",
         category = SettingCategory.INPUT,
-        label = "Wheel key source",
-        description = "Which Android keycode the wheel sends (auto / DPAD / volume)",
-        isDefault = { it.wheel.keySource == defaults.wheel.keySource },
-        currentDisplay = { it.wheel.keySource.name },
+        label = "Key bindings",
+        description = "Per-action key map (press-to-bind for hardware keys)",
+        isDefault = { it.keyBindings.isEmpty() },
+        currentDisplay = {
+            val overridden = it.keyBindings.size
+            if (overridden == 0) "DEFAULT" else "$overridden CUSTOM"
+        },
     ),
 
     // ── Card UI ─────────────────────────────────────────────────────────

@@ -156,14 +156,33 @@ class App : Application() {
             R1Log.i("App.onCreate", "haRepository.start() returned")
         }
         androidx.tracing.Trace.endSection()
-        // Mirror the latest WheelKeySource into a volatile field so MainActivity's
-        // dispatchKeyEvent (which runs on the UI thread and can't suspend) can honour the
-        // user's "Key source" setting synchronously.
+        // Mirror the user's hardware key bindings into a volatile field so MainActivity's
+        // dispatchKeyEvent (which runs on the UI thread and can't suspend) can resolve a
+        // keycode → action synchronously. Missing entries fall back to the built-in
+        // DEFAULT_KEY_BINDINGS; an empty list under a known action explicitly clears that
+        // binding so users can unbind a default they don't want without affecting the rest.
         appScope.launch {
             graph.settings.settings
-                .map { it.wheel.keySource }
+                .map { it.keyBindings }
                 .distinctUntilChanged()
-                .collect { graph.latestKeySource = it }
+                .collect { stored ->
+                    val merged = com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS
+                        .mapKeys { it.key.name }
+                        .toMutableMap()
+                    // Stored entries (even empty lists) authoritatively override the
+                    // default for that action.
+                    for ((name, codes) in stored) merged[name] = codes
+                    val resolved = buildMap {
+                        for ((name, codes) in merged) {
+                            val action = runCatching {
+                                com.github.itskenny0.r1ha.core.input.KeyAction.valueOf(name)
+                            }.getOrNull() ?: continue
+                            put(action, codes)
+                        }
+                    }
+                    graph.latestBindings =
+                        com.github.itskenny0.r1ha.core.input.KeyBindings(resolved)
+                }
         }
         // Honour the background-refresh advanced toggle: schedule or cancel the periodic
         // JobService on every emission so a flip-flop at runtime takes effect on the

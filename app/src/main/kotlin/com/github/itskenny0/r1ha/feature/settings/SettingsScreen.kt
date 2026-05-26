@@ -36,10 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.input.WheelInput
+import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
-import com.github.itskenny0.r1ha.core.prefs.WheelKeySource
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -703,22 +703,11 @@ fun SettingsScreen(
                     onCheckedChange = { vm.setWheelInvert(it) },
                 )
             }
-            item {
-                LabeledControl(label = "Key source") {
-                    SegmentedEnumPicker(
-                        options = WheelKeySource.entries,
-                        selected = s.wheel.keySource,
-                        label = {
-                            when (it) {
-                                WheelKeySource.AUTO -> "AUTO"
-                                WheelKeySource.DPAD -> "D-PAD"
-                                WheelKeySource.VOLUME -> "VOL"
-                            }
-                        },
-                        onSelect = { vm.setWheelKeySource(it) },
-                    )
-                }
-            }
+            // "Key source" picker was superseded by the configurable per-action
+            // key bindings — see Behaviour → Key bindings — which lets users
+            // assign multiple physical keys (DPAD, volume, others) to each
+            // logical action explicitly, instead of toggling a single global
+            // accept-D-pad-vs-volume switch.
 
             }
             item { SectionDivider() }
@@ -946,6 +935,10 @@ fun SettingsScreen(
             }
             item { ToastLogLevelRow(current = s.behavior.toastLogLevel, onSelect = { vm.setToastLogLevel(it) }) }
             item { OrientationModeRow(current = s.behavior.orientationMode, onSelect = { vm.setOrientationMode(it) }) }
+            // Key bindings — per-action map for hardware key presses, with a
+            // press-to-bind dialog for adding new bindings. Sits inside
+            // BEHAVIOUR so it groups with the other input-style settings.
+            item { KeyBindingsRow(s = s, vm = vm) }
             item {
                 SwitchRow(
                     label = "Guest mode (read-only)",
@@ -2071,6 +2064,199 @@ private fun OrientationModeRow(
                         style = R1.labelMicro,
                         color = if (active) R1.Bg else R1.InkSoft,
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Per-action key-binding editor. One row per [com.github.itskenny0.r1ha.core.input.KeyAction]
+ * with the currently-bound keys rendered as removable chips and an ADD button
+ * that opens the press-to-bind dialog. Inline rather than a separate sub-page
+ * so the user can see all actions at once (10 rows total — not a wall).
+ *
+ * Effective bindings = the stored override if present (even if empty); else
+ * the built-in default. This mirrors the merge in [com.github.itskenny0.r1ha.App.onCreate]
+ * so what the user sees here matches what the dispatcher actually applies.
+ */
+@Composable
+private fun KeyBindingsRow(s: AppSettings, vm: SettingsViewModel) {
+    val captureFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.input.KeyAction?>(null)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 10.dp),
+    ) {
+        Text("Key bindings", style = R1.bodyEmph, color = R1.Ink)
+        Text(
+            text = "Tap ADD to assign a hardware key to an action; multiple keys per " +
+                "action are allowed. The wheel still works via the WHEEL UP / DOWN " +
+                "actions — defaults match the historical D-pad + volume behaviour.",
+            style = R1.body,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+        )
+        com.github.itskenny0.r1ha.core.input.KeyAction.entries.forEach { action ->
+            val stored = s.keyBindings[action.name]
+            val effective = stored
+                ?: com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS[action].orEmpty()
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = action.displayLabel.uppercase(),
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable({ captureFor.value = action })
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(text = "ADD", style = R1.labelMicro, color = R1.AccentWarm)
+                    }
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .r1Pressable({ vm.resetKeyBinding(action) })
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                    ) {
+                        Text(text = "RESET", style = R1.labelMicro, color = R1.InkMuted)
+                    }
+                }
+                Text(
+                    text = action.description,
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp, bottom = 4.dp),
+                )
+                if (effective.isEmpty()) {
+                    Text(
+                        text = "UNBOUND",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                } else {
+                    // Horizontal scroll rather than FlowRow because FlowRow is
+                    // an experimental layout API. Chips usually fit a single
+                    // row (default actions bind 1-2 keys); horizontal scroll
+                    // keeps unusual users-with-many-bindings cases readable
+                    // without a wider opt-in surface.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        effective.forEach { code ->
+                            Box(
+                                modifier = Modifier
+                                    .padding(end = 6.dp, top = 4.dp)
+                                    .clip(R1.ShapeS)
+                                    .background(R1.SurfaceMuted)
+                                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                                    .r1Pressable({ vm.removeKeyBinding(action, code) })
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = com.github.itskenny0.r1ha.core.input.keyCodeLabel(code),
+                                        style = R1.labelMicro,
+                                        color = R1.Ink,
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(text = "✕", style = R1.labelMicro, color = R1.InkMuted)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    val target = captureFor.value
+    if (target != null) {
+        KeyCaptureDialog(
+            target = target,
+            onAssigned = { code ->
+                vm.addKeyBinding(target, code)
+                captureFor.value = null
+            },
+            onCancel = { captureFor.value = null },
+        )
+    }
+}
+
+/**
+ * Modal that installs a one-shot [com.github.itskenny0.r1ha.core.input.KeyCaptureBus]
+ * callback, intercepts the next hardware KEY_DOWN, and calls [onAssigned] with
+ * the captured keycode. The dialog also offers a tap-to-cancel affordance so
+ * users who opened it by accident can back out without pressing anything.
+ * Disposes the callback when the dialog leaves composition, so re-binding
+ * doesn't keep eating subsequent key presses.
+ */
+@Composable
+private fun KeyCaptureDialog(
+    target: com.github.itskenny0.r1ha.core.input.KeyAction,
+    onAssigned: (Int) -> Unit,
+    onCancel: () -> Unit,
+) {
+    androidx.compose.runtime.DisposableEffect(target) {
+        com.github.itskenny0.r1ha.core.input.KeyCaptureBus.install { code ->
+            onAssigned(code)
+            true
+        }
+        onDispose { com.github.itskenny0.r1ha.core.input.KeyCaptureBus.clear() }
+    }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onCancel,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "PRESS A KEY",
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "Press the hardware button you want to assign to",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = target.displayLabel.uppercase(),
+                    style = R1.bodyEmph,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .r1Pressable(onCancel)
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(text = "CANCEL", style = R1.labelMicro, color = R1.InkMuted)
                 }
             }
         }

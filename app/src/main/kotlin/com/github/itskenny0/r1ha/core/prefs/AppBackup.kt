@@ -45,8 +45,13 @@ data class AppBackup(
     val wheelStepPercent: Int = 2,
     val wheelAcceleration: Boolean = true,
     val wheelInvertDirection: Boolean = false,
-    val wheelKeySource: WheelKeySource = WheelKeySource.AUTO,
     val wheelAccelerationCurve: AccelerationCurve = AccelerationCurve.MEDIUM,
+    /**
+     * User key bindings. `KeyAction.name` → list of `KeyEvent.KEYCODE_*` codes.
+     * Captured on backup so a restore preserves user-customised hardware
+     * mappings; an empty map means the running build's defaults apply.
+     */
+    val keyBindings: Map<String, List<Int>> = emptyMap(),
 
     val uiDisplayMode: DisplayMode = DisplayMode.PERCENT,
     val uiShowOnOffPill: Boolean = true,
@@ -114,8 +119,8 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     wheelStepPercent = wheel.stepPercent,
     wheelAcceleration = wheel.acceleration,
     wheelInvertDirection = wheel.invertDirection,
-    wheelKeySource = wheel.keySource,
     wheelAccelerationCurve = wheel.accelerationCurve,
+    keyBindings = keyBindings,
     uiDisplayMode = ui.displayMode,
     uiShowOnOffPill = ui.showOnOffPill,
     uiShowAreaLabel = ui.showAreaLabel,
@@ -169,9 +174,9 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             stepPercent = wheelStepPercent,
             acceleration = wheelAcceleration,
             invertDirection = wheelInvertDirection,
-            keySource = wheelKeySource,
             accelerationCurve = wheelAccelerationCurve,
         ),
+        keyBindings = keyBindings,
         ui = UiOptions(
             displayMode = uiDisplayMode,
             showOnOffPill = uiShowOnOffPill,

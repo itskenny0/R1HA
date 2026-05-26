@@ -22,7 +22,6 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
 import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
-import com.github.itskenny0.r1ha.core.prefs.WheelKeySource
 import com.github.itskenny0.r1ha.core.theme.LocalUiOptions
 import com.github.itskenny0.r1ha.core.theme.R1ThemeHost
 import com.github.itskenny0.r1ha.core.util.R1Log
@@ -238,6 +237,39 @@ class MainActivity : ComponentActivity() {
                                 wheelInput = graph.wheelInput,
                             )
                         }
+                        // Route non-wheel key actions (OPEN_SETTINGS, OPEN_ASSIST,
+                        // PAGE_LEFT/RIGHT, RECONNECT, REFRESH, ACTIVATE) into nav /
+                        // repository operations from one place. Lives inside the same
+                        // composition as navController so the NavController is in
+                        // scope. Wheel actions are still handled in dispatchKeyEvent
+                        // itself — they need the synchronous fast-path into
+                        // WheelInput rather than a Flow round-trip.
+                        androidx.compose.runtime.LaunchedEffect(navController) {
+                            com.github.itskenny0.r1ha.core.input.KeyActionBus.events.collect { action ->
+                                when (action) {
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_SETTINGS ->
+                                        navController.navigate(Routes.SETTINGS)
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_ASSIST ->
+                                        navController.navigate(Routes.ASSIST)
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_SEARCH ->
+                                        navController.navigate(Routes.SEARCH)
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_DASHBOARD ->
+                                        navController.navigate(Routes.DASHBOARD)
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.RECONNECT ->
+                                        graph.haRepository.reconnectNow()
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_LEFT,
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.PAGE_RIGHT,
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.ACTIVATE,
+                                    com.github.itskenny0.r1ha.core.input.KeyAction.REFRESH -> {
+                                        // Picked up by per-screen collectors
+                                        // (CardStackScreen for PAGE_*/ACTIVATE,
+                                        // pull-to-refresh-capable screens for REFRESH).
+                                        // Nothing for the activity-level handler to do.
+                                    }
+                                    else -> Unit // WHEEL_* + GO_BACK never land here.
+                                }
+                            }
+                        }
                         // Toast host sits OUTSIDE the responsive column so
                         // toasts always pop at the device's true screen
                         // edges, not the centred column's edges.
@@ -330,46 +362,59 @@ class MainActivity : ComponentActivity() {
     private var lastVolumeRepeatDown: Long = 0L
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Honour the user's "Key source" setting (AUTO = both, DPAD = only D-pad keys, VOLUME =
-        // only volume keys). Filtered-out keycodes fall through to super so the system can act
-        // on them normally (e.g. volume keys actually change media volume when the user has
-        // explicitly chosen DPAD only).
-        val src = graph.latestKeySource
-        val acceptsDpad = src == WheelKeySource.AUTO || src == WheelKeySource.DPAD
-        val acceptsVolume = src == WheelKeySource.AUTO || src == WheelKeySource.VOLUME
         val isDown = event.action == KeyEvent.ACTION_DOWN
+        // Press-to-bind capture takes precedence over everything else. The Settings
+        // binding dialog installs a callback that swallows the next KEY_DOWN so the
+        // act of binding (e.g. pressing VOLUME_UP) doesn't also fire the existing
+        // binding for that key.
+        if (isDown && event.repeatCount == 0 &&
+            com.github.itskenny0.r1ha.core.input.KeyCaptureBus.tryCapture(event.keyCode)
+        ) {
+            return true
+        }
+        val action = graph.latestBindings.actionFor(event.keyCode)
+            ?: return super.dispatchKeyEvent(event)
         // For physical VOLUME buttons, the framework synthesises auto-repeat events at ~30 Hz
-        // when the user holds the button. Firing on every repeat would run brightness/volume
-        // away in milliseconds; ignoring every repeat (the original behaviour) forced the user
-        // to tap the button N times to make a meaningful adjustment on a phone/tablet. We
-        // compromise: emit on every initial press (repeatCount == 0) AND throttle the
-        // auto-repeat stream to ~8 Hz so a held button gives smooth, controllable motion.
-        //
-        // The R1's physical wheel maps to DPAD keycodes and emits each detent as a separate
-        // ACTION_DOWN with repeatCount=0 — those bypass the throttle entirely so a fast spin
-        // never loses an event.
-        return when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> if (acceptsDpad) {
-                if (isDown) graph.wheelInput.emit(WheelEvent.Direction.UP)
-                true
-            } else super.dispatchKeyEvent(event)
-            KeyEvent.KEYCODE_VOLUME_UP -> if (acceptsVolume) {
-                if (isDown && shouldEmitVolumeRepeat(event, isUp = true)) {
-                    graph.wheelInput.emit(WheelEvent.Direction.UP)
+        // when the user holds the button. Throttle the auto-repeat stream to ~8 Hz so a held
+        // button gives smooth, controllable motion. The R1's physical wheel maps to DPAD
+        // keycodes and emits each detent as a separate ACTION_DOWN with repeatCount=0 — those
+        // bypass the throttle entirely so a fast spin never loses an event.
+        return when (action) {
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP -> {
+                if (isDown) {
+                    val accept = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                        shouldEmitVolumeRepeat(event, isUp = true)
+                    } else true
+                    if (accept) graph.wheelInput.emit(WheelEvent.Direction.UP)
                 }
                 true
-            } else super.dispatchKeyEvent(event)
-            KeyEvent.KEYCODE_DPAD_DOWN -> if (acceptsDpad) {
-                if (isDown) graph.wheelInput.emit(WheelEvent.Direction.DOWN)
-                true
-            } else super.dispatchKeyEvent(event)
-            KeyEvent.KEYCODE_VOLUME_DOWN -> if (acceptsVolume) {
-                if (isDown && shouldEmitVolumeRepeat(event, isUp = false)) {
-                    graph.wheelInput.emit(WheelEvent.Direction.DOWN)
+            }
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN -> {
+                if (isDown) {
+                    val accept = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                        shouldEmitVolumeRepeat(event, isUp = false)
+                    } else true
+                    if (accept) graph.wheelInput.emit(WheelEvent.Direction.DOWN)
                 }
                 true
-            } else super.dispatchKeyEvent(event)
-            else -> super.dispatchKeyEvent(event)
+            }
+            com.github.itskenny0.r1ha.core.input.KeyAction.GO_BACK -> {
+                // Dispatch via the activity's OnBackPressedDispatcher so the
+                // NavController back stack pops the same way it would for a
+                // system Back press. Done here rather than emitted on the bus
+                // because the dispatcher is activity-scoped and a Compose-side
+                // collector can't reach it cleanly. Fires on KEY_UP to match
+                // Android's own back semantics (DOWN is for press-and-hold UI;
+                // UP is the actual back gesture).
+                if (event.action == KeyEvent.ACTION_UP) onBackPressedDispatcher.onBackPressed()
+                true
+            }
+            else -> {
+                if (isDown && event.repeatCount == 0) {
+                    com.github.itskenny0.r1ha.core.input.KeyActionBus.emit(action)
+                }
+                true
+            }
         }
     }
 

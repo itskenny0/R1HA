@@ -20,6 +20,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
@@ -119,7 +122,6 @@ class SettingsRepository private constructor(
         val wheelStep = intPreferencesKey("wheel.step")
         val wheelAccel = booleanPreferencesKey("wheel.accel")
         val wheelInvert = booleanPreferencesKey("wheel.invert")
-        val wheelKeySource = stringPreferencesKey("wheel.key_source")
         val wheelAccelCurve = stringPreferencesKey("wheel.accel_curve")
 
         val uiDisplayMode = stringPreferencesKey("ui.display_mode")
@@ -153,6 +155,14 @@ class SettingsRepository private constructor(
         val integrationsJson = stringPreferencesKey("integrations.json")
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
+        /**
+         * User-configurable hardware key bindings. JSON map of
+         * `KeyAction.name -> [keycode]`. Empty / missing falls back to
+         * [com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS]; presence
+         * (even with an empty list) overrides the default for that action so
+         * users can intentionally unbind a key without resetting the rest.
+         */
+        val keyBindingsJson = stringPreferencesKey("input.key_bindings.json")
         val uiTextHistoryLen = intPreferencesKey("ui.text_history_length")
         val uiHideCardTail = booleanPreferencesKey("ui.hide_card_tail")
         val uiMaxDecimals = intPreferencesKey("ui.max_decimals")
@@ -231,7 +241,6 @@ class SettingsRepository private constructor(
                     stepPercent = (p[K.wheelStep] ?: 2).coerceIn(1, 10),
                     acceleration = p[K.wheelAccel] ?: true,
                     invertDirection = p[K.wheelInvert] ?: false,
-                    keySource = p[K.wheelKeySource]?.let { runCatching { WheelKeySource.valueOf(it) }.getOrNull() } ?: WheelKeySource.AUTO,
                     accelerationCurve = p[K.wheelAccelCurve]?.let { runCatching { AccelerationCurve.valueOf(it) }.getOrNull() } ?: AccelerationCurve.MEDIUM,
                 ),
                 ui = UiOptions(
@@ -312,6 +321,7 @@ class SettingsRepository private constructor(
                     ?: IntegrationsSettings(),
                 pages = decodePages(p[K.pagesJson], favorites),
                 activePageId = p[K.activePageId].orEmpty(),
+                keyBindings = decodeKeyBindings(p[K.keyBindingsJson]),
             )
         }
         .onEach { s ->
@@ -374,7 +384,6 @@ class SettingsRepository private constructor(
                 p[K.wheelStep] = next.wheel.stepPercent
                 p[K.wheelAccel] = next.wheel.acceleration
                 p[K.wheelInvert] = next.wheel.invertDirection
-                p[K.wheelKeySource] = next.wheel.keySource.name
                 p[K.wheelAccelCurve] = next.wheel.accelerationCurve.name
                 p[K.uiDisplayMode] = next.ui.displayMode.name
                 p[K.uiShowPill] = next.ui.showOnOffPill
@@ -440,6 +449,7 @@ class SettingsRepository private constructor(
                     next.pages,
                 )
                 p[K.activePageId] = next.activePageId
+                p[K.keyBindingsJson] = encodeKeyBindings(next.keyBindings)
             }
             R1Log.i("SettingsRepo.update", "DataStore edit completed; next.server=${next.server?.url ?: "null"}")
         } catch (t: Throwable) {
@@ -642,6 +652,26 @@ class SettingsRepository private constructor(
             kotlinx.serialization.builtins.ListSerializer(ChromeButtonConfig.serializer()),
             list,
         )
+
+    /**
+     * Decode the user's hardware key bindings — a JSON object mapping
+     * `KeyAction.name` → list of Android `KeyEvent.KEYCODE_*` integer codes.
+     * Returns an empty map for any malformed payload; the dispatcher then
+     * falls back to [com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS].
+     * Unknown action names (added/removed across versions) are silently
+     * dropped — this is the same forwards-compat strategy used for the
+     * dashboard tile order list.
+     */
+    private fun decodeKeyBindings(raw: String?): Map<String, List<Int>> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            advancedJson.decodeFromString(KEY_BINDINGS_SERIALIZER, raw)
+        }.getOrElse { emptyMap() }
+    }
+
+    /** Inverse of [decodeKeyBindings]. */
+    private fun encodeKeyBindings(map: Map<String, List<Int>>): String =
+        advancedJson.encodeToString(KEY_BINDINGS_SERIALIZER, map)
 
     private fun writeShadow(server: ServerConfig?, favorites: List<String>) {
         val editor = shadow.edit()
@@ -854,3 +884,9 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
         }.getOrNull()
     }.toMap()
 }
+
+/** Shared serializer for the user key bindings map. Re-used by encode + decode. */
+private val KEY_BINDINGS_SERIALIZER = MapSerializer(
+    String.serializer(),
+    ListSerializer(Int.serializer()),
+)

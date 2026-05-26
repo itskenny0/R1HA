@@ -24,9 +24,6 @@ enum class DisplayMode { PERCENT, RAW }
  */
 enum class TemperatureUnit { AUTO, CELSIUS, FAHRENHEIT }
 
-/** What the wheel keycodes actually arrive as on this device. */
-enum class WheelKeySource { AUTO, DPAD, VOLUME }
-
 /**
  * Shape of the acceleration curve when `wheel.acceleration` is on. The wheel rate (in
  * events/sec) gets folded through the matching slope to produce a step multiplier;
@@ -73,7 +70,6 @@ data class WheelSettings(
     val stepPercent: Int = 2,           // 1, 2, 5, or 10
     val acceleration: Boolean = true,
     val invertDirection: Boolean = false,
-    val keySource: WheelKeySource = WheelKeySource.AUTO,
     /** Slope of the acceleration curve when [acceleration] is on. */
     val accelerationCurve: AccelerationCurve = AccelerationCurve.MEDIUM,
 )
@@ -691,4 +687,19 @@ data class AppSettings(
     val dashboard: DashboardSettings = DashboardSettings(),
     /** Per-surface refresh intervals + integration tuning. */
     val integrations: IntegrationsSettings = IntegrationsSettings(),
+    /**
+     * User-configurable hardware-key bindings. Keys are
+     * [com.github.itskenny0.r1ha.core.input.KeyAction] enum names (string form so an
+     * unknown action from a future build decodes as no-op rather than crashing);
+     * values are Android `KeyEvent.KEYCODE_*` integer codes. Empty map = use the
+     * built-in [com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS]; a present
+     * (possibly empty) value for a given action overrides the default for that
+     * specific action — letting the user explicitly clear a default they don't
+     * want without resetting everything else.
+     *
+     * Persisted as JSON in DataStore (`keybindings.json`). Surfaced in
+     * Settings → Behaviour → Key bindings with a press-to-bind dialog
+     * that captures the next physical key press via [KeyCaptureBus].
+     */
+    val keyBindings: Map<String, List<Int>> = emptyMap(),
 )

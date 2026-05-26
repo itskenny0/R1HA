@@ -5,10 +5,10 @@ import com.github.itskenny0.r1ha.core.ha.DefaultHaRepository
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HaWebSocketClient
 import com.github.itskenny0.r1ha.core.ha.TokenRefresher
+import com.github.itskenny0.r1ha.core.input.KeyBindings
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
-import com.github.itskenny0.r1ha.core.prefs.WheelKeySource
 import com.github.itskenny0.r1ha.core.security.SecurityPolicyStore
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.CoroutineScope
@@ -193,10 +193,11 @@ class AppGraph(context: Context) {
     }
 
     /**
-     * Latest [WheelKeySource] setting, kept up to date by a collector in [App.onCreate]. Read
+     * Latest user [KeyBindings], kept up to date by a collector in [App.onCreate]. Read
      * from `MainActivity.dispatchKeyEvent`, which runs on the main thread and can't await a
-     * suspend operation — so this volatile cache is the synchronous source of truth.
+     * suspend operation — so this volatile cache is the synchronous source of truth. Falls
+     * back to [KeyBindings.DEFAULT] until the first settings emission lands.
      */
     @Volatile
-    var latestKeySource: WheelKeySource = WheelKeySource.AUTO
+    var latestBindings: KeyBindings = KeyBindings.DEFAULT
 }

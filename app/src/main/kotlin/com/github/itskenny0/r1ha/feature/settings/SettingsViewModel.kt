@@ -10,7 +10,6 @@ import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
-import com.github.itskenny0.r1ha.core.prefs.WheelKeySource
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,9 +33,47 @@ class SettingsViewModel(
     fun setWheelStep(step: Int) = update { it.copy(wheel = it.wheel.copy(stepPercent = step)) }
     fun setWheelAcceleration(enabled: Boolean) = update { it.copy(wheel = it.wheel.copy(acceleration = enabled)) }
     fun setWheelInvert(inverted: Boolean) = update { it.copy(wheel = it.wheel.copy(invertDirection = inverted)) }
-    fun setWheelKeySource(source: WheelKeySource) = update { it.copy(wheel = it.wheel.copy(keySource = source)) }
     fun setAccelerationCurve(curve: com.github.itskenny0.r1ha.core.prefs.AccelerationCurve) =
         update { it.copy(wheel = it.wheel.copy(accelerationCurve = curve)) }
+
+    // ── Key bindings ────────────────────────────────────────────────────────
+
+    /** Append [keyCode] to [action]'s bindings (dedup by code). */
+    fun addKeyBinding(action: com.github.itskenny0.r1ha.core.input.KeyAction, keyCode: Int) =
+        update { s ->
+            val current = effectiveBindingsFor(s, action)
+            val next = (current + keyCode).distinct()
+            s.copy(keyBindings = s.keyBindings.toMutableMap().apply { put(action.name, next) })
+        }
+
+    /** Remove [keyCode] from [action]'s bindings. If the user removes every key
+     *  from an action that had defaults, an explicit empty list is persisted so
+     *  the default doesn't re-appear on next launch (the merge in [App.onCreate]
+     *  treats "present" as authoritative). */
+    fun removeKeyBinding(action: com.github.itskenny0.r1ha.core.input.KeyAction, keyCode: Int) =
+        update { s ->
+            val current = effectiveBindingsFor(s, action)
+            val next = current.filterNot { it == keyCode }
+            s.copy(keyBindings = s.keyBindings.toMutableMap().apply { put(action.name, next) })
+        }
+
+    /** Reset [action] back to its built-in defaults by removing the override entry. */
+    fun resetKeyBinding(action: com.github.itskenny0.r1ha.core.input.KeyAction) =
+        update { s ->
+            s.copy(keyBindings = s.keyBindings.toMutableMap().apply { remove(action.name) })
+        }
+
+    /** Reset every action's bindings to the built-in defaults. */
+    fun resetAllKeyBindings() = update { it.copy(keyBindings = emptyMap()) }
+
+    private fun effectiveBindingsFor(
+        s: AppSettings,
+        action: com.github.itskenny0.r1ha.core.input.KeyAction,
+    ): List<Int> {
+        val stored = s.keyBindings[action.name]
+        if (stored != null) return stored
+        return com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS[action].orEmpty()
+    }
 
     // ── Card UI ─────────────────────────────────────────────────────────────
 
