@@ -10,8 +10,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,16 +99,26 @@ fun HaSyncOnboardingPrompt(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(R1.Bg.copy(alpha = 0.95f)),
+            .background(R1.Bg.copy(alpha = 0.95f))
+            // Eat taps on the backdrop so the underlying card stack doesn't
+            // receive them while the overlay is up. No-op handler — the user
+            // dismisses by tapping NOT NOW, not by tapping outside.
+            .r1Pressable(onClick = {}),
         contentAlignment = Alignment.Center,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                // Cap the card to the available height so the R1's 320 dp
+                // tall display doesn't get a prompt whose buttons fall off
+                // the bottom. The inner content scrolls if it overflows.
+                .heightIn(max = 600.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, RoundedCornerShape(12.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
