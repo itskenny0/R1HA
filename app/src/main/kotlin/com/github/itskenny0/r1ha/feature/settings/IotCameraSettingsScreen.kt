@@ -48,6 +48,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.iotcamera.CameraEnumerator
+import com.github.itskenny0.r1ha.core.iotcamera.CameraOpenBlocklist
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -87,7 +88,12 @@ fun IotCameraSettingsScreen(
 
     // Detected cameras — recomputed once on entry; the list is stable
     // for a given device + firmware so we don't refresh on recomposition.
-    val cameras = remember { CameraEnumerator.list(context) }
+    // Key the enumeration on a tick so the RESET button below can force
+    // a re-list after clearing the open-failure blocklist. Without the
+    // key the picker would stay stale until the user backed out and
+    // reopened the screen.
+    var enumerationTick by remember { mutableStateOf(0) }
+    val cameras = remember(enumerationTick) { CameraEnumerator.list(context) }
     val pickedCamera = cameras.firstOrNull { it.id == cam.cameraId }
         ?: cameras.firstOrNull()
     val supportedSizes = pickedCamera?.supportedJpegSizes ?: emptyList()
@@ -236,7 +242,9 @@ fun IotCameraSettingsScreen(
                     } else {
                         Text(
                             text = "Multi-lens devices expose every sensor as its own id " +
-                                "(wide, tele, ultrawide). Pick the lens you want HA to see.",
+                                "(wide, tele, ultrawide). Pick the lens you want HA to see. " +
+                                "Lenses that fail to open get auto-hidden after one attempt; " +
+                                "tap RESET below to retry hidden ones.",
                             style = R1.body,
                             color = R1.InkMuted,
                             modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
@@ -277,6 +285,30 @@ fun IotCameraSettingsScreen(
                                     Text("●", style = R1.bodyEmph, color = R1.AccentWarm)
                                 }
                             }
+                        }
+                        // RESET hidden-lens button. Clears the per-device
+                        // open-failure blocklist so probed-but-rejected
+                        // IDs get re-listed on the next enumeration.
+                        // Useful after granting a permission, swapping ROM,
+                        // or just retrying after a transient HAL hiccup.
+                        Spacer(Modifier.height(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable(onClick = {
+                                    CameraOpenBlocklist.clear(context)
+                                    enumerationTick++
+                                    Toaster.show("Camera list reset; hidden lenses will reappear")
+                                })
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                "RESET HIDDEN LENSES",
+                                style = R1.labelMicro,
+                                color = R1.AccentWarm,
+                            )
                         }
                     }
                 }

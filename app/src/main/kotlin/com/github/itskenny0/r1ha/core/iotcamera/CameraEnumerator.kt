@@ -47,6 +47,13 @@ object CameraEnumerator {
         val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
         val seenIds = mutableSetOf<String>()
         val results = mutableListOf<CameraDescriptor>()
+        // IDs that have failed to actually open before — surface but
+        // skipped in the picker. The blocklist self-populates as the
+        // user picks IDs and the service's onError fires; this filter
+        // makes the picker self-clean after a few attempts on devices
+        // (Xiaomi 9T) where probed-but-fake IDs leak through the
+        // characteristics-based heuristic.
+        val blocked = CameraOpenBlocklist.blockedIds(context)
 
         fun add(id: String, parent: String?) {
             // Dedupe — a probe pass might re-discover IDs that are already
@@ -54,6 +61,12 @@ object CameraEnumerator {
             // physical sub-camera.
             val key = parent?.let { "phys:$it:$id" } ?: id
             if (!seenIds.add(key)) return
+            // Skip IDs the user has already tried that failed to open.
+            // We compare on the capture-id (which is what gets stored in
+            // settings + handed to openCamera), not the raw id, so a
+            // physical id that's blocked under one parent doesn't block
+            // it under another.
+            if (key in blocked) return
             runCatching { describe(manager, id, physicalParent = parent) }.getOrNull()
                 ?.let(results::add)
         }

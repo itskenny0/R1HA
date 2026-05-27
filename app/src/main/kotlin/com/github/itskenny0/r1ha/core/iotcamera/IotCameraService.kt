@@ -162,6 +162,19 @@ class IotCameraService : Service() {
             onError = { msg ->
                 R1Log.w("IotCamera.service", "capture error: $msg")
                 updateNotification("Camera error: $msg")
+                // If the camera couldn't even be opened, remember that
+                // for next time — the picker will hide this id so the
+                // user iterates through bad lenses once instead of
+                // every time they revisit settings. "Camera open failed"
+                // is the synchronous-throw path; "Camera error" is the
+                // async-callback path; both indicate the HAL won't
+                // accept us on this id.
+                val isOpenFailure = msg.startsWith("Camera open failed") ||
+                    msg.startsWith("Camera error") ||
+                    msg.startsWith("Camera failed to configure")
+                if (isOpenFailure) {
+                    CameraOpenBlocklist.block(this, cameraId)
+                }
             },
         ).also { it.start() }
         // Two ways the MJPEG server can run: with auth (requires a
