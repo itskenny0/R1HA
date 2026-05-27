@@ -45,28 +45,62 @@ object CameraEnumerator {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
             ?: return emptyList()
         val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
+        val seenIds = mutableSetOf<String>()
         val results = mutableListOf<CameraDescriptor>()
-        for (id in logicalIds) {
-            runCatching { describe(manager, id, physicalParent = null) }.getOrNull()
+
+        fun add(id: String, parent: String?) {
+            // Dedupe — a probe pass might re-discover IDs that are already
+            // in cameraIdList or already enumerated as a logical's
+            // physical sub-camera.
+            val key = parent?.let { "phys:$it:$id" } ?: id
+            if (!seenIds.add(key)) return
+            runCatching { describe(manager, id, physicalParent = parent) }.getOrNull()
                 ?.let(results::add)
-            // Logical multi-camera devices (Xiaomi 9T, modern Pixels, etc.)
+        }
+
+        for (id in logicalIds) {
+            add(id, parent = null)
+            // Logical multi-camera devices (modern Pixels, some Samsungs)
             // expose 1-2 logical IDs in cameraIdList but bundle 3-4 physical
-            // sensors behind each. Without walking INFO_PHYSICAL_CAMERA_IDS
-            // the user only sees FRONT / BACK and can never select the
-            // ultrawide or tele. API 28+ only — older devices either don't
-            // have multi-physical or expose every physical as its own
-            // logical (so the original list already covers them).
+            // sensors behind each. INFO_PHYSICAL_CAMERA_IDS surfaces them
+            // when the HAL advertises the logical-multi-camera capability.
+            // API 28+ only — older devices either don't have multi-physical
+            // or expose every physical as its own logical.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 runCatching {
                     val chars = manager.getCameraCharacteristics(id)
-                    chars.physicalCameraIds.forEach { physId ->
-                        runCatching { describe(manager, physId, physicalParent = id) }
-                            .getOrNull()
-                            ?.let(results::add)
-                    }
+                    chars.physicalCameraIds.forEach { physId -> add(physId, parent = id) }
                 }
             }
         }
+
+        // Probe pass for OEMs that hide physical sub-cameras BOTH from
+        // cameraIdList AND from INFO_PHYSICAL_CAMERA_IDS — Xiaomi is the
+        // canonical example, where the HAL advertises 1 logical "back"
+        // camera while keeping wide / tele / ultrawide hidden behind it.
+        // getCameraCharacteristics still works on those hidden IDs even
+        // though they aren't enumerated, so we walk the small-int range
+        // and accept any that return characteristics. Capped at 20 because
+        // beyond that we're firmly into "this isn't a real camera" land
+        // and most OEMs keep their hidden IDs in 0-9.
+        //
+        // openCamera() on a hidden ID may still fail if the HAL gates
+        // access by package; if it does, the user picks the lens, the
+        // status card surfaces the open-error, and they fall back to a
+        // listed lens. No worse than the current state where the lens
+        // is invisible entirely.
+        for (i in 0..19) {
+            val id = i.toString()
+            if (seenIds.contains(id)) continue
+            runCatching {
+                manager.getCameraCharacteristics(id)
+                // Survived the call → camera exists. Add it as a
+                // top-level (no parent) entry so CameraCapture opens it
+                // directly via openCamera(id).
+                add(id, parent = null)
+            }
+        }
+
         return results.sortedWith(
             // Back cameras first (most common stream target), then front,
             // then external — and within a facing group, larger sensors
