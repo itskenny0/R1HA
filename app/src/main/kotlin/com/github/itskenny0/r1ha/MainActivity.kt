@@ -449,6 +449,21 @@ class MainActivity : ComponentActivity() {
         ) {
             return true
         }
+        // Software-keyboard events NEVER trigger bindings. The user's
+        // model: bindings exist for the R1's physical wheel + side
+        // buttons + any external hardware keyboard the user attaches.
+        // The on-screen IME is for typing, not control. Catching this
+        // by event flag is robust across IME implementations (some
+        // never set deviceId properly; FLAG_SOFT_KEYBOARD is set by the
+        // framework whenever the source is an InputMethodService).
+        // VIRTUAL_KEYBOARD deviceId is the secondary signal in case an
+        // IME sends KeyEvents without the flag.
+        val fromSoftKeyboard = (event.flags and KeyEvent.FLAG_SOFT_KEYBOARD) != 0 ||
+            event.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD
+        if (fromSoftKeyboard) {
+            return super.dispatchKeyEvent(event)
+        }
+
         val candidate = graph.latestBindings.actionFor(event.keyCode)
         val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
             candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
@@ -462,22 +477,15 @@ class MainActivity : ComponentActivity() {
             return handleWheelAction(candidate, event, isDown)
         }
 
-        // Everything else: give the view hierarchy first dibs. If a
-        // focused TextField (or anything else) consumed the key, we're
-        // done. Only when NOTHING in the view hierarchy wanted the key
-        // do we consider firing our user-bound action. That's the only
-        // reliable signal across the surfaces the R1 hits (Compose
-        // BasicTextField, native EditText, WebView inputs, IME-driven
-        // synthesised events) — route checks and IME-visibility probes
-        // both miss cases. AND we still gate on the allowlisted routes
-        // so a stray side-button press outside the card stack doesn't
-        // accidentally fire a card-stack action while the user's just
-        // browsing Settings.
-        if (super.dispatchKeyEvent(event)) {
-            return true
+        // Non-wheel hardware key with a binding: still gate on the
+        // allowlisted routes so a stray side-button press in Settings
+        // doesn't accidentally fire a card-stack action. Inside the
+        // allowlist, fire the action; outside, pass through to the
+        // view hierarchy.
+        if (candidate == null) return super.dispatchKeyEvent(event)
+        if (!isBindingAllowedRoute(graph.currentNavRoute)) {
+            return super.dispatchKeyEvent(event)
         }
-        if (candidate == null) return false
-        if (!isBindingAllowedRoute(graph.currentNavRoute)) return false
         val action = candidate
         // For physical VOLUME buttons, the framework synthesises auto-repeat events at ~30 Hz
         // when the user holds the button. Throttle the auto-repeat stream to ~8 Hz so a held

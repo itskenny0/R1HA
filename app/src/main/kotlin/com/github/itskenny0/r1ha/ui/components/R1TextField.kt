@@ -83,22 +83,31 @@ fun R1TextField(
     // to be echoed back through the async settings flow) or a fresh
     // programmatic edit. With our SettingsRepository round-tripping every
     // keystroke through DataStore + a Flow emission, that recomposition
-    // happens AFTER the user's next keystroke, and the cursor jumps back
-    // to position 0 / 1 between every character.
+    // happens AFTER the user's next keystroke.
     //
-    // The fix: keep a local [TextFieldValue], filter out the round-trip
-    // echo (when [value] catches up to what we last pushed), and only
-    // overwrite local state when [value] genuinely changes from outside
-    // (programmatic reset, restored backup, etc). In that case we land
-    // the cursor at the end of the new string — least-surprising for a
-    // newly-populated field.
+    // Two earlier attempts both miscarried:
+    //   - [lastSeenExternal]: treated every fresh [value] as external
+    //     and overwrote local — dropping characters typed faster than the
+    //     round-trip latency.
+    //   - [lastPushedOut]: tracked the most recent push, but multiple
+    //     pushes can be in flight at once. The first echo (e.g. "1")
+    //     arrives while lastPushedOut already says "192", so the guard
+    //     fires and rolls local back to "1". Same dropped-character bug.
+    //
+    // Focus-gated approach: while the field is focused (user is actively
+    // typing), [value] from upstream is ignored entirely — local text is
+    // the only source of truth. When the field loses focus, any pending
+    // external value flows in. That covers both the round-trip echo
+    // problem (always present during typing) and the programmatic-edit
+    // case (clear button, password regen, restored backup), since those
+    // edits happen when the field isn't focused. Edge case: a
+    // programmatic edit while the user is still typing won't apply until
+    // they tap away — acceptable for the settings surfaces this field
+    // backs, where simultaneous human typing + programmatic edits don't
+    // happen.
     var localTfv by remember { mutableStateOf(TextFieldValue(text = value)) }
-    var lastSeenExternal by remember { mutableStateOf(value) }
-    if (value != lastSeenExternal) {
-        lastSeenExternal = value
-        if (value != localTfv.text) {
-            localTfv = TextFieldValue(text = value, selection = TextRange(value.length))
-        }
+    if (!focused && value != localTfv.text) {
+        localTfv = TextFieldValue(text = value, selection = TextRange(value.length))
     }
 
     val borderTarget = when {
@@ -127,12 +136,13 @@ fun R1TextField(
         BasicTextField(
             value = localTfv,
             onValueChange = { next ->
+                val textChanged = next.text != localTfv.text
                 localTfv = next
-                if (next.text != value) {
+                if (textChanged) {
                     // Only escalate to the caller when the text actually
-                    // changed. Pure-selection moves (caret nav, focus tap)
-                    // are local to the field and shouldn't fire spurious
-                    // settings writes.
+                    // changed. Pure-selection moves (caret nav, focus
+                    // tap) are local to the field and shouldn't fire
+                    // spurious settings writes.
                     onValueChange(next.text)
                 }
             },
