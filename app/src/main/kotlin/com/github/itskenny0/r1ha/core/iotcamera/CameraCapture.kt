@@ -1,7 +1,10 @@
 package com.github.itskenny0.r1ha.core.iotcamera
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.YuvImage
 import android.hardware.camera2.CameraCaptureSession
@@ -54,16 +57,47 @@ class CameraCapture(
     private val height: Int,
     private val targetFps: Int,
     private val jpegQuality: Int,
+    /** Sender-side rotation in degrees (0 / 90 / 180 / 270). Non-zero
+     *  values trigger a decode → Matrix.postRotate → re-encode per
+     *  frame, which costs ~10-30 ms on modern hardware and caps the
+     *  practical fps below what the raw pipeline would do. */
+    private val rotationDegrees: Int,
     private val bus: FrameBus,
     private val onError: (String) -> Unit = {},
 ) {
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+
+    /**
+     * Resolve [cameraId] into the logical id we open + the optional
+     * physical id we pin the output stream to.
+     *
+     * IDs prefixed with `phys:` were synthesized by [CameraEnumerator]
+     * for physical sub-sensors of a logical camera (used by multi-lens
+     * devices like the Xiaomi 9T that bundle wide / tele / ultrawide
+     * behind a single logical "back" id). Format: `phys:<logical>:<phys>`.
+     */
+    private val openId: String
+    private val physicalCameraId: String?
+    init {
+        if (cameraId.startsWith("phys:")) {
+            val parts = cameraId.split(":")
+            openId = parts.getOrNull(1).orEmpty()
+            physicalCameraId = parts.getOrNull(2)
+        } else {
+            openId = cameraId
+            physicalCameraId = null
+        }
+    }
+
     private val started = AtomicBoolean(false)
     @Volatile private var device: CameraDevice? = null
     @Volatile private var session: CameraCaptureSession? = null
     @Volatile private var reader: ImageReader? = null
     private val sensorOrientation: Int = runCatching {
-        manager.getCameraCharacteristics(cameraId)
+        // Pull from the physical when we have one (its sensor orientation
+        // can differ from the logical wrapper's), otherwise the logical id.
+        val charsId = physicalCameraId ?: openId
+        manager.getCameraCharacteristics(charsId)
             .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
     }.getOrDefault(0)
 
@@ -115,7 +149,7 @@ class CameraCapture(
         reader = r
         r.setOnImageAvailableListener({ ir -> onYuvFrame(ir) }, cameraHandler)
 
-        manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+        manager.openCamera(openId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
                 // Race window: between openCamera() being called and onOpened
                 // landing, stop() may have run (settings change tearing the
@@ -194,9 +228,23 @@ class CameraCapture(
         }
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val outputConfig = OutputConfiguration(surface).also { oc ->
+                    // Pin the output stream to the chosen physical sensor.
+                    // This is the API path that lets a multi-camera device
+                    // (Xiaomi 9T's wide / tele / ultrawide bundled under
+                    // one logical "back" id) capture from a SPECIFIC lens
+                    // rather than letting the HAL auto-zoom-fuse across
+                    // them. Some OEMs restrict physical-camera output to
+                    // privileged apps; if that's the case the session
+                    // configures-failed callback fires and we surface the
+                    // friendly error instead of crashing.
+                    if (physicalCameraId != null) {
+                        oc.setPhysicalCameraId(physicalCameraId)
+                    }
+                }
                 val config = SessionConfiguration(
                     SessionConfiguration.SESSION_REGULAR,
-                    listOf(OutputConfiguration(surface)),
+                    listOf(outputConfig),
                     { runnable -> cameraHandler.post(runnable) },
                     configCallback,
                 )
@@ -223,9 +271,39 @@ class CameraCapture(
             if (now - last < frameIntervalMs) return
             lastEncodeAtMillis.set(now)
             val jpeg = encodeYuvToJpeg(img) ?: return
-            bus.publish(jpeg)
+            val rotated = if (rotationDegrees % 360 == 0) jpeg else rotateJpeg(jpeg, rotationDegrees)
+            bus.publish(rotated)
         }
     }
+
+    /**
+     * Apply [degrees] to a JPEG by decoding → Matrix.postRotate →
+     * re-encode at the same quality. Used when the user requests
+     * sender-side rotation (settings → rotate button on the camera
+     * lens picker). Returns the original bytes on any decode failure
+     * so a transient malformed frame doesn't drop the stream.
+     *
+     * Future optimisation: write the EXIF Orientation tag into the
+     * JPEG header instead. That would be near-zero-cost (HA + browsers
+     * honour the EXIF tag on render) but the byte-manipulation code is
+     * fiddly enough that V1 ships with the simpler re-encode path.
+     */
+    private fun rotateJpeg(jpeg: ByteArray, degrees: Int): ByteArray = runCatching {
+        val source = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+            ?: return@runCatching jpeg
+        try {
+            val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
+            val rotated = Bitmap.createBitmap(
+                source, 0, 0, source.width, source.height, matrix, /* filter = */ false,
+            )
+            val out = java.io.ByteArrayOutputStream(source.width * source.height / 2)
+            rotated.compress(Bitmap.CompressFormat.JPEG, jpegQuality.coerceIn(1, 100), out)
+            if (rotated !== source) rotated.recycle()
+            out.toByteArray()
+        } finally {
+            source.recycle()
+        }
+    }.getOrElse { jpeg }
 
     /**
      * Repack an Image's three YUV_420_888 planes into a contiguous NV21 byte

@@ -39,6 +39,16 @@ class IotCameraStatus {
          *  has been written to the broker socket. False = HA won't have
          *  auto-registered an entity yet. */
         val mqttDiscoveryPublished: Boolean = false,
+        /** Cumulative bytes pushed across both sinks since the service
+         *  started. Tallied at publish-write time so it reflects egress
+         *  rather than encoded-frame size — for MJPEG specifically this
+         *  multiplies by the number of connected clients, so two viewers
+         *  at the same fps doubles the count. */
+        val bytesUploadedTotal: Long = 0L,
+        /** Rolling bits-per-second over the last ~1 s, computed by a
+         *  ticker in the service. Zero between ticks; smoothed enough
+         *  to be glanceable but responsive to throttle changes. */
+        val bitrateBps: Long = 0L,
     )
 
     private val _snapshot = MutableStateFlow(Snapshot())
@@ -58,6 +68,21 @@ class IotCameraStatus {
 
     fun reset() {
         _snapshot.value = Snapshot()
+    }
+
+    /** Bump the byte counter from a sink. Called from both MJPEG client
+     *  writes and MQTT publish-completed paths so the total reflects
+     *  what actually went over the wire. */
+    fun addBytesUploaded(delta: Long) {
+        if (delta <= 0L) return
+        val cur = _snapshot.value
+        _snapshot.value = cur.copy(bytesUploadedTotal = cur.bytesUploadedTotal + delta)
+    }
+
+    /** Set the current rolling bitrate. The service ticker computes this
+     *  from a delta of [Snapshot.bytesUploadedTotal] over a fixed window. */
+    fun setBitrate(bps: Long) {
+        _snapshot.value = _snapshot.value.copy(bitrateBps = bps.coerceAtLeast(0L))
     }
 }
 

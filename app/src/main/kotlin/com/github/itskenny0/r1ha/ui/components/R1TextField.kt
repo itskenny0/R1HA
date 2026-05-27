@@ -14,14 +14,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -71,6 +75,32 @@ fun R1TextField(
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
 
+    // Internal TextFieldValue so we own cursor + selection state.
+    //
+    // Background — the String-based BasicTextField overload re-anchors
+    // selection on every recomposition because Compose can't tell whether
+    // the incoming String is the same value the user just typed (about
+    // to be echoed back through the async settings flow) or a fresh
+    // programmatic edit. With our SettingsRepository round-tripping every
+    // keystroke through DataStore + a Flow emission, that recomposition
+    // happens AFTER the user's next keystroke, and the cursor jumps back
+    // to position 0 / 1 between every character.
+    //
+    // The fix: keep a local [TextFieldValue], filter out the round-trip
+    // echo (when [value] catches up to what we last pushed), and only
+    // overwrite local state when [value] genuinely changes from outside
+    // (programmatic reset, restored backup, etc). In that case we land
+    // the cursor at the end of the new string — least-surprising for a
+    // newly-populated field.
+    var localTfv by remember { mutableStateOf(TextFieldValue(text = value)) }
+    var lastSeenExternal by remember { mutableStateOf(value) }
+    if (value != lastSeenExternal) {
+        lastSeenExternal = value
+        if (value != localTfv.text) {
+            localTfv = TextFieldValue(text = value, selection = TextRange(value.length))
+        }
+    }
+
     val borderTarget = when {
         isError -> R1.StatusRed
         focused -> R1.AccentWarm
@@ -95,8 +125,17 @@ fun R1TextField(
         contentAlignment = Alignment.CenterStart,
     ) {
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            value = localTfv,
+            onValueChange = { next ->
+                localTfv = next
+                if (next.text != value) {
+                    // Only escalate to the caller when the text actually
+                    // changed. Pure-selection moves (caret nav, focus tap)
+                    // are local to the field and shouldn't fire spurious
+                    // settings writes.
+                    onValueChange(next.text)
+                }
+            },
             enabled = enabled,
             singleLine = singleLine,
             minLines = if (singleLine) 1 else minLines.coerceAtLeast(1),
@@ -111,7 +150,7 @@ fun R1TextField(
                     if (focusRequester != null) m.focusRequester(focusRequester) else m
                 },
             decorationBox = { innerTextField ->
-                if (value.isEmpty() && placeholder != null) {
+                if (localTfv.text.isEmpty() && placeholder != null) {
                     Text(text = placeholder, style = placeholderStyle)
                 }
                 innerTextField()

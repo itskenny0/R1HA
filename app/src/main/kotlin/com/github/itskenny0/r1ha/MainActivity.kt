@@ -431,6 +431,25 @@ class MainActivity : ComponentActivity() {
         ) {
             return true
         }
+        // If a text editor has focus (Compose BasicTextField, an EditText
+        // somewhere in a WebView, etc.), let the IME / framework consume the
+        // key event instead of firing the user's bound action. Without this,
+        // a user who bound "1" or any other character key can't type those
+        // characters into URL fields, MQTT broker host, etc. — the binding
+        // fires first and the input field never sees the keystroke. WHEEL
+        // bindings are exempted because the R1's physical wheel emits DPAD
+        // keycodes that the user always wants intercepted for navigation,
+        // even if a field is focused (the wheel isn't a text input device).
+        val focused = currentFocus
+        val isEditorFocused = focused?.onCheckIsTextEditor() == true
+        if (isEditorFocused) {
+            val candidate = graph.latestBindings.actionFor(event.keyCode)
+            val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
+                candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
+            if (!isWheelKey) {
+                return super.dispatchKeyEvent(event)
+            }
+        }
         val action = graph.latestBindings.actionFor(event.keyCode)
             ?: return super.dispatchKeyEvent(event)
         // For physical VOLUME buttons, the framework synthesises auto-repeat events at ~30 Hz

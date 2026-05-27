@@ -409,6 +409,18 @@ data class IntegrationsSettings(
      *  writer so a stray 0 doesn't burst-pull. */
     val haSyncIntervalSec: Int = 300,
     /**
+     * Manual-only sync mode. When true, the periodic pull AND the
+     * automatic push-on-edit are both suppressed — sync only runs when
+     * the user explicitly taps PULL NOW / PUSH NOW from the Sync
+     * settings screen. Useful for users who want sync available (manual
+     * import from another device, manual checkpoint of a known-good
+     * config) without the per-edit network chatter or the periodic
+     * background fetch.
+     *
+     * No effect when [haSyncEnabled] is false (sync is off entirely).
+     */
+    val haSyncManualOnly: Boolean = false,
+    /**
      * One-shot flag flipped true after the user has seen (and either accepted
      * or dismissed) the HA-sync first-run prompt. Off by default so existing
      * installs surface the prompt once after upgrading to a build that ships
@@ -680,6 +692,19 @@ data class IotCameraSettings(
     /** JPEG quality 1..100 — the second half of the bitrate dial. 70 is a
      *  reasonable visual/byte trade-off for surveillance-ish streams. */
     val jpegQuality: Int = 70,
+    /**
+     * Sender-side rotation applied to every encoded frame before fan-out
+     * to sinks. Multiples of 90 (0 / 90 / 180 / 270). Useful when the
+     * device is physically mounted upside down or on its side and you'd
+     * rather burn the rotation in at the source than ask every HA viewer
+     * to compensate.
+     *
+     * Cost is a per-frame decode + Matrix transform + re-encode at high
+     * rotation; 0 is the no-op fast path. Users who care about peak fps
+     * should leave this at 0 and rotate at the consumer instead (the
+     * Cameras viewer has its own per-view rotate button).
+     */
+    val rotationDegrees: Int = 0,
 
     /** MJPEG sink: HTTP server with optional Basic auth on the device. */
     val mjpegEnabled: Boolean = false,

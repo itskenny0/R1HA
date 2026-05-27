@@ -24,6 +24,11 @@ object Routes {
     /** IoT Camera Mode — opt-in surface that turns this device into an HA
      *  camera entity via MJPEG and/or MQTT auto-discovery. Per-device only. */
     const val SETTINGS_IOT_CAMERA = "settings/iot_camera"
+    /** MQTT broker config — host, port, auth, TLS. Shared by IoT Camera
+     *  Mode (publishing camera frames + discovery) and the Dev menu's
+     *  one-shot publish surface. Top-level rather than nested under
+     *  Advanced because more than one user-facing feature consumes it. */
+    const val SETTINGS_MQTT = "settings/mqtt"
     const val THEME_PICKER = "theme_picker"
     const val ABOUT = "about"
     const val DEV_MENU = "dev_menu"

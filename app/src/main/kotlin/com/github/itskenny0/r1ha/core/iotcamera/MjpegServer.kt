@@ -55,6 +55,11 @@ class MjpegServer(
     private val password: String,
     private val frames: SharedFlow<ByteArray>,
     private val latestFrame: () -> ByteArray?,
+    /** Called every time a payload is flushed to a client socket. Sum
+     *  of payload + multipart framing bytes — the actual egress for that
+     *  client. The status counter aggregates across all sinks for the
+     *  "data uploaded" display. */
+    private val onBytesEgressed: (Long) -> Unit = {},
 ) {
     private val running = AtomicBoolean(false)
     @Volatile private var socket: ServerSocket? = null
@@ -216,8 +221,10 @@ class MjpegServer(
         ).toByteArray(Charsets.UTF_8)
         out.write(partHeader)
         out.write(jpeg)
-        out.write("\r\n".toByteArray(Charsets.UTF_8))
+        val trailer = "\r\n".toByteArray(Charsets.UTF_8)
+        out.write(trailer)
         out.flush()
+        onBytesEgressed((partHeader.size + jpeg.size + trailer.size).toLong())
     }
 
     private fun Socket.respond(

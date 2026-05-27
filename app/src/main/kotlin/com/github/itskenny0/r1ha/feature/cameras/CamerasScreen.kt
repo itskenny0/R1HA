@@ -356,6 +356,17 @@ private fun CameraDetailOverlay(
     val token by produceState<String?>(null, tokens) {
         value = tokens.load()?.accessToken
     }
+    // Per-overlay live controls — refresh cadence + display rotation.
+    // Seeded from the global Integrations setting but mutable here so the
+    // user can crank pseudo-realtime (~200 ms) when they're actively
+    // watching the feed, and rotate via the on-overlay button for cameras
+    // mounted at non-zero degrees without editing the source.
+    var pollMillisLive by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf((pollSec * 1000L).coerceAtLeast(200L))
+    }
+    var rotationDegrees by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableFloatStateOf(0f)
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -382,7 +393,27 @@ private fun CameraDetailOverlay(
                     Text(text = "✕", style = R1.body, color = R1.InkSoft)
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(text = displayName.uppercase(), style = R1.sectionHeader, color = R1.Ink)
+                Text(
+                    text = displayName.uppercase(),
+                    style = R1.sectionHeader,
+                    color = R1.Ink,
+                    modifier = Modifier.weight(1f),
+                )
+                // 90° increments. Holding modulo-360 in floats stays exact
+                // for the four canonical values we care about; the rotate
+                // modifier inside CameraSnapshot treats anything in the
+                // range as a transform.
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(R1.ShapeS)
+                        .r1Pressable(onClick = {
+                            rotationDegrees = (rotationDegrees + 90f) % 360f
+                        }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "↻", style = R1.body, color = R1.AccentWarm)
+                }
             }
             val s = serverUrl
             if (s == null) {
@@ -409,11 +440,61 @@ private fun CameraDetailOverlay(
                         serverUrl = s,
                         bearerToken = token,
                         entityId = entityId,
-                        intervalMillis = pollSec * 1000L,
+                        intervalMillis = pollMillisLive,
+                        rotationDegrees = rotationDegrees,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
                 Spacer(Modifier.height(8.dp))
+                // Refresh-rate stepper. Steps walk the practical range
+                // (~realtime to "background poll") on a non-linear schedule
+                // so a single tap moves meaningfully whether the user is
+                // at 200 ms or 30 s. Capped at 30 s to avoid users winding
+                // it into "feels broken" territory; the global setting
+                // covers slower cadences for power-conscious installs.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "REFRESH",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable(onClick = {
+                                pollMillisLive = nextRefreshStep(pollMillisLive, faster = true)
+                            })
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(text = "◀", style = R1.labelMicro, color = R1.AccentWarm)
+                    }
+                    Text(
+                        text = formatPollInterval(pollMillisLive),
+                        style = R1.bodyEmph,
+                        color = R1.AccentWarm,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 12.dp),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable(onClick = {
+                                pollMillisLive = nextRefreshStep(pollMillisLive, faster = false)
+                            })
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text(text = "▶", style = R1.labelMicro, color = R1.AccentWarm)
+                    }
+                }
                 Text(
                     text = entityId,
                     style = R1.labelMicro,
@@ -421,7 +502,7 @@ private fun CameraDetailOverlay(
                     modifier = Modifier.padding(horizontal = 12.dp),
                 )
                 Text(
-                    text = "Polling every $pollSec s · tap ✕ to close",
+                    text = "Rotate ↻ · tap ✕ to close",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     modifier = Modifier.padding(horizontal = 12.dp),
@@ -429,4 +510,26 @@ private fun CameraDetailOverlay(
             }
         }
     }
+}
+
+/** Non-linear step ladder for the refresh-rate picker — denser near the
+ *  realtime end where small changes matter, coarser at the slow end where
+ *  they don't. 200 ms is the practical floor: HA camera_proxy round-trips
+ *  on LAN cluster ~80-150 ms, so polling faster than that just stacks
+ *  in-flight requests. */
+private val REFRESH_STEPS_MILLIS: LongArray = longArrayOf(
+    200L, 333L, 500L, 1_000L, 2_000L, 4_000L, 8_000L, 15_000L, 30_000L,
+)
+
+private fun nextRefreshStep(current: Long, faster: Boolean): Long {
+    val idx = REFRESH_STEPS_MILLIS.indexOfFirst { it >= current }
+        .let { if (it < 0) REFRESH_STEPS_MILLIS.lastIndex else it }
+    val next = if (faster) (idx - 1).coerceAtLeast(0) else (idx + 1).coerceAtMost(REFRESH_STEPS_MILLIS.lastIndex)
+    return REFRESH_STEPS_MILLIS[next]
+}
+
+private fun formatPollInterval(millis: Long): String = when {
+    millis < 1000 -> "${millis} ms"
+    millis < 10_000 -> "${"%.1f".format(millis / 1000f)} s"
+    else -> "${millis / 1000} s"
 }

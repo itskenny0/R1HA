@@ -58,6 +58,7 @@ class IotCameraService : Service() {
     private var mjpeg: MjpegServer? = null
     private var mqtt: MqttStreamSession? = null
     private var mqttJob: Job? = null
+    private var bitrateJob: Job? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     @Volatile private var currentConfig: ServiceConfig? = null
 
@@ -76,6 +77,26 @@ class IotCameraService : Service() {
                 .distinctUntilChanged()
                 .collect { cfg -> applyConfig(cfg) }
         }
+        // Rolling bitrate ticker. Samples the cumulative byte counter
+        // every BITRATE_WINDOW_MS and reports the delta as bits/sec, so
+        // the settings status card has a glanceable readout that
+        // reflects the user's chosen fps / quality / sink combo. Lives
+        // on serviceScope so it dies cleanly with the service.
+        bitrateJob = serviceScope.launch {
+            var lastBytes = status.snapshot.value.bytesUploadedTotal
+            var lastAtNanos = System.nanoTime()
+            while (true) {
+                kotlinx.coroutines.delay(BITRATE_WINDOW_MS)
+                val nowBytes = status.snapshot.value.bytesUploadedTotal
+                val nowNanos = System.nanoTime()
+                val deltaBytes = (nowBytes - lastBytes).coerceAtLeast(0L)
+                val deltaSec = ((nowNanos - lastAtNanos) / 1_000_000_000.0).coerceAtLeast(0.001)
+                val bps = (deltaBytes * 8.0 / deltaSec).toLong()
+                status.setBitrate(bps)
+                lastBytes = nowBytes
+                lastAtNanos = nowNanos
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,9 +107,7 @@ class IotCameraService : Service() {
     }
 
     override fun onDestroy() {
-        teardownPipeline()
-        capture?.shutdown()
-        capture = null
+        teardownPipeline(currentConfig)
         status.reset()
         serviceScope.cancel()
         super.onDestroy()
@@ -103,7 +122,12 @@ class IotCameraService : Service() {
         val prev = currentConfig
         currentConfig = cfg
         if (prev == cfg) return
-        teardownPipeline()
+        // Pass the previous config to teardown so MQTT can clear its
+        // retained discovery payload from the broker — without that, HA
+        // keeps showing the camera as if it were still publishing because
+        // the broker replays the retained config to every subscriber and
+        // the camera entity sticks around with the last cached frame.
+        teardownPipeline(prev)
         status.reset()
         if (!cfg.enabled) {
             updateNotification("Idle — no sinks enabled")
@@ -133,6 +157,7 @@ class IotCameraService : Service() {
             height = cfg.height,
             targetFps = cfg.fps,
             jpegQuality = cfg.jpegQuality,
+            rotationDegrees = cfg.rotationDegrees,
             bus = bus,
             onError = { msg ->
                 R1Log.w("IotCamera.service", "capture error: $msg")
@@ -153,6 +178,7 @@ class IotCameraService : Service() {
                 password = cfg.mjpegPassword,
                 frames = bus.frames,
                 latestFrame = { bus.latest() },
+                onBytesEgressed = { delta -> status.addBytesUploaded(delta) },
             ).also { it.start() }
             // Bind-success isn't a callback we can observe directly from
             // the server, but the ServerSocket constructor inside start()
@@ -194,7 +220,8 @@ class IotCameraService : Service() {
             }
             mqttJob = serviceScope.launch {
                 bus.frames.collect { jpeg ->
-                    mqtt?.publish(mqttImageTopic(cfg), jpeg, retain = false)
+                    val ok = mqtt?.publish(mqttImageTopic(cfg), jpeg, retain = false) ?: false
+                    if (ok) status.addBytesUploaded(jpeg.size.toLong())
                 }
             }
         } else if (cfg.mqttEnabled) {
@@ -206,20 +233,51 @@ class IotCameraService : Service() {
         updateNotification(stateSummary(cfg))
     }
 
-    private fun teardownPipeline() {
+    private fun teardownPipeline(prev: ServiceConfig? = null) {
         mqttJob?.cancel()
         mqttJob = null
+        // If we had MQTT auto-discovery published, retract the retained
+        // config payload first by publishing an empty retained message to
+        // the same topic. HA convention: an empty payload to a discovery
+        // topic removes the auto-discovered entity. Without this, the
+        // entity sticks around in HA with the last cached frame even
+        // though we've stopped publishing — exactly the "still streaming"
+        // bug users hit when toggling off the master switch.
+        prev?.let { unpublishMqttDiscovery(it) }
         runCatching { mqtt?.stop() }
         mqtt = null
         runCatching { mjpeg?.stop() }
         mjpeg = null
-        runCatching { capture?.stop() }
-        // Note: capture.shutdown() (which kills the background thread) only
-        // happens in onDestroy. start/stop cycles keep the looper alive.
+        runCatching { capture?.shutdown() }
+        // shutdown() also kills the HandlerThread, so the old instance
+        // can't keep a background looper alive after we replace it. Null
+        // out so applyConfig's next assignment is the only live capture.
+        capture = null
     }
 
     private fun mqttImageTopic(cfg: ServiceConfig): String =
         "r1ha/${cfg.mqttNodeId.ifBlank { "default" }}/${cfg.mqttObjectId}/image"
+
+    /**
+     * Inverse of [publishMqttDiscovery]: publish an empty retained payload
+     * to the discovery topic, which HA interprets as "remove this auto-
+     * discovered entity". Runs synchronously here (not via serviceScope)
+     * because by the time this is called, mqtt.stop() is about to fire
+     * and any pending coroutine publishes would race the socket close —
+     * the publish call itself blocks on a tiny socket write so doing it
+     * inline is cheap and reliable. Best-effort: a failure here just
+     * leaves the entity stranded in HA, which the user can clean up via
+     * the Devices UI.
+     */
+    private fun unpublishMqttDiscovery(cfg: ServiceConfig) {
+        if (!cfg.mqttEnabled || cfg.mqttHost.isBlank()) return
+        val node = cfg.mqttNodeId.ifBlank { "default" }
+        val uniqueId = "r1ha_${node}_${cfg.mqttObjectId}"
+        val configTopic = "${cfg.mqttDiscoveryPrefix}/camera/$uniqueId/config"
+        runCatching {
+            mqtt?.publish(configTopic, ByteArray(0), retain = true)
+        }
+    }
 
     private fun publishMqttDiscovery(cfg: ServiceConfig) {
         // HA's MQTT discovery for the camera platform — published with
@@ -326,6 +384,7 @@ class IotCameraService : Service() {
         val height: Int,
         val fps: Int,
         val jpegQuality: Int,
+        val rotationDegrees: Int,
         val mjpegEnabled: Boolean,
         val mjpegPort: Int,
         val mjpegAuthEnabled: Boolean,
@@ -353,6 +412,7 @@ class IotCameraService : Service() {
                 height = c.height.coerceAtLeast(120),
                 fps = c.fps.coerceAtLeast(1),
                 jpegQuality = c.jpegQuality.coerceIn(1, 100),
+                rotationDegrees = ((c.rotationDegrees % 360) + 360) % 360,
                 mjpegEnabled = c.mjpegEnabled,
                 mjpegPort = c.mjpegPort.coerceIn(1024, 65535),
                 mjpegAuthEnabled = c.mjpegAuthEnabled,
@@ -375,6 +435,11 @@ class IotCameraService : Service() {
     companion object {
         private const val CHANNEL_ID = "iot_camera_mode"
         private const val NOTIF_ID = 0x71BA1702
+
+        /** Bitrate sampling window. 1 s gives a responsive readout without
+         *  jitter from short bursts; longer would smooth too aggressively
+         *  for a "did my throttle change land?" debug check. */
+        private const val BITRATE_WINDOW_MS = 1_000L
 
         fun ensureChannel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return

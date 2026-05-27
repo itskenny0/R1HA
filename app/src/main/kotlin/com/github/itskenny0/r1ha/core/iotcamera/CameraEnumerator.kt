@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.os.Build
 import android.util.Size
 
 /**
@@ -43,10 +44,30 @@ object CameraEnumerator {
     fun list(context: Context): List<CameraDescriptor> {
         val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
             ?: return emptyList()
-        val ids = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
-        return ids.mapNotNull { id ->
-            runCatching { describe(manager, id) }.getOrNull()
-        }.sortedWith(
+        val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
+        val results = mutableListOf<CameraDescriptor>()
+        for (id in logicalIds) {
+            runCatching { describe(manager, id, physicalParent = null) }.getOrNull()
+                ?.let(results::add)
+            // Logical multi-camera devices (Xiaomi 9T, modern Pixels, etc.)
+            // expose 1-2 logical IDs in cameraIdList but bundle 3-4 physical
+            // sensors behind each. Without walking INFO_PHYSICAL_CAMERA_IDS
+            // the user only sees FRONT / BACK and can never select the
+            // ultrawide or tele. API 28+ only — older devices either don't
+            // have multi-physical or expose every physical as its own
+            // logical (so the original list already covers them).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                runCatching {
+                    val chars = manager.getCameraCharacteristics(id)
+                    chars.physicalCameraIds.forEach { physId ->
+                        runCatching { describe(manager, physId, physicalParent = id) }
+                            .getOrNull()
+                            ?.let(results::add)
+                    }
+                }
+            }
+        }
+        return results.sortedWith(
             // Back cameras first (most common stream target), then front,
             // then external — and within a facing group, larger sensors
             // first so the "main" wide-angle sits at the top of its group.
@@ -67,7 +88,11 @@ object CameraEnumerator {
             ?: list.firstOrNull()?.id
     }
 
-    private fun describe(manager: CameraManager, id: String): CameraDescriptor {
+    private fun describe(
+        manager: CameraManager,
+        id: String,
+        physicalParent: String?,
+    ): CameraDescriptor {
         val chars = manager.getCameraCharacteristics(id)
         val facing = chars.get(CameraCharacteristics.LENS_FACING)
             ?: CameraCharacteristics.LENS_FACING_EXTERNAL
@@ -93,10 +118,27 @@ object CameraEnumerator {
             focalLengths.size == 1 -> "${"%.1f".format(focalLengths[0])}mm"
             else -> focalLengths.joinToString(separator = " / ") { "%.1f".format(it) } + "mm"
         }
-        val label = "$facingTag · $focalLabel"
+        // Synthesize a sortable "physical sensor" hint from the focal
+        // length — under 4mm tends to be ultrawide, 4-7mm wide, 7+ tele.
+        // It's a heuristic but matches the OEM's marketing labels on every
+        // multi-camera device we've checked.
+        val sensorHint = focalLengths.firstOrNull()?.let { f ->
+            when {
+                f < 3f -> " (ULTRAWIDE)"
+                f < 5f -> " (WIDE)"
+                f >= 7f -> " (TELE)"
+                else -> ""
+            }
+        } ?: ""
+        val physicalTag = if (physicalParent != null) " · PHYS" else ""
+        val label = "$facingTag · $focalLabel$sensorHint$physicalTag"
         val topSize = sizes.firstOrNull()
         val description = buildString {
-            append("id ").append(id)
+            if (physicalParent != null) {
+                append("phys ").append(id).append(" (parent ").append(physicalParent).append(")")
+            } else {
+                append("id ").append(id)
+            }
             if (topSize != null) {
                 append(" · max ").append(topSize.width).append("×").append(topSize.height)
             }
@@ -104,8 +146,14 @@ object CameraEnumerator {
                 append(" · ").append(sizes.size).append(" sizes")
             }
         }
+        // Encode physical-camera selection in the id we hand back to the
+        // capture pipeline. Format: "phys:<parentLogical>:<physicalId>".
+        // CameraCapture splits this on use and passes the physical id via
+        // OutputConfiguration.setPhysicalCameraId so we capture from the
+        // exact sensor the user picked.
+        val captureId = if (physicalParent != null) "phys:$physicalParent:$id" else id
         return CameraDescriptor(
-            id = id,
+            id = captureId,
             label = label,
             description = description,
             supportedJpegSizes = sizes,

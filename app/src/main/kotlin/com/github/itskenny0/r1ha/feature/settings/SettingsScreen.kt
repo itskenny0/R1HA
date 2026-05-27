@@ -78,6 +78,10 @@ enum class SettingsCategory {
      *  implications (opens a port, holds the camera) — burying it under
      *  Integrations would be a UX regression. */
     IOT_CAMERA,
+    /** MQTT broker config — host / port / auth / TLS. Top-level rather
+     *  than buried under Advanced because the IoT Camera Mode feature
+     *  requires it and needs somewhere obvious to link to. */
+    MQTT,
     ADVANCED,
     BROWSE,
 }
@@ -108,6 +112,7 @@ private fun categoryTitle(category: SettingsCategory): String = when (category) 
     SettingsCategory.INTEGRATIONS -> "INTEGRATIONS"
     SettingsCategory.SYNC -> "SYNC"
     SettingsCategory.IOT_CAMERA -> "IOT CAMERA MODE"
+    SettingsCategory.MQTT -> "MQTT BROKER"
     SettingsCategory.ADVANCED -> "ADVANCED"
     SettingsCategory.BROWSE -> "BROWSE"
 }
@@ -484,6 +489,19 @@ fun SettingsScreen(
                         },
                         modifiedCount = 0,
                         onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+                    )
+                }
+                item {
+                    GroupCard(
+                        title = "MQTT broker",
+                        subtitle = if (s.advanced.mqttHost.isNotBlank()) {
+                            "${s.advanced.mqttHost}:${s.advanced.mqttPort}" +
+                                (if (s.advanced.mqttUseTls) " · TLS" else "")
+                        } else {
+                            "Not configured · required by IoT Camera Mode"
+                        },
+                        modifiedCount = 0,
+                        onClick = { onOpenCategory(SettingsCategory.MQTT) },
                     )
                 }
                 item {

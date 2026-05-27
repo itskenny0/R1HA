@@ -108,6 +108,34 @@ fun SyncSettingsScreen(
             }
             if (s.integrations.haSyncEnabled) {
                 item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Manual only", style = R1.bodyEmph, color = R1.Ink)
+                            Text(
+                                text = if (s.integrations.haSyncManualOnly) {
+                                    "No auto-pull or auto-push. PULL/PUSH NOW still work."
+                                } else {
+                                    "Sync runs automatically on edit + on interval"
+                                },
+                                style = R1.body,
+                                color = R1.InkMuted,
+                                modifier = Modifier.padding(top = 1.dp),
+                            )
+                        }
+                        com.github.itskenny0.r1ha.ui.components.R1Switch(
+                            checked = s.integrations.haSyncManualOnly,
+                            onCheckedChange = { v ->
+                                vm.updateIntegrations { it.copy(haSyncManualOnly = v) }
+                            },
+                        )
+                    }
+                }
+                item {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -59,8 +60,17 @@ fun CameraSnapshot(
     bearerToken: String?,
     entityId: String,
     /** Polling interval — 4 s is the default. 1 s wastes data without
-     *  feeling much smoother given HA's typical camera-fetch latency. */
+     *  feeling much smoother given HA's typical camera-fetch latency.
+     *  The detail-overlay surfaces a slider that drives this all the
+     *  way down to ~200 ms for users who want pseudo-realtime polling
+     *  (true MJPEG would need a separate code path; not in scope here). */
     intervalMillis: Long = 4_000L,
+    /** On-device display rotation in degrees, applied as a layer
+     *  transform after decode so the source bytes / cache stay
+     *  untouched. Practical values are 0 / 90 / 180 / 270 — anything
+     *  else still renders but with non-axis-aligned bounds inside the
+     *  Fit content scale. */
+    rotationDegrees: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     var bitmap by remember(entityId) { mutableStateOf<ImageBitmap?>(null) }
@@ -128,7 +138,11 @@ fun CameraSnapshot(
                 bitmap = img,
                 contentDescription = entityId,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .let { m ->
+                        if (rotationDegrees != 0f) m.rotate(rotationDegrees) else m
+                    },
             )
         } else if (failed) {
             Text(text = "NO SIGNAL", style = R1.labelMicro, color = R1.InkMuted)

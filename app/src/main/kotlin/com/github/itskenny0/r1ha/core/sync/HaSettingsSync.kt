@@ -86,23 +86,33 @@ class HaSettingsSync(
         // Enable observer — fires an immediate pull whenever the toggle
         // flips to ON, so flipping it on a fresh device pulls down the
         // already-shared preferences without waiting for the next
-        // periodic tick.
+        // periodic tick. Skipped in manual-only mode: that user wants to
+        // press PULL NOW themselves and shouldn't have a baseline land
+        // unexpectedly when they toggle sync on.
         scope.launch {
             settings.settings
                 .map { it.integrations.haSyncEnabled }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     if (enabled) {
-                        R1Log.i("HaSync", "enabled; pulling baseline from HA")
-                        awaitWsConnected()
-                        pull()
+                        val manualOnly = runCatching {
+                            settings.settings.first().integrations.haSyncManualOnly
+                        }.getOrDefault(false)
+                        if (manualOnly) {
+                            R1Log.i("HaSync", "enabled; manual-only mode (no auto-pull)")
+                        } else {
+                            R1Log.i("HaSync", "enabled; pulling baseline from HA")
+                            awaitWsConnected()
+                            pull()
+                        }
                     }
                 }
         }
 
         // Periodic pull at the user's chosen interval. We re-read the
         // interval each tick so flipping it down/up takes effect within
-        // one cycle rather than waiting for app restart.
+        // one cycle rather than waiting for app restart. Suppressed in
+        // manual-only mode — pullNow() still works for explicit taps.
         scope.launch {
             while (true) {
                 val s = runCatching { settings.settings.first() }.getOrNull()
@@ -110,6 +120,7 @@ class HaSettingsSync(
                     .coerceIn(30, 3600)
                 delay(intervalSec * 1000L)
                 if (s?.integrations?.haSyncEnabled == true &&
+                    s.integrations.haSyncManualOnly == false &&
                     haRepository.connection.value is ConnectionState.Connected
                 ) {
                     pull()
@@ -120,12 +131,14 @@ class HaSettingsSync(
         // Local-edit observer. Compares a hash of the SYNCED subset
         // against the last value we either pushed or pulled. Different
         // → schedule a push (debounced 5 s so a wheel of changes from
-        // a settings sweep coalesces into one upload).
+        // a settings sweep coalesces into one upload). Suppressed in
+        // manual-only mode so edits don't trigger network churn.
         scope.launch {
             settings.settings
                 .distinctUntilChanged()
                 .collect { s ->
                     if (!s.integrations.haSyncEnabled) return@collect
+                    if (s.integrations.haSyncManualOnly) return@collect
                     val hash = syncedSubsetHash(s)
                     if (hash == lastAppliedHash) return@collect
                     pendingPushJob?.cancel()

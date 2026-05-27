@@ -73,6 +73,10 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 fun IotCameraSettingsScreen(
     settings: SettingsRepository,
     tokens: TokenStore,
+    /** Navigate to the dedicated MQTT broker config screen. Used by the
+     *  "MQTT not configured" warning banner so the user can fix the
+     *  prerequisite in one tap without hunting through Settings. */
+    onOpenMqttSettings: () -> Unit,
     onBack: () -> Unit,
 ) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(settings, tokens))
@@ -341,6 +345,56 @@ fun IotCameraSettingsScreen(
                 }
             }
 
+            // ── Sender-side rotation ──────────────────────────────────────
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
+                    Text("Rotate (sender side)", style = R1.bodyEmph, color = R1.Ink)
+                    Text(
+                        "Rotates every encoded frame before fan-out. Costs CPU " +
+                            "per frame; leave at 0° and let HA rotate at the " +
+                            "viewer if you care about peak fps.",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                        modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable({
+                                    vm.updateIotCamera {
+                                        val next = ((it.rotationDegrees + 270) % 360)
+                                        it.copy(rotationDegrees = next)
+                                    }
+                                })
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) { Text("↺", style = R1.bodyEmph, color = R1.InkSoft) }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "${cam.rotationDegrees}°",
+                            style = R1.bodyEmph,
+                            color = R1.AccentWarm,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable({
+                                    vm.updateIotCamera {
+                                        val next = ((it.rotationDegrees + 90) % 360)
+                                        it.copy(rotationDegrees = next)
+                                    }
+                                })
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        ) { Text("↻", style = R1.bodyEmph, color = R1.InkSoft) }
+                    }
+                }
+            }
+
             // ── Frame rate ────────────────────────────────────────────────
             item {
                 Column(
@@ -534,6 +588,10 @@ fun IotCameraSettingsScreen(
             }
 
             // ── MQTT sink ─────────────────────────────────────────────────
+            // The toggle is always tappable, even when the broker isn't
+            // configured — explicit "this requires MQTT" framing in the
+            // subtitle + a loud follow-up banner is friendlier than a
+            // greyed-out switch that the user has to guess about.
             item {
                 Row(
                     modifier = Modifier
@@ -544,28 +602,111 @@ fun IotCameraSettingsScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("MQTT auto-discovery", style = R1.bodyEmph, color = R1.Ink)
                         Text(
-                            text = if (s.advanced.mqttHost.isBlank()) {
-                                "Configure broker under Advanced → MQTT first"
-                            } else {
-                                "Publishes config + frames to ${s.advanced.mqttHost}"
-                            },
+                            text = "Requires MQTT broker — does NOT auto-configure",
                             style = R1.body,
-                            color = if (s.advanced.mqttHost.isBlank()) R1.StatusAmber else R1.InkMuted,
+                            color = R1.InkMuted,
                             modifier = Modifier.padding(top = 1.dp),
                         )
                     }
                     R1Switch(
                         checked = cam.mqttEnabled,
-                        enabled = s.advanced.mqttHost.isNotBlank(),
                         onCheckedChange = { v ->
                             vm.updateIotCamera { it.copy(mqttEnabled = v) }
                         },
                     )
                 }
             }
+            // Loud warning + tappable link when MQTT is on but the broker
+            // hasn't been configured yet. Without this the user toggles
+            // MQTT on, sees nothing happen (since the service silently
+            // skips MQTT setup with no host), and has no clue why.
+            if (cam.mqttEnabled && s.advanced.mqttHost.isBlank()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 6.dp)
+                            .clip(R1.ShapeS)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.StatusAmber, R1.ShapeS)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        Text(
+                            text = "MQTT BROKER NOT CONFIGURED",
+                            style = R1.labelMicro,
+                            color = R1.StatusAmber,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "This feature won't work until you configure " +
+                                "the MQTT broker. R1HA does not auto-discover or " +
+                                "auto-configure brokers — you have to point it at " +
+                                "the same broker your Home Assistant is using.",
+                            style = R1.body,
+                            color = R1.InkSoft,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable(onClick = onOpenMqttSettings)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text(
+                                "CONFIGURE MQTT BROKER",
+                                style = R1.labelMicro,
+                                color = R1.AccentWarm,
+                            )
+                        }
+                    }
+                }
+            }
+            // When the broker is set up, surface a small "OPEN MQTT
+            // SETTINGS" jump-link so the user can edit broker details
+            // without backing out to the root settings page.
+            if (cam.mqttEnabled && s.advanced.mqttHost.isNotBlank()) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 22.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Broker: ${s.advanced.mqttHost}:${s.advanced.mqttPort}",
+                            style = R1.body,
+                            color = R1.InkMuted,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable(onClick = onOpenMqttSettings)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                "EDIT BROKER",
+                                style = R1.labelMicro,
+                                color = R1.AccentWarm,
+                            )
+                        }
+                    }
+                }
+            }
             if (cam.mqttEnabled) {
                 item {
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "HA DISCOVERY",
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                        )
                         Text("Discovery prefix", style = R1.labelMicro, color = R1.InkSoft)
                         R1TextField(
                             value = cam.mqttDiscoveryPrefix,
@@ -631,6 +772,16 @@ private fun StatusCard(status: IotCameraStatus.Snapshot, lanIp: String?) {
             value = lanIp ?: "no network",
             tint = if (lanIp == null) R1.StatusAmber else R1.Ink,
         )
+        StatusRow(
+            label = "BITRATE",
+            value = formatBitrate(status.bitrateBps),
+            tint = if (status.bitrateBps > 0L) R1.AccentGreen else R1.InkSoft,
+        )
+        StatusRow(
+            label = "DATA SENT",
+            value = formatByteCount(status.bytesUploadedTotal),
+            tint = R1.Ink,
+        )
         val mjpegText = when (status.mjpeg) {
             IotCameraStatus.SinkState.OFF -> "Off"
             IotCameraStatus.SinkState.STARTING -> "Starting…"
@@ -672,6 +823,25 @@ private fun StatusRow(
         )
         Text(text = value, style = R1.labelMicro, color = tint)
     }
+}
+
+/** Human-friendly bitrate string. Caps at Mbps for legibility; raw bps
+ *  shows up only when nothing is flowing. */
+private fun formatBitrate(bps: Long): String = when {
+    bps <= 0L -> "—"
+    bps < 1_000L -> "$bps bps"
+    bps < 1_000_000L -> "${bps / 1_000L} kbps"
+    else -> "${"%.2f".format(bps / 1_000_000.0)} Mbps"
+}
+
+/** Human-friendly byte count. Matches the iEC binary convention HA itself
+ *  uses for camera throughput (KiB / MiB / GiB), so the readout aligns
+ *  with what the user sees on the HA side. */
+private fun formatByteCount(bytes: Long): String = when {
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${"%.1f".format(bytes / 1024.0)} KiB"
+    bytes < 1024L * 1024L * 1024L -> "${"%.2f".format(bytes / (1024.0 * 1024.0))} MiB"
+    else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GiB"
 }
 
 private fun sinkTint(state: IotCameraStatus.SinkState): androidx.compose.ui.graphics.Color =
@@ -736,7 +906,7 @@ private fun HowToAddInHa(
                 Text(
                     "1. In HA: Settings → Devices & Services. Confirm the MQTT " +
                         "integration is installed and shows the same broker " +
-                        "R1HA is publishing to (Advanced → MQTT).",
+                        "R1HA is publishing to (the MQTT BROKER section above).",
                     style = R1.body,
                     color = R1.Ink,
                 )
@@ -752,7 +922,8 @@ private fun HowToAddInHa(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "If the STATUS card above doesn't say \"discovery sent\", " +
-                        "the broker isn't reachable yet. Check Advanced → MQTT.",
+                        "the broker isn't reachable yet. Recheck the broker " +
+                        "host / port / credentials above.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
@@ -881,13 +1052,17 @@ private fun mjpegUrlFor(
  * don't burn the user's battery decoding 30 JPEGs per second just to feed
  * a thumbnail, and renders the decoded bitmap inside a 16:9 tile.
  *
- * SHOW PREVIEW toggle: per-session switch (default ON). When off, the tile
- * still renders so the section doesn't pop in/out as the user fiddles, but
- * the JPEG-decode collector dies and the FrameBus loses a subscriber. That
- * matters when *no* other sink is connected — the capture pipeline's
- * subscriberCount-zero gate skips encoding entirely, so flipping preview
- * off mid-config drops the encode workload to nothing on a settings-screen-
- * only enable. Not persisted: this is UI affordance, not config.
+ * SHOW PREVIEW toggle: per-session switch (default OFF). Off-default
+ * because users on the settings screen are usually doing config (lens
+ * picker, port edits) rather than aiming the camera — the preview burns
+ * CPU encoding frames the user doesn't need to see. When off, the tile
+ * still renders so the section doesn't pop in/out as the user fiddles,
+ * but the JPEG-decode collector dies and the FrameBus loses a
+ * subscriber. That matters when *no* other sink is connected — the
+ * capture pipeline's subscriberCount-zero gate skips encoding entirely,
+ * so the default-off preview means a settings-screen-only enable drops
+ * the encode workload to nothing. Not persisted: this is UI affordance,
+ * not config.
  *
  * Tile states (when preview-on):
  *   - master OFF → grey placeholder with "ENABLE TO PREVIEW" hint
@@ -904,7 +1079,7 @@ private fun LivePreviewTile(enabled: Boolean) {
     val frameBus = remember(context) {
         (context.applicationContext as? App)?.graph?.iotCameraFrameBus
     }
-    var previewOn by remember { mutableStateOf(true) }
+    var previewOn by remember { mutableStateOf(false) }
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(enabled, previewOn, frameBus) {
