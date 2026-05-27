@@ -78,25 +78,35 @@ object CameraEnumerator {
         // cameraIdList AND from INFO_PHYSICAL_CAMERA_IDS — Xiaomi is the
         // canonical example, where the HAL advertises 1 logical "back"
         // camera while keeping wide / tele / ultrawide hidden behind it.
-        // getCameraCharacteristics still works on those hidden IDs even
-        // though they aren't enumerated, so we walk the small-int range
-        // and accept any that return characteristics. Capped at 20 because
-        // beyond that we're firmly into "this isn't a real camera" land
-        // and most OEMs keep their hidden IDs in 0-9.
         //
-        // openCamera() on a hidden ID may still fail if the HAL gates
-        // access by package; if it does, the user picks the lens, the
-        // status card surfaces the open-error, and they fall back to a
-        // listed lens. No worse than the current state where the lens
-        // is invisible entirely.
+        // getCameraCharacteristics() may succeed on IDs that AREN'T real
+        // openable cameras (placeholder slots, depth-helper sensors,
+        // metadata-only IDs the HAL uses internally). To keep those out
+        // of the picker, only accept IDs that look like real cameras:
+        //   - LENS_FACING is explicitly set (not null) — every real
+        //     camera advertises its facing direction, while placeholder
+        //     slots return null.
+        //   - SCALER_STREAM_CONFIGURATION_MAP has at least one JPEG
+        //     output size — non-output sensors (depth helpers, IR-only)
+        //     return either no map or no JPEG sizes.
+        //
+        // Range capped at 20 because beyond that we're firmly into
+        // "this isn't a real camera" territory; OEMs that hide IDs keep
+        // them in the 0-9 range almost universally.
         for (i in 0..19) {
             val id = i.toString()
             if (seenIds.contains(id)) continue
             runCatching {
-                manager.getCameraCharacteristics(id)
-                // Survived the call → camera exists. Add it as a
-                // top-level (no parent) entry so CameraCapture opens it
-                // directly via openCamera(id).
+                val chars = manager.getCameraCharacteristics(id)
+                val facing = chars.get(CameraCharacteristics.LENS_FACING) ?: return@runCatching
+                val streamMap = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                    ?: return@runCatching
+                val jpegSizes = streamMap.getOutputSizes(ImageFormat.JPEG)
+                if (jpegSizes.isNullOrEmpty()) return@runCatching
+                // Survived all the checks → a real, openable camera the
+                // standard enumeration missed. Add it as a top-level
+                // entry so CameraCapture opens it directly.
+                @Suppress("UNUSED_VARIABLE") val unused = facing
                 add(id, parent = null)
             }
         }
