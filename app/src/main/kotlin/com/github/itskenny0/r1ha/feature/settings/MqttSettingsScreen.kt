@@ -15,18 +15,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.itskenny0.r1ha.core.mqtt.MqttPublisher
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.coroutines.launch
 
 /**
  * Top-level MQTT broker config. Lifted out of the Dev menu's one-shot
@@ -52,6 +60,15 @@ fun MqttSettingsScreen(
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(settings, tokens))
     val s by vm.state.collectAsStateWithLifecycle()
     val advanced = s.advanced
+    val scope = rememberCoroutineScope()
+    // Per-session test-button state. Holds the most recent test outcome
+    // so the user can verify a config edit reached the broker without
+    // having to enable IoT Camera Mode + watch the status card. Not
+    // persisted — the broker either works or it doesn't on every fresh
+    // attempt.
+    var testInFlight by remember { mutableStateOf(false) }
+    var lastTestResult by remember { mutableStateOf<String?>(null) }
+    var lastTestOk by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -173,6 +190,85 @@ fun MqttSettingsScreen(
                         },
                         placeholder = "auto-generated per publish if blank",
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
+            }
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp),
+                ) {
+                    val label = when {
+                        testInFlight -> "TESTING…"
+                        else -> "TEST CONNECTION"
+                    }
+                    val tint = when {
+                        testInFlight -> R1.InkSoft
+                        advanced.mqttHost.isBlank() -> R1.InkMuted
+                        else -> R1.AccentWarm
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(R1.ShapeS)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable(onClick = {
+                                if (testInFlight || advanced.mqttHost.isBlank()) return@r1Pressable
+                                testInFlight = true
+                                lastTestResult = null
+                                scope.launch {
+                                    // Fire one CONNECT + PUBLISH + DISCONNECT
+                                    // round-trip. Topic is intentionally
+                                    // namespaced under r1ha/diagnostic so it
+                                    // doesn't collide with anything HA cares
+                                    // about; payload is the wall-clock so the
+                                    // user can verify on the broker side
+                                    // (mosquitto_sub etc.) which test fired.
+                                    val ts = System.currentTimeMillis()
+                                    val result = MqttPublisher.publish(
+                                        host = advanced.mqttHost,
+                                        port = advanced.mqttPort,
+                                        topic = "r1ha/diagnostic/test",
+                                        payload = "r1ha test ping @ $ts"
+                                            .toByteArray(Charsets.UTF_8),
+                                        username = advanced.mqttUsername.ifBlank { null },
+                                        password = advanced.mqttPassword.ifBlank { null },
+                                        useTls = advanced.mqttUseTls,
+                                    )
+                                    testInFlight = false
+                                    result.onSuccess {
+                                        lastTestOk = true
+                                        lastTestResult = "Connected + published OK"
+                                        Toaster.show("MQTT broker reachable")
+                                    }.onFailure { t ->
+                                        lastTestOk = false
+                                        lastTestResult = t.message
+                                            ?: t::class.java.simpleName
+                                        Toaster.error("MQTT test failed: $lastTestResult")
+                                    }
+                                }
+                            })
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(label, style = R1.labelMicro, color = tint)
+                    }
+                    val outcome = lastTestResult
+                    if (outcome != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = if (lastTestOk) "SUCCESS · $outcome" else "FAILED · $outcome",
+                            style = R1.labelMicro,
+                            color = if (lastTestOk) R1.AccentGreen else R1.StatusRed,
+                        )
+                    }
+                    Text(
+                        text = "Sends a small payload to r1ha/diagnostic/test " +
+                            "and closes. Use mosquitto_sub on the broker side to " +
+                            "verify the publish landed.",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                        modifier = Modifier.padding(top = 6.dp),
                     )
                 }
             }

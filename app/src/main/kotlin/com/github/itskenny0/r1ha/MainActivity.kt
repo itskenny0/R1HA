@@ -1,8 +1,10 @@
 package com.github.itskenny0.r1ha
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -436,19 +438,30 @@ class MainActivity : ComponentActivity() {
         // key event instead of firing the user's bound action. Without this,
         // a user who bound "1" or any other character key can't type those
         // characters into URL fields, MQTT broker host, etc. — the binding
-        // fires first and the input field never sees the keystroke. WHEEL
-        // bindings are exempted because the R1's physical wheel emits DPAD
-        // keycodes that the user always wants intercepted for navigation,
-        // even if a field is focused (the wheel isn't a text input device).
-        val focused = currentFocus
-        val isEditorFocused = focused?.onCheckIsTextEditor() == true
-        if (isEditorFocused) {
-            val candidate = graph.latestBindings.actionFor(event.keyCode)
-            val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
-                candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
-            if (!isWheelKey) {
-                return super.dispatchKeyEvent(event)
-            }
+        // fires first and the input field never sees the keystroke.
+        //
+        // Three OR-ed checks because no single one is reliable across the
+        // surfaces the R1 hits:
+        //   - currentFocus.onCheckIsTextEditor() — works for Compose
+        //     BasicTextField and EditText but returns false for WebView
+        //     input elements (focus is on the WebView itself, not the
+        //     internal input);
+        //   - IME visible in the window insets — catches WebView typing
+        //     and any system-driven editor surface, but misses hardware
+        //     keyboards (we don't have one);
+        //   - InputMethodManager.isActive() — true whenever the IME is
+        //     bound to any view in the activity, including before the
+        //     soft keyboard finishes its show animation.
+        //
+        // WHEEL bindings are exempted because the R1's physical wheel
+        // emits DPAD keycodes that the user always wants intercepted
+        // for navigation, even if a field is focused (the wheel isn't a
+        // text input device and never sends letters).
+        val candidate = graph.latestBindings.actionFor(event.keyCode)
+        val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
+            candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
+        if (!isWheelKey && isTextInputActive()) {
+            return super.dispatchKeyEvent(event)
         }
         val action = graph.latestBindings.actionFor(event.keyCode)
             ?: return super.dispatchKeyEvent(event)
@@ -516,6 +529,37 @@ class MainActivity : ComponentActivity() {
         if (isUp) lastVolumeRepeatUp = event.eventTime
         else lastVolumeRepeatDown = event.eventTime
         return true
+    }
+
+    /**
+     * Best-effort check for "the user is currently typing into a text
+     * surface". Returns true if ANY of these signals are present:
+     *
+     *   1. The focused View reports itself as a text editor — covers
+     *      Compose BasicTextField and native EditText.
+     *   2. The window insets say the IME is visible — catches WebView
+     *      input elements (focus reports the WebView itself, not the
+     *      DOM input, so check #1 misses them).
+     *   3. InputMethodManager has an active input connection bound to
+     *      a view in this window — catches the brief window between
+     *      a TextField gaining focus and the IME finishing its show
+     *      animation, plus any IME that doesn't show a soft keyboard
+     *      (voice IME, hardware-keyboard-driven IMEs).
+     *
+     * Used by [dispatchKeyEvent] to suppress key-binding actions while
+     * the user is typing — without this, a binding on a letter or
+     * digit key swallows the keystroke before the input field sees it.
+     */
+    private fun isTextInputActive(): Boolean {
+        val focused = currentFocus
+        if (focused?.onCheckIsTextEditor() == true) return true
+        val imeVisible = runCatching {
+            androidx.core.view.ViewCompat.getRootWindowInsets(window.decorView)
+                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())
+        }.getOrNull() == true
+        if (imeVisible) return true
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        return imm?.isActive == true
     }
 
     companion object {
