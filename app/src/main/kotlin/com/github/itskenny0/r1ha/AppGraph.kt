@@ -243,4 +243,16 @@ class AppGraph(context: Context) {
      */
     @Volatile
     var latestBindings: KeyBindings = KeyBindings.DEFAULT
+
+    /**
+     * Current top-level navigation route, updated by an
+     * `OnDestinationChangedListener` installed in `MainActivity.setContent`.
+     * Read from `MainActivity.dispatchKeyEvent` to gate key-binding fire on
+     * the screens where bindings make sense (card stack + dashboard) and
+     * silence them everywhere else so a binding on "6" doesn't swallow the
+     * keystroke when the user is typing into a text field on a Settings
+     * or Onboarding screen. Null until the first navigation tick lands.
+     */
+    @Volatile
+    var currentNavRoute: String? = null
 }

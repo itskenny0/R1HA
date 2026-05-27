@@ -109,6 +109,22 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             R1Log.d("MainActivity.setContent", "startDestination=$startDestination server=${initial.server?.url ?: "null"}")
 
+            // Mirror the current nav destination onto AppGraph so
+            // dispatchKeyEvent (synchronous, can't call into Compose) can
+            // gate the key-binding intercept on the route. Bindings should
+            // only fire on the card stack and dashboard — anywhere else
+            // (Settings, Onboarding, Assist text field, etc.) we want
+            // keystrokes to pass through to whatever's focused.
+            androidx.compose.runtime.DisposableEffect(navController) {
+                val listener = androidx.navigation.NavController.OnDestinationChangedListener {
+                    _, dest, _ -> graph.currentNavRoute = dest.route
+                }
+                navController.addOnDestinationChangedListener(listener)
+                onDispose {
+                    navController.removeOnDestinationChangedListener(listener)
+                }
+            }
+
             // Live setting changes. PORTRAIT_ONLY overrides the FULL_USER set in onCreate;
             // FOLLOW_DEVICE reinstates FULL_USER. Both are immediate — no restart needed.
             androidx.compose.runtime.LaunchedEffect(settings.behavior.orientationMode) {
@@ -433,34 +449,24 @@ class MainActivity : ComponentActivity() {
         ) {
             return true
         }
-        // If a text editor has focus (Compose BasicTextField, an EditText
-        // somewhere in a WebView, etc.), let the IME / framework consume the
-        // key event instead of firing the user's bound action. Without this,
-        // a user who bound "1" or any other character key can't type those
-        // characters into URL fields, MQTT broker host, etc. — the binding
-        // fires first and the input field never sees the keystroke.
+        // Route-based gating: bindings only fire on the surfaces where
+        // they make sense (card stack + dashboard). Everywhere else
+        // (Settings, Onboarding, Assist text field, Service caller,
+        // etc.) we pass the key through untouched so the focused input
+        // surface — Compose TextField, WebView <input>, whatever — gets
+        // the keystroke. Earlier attempts to detect "is the user typing"
+        // via currentFocus / IME-visibility / InputMethodManager state
+        // were unreliable across surfaces; pinning to allowed routes is
+        // both simpler and matches the user's mental model ("I bound
+        // this to drive the card stack, not to override typing").
         //
-        // Three OR-ed checks because no single one is reliable across the
-        // surfaces the R1 hits:
-        //   - currentFocus.onCheckIsTextEditor() — works for Compose
-        //     BasicTextField and EditText but returns false for WebView
-        //     input elements (focus is on the WebView itself, not the
-        //     internal input);
-        //   - IME visible in the window insets — catches WebView typing
-        //     and any system-driven editor surface, but misses hardware
-        //     keyboards (we don't have one);
-        //   - InputMethodManager.isActive() — true whenever the IME is
-        //     bound to any view in the activity, including before the
-        //     soft keyboard finishes its show animation.
-        //
-        // WHEEL bindings are exempted because the R1's physical wheel
-        // emits DPAD keycodes that the user always wants intercepted
-        // for navigation, even if a field is focused (the wheel isn't a
-        // text input device and never sends letters).
+        // WHEEL bindings are exempted: the R1's physical wheel emits
+        // DPAD keycodes and users expect it to scroll lists everywhere
+        // in the app, not just on the card stack.
         val candidate = graph.latestBindings.actionFor(event.keyCode)
         val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
             candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
-        if (!isWheelKey && isTextInputActive()) {
+        if (!isWheelKey && !isBindingAllowedRoute(graph.currentNavRoute)) {
             return super.dispatchKeyEvent(event)
         }
         val action = graph.latestBindings.actionFor(event.keyCode)
@@ -532,34 +538,20 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Best-effort check for "the user is currently typing into a text
-     * surface". Returns true if ANY of these signals are present:
+     * Allowlist for routes where custom key bindings fire. Only the card
+     * stack and dashboard count — they're the surfaces designed around
+     * hardware-key control. Everywhere else is config / forms / text
+     * input, where intercepting a bound key would steal the keystroke
+     * from a focused input field. WHEEL bindings bypass this check
+     * separately so the physical wheel keeps scrolling lists on every
+     * screen.
      *
-     *   1. The focused View reports itself as a text editor — covers
-     *      Compose BasicTextField and native EditText.
-     *   2. The window insets say the IME is visible — catches WebView
-     *      input elements (focus reports the WebView itself, not the
-     *      DOM input, so check #1 misses them).
-     *   3. InputMethodManager has an active input connection bound to
-     *      a view in this window — catches the brief window between
-     *      a TextField gaining focus and the IME finishing its show
-     *      animation, plus any IME that doesn't show a soft keyboard
-     *      (voice IME, hardware-keyboard-driven IMEs).
-     *
-     * Used by [dispatchKeyEvent] to suppress key-binding actions while
-     * the user is typing — without this, a binding on a letter or
-     * digit key swallows the keystroke before the input field sees it.
+     * Null route (very early boot, before navigation settles) returns
+     * false so a stray key event during launch never fires an action.
      */
-    private fun isTextInputActive(): Boolean {
-        val focused = currentFocus
-        if (focused?.onCheckIsTextEditor() == true) return true
-        val imeVisible = runCatching {
-            androidx.core.view.ViewCompat.getRootWindowInsets(window.decorView)
-                ?.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime())
-        }.getOrNull() == true
-        if (imeVisible) return true
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        return imm?.isActive == true
+    private fun isBindingAllowedRoute(route: String?): Boolean = when (route) {
+        Routes.CARD_STACK, Routes.DASHBOARD -> true
+        else -> false
     }
 
     companion object {
