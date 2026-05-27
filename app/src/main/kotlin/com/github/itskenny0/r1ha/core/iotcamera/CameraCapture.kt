@@ -65,7 +65,15 @@ class CameraCapture(
     private val bus: FrameBus,
     private val onError: (String) -> Unit = {},
 ) {
-    private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    // Always go through applicationContext for the camera manager.
+    // Camera2's CameraDeviceImpl retains its `mContext` reference for
+    // the lifetime of the native session — if we hand it the service
+    // context, that reference outlives the service and leaks the whole
+    // thing (LeakCanary caught this exact path on Xiaomi). Pinning to
+    // Application means the surviving reference is to a singleton that
+    // lives forever anyway, so no leak.
+    private val manager =
+        context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
     /**
      * Resolve [cameraId] into the logical id we open + the optional

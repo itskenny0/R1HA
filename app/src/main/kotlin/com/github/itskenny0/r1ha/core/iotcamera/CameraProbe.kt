@@ -49,6 +49,19 @@ object CameraProbe {
      *  feel interminable. */
     const val PROBE_MAX_ID = 19
 
+    /** Settle between candidate opens. Xiaomi HAL revisions hold
+     *  exclusive locks for up to a second after close(); pushing past
+     *  that wedges the camera service entirely until app restart. 2 s
+     *  is the empirically-determined floor. */
+    const val INTER_PROBE_SETTLE_MS = 2_000L
+
+    /** If this many candidates fail in a row, the HAL is probably
+     *  exhausted (Xiaomi devices stop accepting ANY opens after ~3
+     *  failures in close succession, including the standard back +
+     *  front cameras). Abort the scan instead of continuing to wedge
+     *  the camera service. */
+    const val CONSECUTIVE_FAILURE_ABORT = 2
+
     /** Result of probing a single id. Surfaced for both the cache and
      *  the in-UI progress display so the user sees "✓ id 3 worked"
      *  scroll past as the scan runs. [fingerprint] captures the
@@ -81,7 +94,15 @@ object CameraProbe {
         excludeIds: Set<String>,
         onProgress: (current: Int, total: Int, last: Outcome?) -> Unit,
     ): List<Outcome> {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+        // Always operate on the Application context — Camera2's
+        // CameraDeviceImpl retains an `mContext` reference internally
+        // that survives Java-side close() because the native HAL state
+        // outlives our wrapper. Pinning to Application means the
+        // surviving reference is to a singleton that lives forever
+        // anyway, instead of to a torn-down Service / Activity which
+        // would leak (LeakCanary confirmed this exact path on Xiaomi).
+        val appCtx = context.applicationContext
+        if (ContextCompat.checkSelfPermission(appCtx, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
             // Without the permission, openCamera throws SecurityException
@@ -90,19 +111,48 @@ object CameraProbe {
             // the user to grant the permission and retry.
             return emptyList()
         }
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+        val manager = appCtx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
             ?: return emptyList()
-        val candidates = (0..PROBE_MAX_ID).map { it.toString() }.filter { it !in excludeIds }
+        // Strict pre-filter: only ids that look like real cameras even
+        // get probed. The fuller open-then-capture test wedges some
+        // HALs (Xiaomi specifically) after a few rapid opens, so we
+        // want to minimize the number of attempted opens. Anything that
+        // doesn't pass the static checks gets skipped silently — those
+        // are placeholder slots / depth helpers that wouldn't deliver
+        // frames anyway, and skipping them doesn't cost the user
+        // anything visible.
+        val candidates = (0..PROBE_MAX_ID).map { it.toString() }
+            .filter { it !in excludeIds }
+            .filter { looksLikeRealCamera(manager, it) }
         val outcomes = mutableListOf<Outcome>()
         val thread = HandlerThread("r1ha-cameraprobe").apply { start() }
         val handler = Handler(thread.looper)
         try {
             var lastOutcome: Outcome? = null
+            var consecutiveFailures = 0
             for ((index, id) in candidates.withIndex()) {
                 onProgress(index + 1, candidates.size, lastOutcome)
                 val outcome = probeOne(manager, id, handler)
                 outcomes.add(outcome)
                 lastOutcome = outcome
+                if (outcome.producedFrame) {
+                    consecutiveFailures = 0
+                } else {
+                    consecutiveFailures++
+                    if (consecutiveFailures >= CONSECUTIVE_FAILURE_ABORT) {
+                        // Bail. Xiaomi HALs stop accepting any new opens
+                        // (including the standard back / front cameras)
+                        // after ~3 failed opens in close succession, and
+                        // the only recovery is an app restart. Aborting
+                        // here keeps the user's known-good cameras
+                        // working even on a fruitless scan.
+                        R1Log.w(
+                            "CameraProbe",
+                            "aborting scan after $consecutiveFailures consecutive failures",
+                        )
+                        break
+                    }
+                }
             }
             // Final progress fire so the UI's "last result" shows the
             // final id rather than being one outcome behind.
@@ -112,6 +162,37 @@ object CameraProbe {
         }
         return outcomes
     }
+
+    /**
+     * Cheap static check: does this id look like something we'd ever
+     * be able to stream from? Filters out placeholder / depth-helper
+     * slots before they cost us a full open attempt. We require:
+     *
+     *   - Characteristics readable (catches "id doesn't exist");
+     *   - INFO_SUPPORTED_HARDWARE_LEVEL set (placeholder slots return null);
+     *   - LENS_FACING set;
+     *   - At least one focal length > 0.5 mm (real lenses are 1-8 mm sensor-real);
+     *   - SENSOR_INFO_PHYSICAL_SIZE non-null;
+     *   - At least one JPEG output >= 320x240.
+     */
+    private fun looksLikeRealCamera(manager: CameraManager, id: String): Boolean = runCatching {
+        val chars = manager.getCameraCharacteristics(id)
+        chars.get(android.hardware.camera2.CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL)
+            ?: return@runCatching false
+        chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+            ?: return@runCatching false
+        val focals = chars.get(
+            android.hardware.camera2.CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS,
+        ) ?: return@runCatching false
+        if (focals.isEmpty() || focals.maxOrNull() ?: 0f <= 0.5f) return@runCatching false
+        chars.get(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+            ?: return@runCatching false
+        val streamMap = chars.get(
+            android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP,
+        ) ?: return@runCatching false
+        val jpegSizes = streamMap.getOutputSizes(ImageFormat.JPEG) ?: return@runCatching false
+        jpegSizes.any { it.width >= 320 && it.height >= 240 }
+    }.getOrDefault(false)
 
     private suspend fun probeOne(
         manager: CameraManager,
@@ -242,13 +323,9 @@ object CameraProbe {
             runCatching { session?.close() }
             runCatching { device?.close() }
             runCatching { reader.close() }
-            // HAL-settle delay between probes. Some Xiaomi devices hold
-            // exclusive locks on adjacent ids after a session closes;
-            // jumping straight into the next probe gets "ERROR_CAMERA_IN_USE"
-            // even though we've called close() on everything. 250 ms is
-            // small enough to be invisible in the progress bar but big
-            // enough that the HAL has time to release.
-            kotlinx.coroutines.delay(250)
+            // HAL-settle delay between probes — see [INTER_PROBE_SETTLE_MS]
+            // for why this is 2 s and not the more comfortable 250 ms.
+            kotlinx.coroutines.delay(INTER_PROBE_SETTLE_MS)
         }
         return outcome
     }

@@ -166,7 +166,11 @@ class IotCameraService : Service() {
         // capture pipeline means a config with master=on and both sinks=off
         // is cheap (camera open, no encode work, no broadcast).
         capture = CameraCapture(
-            context = this,
+            // applicationContext to dodge the Camera2-mContext leak path
+            // (CameraDeviceImpl pins its construction context for the
+            // lifetime of the native session, which on Xiaomi keeps
+            // leaking the Service even after we close()).
+            context = applicationContext,
             cameraId = cameraId,
             width = cfg.width,
             height = cfg.height,
