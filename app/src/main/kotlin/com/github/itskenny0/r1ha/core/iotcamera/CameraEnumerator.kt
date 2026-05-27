@@ -73,19 +73,6 @@ object CameraEnumerator {
             }
         }
 
-        // Cached extras from a previous SCAN FOR EXTRA CAMERAS run.
-        // Validated by fingerprint on every list() — Xiaomi (and a few
-        // other OEMs) reshuffle camera ids across reboots and HAL
-        // revisions, so storing a bare id would give the user a stale
-        // entry that opens the WRONG sensor next time. validatedIds()
-        // checks each cached id's current characteristics against the
-        // fingerprint we captured at scan time and drops mismatches.
-        // Users whose cache went stale see a smaller picker + a
-        // "rescan recommended" hint in the UI.
-        for (id in CameraExtrasCache.validatedIds(context)) {
-            add(id, parent = null)
-        }
-
         return results.sortedWith(
             // Back cameras first (most common stream target), then front,
             // then external — and within a facing group, larger sensors
@@ -95,29 +82,6 @@ object CameraEnumerator {
                 { -(it.supportedJpegSizes.firstOrNull()?.let { s -> s.width * s.height } ?: 0) },
             ),
         )
-    }
-
-    /**
-     * Ids that don't need re-probing because they're already in the
-     * standard enumeration. The probe excludes these to keep the run
-     * short — the user is looking for HIDDEN lenses, not re-verifying
-     * what the HAL already volunteered.
-     */
-    fun excludedFromProbe(context: Context): Set<String> {
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-            ?: return emptySet()
-        val excluded = mutableSetOf<String>()
-        val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
-        for (id in logicalIds) {
-            excluded.add(id)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                runCatching {
-                    val chars = manager.getCameraCharacteristics(id)
-                    excluded.addAll(chars.physicalCameraIds)
-                }
-            }
-        }
-        return excluded
     }
 
     /** Find a default camera id when the user hasn't picked one explicitly.

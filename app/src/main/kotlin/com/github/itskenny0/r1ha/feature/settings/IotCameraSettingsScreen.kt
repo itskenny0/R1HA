@@ -50,8 +50,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.iotcamera.CameraEnumerator
-import com.github.itskenny0.r1ha.core.iotcamera.CameraExtrasCache
-import com.github.itskenny0.r1ha.core.iotcamera.CameraProbe
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -91,24 +89,7 @@ fun IotCameraSettingsScreen(
 
     // Detected cameras — recomputed once on entry; the list is stable
     // for a given device + firmware so we don't refresh on recomposition.
-    // Key the enumeration on a tick so the SCAN flow can force a
-    // re-list after the cache updates with new verified extras. Without
-    // the key the picker would stay stale until the user backed out
-    // and reopened the screen.
-    var enumerationTick by remember { mutableStateOf(0) }
-    val cameras = remember(enumerationTick) { CameraEnumerator.list(context) }
-
-    // Active-probe scan state. While scanning, the button shows a
-    // progress label ("Testing camera N of M") + the running list of
-    // outcomes; on completion we update the extras cache and bump the
-    // enumerationTick so the picker re-lists with the newly-found
-    // lenses.
-    val scanScope = rememberCoroutineScope()
-    var scanInProgress by remember { mutableStateOf(false) }
-    var scanCurrent by remember { mutableStateOf(0) }
-    var scanTotal by remember { mutableStateOf(0) }
-    var scanLastOutcome by remember { mutableStateOf<CameraProbe.Outcome?>(null) }
-    var scanSummary by remember { mutableStateOf<String?>(null) }
+    val cameras = remember { CameraEnumerator.list(context) }
     val pickedCamera = cameras.firstOrNull { it.id == cam.cameraId }
         ?: cameras.firstOrNull()
     val supportedSizes = pickedCamera?.supportedJpegSizes ?: emptyList()
@@ -256,10 +237,7 @@ fun IotCameraSettingsScreen(
                         )
                     } else {
                         Text(
-                            text = "Multi-lens devices expose every sensor as its own id " +
-                                "(wide, tele, ultrawide). Pick the lens you want HA to see. " +
-                                "Lenses that fail to open get auto-hidden after one attempt; " +
-                                "tap RESET below to retry hidden ones.",
+                            text = "Pick the lens you want HA to see.",
                             style = R1.body,
                             color = R1.InkMuted,
                             modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
@@ -298,151 +276,6 @@ fun IotCameraSettingsScreen(
                                 }
                                 if (isPicked) {
                                     Text("●", style = R1.bodyEmph, color = R1.AccentWarm)
-                                }
-                            }
-                        }
-                        // SCAN FOR EXTRA CAMERAS. Some OEMs (Xiaomi 9T
-                        // confirmed) only advertise back + front in the
-                        // standard enumeration even though the device has
-                        // 3+ physical lenses. The scan walks ids 0..19,
-                        // tries to actually open each one AND capture a
-                        // frame within a 3s window, and adds the ones
-                        // that produce frames to the picker. Verified
-                        // ids cache in [CameraExtrasCache] so the user
-                        // only runs the scan once per device.
-                        //
-                        // Wrapped in if-not-currently-scanning so the
-                        // user can't fire a second probe while one is
-                        // already in flight (the HAL serialises opens
-                        // anyway; a second open from us during the
-                        // probe would just race the first).
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "EXTRA LENS SCAN",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                        )
-                        Text(
-                            text = "Some phones (Xiaomi etc.) hide their " +
-                                "wide / tele / ultrawide behind a single " +
-                                "logical \"back\" id. Tap below to actively " +
-                                "probe ids 0-19 — each is opened and asked " +
-                                "for one frame; ones that deliver get added " +
-                                "to the picker. Takes ~30 seconds.",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                        )
-                        if (scanInProgress) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Text(
-                                    text = "TESTING $scanCurrent / $scanTotal",
-                                    style = R1.labelMicro,
-                                    color = R1.AccentWarm,
-                                )
-                                val last = scanLastOutcome
-                                if (last != null) {
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = if (last.producedFrame) {
-                                            "✓ id ${last.id} — frame received"
-                                        } else {
-                                            "✗ id ${last.id} — ${last.failureReason ?: "no frame"}"
-                                        },
-                                        style = R1.labelMicro,
-                                        color = if (last.producedFrame) R1.AccentGreen else R1.InkMuted,
-                                    )
-                                }
-                            }
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable(onClick = {
-                                        if (!hasCameraPermission) {
-                                            cameraPermissionLauncher.launch(
-                                                Manifest.permission.CAMERA,
-                                            )
-                                            return@r1Pressable
-                                        }
-                                        scanScope.launch {
-                                            scanInProgress = true
-                                            scanCurrent = 0
-                                            scanTotal = 0
-                                            scanLastOutcome = null
-                                            scanSummary = null
-                                            try {
-                                                val excluded = CameraEnumerator
-                                                    .excludedFromProbe(context)
-                                                val outcomes = CameraProbe.scan(
-                                                    context = context,
-                                                    excludeIds = excluded,
-                                                ) { cur, total, last ->
-                                                    scanCurrent = cur
-                                                    scanTotal = total
-                                                    if (last != null) scanLastOutcome = last
-                                                }
-                                                val verified = outcomes
-                                                    .filter { it.producedFrame && it.fingerprint != null }
-                                                    .associate { it.id to it.fingerprint!! }
-                                                CameraExtrasCache.replace(context, verified)
-                                                enumerationTick++
-                                                scanSummary = "Found ${verified.size} extra " +
-                                                    (if (verified.size == 1) "lens" else "lenses") +
-                                                    " (of ${outcomes.size} tested)."
-                                            } finally {
-                                                scanInProgress = false
-                                            }
-                                        }
-                                    })
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Text(
-                                    "SCAN FOR EXTRA CAMERAS",
-                                    style = R1.labelMicro,
-                                    color = R1.AccentWarm,
-                                )
-                            }
-                            val summary = scanSummary
-                            if (summary != null) {
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    text = summary,
-                                    style = R1.labelMicro,
-                                    color = R1.InkMuted,
-                                )
-                            }
-                            if (CameraExtrasCache.get(context).isNotEmpty()) {
-                                Spacer(Modifier.height(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(R1.ShapeS)
-                                        .background(R1.SurfaceMuted)
-                                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                                        .r1Pressable(onClick = {
-                                            CameraExtrasCache.clear(context)
-                                            enumerationTick++
-                                            scanSummary = null
-                                            Toaster.show(
-                                                "Cleared scan results; back to default lenses",
-                                            )
-                                        })
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                ) {
-                                    Text(
-                                        "CLEAR SCAN RESULTS",
-                                        style = R1.labelMicro,
-                                        color = R1.InkSoft,
-                                    )
                                 }
                             }
                         }
