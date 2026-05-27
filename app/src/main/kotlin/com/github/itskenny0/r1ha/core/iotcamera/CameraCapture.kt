@@ -20,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
+import com.github.itskenny0.r1ha.core.ha.BackoffPolicy
 import com.github.itskenny0.r1ha.core.util.R1Log
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -124,23 +125,98 @@ class CameraCapture(
         get() = (1000L / targetFps.coerceAtLeast(1)).coerceAtLeast(1L)
     private val lastEncodeAtMillis = AtomicLong(0L)
 
+    /**
+     * Self-healing reopen. The camera can vanish out from under us at any
+     * point: another app (on the R1, the system camera/vision stack)
+     * claims the sensor → [CameraDevice.StateCallback.onDisconnected]; the
+     * HAL faults while configuring → the `createDefaultRequest`
+     * CAMERA_ERROR we see in the field; or the very first
+     * [CameraManager.openCamera] races a claim and throws. Previously any
+     * one of those left the pipeline dead until the user toggled the
+     * service off and on. Now we tear the dead handles down and re-open on
+     * an exponential backoff, so the stream comes back on its own the
+     * moment the sensor is free again.
+     *
+     * Reuses the same [BackoffPolicy] the HA reconnect path uses. First
+     * retry lands at ~500 ms (also long enough for a slow HAL to finish
+     * releasing the previous handle when we're re-opening the same id),
+     * doubling to a 30 s ceiling. The attempt counter resets once a
+     * session configures, so a clean recovery starts fresh.
+     *
+     * Everything here is touched only on [cameraHandler] — every Camera2
+     * callback is dispatched there, and so is [reopenRunnable] — except
+     * [reopenScheduled], which [stop] also clears from the caller's thread
+     * (hence @Volatile). [started] is the master gate: a pending reopen
+     * that fires after teardown sees it false and bails.
+     */
+    private val reopenBackoff = BackoffPolicy(baseMillis = REOPEN_BASE_MS, capMillis = REOPEN_CAP_MS)
+    private var reopenAttempt = 0
+    @Volatile private var reopenScheduled = false
+    private val reopenRunnable = Runnable {
+        reopenScheduled = false
+        if (!started.get()) return@Runnable
+        // Drop whatever's left of the dead session before re-opening — in
+        // particular the old ImageReader, which openCamera() would
+        // otherwise overwrite without closing (an FD leak per retry).
+        closeHandles()
+        runCatching { openCamera() }.onFailure { t ->
+            R1Log.w("IotCamera.capture", "reopen failed: ${t.message}", t)
+            scheduleReopen("Camera reopen failed: ${t.message ?: t::class.java.simpleName}")
+        }
+    }
+
     fun start() {
         if (!started.compareAndSet(false, true)) return
         runCatching { openCamera() }.onFailure { t ->
+            // A claim at startup used to be fatal (started flipped back to
+            // false, pipeline dead). Treat it like any other loss and let
+            // the backoff keep trying until the sensor frees up.
             R1Log.w("IotCamera.capture", "openCamera failed: ${t.message}", t)
-            onError("Camera open failed: ${t.message ?: t::class.java.simpleName}")
-            started.set(false)
+            scheduleReopen("Camera open failed: ${t.message ?: t::class.java.simpleName}")
         }
     }
 
     fun stop() {
         if (!started.compareAndSet(true, false)) return
+        // Cancel any pending reopen so a backoff timer that's already on
+        // the handler queue can't resurrect the camera after teardown. A
+        // reopen mid-flight is caught by the started check inside the
+        // runnable (and openCamera's own guard).
+        cameraHandler.removeCallbacks(reopenRunnable)
+        reopenScheduled = false
+        closeHandles()
+    }
+
+    /** Close + null the session, device and reader. Idempotent; safe to
+     *  call when any of them is already null. */
+    private fun closeHandles() {
         runCatching { session?.close() }
         session = null
         runCatching { device?.close() }
         device = null
         runCatching { reader?.close() }
         reader = null
+    }
+
+    /**
+     * Schedule a re-open after a loss, unless we're stopping or one is
+     * already queued (the framework can deliver onDisconnected *and*
+     * onError for the same loss; we only want one reopen). [reason] is
+     * surfaced to the user so the notification reflects what happened
+     * while we reconnect.
+     */
+    private fun scheduleReopen(reason: String) {
+        if (!started.get()) return
+        if (reopenScheduled) return
+        reopenScheduled = true
+        val delay = reopenBackoff.delayForAttempt(reopenAttempt)
+        reopenAttempt += 1
+        R1Log.i(
+            "IotCamera.capture",
+            "camera $cameraId lost ($reason); reopening in ${delay}ms (attempt $reopenAttempt)",
+        )
+        onError("$reason; reconnecting")
+        cameraHandler.postDelayed(reopenRunnable, delay)
     }
 
     /** Free the background thread. Call once on permanent teardown — not
@@ -153,6 +229,9 @@ class CameraCapture(
 
     @Suppress("MissingPermission") // CAMERA permission is checked by the caller.
     private fun openCamera() {
+        // A reopen can land on the handler just after stop() flipped us
+        // off; don't allocate a reader / re-grab the camera if so.
+        if (!started.get()) return
         val r = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 2)
         reader = r
         r.setOnImageAvailableListener({ ir -> onYuvFrame(ir) }, cameraHandler)
@@ -175,15 +254,22 @@ class CameraCapture(
             override fun onDisconnected(camera: CameraDevice) {
                 R1Log.i("IotCamera.capture", "camera $cameraId disconnected")
                 runCatching { camera.close() }
-                device = null
-                onError("Camera was claimed by another app")
+                // Only clear shared state if this is still the live device.
+                // A late callback from a device we already superseded via a
+                // reopen must not null out the new one.
+                if (device === camera) device = null
+                runCatching { session?.close() }
+                session = null
+                scheduleReopen("Camera was claimed by another app")
             }
 
             override fun onError(camera: CameraDevice, error: Int) {
                 R1Log.w("IotCamera.capture", "camera $cameraId error=$error")
                 runCatching { camera.close() }
-                device = null
-                onError("Camera error ($error)")
+                if (device === camera) device = null
+                runCatching { session?.close() }
+                session = null
+                scheduleReopen("Camera error ($error)")
             }
         }, cameraHandler)
     }
@@ -224,13 +310,26 @@ class CameraCapture(
                         set(CaptureRequest.CONTROL_MODE, CameraCharacteristics.CONTROL_MODE_AUTO)
                     }
                     s.setRepeatingRequest(requestBuilder.build(), null, cameraHandler)
+                }.onSuccess {
+                    // Capture is live again — clear the backoff so a future
+                    // loss starts retrying from the short end.
+                    reopenAttempt = 0
                 }.onFailure { t ->
+                    // This is the createDefaultRequest CAMERA_ERROR path:
+                    // the HAL invalidated the device between onConfigured
+                    // firing and the request build. Re-open rather than
+                    // surfacing a dead-end error.
                     R1Log.d("IotCamera.capture", "session start failed: ${t.message}")
-                    onError("Capture session start failed: ${t.message}")
+                    scheduleReopen("Capture session start failed: ${t.message}")
                 }
             }
 
             override fun onConfigureFailed(s: CameraCaptureSession) {
+                // Distinct from a device loss: the session couldn't be
+                // configured at all, almost always an unsupported
+                // resolution. Re-opening with the same config would just
+                // loop, so surface it and wait for the user to change the
+                // setting (which rebuilds the pipeline) rather than retry.
                 onError("Camera failed to configure $width×$height")
             }
         }
@@ -360,4 +459,16 @@ class CameraCapture(
 
     @Suppress("unused") // Documented intent; used by future sink that needs orientation hint.
     val orientationDegrees: Int get() = sensorOrientation
+
+    companion object {
+        /** First reopen delay after a camera loss. ~500 ms is also enough
+         *  for a slow HAL to finish releasing the previous handle when the
+         *  reopen targets the same id we just closed. */
+        private const val REOPEN_BASE_MS = 500L
+
+        /** Ceiling on the reopen backoff. Keeps a permanently-claimed
+         *  camera from spinning while still reclaiming it promptly once
+         *  it frees up. */
+        private const val REOPEN_CAP_MS = 30_000L
+    }
 }
