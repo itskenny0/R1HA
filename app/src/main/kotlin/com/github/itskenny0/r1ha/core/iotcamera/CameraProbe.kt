@@ -51,8 +51,16 @@ object CameraProbe {
 
     /** Result of probing a single id. Surfaced for both the cache and
      *  the in-UI progress display so the user sees "✓ id 3 worked"
-     *  scroll past as the scan runs. */
-    data class Outcome(val id: String, val producedFrame: Boolean, val failureReason: String?)
+     *  scroll past as the scan runs. [fingerprint] captures the
+     *  HAL-stable identity (facing + focal + max size) at probe time
+     *  so the cache can detect when the id later refers to a different
+     *  sensor. */
+    data class Outcome(
+        val id: String,
+        val producedFrame: Boolean,
+        val failureReason: String?,
+        val fingerprint: String?,
+    )
 
     /**
      * Probe every id in `0..PROBE_MAX_ID` and report outcomes.
@@ -121,11 +129,17 @@ object CameraProbe {
             ) ?: return@runCatching null
             streamMap.getOutputSizes(ImageFormat.JPEG)
                 ?.minByOrNull { it.width * it.height }
-        }.getOrNull() ?: return Outcome(id, false, "no characteristics / no JPEG sizes")
+        }.getOrNull() ?: return Outcome(id, false, "no characteristics / no JPEG sizes", null)
+
+        // Capture the stable fingerprint now so the success path can
+        // hand it to the cache without re-querying characteristics —
+        // matters because the id might already have been reshuffled by
+        // the HAL between this read and a later one.
+        val fingerprint = CameraExtrasCache.fingerprintOf(manager, id)
 
         val reader = runCatching {
             ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
-        }.getOrNull() ?: return Outcome(id, false, "ImageReader.newInstance failed")
+        }.getOrNull() ?: return Outcome(id, false, "ImageReader.newInstance failed", fingerprint)
         val frameReceived = CompletableDeferred<Boolean>()
         reader.setOnImageAvailableListener({ r ->
             // Drain whatever's there + signal success on the first
@@ -168,7 +182,7 @@ object CameraProbe {
                     opened.complete(null)
                 }
                 val cam = opened.await() ?: return@withTimeoutOrNull Outcome(
-                    id, false, "openCamera failed / disconnected",
+                    id, false, "openCamera failed / disconnected", fingerprint,
                 )
                 device = cam
                 val configured = CompletableDeferred<CameraCaptureSession?>()
@@ -200,7 +214,7 @@ object CameraProbe {
                     configured.complete(null)
                 }
                 val s = configured.await() ?: return@withTimeoutOrNull Outcome(
-                    id, false, "createCaptureSession failed",
+                    id, false, "createCaptureSession failed", fingerprint,
                 )
                 session = s
                 runCatching {
@@ -210,19 +224,31 @@ object CameraProbe {
                     s.setRepeatingRequest(req.build(), null, handler)
                 }.onFailure {
                     return@withTimeoutOrNull Outcome(
-                        id, false, "setRepeatingRequest failed: ${it.message}",
+                        id, false, "setRepeatingRequest failed: ${it.message}", fingerprint,
                     )
                 }
                 val got = frameReceived.await()
-                Outcome(id, got, if (got) null else "no frame within ${PROBE_TIMEOUT_MS}ms")
-            } ?: Outcome(id, false, "timed out after ${PROBE_TIMEOUT_MS}ms")
+                Outcome(
+                    id,
+                    got,
+                    if (got) null else "no frame within ${PROBE_TIMEOUT_MS}ms",
+                    fingerprint,
+                )
+            } ?: Outcome(id, false, "timed out after ${PROBE_TIMEOUT_MS}ms", fingerprint)
         } catch (t: Throwable) {
             R1Log.d("CameraProbe", "id $id threw: ${t.message}")
-            Outcome(id, false, "exception: ${t.message ?: t::class.java.simpleName}")
+            Outcome(id, false, "exception: ${t.message ?: t::class.java.simpleName}", fingerprint)
         } finally {
             runCatching { session?.close() }
             runCatching { device?.close() }
             runCatching { reader.close() }
+            // HAL-settle delay between probes. Some Xiaomi devices hold
+            // exclusive locks on adjacent ids after a session closes;
+            // jumping straight into the next probe gets "ERROR_CAMERA_IN_USE"
+            // even though we've called close() on everything. 250 ms is
+            // small enough to be invisible in the progress bar but big
+            // enough that the HAL has time to release.
+            kotlinx.coroutines.delay(250)
         }
         return outcome
     }

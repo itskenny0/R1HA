@@ -74,14 +74,15 @@ object CameraEnumerator {
         }
 
         // Cached extras from a previous SCAN FOR EXTRA CAMERAS run.
-        // These are ids that don't appear in cameraIdList /
-        // INFO_PHYSICAL_CAMERA_IDS but have been verified to actually
-        // produce frames via [CameraProbe]. We only populate them
-        // once the user has explicitly run the scan — that way the
-        // default install of a Xiaomi 9T shows just back + front, and
-        // power users who want every lens can opt into the longer
-        // scan.
-        for (id in CameraExtrasCache.get(context)) {
+        // Validated by fingerprint on every list() — Xiaomi (and a few
+        // other OEMs) reshuffle camera ids across reboots and HAL
+        // revisions, so storing a bare id would give the user a stale
+        // entry that opens the WRONG sensor next time. validatedIds()
+        // checks each cached id's current characteristics against the
+        // fingerprint we captured at scan time and drops mismatches.
+        // Users whose cache went stale see a smaller picker + a
+        // "rescan recommended" hint in the UI.
+        for (id in CameraExtrasCache.validatedIds(context)) {
             add(id, parent = null)
         }
 

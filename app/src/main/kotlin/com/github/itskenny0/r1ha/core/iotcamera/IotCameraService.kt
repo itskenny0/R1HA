@@ -117,8 +117,9 @@ class IotCameraService : Service() {
 
     /** Convert the live [IotCameraSettings] + broker config into the bag
      *  the pipeline cares about, then teardown + rebuild only when something
-     *  actually changed. */
-    private fun applyConfig(cfg: ServiceConfig) {
+     *  actually changed. Suspend so the inter-camera HAL-settle delay
+     *  can run without blocking the upstream settings collector. */
+    private suspend fun applyConfig(cfg: ServiceConfig) {
         val prev = currentConfig
         currentConfig = cfg
         if (prev == cfg) return
@@ -132,6 +133,20 @@ class IotCameraService : Service() {
         if (!cfg.enabled) {
             updateNotification("Idle — no sinks enabled")
             return
+        }
+        // Inter-camera settle. Some Xiaomi HAL revisions hold exclusive
+        // locks on adjacent camera ids for a moment after the previous
+        // session closes; jumping straight from id 2 to id 3 in those
+        // configurations yields "ERROR_CAMERA_IN_USE" on the new open,
+        // and the user perceives it as "id 2 broke all the other
+        // lenses". A short pause when switching cameras lets the HAL
+        // finish releasing before we ask for the next one. Skipped on
+        // first start (no prev) and when the id didn't change (any
+        // other field change like resolution / fps already torn down
+        // the same camera id, no cross-camera contention to worry
+        // about).
+        if (prev != null && prev.enabled && prev.cameraId != cfg.cameraId) {
+            kotlinx.coroutines.delay(HAL_SETTLE_MS)
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
@@ -440,6 +455,13 @@ class IotCameraService : Service() {
          *  jitter from short bursts; longer would smooth too aggressively
          *  for a "did my throttle change land?" debug check. */
         private const val BITRATE_WINDOW_MS = 1_000L
+
+        /** Delay between releasing one camera id and opening another
+         *  to give the HAL time to drop its exclusive locks. 500 ms is
+         *  short enough to feel snappy but long enough for the broken
+         *  Xiaomi HAL revisions we've seen; if it turns out not to be
+         *  enough on some device, surface as a setting. */
+        private const val HAL_SETTLE_MS = 500L
 
         fun ensureChannel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return

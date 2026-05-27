@@ -392,9 +392,8 @@ fun IotCameraSettingsScreen(
                                                     if (last != null) scanLastOutcome = last
                                                 }
                                                 val verified = outcomes
-                                                    .filter { it.producedFrame }
-                                                    .map { it.id }
-                                                    .toSet()
+                                                    .filter { it.producedFrame && it.fingerprint != null }
+                                                    .associate { it.id to it.fingerprint!! }
                                                 CameraExtrasCache.replace(context, verified)
                                                 enumerationTick++
                                                 scanSummary = "Found ${verified.size} extra " +
