@@ -78,6 +78,11 @@ enum class SettingsCategory {
      *  implications (opens a port, holds the camera) — burying it under
      *  Integrations would be a UX regression. */
     IOT_CAMERA,
+    /** IoT Sensors Mode — sibling of [IOT_CAMERA]: opt-in foreground
+     *  service that publishes device sensors (battery, light, vibration,
+     *  screen) and accepts commands (flashlight, brightness, volume,
+     *  lock) over MQTT auto-discovery. Same broker as the camera. */
+    IOT_SENSORS,
     /** MQTT broker config — host / port / auth / TLS. Top-level rather
      *  than buried under Advanced because the IoT Camera Mode feature
      *  requires it and needs somewhere obvious to link to. */
@@ -112,6 +117,7 @@ private fun categoryTitle(category: SettingsCategory): String = when (category) 
     SettingsCategory.INTEGRATIONS -> "INTEGRATIONS"
     SettingsCategory.SYNC -> "SYNC"
     SettingsCategory.IOT_CAMERA -> "IOT CAMERA MODE"
+    SettingsCategory.IOT_SENSORS -> "IOT SENSORS MODE"
     SettingsCategory.MQTT -> "MQTT BROKER"
     SettingsCategory.ADVANCED -> "ADVANCED"
     SettingsCategory.BROWSE -> "BROWSE"
@@ -489,6 +495,28 @@ fun SettingsScreen(
                         },
                         modifiedCount = 0,
                         onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+                    )
+                }
+                item {
+                    GroupCard(
+                        title = "IoT Sensors Mode",
+                        subtitle = if (s.iotSensors.enabled) {
+                            val on = buildList {
+                                if (s.iotSensors.publishBattery) add("battery")
+                                if (s.iotSensors.publishLightSensor) add("light")
+                                if (s.iotSensors.publishVibration) add("vibration")
+                                if (s.iotSensors.controlFlashlight) add("flashlight")
+                                if (s.iotSensors.controlBrightness) add("brightness")
+                                if (s.iotSensors.controlVolume) add("volume")
+                                if (s.iotSensors.controlLockScreen) add("lock")
+                            }
+                            "ON · ${if (on.isEmpty()) "no entities" else on.take(4).joinToString(", ")}" +
+                                if (on.size > 4) " +${on.size - 4}" else ""
+                        } else {
+                            "Expose device sensors + controls to Home Assistant"
+                        },
+                        modifiedCount = 0,
+                        onClick = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
                     )
                 }
                 item {

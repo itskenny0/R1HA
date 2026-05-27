@@ -884,4 +884,61 @@ data class AppSettings(
      * MJPEG password between devices would be a regression.
      */
     val iotCamera: IotCameraSettings = IotCameraSettings(),
+    /**
+     * IoT Sensors Mode — expose device hardware (battery, light, accelerometer-
+     * derived vibration) and a handful of controls (flashlight, brightness,
+     * volume, lock screen) to HA via MQTT auto-discovery. Per-device for the
+     * same reasons as [iotCamera]: physical hardware varies and the node id
+     * shouldn't collide if the user runs the app on multiple devices against
+     * the same broker.
+     */
+    val iotSensors: IotSensorsSettings = IotSensorsSettings(),
+)
+
+/**
+ * IoT Sensors Mode config. Off by default — turning it on starts a foreground
+ * service that opens an MQTT session, publishes HA auto-discovery payloads for
+ * each enabled entity, and registers SensorManager listeners + a battery
+ * BroadcastReceiver. Each sensor and control is its own opt-in so a user who
+ * only wants the battery on HA doesn't end up with five extra entities.
+ *
+ * Reuses the same broker config as [IotCameraSettings] (read from
+ * [AdvancedSettings.mqttHost] etc.) so the broker only has to be configured
+ * once for both features.
+ */
+@Stable
+@kotlinx.serialization.Serializable
+data class IotSensorsSettings(
+    val enabled: Boolean = false,
+    /** Stable id under the discovery prefix — kept in sync with the camera's
+     *  [IotCameraSettings.mqttNodeId] when both features are on so HA groups
+     *  all entities under one device. Materialised on first enable. */
+    val nodeId: String = "",
+    val discoveryPrefix: String = "homeassistant",
+    /** How often to push read-only sensor values to the broker. Battery + WiFi
+     *  rarely change; light + vibration are event-driven and bypass this. */
+    val publishIntervalSec: Int = 60,
+    // ── Read-only sensors ───────────────────────────────────────────────
+    val publishBattery: Boolean = true,
+    val publishCharging: Boolean = true,
+    val publishLightSensor: Boolean = true,
+    /** Software vibration detector — high-passes the accelerometer and
+     *  fires a binary_sensor when magnitude exceeds [vibrationThresholdG].
+     *  Off by default because a phone-on-a-desk reports constant micro-
+     *  vibrations that would spam HA without a tuned threshold. */
+    val publishVibration: Boolean = false,
+    val publishScreenOn: Boolean = true,
+    /** Off by default — SSID is privacy-sensitive (reveals home location). */
+    val publishWifiSsid: Boolean = false,
+    // ── Controllable entities (HA → device) ────────────────────────────
+    val controlFlashlight: Boolean = true,
+    val controlBrightness: Boolean = true,
+    val controlVolume: Boolean = true,
+    /** Lock screen button — defaults OFF because it requires the Device
+     *  Admin grant, which is a high-friction permission the user should
+     *  opt into deliberately. */
+    val controlLockScreen: Boolean = false,
+    /** Vibration threshold in g (1g = 9.81 m/s²). Raise to suppress
+     *  false positives from desk taps; lower to catch gentler shakes. */
+    val vibrationThresholdG: Float = 1.5f,
 )

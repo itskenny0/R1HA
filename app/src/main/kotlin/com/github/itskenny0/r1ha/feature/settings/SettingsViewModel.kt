@@ -208,6 +208,10 @@ class SettingsViewModel(
     fun updateIotCamera(transform: (com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) -> com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) =
         update { it.copy(iotCamera = transform(it.iotCamera)) }
 
+    /** Generic mutator for IoT Sensors Mode (device hardware -> HA via MQTT). */
+    fun updateIotSensors(transform: (com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings) -> com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings) =
+        update { it.copy(iotSensors = transform(it.iotSensors)) }
+
     // ── Appearance ──────────────────────────────────────────────────────────
 
     fun setTheme(themeId: ThemeId) = update { it.copy(theme = themeId) }

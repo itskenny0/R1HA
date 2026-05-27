@@ -62,6 +62,23 @@
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_CAMERA"
         tools:targetApi="34"/>
+    <!-- IoT Sensors Mode foreground-service subtype. "specialUse" is the
+         catch-all bucket for FGS that doesn't fit camera / mic / location;
+         we use it because the sensor service holds an MQTT socket open and
+         registers SensorManager listeners but doesn't touch any of the
+         privileged-FGS subsystems. Required on Android 14+. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
+        tools:targetApi="34"/>
+    <!-- Write to Settings.System.SCREEN_BRIGHTNESS for the IoT Sensors
+         brightness control. Special-permission grant (not the standard
+         runtime prompt) — the user opens system Settings → "Modify system
+         settings" and toggles us in. We surface a GRANT button on the
+         settings screen that fires ACTION_MANAGE_WRITE_SETTINGS to skip
+         them straight there. Pre-grant the permission is silently denied
+         and the brightness command logs + surfaces a notification. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions"/>
     <!-- Needed for the in-app self-update flow: after we download a newer APK from
          GitHub Releases we fire ACTION_VIEW with a content:// URI, which Android's
          PackageInstaller honours only when the source app holds this permission.
@@ -196,6 +213,42 @@
             android:name=".core.iotcamera.IotCameraService"
             android:exported="false"
             android:foregroundServiceType="camera"/>
+
+        <!-- IoT Sensors Mode foreground service. Owns the bidirectional MQTT
+             session that publishes device sensors (battery / light /
+             vibration / screen / SSID) and accepts commands (flashlight /
+             brightness / volume / lock). foregroundServiceType "specialUse"
+             with the matching FOREGROUND_SERVICE_SPECIAL_USE permission is
+             the Android-14+ bucket for FGS that doesn't fit camera / mic /
+             location. property below is the OS-required explanation that
+             ships with specialUse declarations. Off by default; the
+             App.onCreate observer brings it up only when
+             iotSensors.enabled flips true. -->
+        <service
+            android:name=".core.iotsensors.IotSensorsService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Publishes device sensors and accepts commands via MQTT for Home Assistant integration"/>
+        </service>
+
+        <!-- Device Admin receiver — only used by IoT Sensors Mode's
+             "Lock screen" entity, which calls DevicePolicyManager.lockNow().
+             Activation is user-initiated via the settings screen, and the
+             meta-data XML declares only the force-lock policy so the grant
+             prompt is minimal. -->
+        <receiver
+            android:name=".core.iotsensors.LockAdminReceiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_lock"/>
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
+            </intent-filter>
+        </receiver>
 
         <!-- Webhook listener foreground service. Opens a configurable TCP port
              (default 8765) so HA can POST automation webhooks at the device.

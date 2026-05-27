@@ -229,6 +229,16 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.SETTINGS_IOT_SENSORS) {
+            com.github.itskenny0.r1ha.feature.settings.IotSensorsSettingsScreen(
+                settings = settings,
+                tokens = tokens,
+                onOpenMqttSettings = {
+                    navController.navigate(Routes.SETTINGS_MQTT) { launchSingleTop = true }
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.SETTINGS_BROWSE) {
             SettingsRouteContent(
                 navController = navController,
@@ -634,6 +644,7 @@ private fun SettingsRouteContent(
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.INTEGRATIONS -> Routes.SETTINGS_INTEGRATIONS
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.SYNC -> Routes.SETTINGS_SYNC
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.IOT_CAMERA -> Routes.SETTINGS_IOT_CAMERA
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.IOT_SENSORS -> Routes.SETTINGS_IOT_SENSORS
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.MQTT -> Routes.SETTINGS_MQTT
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ADVANCED -> Routes.SETTINGS_ADVANCED
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BROWSE -> Routes.SETTINGS_BROWSE

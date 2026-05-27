@@ -65,6 +65,11 @@ fun DeviceScreen(
     val vm: DeviceViewModel = viewModel(factory = DeviceViewModel.factory(app))
     val ui by vm.ui.collectAsState()
     val scrollState = rememberScrollState()
+    // Pulled from settings so we can hide the "not exposed to HA" banner
+    // when IoT Sensors Mode is publishing this device to HA — the banner
+    // would otherwise contradict reality.
+    val appSettings by settings.settings.collectAsState(initial = com.github.itskenny0.r1ha.core.prefs.AppSettings())
+    val sensorsExposed = appSettings.iotSensors.enabled
     WheelScrollForScrollState(wheelInput = wheelInput, scrollState = scrollState, settings = settings)
 
     // Volume + flashlight + battery can be changed from outside our
@@ -120,9 +125,13 @@ fun DeviceScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = "LOCAL · NOT EXPOSED TO HA",
+                    // Flip the framing when IoT Sensors Mode is on — same
+                    // line slot, opposite meaning, so the label always
+                    // matches the device's actual exposure to HA.
+                    text = if (sensorsExposed) "PUBLISHED TO HA · IoT SENSORS MODE"
+                    else "LOCAL · NOT EXPOSED TO HA",
                     style = R1.labelMicro,
-                    color = R1.InkMuted,
+                    color = if (sensorsExposed) R1.AccentGreen else R1.InkMuted,
                 )
                 BatteryCard(ui)
                 BrightnessCard(

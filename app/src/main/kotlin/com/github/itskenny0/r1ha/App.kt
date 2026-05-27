@@ -272,6 +272,38 @@ class App : Application() {
                 }
         }
 
+        // IoT Sensors Mode — same shape as the camera observer above.
+        // Seeds the per-install nodeId on first enable so two devices on
+        // the same broker don't end up writing to the same topics, then
+        // brings the service up. The service re-reads structural settings
+        // from the same flow inside applyConfig, so per-entity toggles
+        // (publish battery / control flashlight / etc.) don't bounce the
+        // outer service.
+        appScope.launch {
+            graph.settings.settings
+                .map { it.iotSensors.enabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    if (enabled) {
+                        graph.settings.update { current ->
+                            val s = current.iotSensors
+                            // Reuse the camera's nodeId when both are on so HA
+                            // groups all entities under one device tile. When
+                            // the camera nodeId is also empty we mint a fresh
+                            // one for both.
+                            val seededNode = s.nodeId.ifBlank {
+                                current.iotCamera.mqttNodeId.ifBlank { randomToken(8).lowercase() }
+                            }
+                            val patched = s.copy(nodeId = seededNode)
+                            if (patched == s) current else current.copy(iotSensors = patched)
+                        }
+                        com.github.itskenny0.r1ha.core.iotsensors.IotSensorsService.start(this@App)
+                    } else {
+                        com.github.itskenny0.r1ha.core.iotsensors.IotSensorsService.stop(this@App)
+                    }
+                }
+        }
+
         // iBeacon — observe the four backing fields (enabled + UUID + major +
         // minor) together so a UUID change while the toggle is on tears down
         // and re-starts with the new payload. Distinct on the full tuple so

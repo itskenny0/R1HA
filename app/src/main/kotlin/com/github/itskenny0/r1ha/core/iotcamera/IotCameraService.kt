@@ -352,7 +352,11 @@ class IotCameraService : Service() {
         val uniqueId = "r1ha_${node}_${cfg.mqttObjectId}"
         val configTopic = "${cfg.mqttDiscoveryPrefix}/camera/$uniqueId/config"
         val payload = buildJsonObject {
-            put("name", JsonPrimitive(cfg.entityName.ifBlank { "R1HA Camera ($node)" }))
+            // Default friendly name = device model so HA derives a recognisable
+            // entity_id (e.g. "Xiaomi Mi 9T" → camera.xiaomi_mi_9t) instead of
+            // the generic "R1HA Camera (default)" stub. Users who set
+            // entityName explicitly still win.
+            put("name", JsonPrimitive(cfg.entityName.ifBlank { deviceModelLabel() }))
             put("unique_id", JsonPrimitive(uniqueId))
             put("topic", JsonPrimitive(mqttImageTopic(cfg)))
             put("encoding", JsonPrimitive("b64")) // ignored for JPEG bytes but harmless
@@ -495,6 +499,23 @@ class IotCameraService : Service() {
                 mqttUseTls = a.mqttUseTls,
             )
         }
+    }
+
+    /** "Xiaomi Mi 9T", "Pixel 7", "rabbit r1" — whatever the OEM ships in
+     *  Build.MODEL, prefixed with MANUFACTURER if the model doesn't already
+     *  start with it (so we don't say "Xiaomi Xiaomi Mi 9T" on devices where
+     *  the OEM already prepends themselves). Trimmed + collapsed whitespace
+     *  so HA's slug derivation gets a clean string. */
+    private fun deviceModelLabel(): String {
+        val manufacturer = (Build.MANUFACTURER ?: "").trim()
+        val model = (Build.MODEL ?: "").trim()
+        val raw = when {
+            model.isBlank() -> manufacturer.ifBlank { "Android device" }
+            manufacturer.isBlank() -> model
+            model.startsWith(manufacturer, ignoreCase = true) -> model
+            else -> "$manufacturer $model"
+        }
+        return raw.replace(Regex("\\s+"), " ").trim()
     }
 
     companion object {

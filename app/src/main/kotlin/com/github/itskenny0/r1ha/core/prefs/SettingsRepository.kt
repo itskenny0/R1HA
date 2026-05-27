@@ -164,6 +164,7 @@ class SettingsRepository private constructor(
          */
         val keyBindingsJson = stringPreferencesKey("input.key_bindings.json")
         val iotCameraJson = stringPreferencesKey("iot_camera.json")
+        val iotSensorsJson = stringPreferencesKey("iot_sensors.json")
         val uiTextHistoryLen = intPreferencesKey("ui.text_history_length")
         val uiHideCardTail = booleanPreferencesKey("ui.hide_card_tail")
         val uiMaxDecimals = intPreferencesKey("ui.max_decimals")
@@ -330,6 +331,13 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: IotCameraSettings(),
+                iotSensors = p[K.iotSensorsJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(IotSensorsSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: IotSensorsSettings(),
             )
         }
         .onEach { s ->
@@ -461,6 +469,10 @@ class SettingsRepository private constructor(
                 p[K.iotCameraJson] = advancedJson.encodeToString(
                     IotCameraSettings.serializer(),
                     next.iotCamera,
+                )
+                p[K.iotSensorsJson] = advancedJson.encodeToString(
+                    IotSensorsSettings.serializer(),
+                    next.iotSensors,
                 )
             }
             R1Log.i("SettingsRepo.update", "DataStore edit completed; next.server=${next.server?.url ?: "null"}")
