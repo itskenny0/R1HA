@@ -47,38 +47,24 @@ object CameraEnumerator {
         val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
         val seenIds = mutableSetOf<String>()
         val results = mutableListOf<CameraDescriptor>()
-        // IDs that have failed to actually open before — surface but
-        // skipped in the picker. The blocklist self-populates as the
-        // user picks IDs and the service's onError fires; this filter
-        // makes the picker self-clean after a few attempts on devices
-        // (Xiaomi 9T) where probed-but-fake IDs leak through the
-        // characteristics-based heuristic.
-        val blocked = CameraOpenBlocklist.blockedIds(context)
 
         fun add(id: String, parent: String?) {
-            // Dedupe — a probe pass might re-discover IDs that are already
-            // in cameraIdList or already enumerated as a logical's
-            // physical sub-camera.
             val key = parent?.let { "phys:$it:$id" } ?: id
             if (!seenIds.add(key)) return
-            // Skip IDs the user has already tried that failed to open.
-            // We compare on the capture-id (which is what gets stored in
-            // settings + handed to openCamera), not the raw id, so a
-            // physical id that's blocked under one parent doesn't block
-            // it under another.
-            if (key in blocked) return
             runCatching { describe(manager, id, physicalParent = parent) }.getOrNull()
                 ?.let(results::add)
         }
 
+        // Standard enumeration: every id the HAL is willing to advertise.
+        // On most devices this gives the user the expected back + front
+        // pair, which is enough.
         for (id in logicalIds) {
             add(id, parent = null)
             // Logical multi-camera devices (modern Pixels, some Samsungs)
-            // expose 1-2 logical IDs in cameraIdList but bundle 3-4 physical
-            // sensors behind each. INFO_PHYSICAL_CAMERA_IDS surfaces them
-            // when the HAL advertises the logical-multi-camera capability.
-            // API 28+ only — older devices either don't have multi-physical
-            // or expose every physical as its own logical.
+            // expose 1-2 logical IDs but bundle 3-4 physical sensors
+            // behind each via INFO_PHYSICAL_CAMERA_IDS. API 28+ only —
+            // older devices either don't have multi-physical or expose
+            // every physical as its own logical.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 runCatching {
                     val chars = manager.getCameraCharacteristics(id)
@@ -87,41 +73,16 @@ object CameraEnumerator {
             }
         }
 
-        // Probe pass for OEMs that hide physical sub-cameras BOTH from
-        // cameraIdList AND from INFO_PHYSICAL_CAMERA_IDS — Xiaomi is the
-        // canonical example, where the HAL advertises 1 logical "back"
-        // camera while keeping wide / tele / ultrawide hidden behind it.
-        //
-        // getCameraCharacteristics() may succeed on IDs that AREN'T real
-        // openable cameras (placeholder slots, depth-helper sensors,
-        // metadata-only IDs the HAL uses internally). To keep those out
-        // of the picker, only accept IDs that look like real cameras:
-        //   - LENS_FACING is explicitly set (not null) — every real
-        //     camera advertises its facing direction, while placeholder
-        //     slots return null.
-        //   - SCALER_STREAM_CONFIGURATION_MAP has at least one JPEG
-        //     output size — non-output sensors (depth helpers, IR-only)
-        //     return either no map or no JPEG sizes.
-        //
-        // Range capped at 20 because beyond that we're firmly into
-        // "this isn't a real camera" territory; OEMs that hide IDs keep
-        // them in the 0-9 range almost universally.
-        for (i in 0..19) {
-            val id = i.toString()
-            if (seenIds.contains(id)) continue
-            runCatching {
-                val chars = manager.getCameraCharacteristics(id)
-                val facing = chars.get(CameraCharacteristics.LENS_FACING) ?: return@runCatching
-                val streamMap = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                    ?: return@runCatching
-                val jpegSizes = streamMap.getOutputSizes(ImageFormat.JPEG)
-                if (jpegSizes.isNullOrEmpty()) return@runCatching
-                // Survived all the checks → a real, openable camera the
-                // standard enumeration missed. Add it as a top-level
-                // entry so CameraCapture opens it directly.
-                @Suppress("UNUSED_VARIABLE") val unused = facing
-                add(id, parent = null)
-            }
+        // Cached extras from a previous SCAN FOR EXTRA CAMERAS run.
+        // These are ids that don't appear in cameraIdList /
+        // INFO_PHYSICAL_CAMERA_IDS but have been verified to actually
+        // produce frames via [CameraProbe]. We only populate them
+        // once the user has explicitly run the scan — that way the
+        // default install of a Xiaomi 9T shows just back + front, and
+        // power users who want every lens can opt into the longer
+        // scan.
+        for (id in CameraExtrasCache.get(context)) {
+            add(id, parent = null)
         }
 
         return results.sortedWith(
@@ -133,6 +94,29 @@ object CameraEnumerator {
                 { -(it.supportedJpegSizes.firstOrNull()?.let { s -> s.width * s.height } ?: 0) },
             ),
         )
+    }
+
+    /**
+     * Ids that don't need re-probing because they're already in the
+     * standard enumeration. The probe excludes these to keep the run
+     * short — the user is looking for HIDDEN lenses, not re-verifying
+     * what the HAL already volunteered.
+     */
+    fun excludedFromProbe(context: Context): Set<String> {
+        val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+            ?: return emptySet()
+        val excluded = mutableSetOf<String>()
+        val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
+        for (id in logicalIds) {
+            excluded.add(id)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                runCatching {
+                    val chars = manager.getCameraCharacteristics(id)
+                    excluded.addAll(chars.physicalCameraIds)
+                }
+            }
+        }
+        return excluded
     }
 
     /** Find a default camera id when the user hasn't picked one explicitly.
