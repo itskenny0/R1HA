@@ -449,52 +449,47 @@ class MainActivity : ComponentActivity() {
         ) {
             return true
         }
-        // Route-based gating: bindings only fire on the surfaces where
-        // they make sense (card stack + dashboard). Everywhere else
-        // (Settings, Onboarding, Assist text field, Service caller,
-        // etc.) we pass the key through untouched so the focused input
-        // surface — Compose TextField, WebView <input>, whatever — gets
-        // the keystroke. Earlier attempts to detect "is the user typing"
-        // via currentFocus / IME-visibility / InputMethodManager state
-        // were unreliable across surfaces; pinning to allowed routes is
-        // both simpler and matches the user's mental model ("I bound
-        // this to drive the card stack, not to override typing").
-        //
-        // WHEEL bindings are exempted: the R1's physical wheel emits
-        // DPAD keycodes and users expect it to scroll lists everywhere
-        // in the app, not just on the card stack.
         val candidate = graph.latestBindings.actionFor(event.keyCode)
         val isWheelKey = candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP ||
             candidate == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN
-        if (!isWheelKey && !isBindingAllowedRoute(graph.currentNavRoute)) {
-            return super.dispatchKeyEvent(event)
+
+        // Wheel keys must intercept BEFORE the view hierarchy gets the
+        // event — otherwise VOLUME_UP/DOWN bound to the wheel would
+        // trigger the system volume slider, and DPAD bindings would
+        // bleed into Compose's focus-search nav. So wheel handling
+        // happens here, eagerly.
+        if (isWheelKey && candidate != null) {
+            return handleWheelAction(candidate, event, isDown)
         }
-        val action = graph.latestBindings.actionFor(event.keyCode)
-            ?: return super.dispatchKeyEvent(event)
+
+        // Everything else: give the view hierarchy first dibs. If a
+        // focused TextField (or anything else) consumed the key, we're
+        // done. Only when NOTHING in the view hierarchy wanted the key
+        // do we consider firing our user-bound action. That's the only
+        // reliable signal across the surfaces the R1 hits (Compose
+        // BasicTextField, native EditText, WebView inputs, IME-driven
+        // synthesised events) — route checks and IME-visibility probes
+        // both miss cases. AND we still gate on the allowlisted routes
+        // so a stray side-button press outside the card stack doesn't
+        // accidentally fire a card-stack action while the user's just
+        // browsing Settings.
+        if (super.dispatchKeyEvent(event)) {
+            return true
+        }
+        if (candidate == null) return false
+        if (!isBindingAllowedRoute(graph.currentNavRoute)) return false
+        val action = candidate
         // For physical VOLUME buttons, the framework synthesises auto-repeat events at ~30 Hz
         // when the user holds the button. Throttle the auto-repeat stream to ~8 Hz so a held
         // button gives smooth, controllable motion. The R1's physical wheel maps to DPAD
         // keycodes and emits each detent as a separate ACTION_DOWN with repeatCount=0 — those
         // bypass the throttle entirely so a fast spin never loses an event.
+        // WHEEL actions never reach here — they're handled eagerly above
+        // before super.dispatchKeyEvent, so the system volume slider /
+        // focus-search nav never get a chance to consume them.
         return when (action) {
-            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP -> {
-                if (isDown) {
-                    val accept = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
-                        shouldEmitVolumeRepeat(event, isUp = true)
-                    } else true
-                    if (accept) graph.wheelInput.emit(WheelEvent.Direction.UP)
-                }
-                true
-            }
-            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN -> {
-                if (isDown) {
-                    val accept = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-                        shouldEmitVolumeRepeat(event, isUp = false)
-                    } else true
-                    if (accept) graph.wheelInput.emit(WheelEvent.Direction.DOWN)
-                }
-                true
-            }
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP,
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN -> true
             com.github.itskenny0.r1ha.core.input.KeyAction.GO_BACK -> {
                 // Dispatch via the activity's OnBackPressedDispatcher so the
                 // NavController back stack pops the same way it would for a
@@ -513,6 +508,39 @@ class MainActivity : ComponentActivity() {
                 true
             }
         }
+    }
+
+    /**
+     * Emit the wheel direction for a key bound to WHEEL_UP / WHEEL_DOWN.
+     * Called from the eager-intercept path in [dispatchKeyEvent] so the
+     * system volume slider (for VOLUME_* keycodes) and Compose focus
+     * search (for DPAD_* keycodes) never get a shot at the event.
+     *
+     * VOLUME keycodes auto-repeat at ~30 Hz when held; throttle to ~8 Hz
+     * for a controllable feel. DPAD keycodes come from the physical
+     * wheel one detent per ACTION_DOWN so they bypass throttling.
+     */
+    private fun handleWheelAction(
+        action: com.github.itskenny0.r1ha.core.input.KeyAction,
+        event: KeyEvent,
+        isDown: Boolean,
+    ): Boolean {
+        if (isDown) {
+            val isUp = action == com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP
+            val accept = when {
+                event.keyCode == KeyEvent.KEYCODE_VOLUME_UP ->
+                    shouldEmitVolumeRepeat(event, isUp = true)
+                event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ->
+                    shouldEmitVolumeRepeat(event, isUp = false)
+                else -> true
+            }
+            if (accept) {
+                graph.wheelInput.emit(
+                    if (isUp) WheelEvent.Direction.UP else WheelEvent.Direction.DOWN,
+                )
+            }
+        }
+        return true
     }
 
     /** Decide whether this VOLUME ACTION_DOWN should produce a wheel
