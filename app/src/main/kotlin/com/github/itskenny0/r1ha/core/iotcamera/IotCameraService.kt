@@ -107,8 +107,54 @@ class IotCameraService : Service() {
     }
 
     override fun onDestroy() {
-        teardownPipeline(currentConfig)
+        // Move heavy teardown OFF the main thread. Service.onDestroy is
+        // dispatched on main; the synchronous Camera2 close() calls
+        // inside teardownPipeline → CameraCapture.shutdown() block on
+        // Binder when Xiaomi's HAL is slow to release, and the ANR
+        // watchdog catches them (visible in dev menu as "main thread
+        // didn't tick in 4s"). Snapshot every reference, null the
+        // fields synchronously so the service object can be GC'd, and
+        // hand the actual close work to a process-scope executor that
+        // outlives this service instance.
+        val prevConfig = currentConfig
+        val previousCapture = capture
+        val previousMqtt = mqtt
+        val previousMjpeg = mjpeg
+        val previousMqttJob = mqttJob
+        val previousBitrateJob = bitrateJob
+        capture = null
+        mqtt = null
+        mjpeg = null
+        mqttJob = null
+        bitrateJob = null
+        currentConfig = null
+
+        // Cheap synchronous bits stay on main.
+        runCatching { previousMqttJob?.cancel() }
+        runCatching { previousBitrateJob?.cancel() }
         status.reset()
+
+        teardownExecutor.execute {
+            // MQTT discovery un-publish FIRST while the connection is
+            // still alive — see [unpublishMqttDiscovery] for why this
+            // matters (HA otherwise keeps the auto-discovered entity
+            // around forever).
+            prevConfig?.let { cfg ->
+                if (cfg.mqttEnabled && cfg.mqttHost.isNotBlank()) {
+                    val node = cfg.mqttNodeId.ifBlank { "default" }
+                    val uniqueId = "r1ha_${node}_${cfg.mqttObjectId}"
+                    val configTopic =
+                        "${cfg.mqttDiscoveryPrefix}/camera/$uniqueId/config"
+                    runCatching {
+                        previousMqtt?.publish(configTopic, ByteArray(0), retain = true)
+                    }
+                }
+            }
+            runCatching { previousMqtt?.stop() }
+            runCatching { previousMjpeg?.stop() }
+            runCatching { previousCapture?.shutdown() }
+        }
+
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -466,6 +512,22 @@ class IotCameraService : Service() {
          *  Xiaomi HAL revisions we've seen; if it turns out not to be
          *  enough on some device, surface as a setting. */
         private const val HAL_SETTLE_MS = 500L
+
+        /**
+         * Process-scope worker for teardown work that would otherwise
+         * block the service's onDestroy on the main thread. Single
+         * thread because the camera close calls aren't safely
+         * parallelisable, and daemon so it doesn't keep the JVM alive
+         * after the user exits the app. Survives Service instance
+         * lifecycle by design — the close work may still be running
+         * when the Service object is GC'd, which is fine because the
+         * Camera2 references it holds are independent of the Service.
+         */
+        private val teardownExecutor by lazy {
+            java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+                Thread(r, "r1ha-iot-teardown").apply { isDaemon = true }
+            }
+        }
 
         fun ensureChannel(context: Context) {
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
