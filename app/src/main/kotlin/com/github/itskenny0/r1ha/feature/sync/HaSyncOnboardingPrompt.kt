@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,9 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.core.ha.ConnectionState
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
@@ -38,25 +39,21 @@ import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
-import kotlinx.coroutines.launch
 
 /**
- * First-run prompt that introduces multi-device sync and lets the user
- * either pull an existing payload (importing settings from another
- * device) or seed HA with this device's current state. Renders only
- * when:
+ * First-run prompt that introduces multi-device sync after onboarding has
+ * completed and the WS is connected. Lets the user either pull an existing
+ * payload (importing settings from another device) or seed HA with this
+ * device's current state. Renders only when:
  *
- *   - the user has a server configured (no point asking before
- *     onboarding finishes),
- *   - the WS is currently Connected (so the probe + first sync can
- *     actually run), and
- *   - the user hasn't dismissed/accepted the prompt before (the
- *     [AppSettings.integrations.haSyncPromptSeen] flag flips true on
- *     any choice).
+ *   - the user has a server configured,
+ *   - the WS is currently Connected (so the probe can run),
+ *   - the user hasn't dismissed or accepted the prompt before
+ *     (haSyncPromptSeen flips true on any choice).
  *
- * The prompt is an inline full-screen overlay rather than a Compose
- * `Dialog` so it sits in the activity's window and doesn't suffer the
- * same key-routing quirks Dialog has with hardware key events.
+ * Inline full-screen overlay rather than a Compose Dialog so it sits in
+ * the activity's window and doesn't suffer the key-routing quirks Dialog
+ * has with hardware key events.
  */
 @Composable
 fun HaSyncOnboardingPrompt(
@@ -77,21 +74,23 @@ fun HaSyncOnboardingPrompt(
     }
     var remoteTimestamp by remember { mutableStateOf<Long?>(null) }
     var probed by remember { mutableStateOf(false) }
+    var probeError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    // Probe HA on first show so the prompt can offer "import" only when
-    // a remote payload actually exists. Bounded by the probe call's
-    // own timeout (callWsExpectingPayload caps at 15 s); we don't block
-    // the UI — null = "we'll just show push as the only path".
+    // Probe HA on first show so the prompt can offer IMPORT only when a
+    // remote payload actually exists. Bounded by the probe call's own
+    // timeout (callWsExpectingPayload caps at 15s); UI is not blocked.
+    // probeError is surfaced inline so the user knows whether the network
+    // round-trip succeeded vs. just returned "no payload".
     LaunchedEffect(Unit) {
         if (syncManager != null) {
-            remoteTimestamp = runCatching { syncManager.probeRemoteExists() }.getOrNull()
+            val result = runCatching { syncManager.probeRemoteExists() }
+            remoteTimestamp = result.getOrNull()
+            probeError = result.exceptionOrNull()?.message
         }
         probed = true
     }
 
-    // Per-category exclude set, locally edited inside the prompt. Seeded
-    // from current settings (typically empty on first run).
     val excluded = remember {
         mutableStateOf(settings.integrations.haSyncExcludedCategories)
     }
@@ -101,8 +100,8 @@ fun HaSyncOnboardingPrompt(
             .fillMaxSize()
             .background(R1.Bg.copy(alpha = 0.95f))
             // Eat taps on the backdrop so the underlying card stack doesn't
-            // receive them while the overlay is up. No-op handler — the user
-            // dismisses by tapping NOT NOW, not by tapping outside.
+            // receive them while the overlay is up. No-op handler; the user
+            // dismisses by tapping NOT NOW.
             .r1Pressable(onClick = {}),
         contentAlignment = Alignment.Center,
     ) {
@@ -111,9 +110,9 @@ fun HaSyncOnboardingPrompt(
                 .fillMaxWidth()
                 .systemBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
-                // Cap the card to the available height so the R1's 320 dp
-                // tall display doesn't get a prompt whose buttons fall off
-                // the bottom. The inner content scrolls if it overflows.
+                // Cap to the available height so the R1's 320dp tall display
+                // doesn't get a prompt whose buttons fall off the bottom.
+                // Inner content scrolls if it overflows.
                 .heightIn(max = 600.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(R1.Surface)
@@ -124,25 +123,48 @@ fun HaSyncOnboardingPrompt(
         ) {
             Text(text = "SYNC ACROSS DEVICES", style = R1.labelMicro, color = R1.AccentWarm)
             Text(
-                text = "Mirror your preferences via Home Assistant so any R1 or " +
-                    "phone signed into the same HA user shares the same theme, " +
-                    "pages, favourites, and overrides.",
+                text = "Mirror your preferences via Home Assistant so any R1 " +
+                    "or phone signed into the same HA user shares the same " +
+                    "theme, pages, favourites, and overrides.",
                 style = R1.body,
                 color = R1.Ink,
             )
             Text(
-                text = "Storage is HA's per-user JSON bucket — no add-on needed. " +
-                    "Server URL, iBeacon, webhook, and MQTT stay device-local.",
+                text = "Storage is HA's per-user JSON bucket; no add-on " +
+                    "needed. Server URL, iBeacon, webhook, and MQTT stay " +
+                    "device-local.",
                 style = R1.body,
                 color = R1.InkMuted,
             )
+            Spacer(Modifier.height(2.dp))
+
+            // Probe-state pill keeps the user oriented while the network
+            // call is running, and reads as a finished decision once we
+            // know whether a remote payload exists.
+            ProbeStatusRow(
+                probed = probed,
+                hasRemote = remoteTimestamp != null,
+                error = probeError,
+            )
+
             Spacer(Modifier.height(4.dp))
             Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
-            // Per-category opt-out chips inside the prompt — the user can
-            // pre-trim what gets shared before they commit to import/push.
+            // Per-category opt-out chips inside the prompt; the user can
+            // pre-trim what gets shared before committing to import/push.
             SyncCategory.entries.forEach { category ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .r1Pressable(
+                            onClick = {
+                                excluded.value = excluded.value.toMutableSet().apply {
+                                    if (contains(category.name)) remove(category.name)
+                                    else add(category.name)
+                                }
+                            },
+                            hapticOnClick = false,
+                        )
+                        .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -162,30 +184,8 @@ fun HaSyncOnboardingPrompt(
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
-            if (!probed) {
-                Text(
-                    text = "Checking HA for existing settings…",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
-            } else if (remoteTimestamp != null) {
-                Text(
-                    text = "Found a sync payload on HA. Import it, or replace it " +
-                        "with this device's settings.",
-                    style = R1.body,
-                    color = R1.InkSoft,
-                )
-            } else {
-                Text(
-                    text = "No sync payload on HA yet. Pushing this device will " +
-                        "seed the shared state.",
-                    style = R1.body,
-                    color = R1.InkSoft,
-                )
-            }
             Spacer(Modifier.height(6.dp))
-            // Action row. IMPORT only renders when probe found a remote — it
+            // Action row. IMPORT only renders when probe found a remote; it
             // would be a no-op otherwise.
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -226,14 +226,55 @@ fun HaSyncOnboardingPrompt(
 }
 
 @Composable
+private fun ProbeStatusRow(probed: Boolean, hasRemote: Boolean, error: String?) {
+    val (label, tint, body) = when {
+        !probed -> Triple("CHECKING", R1.StatusAmber, "Probing HA for an existing sync payload…")
+        error != null -> Triple("PROBE FAILED", R1.StatusRed, error)
+        hasRemote -> Triple(
+            "REMOTE FOUND",
+            R1.AccentGreen,
+            "Import the existing payload, or replace it with this device.",
+        )
+        else -> Triple(
+            "NEW HOUSE",
+            R1.AccentWarm,
+            "No payload on HA yet. Pushing this device seeds the shared state.",
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(R1.ShapeRound)
+                .background(tint),
+        )
+        Spacer(Modifier.size(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, style = R1.labelMicro, color = tint)
+            Spacer(Modifier.height(2.dp))
+            Text(text = body, style = R1.body, color = R1.InkSoft)
+        }
+    }
+}
+
+@Composable
 private fun PromptButton(
     text: String,
-    tint: androidx.compose.ui.graphics.Color,
+    tint: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = modifier
+            .heightIn(min = 48.dp)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
