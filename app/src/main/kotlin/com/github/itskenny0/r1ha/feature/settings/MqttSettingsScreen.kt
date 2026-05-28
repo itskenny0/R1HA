@@ -80,7 +80,7 @@ fun MqttSettingsScreen(
             item {
                 Text(
                     text = "Shared MQTT broker config. Same broker your Home " +
-                        "Assistant is connected to — the IoT Camera Mode " +
+                        "Assistant is connected to. The IoT Camera Mode " +
                         "feature publishes auto-discovery + frames here, and " +
                         "the Dev menu's publish tool talks to it too.",
                     style = R1.body,
@@ -280,8 +280,8 @@ fun MqttSettingsScreen(
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 4.dp),
                 )
                 Text(
-                    text = "· IoT Camera Mode — publishes discovery + frames\n" +
-                        "· Dev menu → MQTT — one-shot publish for testing",
+                    text = "· IoT Camera Mode: publishes discovery + frames\n" +
+                        "· Dev menu, MQTT: one-shot publish for testing",
                     style = R1.body,
                     color = R1.InkMuted,
                     modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 24.dp),

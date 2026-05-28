@@ -131,7 +131,7 @@ fun HaSyncOnboardingPrompt(
                 color = R1.Ink,
             )
             Text(
-                text = "Storage is HA's per-user JSON bucket — no add-on needed. " +
+                text = "Storage is HA's per-user JSON bucket: no add-on needed. " +
                     "Server URL, iBeacon, webhook, and MQTT stay device-local.",
                 style = R1.body,
                 color = R1.InkMuted,
