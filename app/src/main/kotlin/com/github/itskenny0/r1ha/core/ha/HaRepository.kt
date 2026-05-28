@@ -411,6 +411,22 @@ interface HaRepository {
      */
     suspend fun listEntityRegistry(): Result<List<EntityRegistryEntry>>
 
+    /**
+     * List every configured integration instance via `config_entries/get`.
+     * Powers the native Integrations browser which groups by domain and
+     * surfaces a reload affordance per row. Setup / removal flows live
+     * in HA's web UI; this surface is read + reload.
+     */
+    suspend fun listConfigEntries(): Result<List<ConfigEntry>>
+
+    /**
+     * Reload a single config entry via `config_entries/reload`. The
+     * integration is unloaded and re-set up in place; the call returns
+     * once the new setup completes (or fails). Surfaces the same toast
+     * as any other action on failure.
+     */
+    suspend fun reloadConfigEntry(entryId: String): Result<Unit>
+
     suspend fun start()
     suspend fun stop()
 

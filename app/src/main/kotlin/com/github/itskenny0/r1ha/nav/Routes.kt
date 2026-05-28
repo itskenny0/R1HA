@@ -76,6 +76,10 @@ object Routes {
      *  assist pipeline (STT → conversation → TTS) and plays the response. */
     const val VOICE_SATELLITE = "voice_satellite"
 
+    /** Native HA config_entries browser; per-row reload, no setup flow
+     *  (HA's web UI owns dynamic setup schemas + OAuth handoffs). */
+    const val INTEGRATIONS = "integrations"
+
     /** "Modified settings" subscreen — lists every registry entry whose
      *  current value differs from its default. Reached from a chip near
      *  the top of the main Settings screen. */

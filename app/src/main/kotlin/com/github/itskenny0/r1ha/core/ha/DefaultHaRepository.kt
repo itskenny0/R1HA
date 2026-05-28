@@ -3042,6 +3042,46 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun listConfigEntries(): Result<List<ConfigEntry>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("config_entries/get").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray
+                ?: return@mapCatching emptyList()
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(k: String): String? = (o[k] as? JsonPrimitive)?.content
+                fun bool(k: String): Boolean =
+                    (o[k] as? JsonPrimitive)?.booleanOrNull == true
+                val entryId = str("entry_id") ?: return@mapNotNull null
+                val domain = str("domain") ?: return@mapNotNull null
+                ConfigEntry(
+                    entryId = entryId,
+                    domain = domain,
+                    title = str("title") ?: domain,
+                    source = str("source") ?: "user",
+                    state = str("state") ?: "unknown",
+                    supportsOptions = bool("supports_options"),
+                    supportsRemoveDevice = bool("supports_remove_device"),
+                    supportsUnload = bool("supports_unload"),
+                    prefDisableNewEntities = bool("pref_disable_new_entities"),
+                    prefDisablePolling = bool("pref_disable_polling"),
+                    reason = str("reason"),
+                    disabledBy = str("disabled_by"),
+                )
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.configEntries", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun reloadConfigEntry(entryId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entry_id", JsonPrimitive(entryId))
+        }
+        callWsExpectingPayload("config_entries/reload", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.configEntries", "reload $entryId failed: ${t.message}")
+        }
+    }
+
     /** Decode one [MediaBrowseEntry] from a HA browse_media payload object. */
     private fun parseMediaEntry(obj: kotlinx.serialization.json.JsonObject): MediaBrowseEntry? {
         fun str(key: String): String? = (obj[key] as? JsonPrimitive)?.content

@@ -176,6 +176,8 @@ fun SettingsScreen(
      *  drill-in shows the device's entities). Defaulted so older callers
      *  still compile. */
     onOpenDevices: () -> Unit = {},
+    /** Native config_entries browser with per-row reload. */
+    onOpenIntegrations: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1805,6 +1807,13 @@ fun SettingsScreen(
                     label = "Devices",
                     value = "Browse HA's device registry",
                     onClick = onOpenDevices,
+                )
+            }
+            item {
+                NavRow(
+                    label = "Integrations",
+                    value = "Configured integrations + reload",
+                    onClick = onOpenIntegrations,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a
