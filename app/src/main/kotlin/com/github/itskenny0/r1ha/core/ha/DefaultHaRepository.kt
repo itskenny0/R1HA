@@ -3121,6 +3121,63 @@ class DefaultHaRepository(
             }
         }
 
+    override suspend fun listTags(): Result<List<HaTag>> = withContext(Dispatchers.IO) {
+        // tag/list returns the array under the top-level result (not wrapped in a
+        // result object the way some other commands are). callWsExpectingPayload
+        // returns whatever's in the result field; for this command that's the
+        // array directly. Older HA servers (pre 2023.5) returned an object with
+        // a "tags" key — accept both shapes defensively.
+        callWsExpectingPayload("tag/list").mapCatching { payload ->
+            val arr = when (payload) {
+                is kotlinx.serialization.json.JsonArray -> payload
+                is kotlinx.serialization.json.JsonObject ->
+                    payload["tags"] as? kotlinx.serialization.json.JsonArray
+                        ?: error("tag/list reply has no tags array")
+                else -> error("tag/list returned an unexpected payload shape")
+            }
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(key: String): String? = (o[key] as? JsonPrimitive)?.content
+                val id = str("id") ?: str("tag_id") ?: return@mapNotNull null
+                val lastScanned = str("last_scanned")?.let {
+                    runCatching { java.time.Instant.parse(it) }.getOrNull()
+                }
+                HaTag(
+                    id = id,
+                    name = str("name"),
+                    description = str("description"),
+                    lastScanned = lastScanned,
+                )
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.tags", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun updateTag(
+        tagId: String,
+        name: String?,
+        description: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("tag_id", JsonPrimitive(tagId))
+            if (name != null) put("name", JsonPrimitive(name))
+            if (description != null) put("description", JsonPrimitive(description))
+        }
+        callWsExpectingPayload("tag/update", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.tags", "update $tagId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun deleteTag(tagId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("tag_id", JsonPrimitive(tagId))
+        }
+        callWsExpectingPayload("tag/delete", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.tags", "delete $tagId failed: ${t.message}")
+        }
+    }
+
     override suspend fun listAuthUsers(): Result<List<HaUser>> = withContext(Dispatchers.IO) {
         callWsExpectingPayload("config/auth/list").mapCatching { payload ->
             val arr = payload as? kotlinx.serialization.json.JsonArray

@@ -180,6 +180,7 @@ fun SettingsScreen(
     onOpenIntegrations: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
     onOpenUsers: () -> Unit = {},
+    onOpenTags: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1829,6 +1830,13 @@ fun SettingsScreen(
                     label = "Users",
                     value = "Read-only HA user list (admin)",
                     onClick = onOpenUsers,
+                )
+            }
+            item {
+                NavRow(
+                    label = "Tags",
+                    value = "NFC / QR tag registry",
+                    onClick = onOpenTags,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a

@@ -105,4 +105,9 @@ object Routes {
      *  Admin-only; surfaces a friendly "needs admin" state when the
      *  call returns auth_error. */
     const val USERS = "users"
+
+    /** Tag registry editor — read every NFC / QR tag, rename or delete
+     *  individual rows. Creation isn't included; tags self-register on
+     *  first scan. */
+    const val TAGS = "tags"
 }

@@ -456,6 +456,29 @@ interface HaRepository {
      * shows a "needs admin" empty state rather than a stack trace.
      */
     suspend fun listAuthUsers(): Result<List<HaUser>>
+
+    /**
+     * List every NFC / QR tag the registry knows about via the `tag/list`
+     * WS command. HA returns id, name, description, and last-scanned ISO
+     * timestamp; we surface those fields verbatim.
+     */
+    suspend fun listTags(): Result<List<HaTag>>
+
+    /**
+     * Update a tag's friendly name + description via `tag/update`. Pass null
+     * for either field to leave it untouched server-side. Tag id can't be
+     * changed (it's the value the NFC tag actually broadcasts).
+     */
+    suspend fun updateTag(
+        tagId: String,
+        name: String? = null,
+        description: String? = null,
+    ): Result<Unit>
+
+    /** Delete a tag via `tag/delete`. The id is gone from the registry but
+     *  the physical tag still broadcasts its value; a future scan re-registers
+     *  it with a blank name. */
+    suspend fun deleteTag(tagId: String): Result<Unit>
 }
 
 /**
