@@ -34,21 +34,15 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * Final step of the OAuth / LLAT onboarding flow: ask the user whether
  * to mirror preferences via HA. Three paths:
  *
- *   YES, SYNC               enable with wheel + input excluded (the
- *                           per-device safe-default); a short toast
- *                           explains where to refine later.
- *   PICK WHAT TO SYNC       expand the per-category switches inline; the
- *                           user confirms and we enable with whatever
- *                           they chose.
- *   NOT NOW                 leave sync off; the user can flip it on
- *                           later from Settings, Sync.
+ *   YES, SYNC : enable sync with default exclusions (wheel + input
+ *               are per-device by default).
+ *   PICK      : expand inline per-category switches; user confirms
+ *               with whichever set they chose.
+ *   NOT NOW   : leave sync off; the user can flip it on later from
+ *               Settings, Sync.
  *
- * All three flip `haSyncPromptSeen = true` so the post-launch
- * [HaSyncOnboardingPrompt] doesn't re-fire on first card-stack render.
- *
- * Rendered as a full-screen step (matching 01 LINK and 02 AUTHORISE) so
- * the onboarding feels like one continuous flow rather than a modal that
- * pops on top of a finished screen.
+ * All three paths flip haSyncPromptSeen = true so the post-launch
+ * HaSyncOnboardingPrompt doesn't also fire for fresh installs.
  */
 @Composable
 fun SyncOnboardingStep(
@@ -57,12 +51,13 @@ fun SyncOnboardingStep(
     onDecline: () -> Unit,
 ) {
     var customising by remember { mutableStateOf(false) }
-    // Wheel + input excluded by default: wheel step/curve and key
-    // bindings tend to be per-device preferences (R1 hardware wheel vs
-    // phone touch; different button layouts), so the safe default is
-    // "don't override wheel feel across devices". The user can flip it
-    // back on if they want to share these too.
-    var excluded by remember { mutableStateOf<Set<String>>(setOf(SyncCategory.WHEEL_INPUT.name)) }
+    // Wheel & input excluded by default; wheel step/curve and key bindings
+    // tend to be per-device preferences (R1 hardware wheel vs phone touch,
+    // different button layouts) so the safe default is "don't override the
+    // wheel feel across devices". User can flip it back on if they want.
+    var excluded by remember {
+        mutableStateOf<Set<String>>(setOf(SyncCategory.WHEEL_INPUT.name))
+    }
 
     Box(
         modifier = Modifier
@@ -72,7 +67,16 @@ fun SyncOnboardingStep(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .systemBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                // Cap to the available height so the R1's 320dp tall display
+                // doesn't get a prompt whose buttons fall off the bottom.
+                // Inner content scrolls if it overflows.
+                .heightIn(max = 600.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, RoundedCornerShape(12.dp))
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp, vertical = 28.dp),
         ) {
@@ -87,23 +91,74 @@ fun SyncOnboardingStep(
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                text = if (customising) "Pick what to sync." else "Mirror settings\nvia Home Assistant?",
-                style = R1.screenTitle,
+                text = if (customising) {
+                    "Pick what to sync"
+                } else {
+                    "Sync your settings via Home Assistant?"
+                },
+                style = R1.bodyEmph,
                 color = R1.Ink,
             )
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = "Other R1 / phone installs signed into the same HA " +
-                    "user will mirror your theme, pages, favourites, and " +
-                    "card overrides. Server URL, iBeacon, webhook, and MQTT " +
-                    "always stay device-local.",
-                style = R1.body,
-                color = R1.InkMuted,
-            )
-
+            if (!customising) {
+                Text(
+                    text = "Other R1 or phone installs signed into the same HA " +
+                        "user will mirror your theme, pages, favourites, and " +
+                        "overrides. Server URL, iBeacon, webhook, and MQTT " +
+                        "stay device-local.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Wheel and input mappings stay per-device on the " +
+                        "default. PICK below to fine-tune.",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
             if (customising) {
                 Spacer(Modifier.height(20.dp))
                 Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
+                SyncCategory.entries.forEach { category ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .r1Pressable(
+                                onClick = {
+                                    excluded = excluded.toMutableSet().apply {
+                                        if (contains(category.name)) remove(category.name)
+                                        else add(category.name)
+                                    }
+                                },
+                                hapticOnClick = false,
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = category.displayLabel,
+                                style = R1.bodyEmph,
+                                color = R1.Ink,
+                            )
+                            Text(
+                                text = category.description,
+                                style = R1.labelMicro,
+                                color = R1.InkMuted,
+                            )
+                        }
+                        val included = !excluded.contains(category.name)
+                        R1Switch(
+                            checked = included,
+                            onCheckedChange = { v ->
+                                excluded = excluded.toMutableSet().apply {
+                                    if (v) remove(category.name) else add(category.name)
+                                }
+                            },
+                        )
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
                 SyncCategory.entries.forEach { category ->
                     CategoryRow(
@@ -137,7 +192,7 @@ fun SyncOnboardingStep(
                 // exclusion so the user knows what they're agreeing to
                 // without expanding the picker.
                 StepButton(
-                    text = "YES, SYNC (WHEEL + INPUT STAY LOCAL)",
+                    text = "YES, SYNC",
                     tint = R1.AccentGreen,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onAcceptAll,
@@ -155,6 +210,12 @@ fun SyncOnboardingStep(
                     tint = R1.InkMuted,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onDecline,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "You can change this any time in Settings, Sync.",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
                 )
             }
             // Trailing spacer so the last button clears the navigation
@@ -208,6 +269,7 @@ private fun StepButton(
 ) {
     Box(
         modifier = modifier
+            .heightIn(min = 48.dp)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
