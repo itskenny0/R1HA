@@ -210,7 +210,7 @@ fun IotSensorsSettingsScreen(
                 ToggleRow(
                     title = "WiFi SSID",
                     subtitle = "sensor.<id>_ssid, diagnostic. Off by " +
-                        "default — SSID can identify your home network.",
+                        "default: SSID can identify your home network.",
                     checked = sensors.publishWifiSsid,
                     onCheckedChange = { vm.updateIotSensors { it.copy(publishWifiSsid = !it.publishWifiSsid) } },
                 )
