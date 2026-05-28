@@ -2,9 +2,9 @@ package com.github.itskenny0.r1ha.feature.settings
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,23 +14,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -38,18 +41,17 @@ import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.App
-import com.github.itskenny0.r1ha.core.iotcamera.IotCameraStatus
-import com.github.itskenny0.r1ha.core.iotcamera.discoverLanIpv4
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.sample
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.core.iotcamera.CameraEnumerator
+import com.github.itskenny0.r1ha.core.iotcamera.IotCameraStatus
+import com.github.itskenny0.r1ha.core.iotcamera.discoverLanIpv4
+import com.github.itskenny0.r1ha.core.prefs.IotCameraSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -57,14 +59,19 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonBlock
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.withContext
 
 /**
- * Settings subpage for IoT Camera Mode. Lists detected cameras with friendly
- * labels (BACK · 26mm, FRONT · WIDE etc.) so multi-lens devices can pick a
- * specific sensor, then a resolution picker driven by what that sensor
- * actually supports, then fps + JPEG quality steppers, then independent
- * MJPEG + MQTT sink toggles with the per-sink configuration they need.
+ * Settings subpage for IoT Camera Mode. Sectioned into PERMISSION, MASTER,
+ * LIVE STATUS, PREVIEW, SOURCE, SINKS, IN HOME ASSISTANT, and ADVANCED.
+ * Advanced is collapsed by default so the page reads as a short ladder of
+ * decisions rather than a wall of fields; everything power-users want is
+ * one tap away.
  *
  * Permission flow: the master toggle requests CAMERA at runtime if it isn't
  * already granted. A user who denies the prompt sees a warning banner with
@@ -87,22 +94,18 @@ fun IotCameraSettingsScreen(
     val context = LocalContext.current
     val clipboard: ClipboardManager = LocalClipboardManager.current
 
-    // Detected cameras — recomputed once on entry; the list is stable
-    // for a given device + firmware so we don't refresh on recomposition.
     val cameras = remember { CameraEnumerator.list(context) }
     val pickedCamera = cameras.firstOrNull { it.id == cam.cameraId }
         ?: cameras.firstOrNull()
     val supportedSizes = pickedCamera?.supportedJpegSizes ?: emptyList()
 
-    // Live status flow + LAN IP — recomputed once on entry. We don't tick
-    // the IP because flipping Wi-Fi network mid-config is rare and the user
-    // can pop the screen to refresh; the live status updates from the
-    // service's StateFlow without that.
-    val statusHolder = remember(context) {
-        (context.applicationContext as? App)?.graph?.iotCameraStatus
-    }
+    val graph = remember(context) { (context.applicationContext as? App)?.graph }
+    val statusHolder = graph?.iotCameraStatus
+    val frameBus = graph?.iotCameraFrameBus
     val status by (statusHolder?.snapshot?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(IotCameraStatus.Snapshot()) })
+    val subscriberCount by (frameBus?.subscriberCount?.collectAsStateWithLifecycle(initialValue = 0)
+        ?: remember { mutableStateOf(0) })
     val lanIp = remember { discoverLanIpv4() }
 
     var hasCameraPermission by remember {
@@ -115,7 +118,16 @@ fun IotCameraSettingsScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         hasCameraPermission = granted
-        if (!granted) Toaster.error("Camera permission denied — IoT camera can't start")
+        if (!granted) Toaster.error("Camera permission denied; sinks can't start")
+    }
+
+    var advancedExpanded by remember { mutableStateOf(false) }
+    var disableArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(disableArmed) {
+        if (disableArmed) {
+            delay(3_000)
+            disableArmed = false
+        }
     }
 
     Column(
@@ -128,9 +140,9 @@ fun IotCameraSettingsScreen(
             item {
                 Text(
                     text = "Turn this device into a Home Assistant camera. " +
-                        "Two sinks: MJPEG over HTTP for true low-latency LAN " +
-                        "livestream, MQTT auto-discovery for any-network setups. " +
-                        "Off by default; per-device, never synced.",
+                        "Two sinks: MJPEG over HTTP for low-latency LAN viewing, " +
+                        "MQTT auto-discovery for any-network setups. Per-device, " +
+                        "never synced.",
                     style = R1.body,
                     color = R1.InkMuted,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
@@ -139,672 +151,415 @@ fun IotCameraSettingsScreen(
 
             if (!hasCameraPermission) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 8.dp)
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.StatusRed, R1.ShapeS)
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                    ) {
-                        Text(
-                            text = "Camera permission not granted",
-                            style = R1.bodyEmph,
-                            color = R1.StatusRed,
-                        )
-                        Text(
-                            text = "Streaming needs CAMERA. The OS prompt will appear when " +
-                                "you tap below.",
-                            style = R1.body,
-                            color = R1.InkSoft,
-                            modifier = Modifier.padding(top = 2.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable({
-                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                })
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
-                            Text("GRANT CAMERA", style = R1.labelMicro, color = R1.AccentWarm)
-                        }
-                    }
+                    PermissionBanner(
+                        title = "CAMERA PERMISSION MISSING",
+                        body = "Streaming needs CAMERA. Tap below to show the system prompt.",
+                        cta = "GRANT CAMERA",
+                        accent = R1.StatusRed,
+                        onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                    )
                 }
             }
 
             // ── Master toggle ─────────────────────────────────────────────
             item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Enable IoT Camera Mode", style = R1.bodyEmph, color = R1.Ink)
-                        Text(
-                            text = if (cam.enabled) {
-                                "ON — foreground service holds the camera"
-                            } else {
-                                "OFF — camera released, sinks torn down"
-                            },
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 1.dp),
-                        )
-                    }
-                    R1Switch(
-                        checked = cam.enabled,
-                        onCheckedChange = { v ->
-                            if (v && !hasCameraPermission) {
-                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                            }
-                            vm.updateIotCamera { it.copy(enabled = v) }
-                        },
-                    )
-                }
+                MasterToggleRow(
+                    cam = cam,
+                    armed = disableArmed,
+                    onArm = { disableArmed = true },
+                    onCommit = {
+                        disableArmed = false
+                        vm.updateIotCamera { it.copy(enabled = false) }
+                    },
+                    onEnable = {
+                        if (!hasCameraPermission) {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                        vm.updateIotCamera { it.copy(enabled = true) }
+                    },
+                    subscriberCount = subscriberCount,
+                )
             }
 
             // ── Live status ────────────────────────────────────────────────
-            // Sits high in the screen so the user always sees the health
-            // of each sink + the LAN IP they need to point HA at. Hidden
-            // entirely when the master toggle is off — there's nothing
-            // meaningful to report.
             if (cam.enabled) {
-                item { StatusCard(status = status, lanIp = lanIp) }
+                item { SectionHeader("LIVE STATUS") }
+                item {
+                    StatusCard(
+                        status = status,
+                        lanIp = lanIp,
+                        subscriberCount = subscriberCount,
+                    )
+                }
             }
 
             // ── Live preview ───────────────────────────────────────────────
+            item { SectionHeader("PREVIEW") }
             item { LivePreviewTile(enabled = cam.enabled) }
 
-            // ── Camera lens picker ────────────────────────────────────────
+            // ── Source ─────────────────────────────────────────────────────
+            item { SectionHeader("SOURCE") }
             item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
-                ) {
-                    Text("Camera lens", style = R1.bodyEmph, color = R1.Ink)
-                    if (cameras.isEmpty()) {
-                        Text(
-                            "No cameras detected on this device.",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
-                    } else {
-                        Text(
-                            text = "Pick the lens you want HA to see.",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                        )
-                        cameras.forEach { c ->
-                            val isPicked = (pickedCamera?.id == c.id)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(
-                                        1.dp,
-                                        if (isPicked) R1.AccentWarm else R1.Hairline,
-                                        R1.ShapeS,
-                                    )
-                                    .r1Pressable({
-                                        vm.updateIotCamera { it.copy(cameraId = c.id) }
-                                    })
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        c.label,
-                                        style = R1.bodyEmph,
-                                        color = if (isPicked) R1.AccentWarm else R1.Ink,
-                                    )
-                                    Text(
-                                        c.description,
-                                        style = R1.body,
-                                        color = R1.InkMuted,
-                                        modifier = Modifier.padding(top = 1.dp),
-                                    )
-                                }
-                                if (isPicked) {
-                                    Text("●", style = R1.bodyEmph, color = R1.AccentWarm)
-                                }
-                            }
+                LensPickerBlock(
+                    cameras = cameras,
+                    pickedCameraId = pickedCamera?.id,
+                    onPick = { id -> vm.updateIotCamera { it.copy(cameraId = id) } },
+                )
+            }
+            item {
+                ResolutionBlock(
+                    supportedSizes = supportedSizes,
+                    currentWidth = cam.width,
+                    currentHeight = cam.height,
+                    onPick = { w, h -> vm.updateIotCamera { it.copy(width = w, height = h) } },
+                )
+            }
+            item {
+                FrameRateBlock(
+                    fps = cam.fps,
+                    onDec = { vm.updateIotCamera { it.copy(fps = (it.fps - 1).coerceAtLeast(1)) } },
+                    onInc = { vm.updateIotCamera { it.copy(fps = it.fps + 1) } },
+                )
+            }
+            item {
+                QualityBlock(
+                    quality = cam.jpegQuality,
+                    onDec = {
+                        vm.updateIotCamera {
+                            it.copy(jpegQuality = (it.jpegQuality - 5).coerceAtLeast(10))
                         }
-                    }
-                }
-            }
-
-            // ── Resolution picker ─────────────────────────────────────────
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
-                ) {
-                    Text("Resolution", style = R1.bodyEmph, color = R1.Ink)
-                    Text(
-                        "Pulled from the selected lens. Larger = sharper but more bandwidth.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                    )
-                    if (supportedSizes.isEmpty()) {
-                        Text(
-                            "Pick a camera first.",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                        )
-                    } else {
-                        // Cap the offered choices — most lenses expose 20+
-                        // sizes, many of which are esoteric (1024×768 4:3
-                        // crops etc.). Down-sample to common 16:9 + 4:3
-                        // resolutions the user is likely to recognise.
-                        val picks = supportedSizes
-                            .filter { it.width * 9 == it.height * 16 || it.width * 3 == it.height * 4 }
-                            .ifEmpty { supportedSizes }
-                            .take(8)
-                        picks.forEach { sz ->
-                            val isPicked = sz.width == cam.width && sz.height == cam.height
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp)
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(
-                                        1.dp,
-                                        if (isPicked) R1.AccentWarm else R1.Hairline,
-                                        R1.ShapeS,
-                                    )
-                                    .r1Pressable({
-                                        vm.updateIotCamera {
-                                            it.copy(width = sz.width, height = sz.height)
-                                        }
-                                    })
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    "${sz.width} × ${sz.height}",
-                                    style = R1.body,
-                                    color = if (isPicked) R1.AccentWarm else R1.Ink,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                if (isPicked) {
-                                    Text("●", style = R1.bodyEmph, color = R1.AccentWarm)
-                                }
-                            }
+                    },
+                    onInc = {
+                        vm.updateIotCamera {
+                            it.copy(jpegQuality = (it.jpegQuality + 5).coerceAtMost(100))
                         }
-                    }
-                }
+                    },
+                )
             }
 
-            // ── Sender-side rotation ──────────────────────────────────────
+            // ── Sinks ──────────────────────────────────────────────────────
+            item { SectionHeader("SINKS") }
             item {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp)) {
-                    Text("Rotate (sender side)", style = R1.bodyEmph, color = R1.Ink)
-                    Text(
-                        "Rotates every encoded frame before fan-out. Costs CPU " +
-                            "per frame; leave at 0° and let HA rotate at the " +
-                            "viewer if you care about peak fps.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                    )
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable({
-                                    vm.updateIotCamera {
-                                        val next = ((it.rotationDegrees + 270) % 360)
-                                        it.copy(rotationDegrees = next)
-                                    }
-                                })
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                        ) { Text("↺", style = R1.bodyEmph, color = R1.InkSoft) }
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "${cam.rotationDegrees}°",
-                            style = R1.bodyEmph,
-                            color = R1.AccentWarm,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable({
-                                    vm.updateIotCamera {
-                                        val next = ((it.rotationDegrees + 90) % 360)
-                                        it.copy(rotationDegrees = next)
-                                    }
-                                })
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                        ) { Text("↻", style = R1.bodyEmph, color = R1.InkSoft) }
-                    }
-                }
-            }
-
-            // ── Frame rate ────────────────────────────────────────────────
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
-                ) {
-                    Text("Frame rate", style = R1.bodyEmph, color = R1.Ink)
-                    Text(
-                        "Higher = smoother but more CPU + bandwidth. No cap — pick what your " +
-                            "hardware can sustain.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                    )
-                    StepperRow(
-                        value = "${cam.fps} fps",
-                        onDec = {
-                            vm.updateIotCamera { it.copy(fps = (it.fps - 1).coerceAtLeast(1)) }
-                        },
-                        onInc = {
-                            vm.updateIotCamera { it.copy(fps = it.fps + 1) }
-                        },
-                    )
-                }
-            }
-
-            // ── JPEG quality (bitrate dial) ───────────────────────────────
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 10.dp),
-                ) {
-                    Text("JPEG quality", style = R1.bodyEmph, color = R1.Ink)
-                    Text(
-                        "1-100. Combined with resolution + fps this is your bitrate dial; " +
-                            "70 is a sensible default for surveillance-style streams.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
-                    )
-                    StepperRow(
-                        value = "${cam.jpegQuality}",
-                        onDec = {
-                            vm.updateIotCamera {
-                                it.copy(jpegQuality = (it.jpegQuality - 5).coerceAtLeast(10))
-                            }
-                        },
-                        onInc = {
-                            vm.updateIotCamera {
-                                it.copy(jpegQuality = (it.jpegQuality + 5).coerceAtMost(100))
-                            }
-                        },
-                    )
-                }
-            }
-
-            // ── MJPEG sink ─────────────────────────────────────────────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("MJPEG over HTTP", style = R1.bodyEmph, color = R1.Ink)
-                        Text(
-                            "Live multipart stream on the LAN. Add as 'generic' camera in HA.",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 1.dp),
-                        )
-                    }
-                    R1Switch(
-                        checked = cam.mjpegEnabled,
-                        onCheckedChange = { v ->
-                            vm.updateIotCamera { it.copy(mjpegEnabled = v) }
-                        },
-                    )
-                }
+                SinkToggleRow(
+                    title = "MJPEG over HTTP",
+                    subtitle = "Live multipart stream on the LAN. Add as Generic Camera in HA.",
+                    checked = cam.mjpegEnabled,
+                    onToggle = { vm.updateIotCamera { it.copy(mjpegEnabled = !it.mjpegEnabled) } },
+                )
             }
             if (cam.mjpegEnabled) {
                 item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
-                        Text("Port", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.mjpegPort.toString(),
-                            onValueChange = { v ->
-                                val p = v.toIntOrNull() ?: return@R1TextField
-                                vm.updateIotCamera { it.copy(mjpegPort = p.coerceIn(1024, 65535)) }
-                            },
-                            placeholder = "8181",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Require auth", style = R1.bodyEmph, color = R1.Ink)
-                                Text(
-                                    text = if (cam.mjpegAuthEnabled) {
-                                        "Basic auth on every request (recommended)"
-                                    } else {
-                                        "Open — anyone on the LAN can view the stream"
-                                    },
-                                    style = R1.body,
-                                    color = if (cam.mjpegAuthEnabled) R1.InkMuted else R1.StatusAmber,
-                                    modifier = Modifier.padding(top = 1.dp),
-                                )
-                            }
-                            R1Switch(
-                                checked = cam.mjpegAuthEnabled,
-                                onCheckedChange = { v ->
-                                    vm.updateIotCamera { it.copy(mjpegAuthEnabled = v) }
-                                },
-                            )
-                        }
-                        if (cam.mjpegAuthEnabled) {
-                            Spacer(Modifier.height(8.dp))
-                            Text("Username", style = R1.labelMicro, color = R1.InkSoft)
-                            R1TextField(
-                                value = cam.mjpegUsername,
-                                onValueChange = { v ->
-                                    vm.updateIotCamera { it.copy(mjpegUsername = v) }
-                                },
-                                placeholder = "r1ha",
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text("Password", style = R1.labelMicro, color = R1.InkSoft)
-                            R1TextField(
-                                value = cam.mjpegPassword,
-                                onValueChange = { v ->
-                                    vm.updateIotCamera { it.copy(mjpegPassword = v) }
-                                },
-                                placeholder = "auto-generated on first enable",
-                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(R1.ShapeS)
-                                        .background(R1.SurfaceMuted)
-                                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                                        .r1Pressable({
-                                            val pw = randomPassword()
-                                            vm.updateIotCamera { it.copy(mjpegPassword = pw) }
-                                            Toaster.show("New MJPEG password set")
-                                        })
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                ) {
-                                    Text("REGEN PASSWORD", style = R1.labelMicro, color = R1.AccentWarm)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(R1.ShapeS)
-                                        .background(R1.SurfaceMuted)
-                                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                                        .r1Pressable({
-                                            val url = "http://${cam.mjpegUsername}:" +
-                                                "${cam.mjpegPassword}@${lanIp ?: "<device-ip>"}:" +
-                                                "${cam.mjpegPort}/stream"
-                                            clipboard.setText(AnnotatedString(url))
-                                            Toaster.show("Stream URL template copied")
-                                        })
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                ) {
-                                    Text("COPY URL", style = R1.labelMicro, color = R1.AccentWarm)
-                                }
-                            }
-                        } else {
-                            Spacer(Modifier.height(8.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable({
-                                        val url = "http://${lanIp ?: "<device-ip>"}:${cam.mjpegPort}/stream"
-                                        clipboard.setText(AnnotatedString(url))
-                                        Toaster.show("Stream URL template copied")
-                                    })
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Text("COPY URL", style = R1.labelMicro, color = R1.AccentWarm)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── MQTT sink ─────────────────────────────────────────────────
-            // The toggle is always tappable, even when the broker isn't
-            // configured — explicit "this requires MQTT" framing in the
-            // subtitle + a loud follow-up banner is friendlier than a
-            // greyed-out switch that the user has to guess about.
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("MQTT auto-discovery", style = R1.bodyEmph, color = R1.Ink)
-                        Text(
-                            text = "Requires MQTT broker — does NOT auto-configure",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 1.dp),
-                        )
-                    }
-                    R1Switch(
-                        checked = cam.mqttEnabled,
-                        onCheckedChange = { v ->
-                            vm.updateIotCamera { it.copy(mqttEnabled = v) }
-                        },
+                    MjpegConfigBlock(
+                        cam = cam,
+                        lanIp = lanIp,
+                        clipboard = clipboard,
+                        onUpdate = { tr -> vm.updateIotCamera(tr) },
                     )
                 }
             }
-            // Loud warning + tappable link when MQTT is on but the broker
-            // hasn't been configured yet. Without this the user toggles
-            // MQTT on, sees nothing happen (since the service silently
-            // skips MQTT setup with no host), and has no clue why.
+            item {
+                SinkToggleRow(
+                    title = "MQTT auto-discovery",
+                    subtitle = "Publishes a camera entity to HA via the shared MQTT broker.",
+                    checked = cam.mqttEnabled,
+                    onToggle = { vm.updateIotCamera { it.copy(mqttEnabled = !it.mqttEnabled) } },
+                )
+            }
             if (cam.mqttEnabled && s.advanced.mqttHost.isBlank()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 6.dp)
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.StatusAmber, R1.ShapeS)
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                    ) {
-                        Text(
-                            text = "MQTT BROKER NOT CONFIGURED",
-                            style = R1.labelMicro,
-                            color = R1.StatusAmber,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "This feature won't work until you configure " +
-                                "the MQTT broker. R1HA does not auto-discover or " +
-                                "auto-configure brokers — you have to point it at " +
-                                "the same broker your Home Assistant is using.",
-                            style = R1.body,
-                            color = R1.InkSoft,
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable(onClick = onOpenMqttSettings)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                        ) {
-                            Text(
-                                "CONFIGURE MQTT BROKER",
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                            )
-                        }
-                    }
+                    PermissionBanner(
+                        title = "MQTT BROKER NOT CONFIGURED",
+                        body = "Configure the broker R1HA should publish to. R1HA does " +
+                            "not auto-discover brokers; point it at the same one your " +
+                            "Home Assistant uses.",
+                        cta = "CONFIGURE BROKER",
+                        accent = R1.StatusAmber,
+                        onClick = onOpenMqttSettings,
+                    )
                 }
             }
-            // When the broker is set up, surface a small "OPEN MQTT
-            // SETTINGS" jump-link so the user can edit broker details
-            // without backing out to the root settings page.
             if (cam.mqttEnabled && s.advanced.mqttHost.isNotBlank()) {
                 item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Broker: ${s.advanced.mqttHost}:${s.advanced.mqttPort}",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable(onClick = onOpenMqttSettings)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        ) {
-                            Text(
-                                "EDIT BROKER",
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                            )
-                        }
-                    }
+                    BrokerSummaryRow(
+                        host = s.advanced.mqttHost,
+                        port = s.advanced.mqttPort,
+                        tls = s.advanced.mqttUseTls,
+                        onEdit = onOpenMqttSettings,
+                    )
                 }
             }
             if (cam.mqttEnabled) {
                 item {
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "HA DISCOVERY",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                        )
-                        Text("Discovery prefix", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.mqttDiscoveryPrefix,
-                            onValueChange = { v ->
-                                vm.updateIotCamera { it.copy(mqttDiscoveryPrefix = v) }
-                            },
-                            placeholder = "homeassistant",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("Node id (per device)", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.mqttNodeId,
-                            onValueChange = { v ->
-                                vm.updateIotCamera { it.copy(mqttNodeId = v) }
-                            },
-                            placeholder = "auto-generated on first enable",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("Entity name (HA label)", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
-                            value = cam.entityName,
-                            onValueChange = { v ->
-                                vm.updateIotCamera { it.copy(entityName = v) }
-                            },
-                            placeholder = "R1HA Camera",
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        )
-                    }
+                    MqttConfigBlock(
+                        cam = cam,
+                        onUpdate = { tr -> vm.updateIotCamera(tr) },
+                    )
                 }
             }
 
-            // ── How to add in HA ──────────────────────────────────────────
-            item { Spacer(Modifier.height(20.dp)) }
-            item { HowToAddInHa(cam = cam, lanIp = lanIp) }
+            // ── In Home Assistant ─────────────────────────────────────────
+            item { SectionHeader("IN HOME ASSISTANT") }
+            item { HowToAddInHa(cam = cam, lanIp = lanIp, clipboard = clipboard) }
+
+            // ── Advanced ───────────────────────────────────────────────────
+            item {
+                SectionHeaderToggle(
+                    text = "ADVANCED",
+                    expanded = advancedExpanded,
+                    onToggle = { advancedExpanded = !advancedExpanded },
+                )
+            }
+            if (advancedExpanded) {
+                item {
+                    RotationBlock(
+                        rotation = cam.rotationDegrees,
+                        onLeft = {
+                            vm.updateIotCamera { it.copy(rotationDegrees = (it.rotationDegrees + 270) % 360) }
+                        },
+                        onRight = {
+                            vm.updateIotCamera { it.copy(rotationDegrees = (it.rotationDegrees + 90) % 360) }
+                        },
+                    )
+                }
+                item {
+                    InfoCallout(
+                        label = "ROTATION COST",
+                        body = "Every non-zero rotation re-encodes each frame. Leave at " +
+                            "0° for peak fps and let the HA viewer rotate instead.",
+                    )
+                }
+            }
 
             item { Spacer(Modifier.height(48.dp)) }
         }
     }
 }
 
-/**
- * At-a-glance health of each enabled sink, plus the LAN IPv4 we want the
- * user to point HA at for MJPEG. Updates from [IotCameraStatus]'s flow as
- * the service starts / fails / publishes the discovery payload.
- */
+// ── Section primitives ───────────────────────────────────────────────────
+
 @Composable
-private fun StatusCard(status: IotCameraStatus.Snapshot, lanIp: String?) {
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = R1.labelMicro,
+        color = R1.InkSoft,
+        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
+private fun SectionHeaderToggle(
+    text: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp)
+            .r1Pressable(onToggle)
+            .defaultMinSize(minHeight = 32.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = R1.labelMicro,
+            color = R1.InkSoft,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = if (expanded) "HIDE" else "SHOW",
+            style = R1.labelMicro,
+            color = R1.AccentWarm,
+        )
+    }
+}
+
+@Composable
+private fun PermissionBanner(
+    title: String,
+    body: String,
+    cta: String,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, accent, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(text = title, style = R1.labelMicro, color = accent)
+        Spacer(Modifier.height(4.dp))
+        Text(text = body, style = R1.body, color = R1.InkSoft)
+        Spacer(Modifier.height(10.dp))
+        ChipButton(text = cta, accent = accent, onClick = onClick)
+    }
+}
+
+@Composable
+private fun InfoCallout(label: String, body: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+    ) {
+        Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(4.dp))
+        Text(text = body, style = R1.body, color = R1.InkMuted)
+    }
+}
+
+// ── Master toggle ────────────────────────────────────────────────────────
+
+@Composable
+private fun MasterToggleRow(
+    cam: IotCameraSettings,
+    armed: Boolean,
+    onArm: () -> Unit,
+    onCommit: () -> Unit,
+    onEnable: () -> Unit,
+    subscriberCount: Int,
+) {
+    val hasClients = cam.enabled && subscriberCount > 0
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 22.dp, vertical = 8.dp)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
+            .border(
+                1.dp,
+                if (cam.enabled) R1.AccentWarm else R1.Hairline,
+                R1.ShapeS,
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Enable IoT Camera Mode", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    text = when {
+                        !cam.enabled -> "Off. Camera released, sinks torn down."
+                        else -> "On. Foreground service holds the camera."
+                    },
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            R1Switch(
+                checked = cam.enabled,
+                onCheckedChange = { v ->
+                    if (v) {
+                        onEnable()
+                    } else if (hasClients && !armed) {
+                        onArm()
+                    } else {
+                        onCommit()
+                    }
+                },
+            )
+        }
+        if (armed) {
+            Spacer(Modifier.height(10.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeS)
+                    .background(R1.Bg)
+                    .border(1.dp, R1.StatusAmber, R1.ShapeS)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+            ) {
+                Text(
+                    text = "$subscriberCount " +
+                        (if (subscriberCount == 1) "subscriber" else "subscribers") +
+                        " connected",
+                    style = R1.labelMicro,
+                    color = R1.StatusAmber,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Disabling stops every active stream. Tap again to confirm.",
+                    style = R1.body,
+                    color = R1.InkSoft,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipButton(
+                        text = "CONFIRM DISABLE",
+                        accent = R1.StatusAmber,
+                        onClick = onCommit,
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Status card ──────────────────────────────────────────────────────────
+
+@Composable
+private fun StatusCard(
+    status: IotCameraStatus.Snapshot,
+    lanIp: String?,
+    subscriberCount: Int,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("STATUS", style = R1.labelMicro, color = R1.InkSoft)
         StatusRow(
             label = "DEVICE IP",
             value = lanIp ?: "no network",
             tint = if (lanIp == null) R1.StatusAmber else R1.Ink,
+            mono = true,
+        )
+        val mjpegText = when (status.mjpeg) {
+            IotCameraStatus.SinkState.OFF -> "Off"
+            IotCameraStatus.SinkState.STARTING -> "Starting"
+            IotCameraStatus.SinkState.ACTIVE -> "Listening"
+            IotCameraStatus.SinkState.FAILED -> status.mjpegError ?: "Failed"
+        }
+        StatusRow(label = "MJPEG", value = mjpegText, tint = sinkTint(status.mjpeg))
+        val mqttText = when (status.mqtt) {
+            IotCameraStatus.SinkState.OFF -> "Off"
+            IotCameraStatus.SinkState.STARTING -> "Connecting"
+            IotCameraStatus.SinkState.ACTIVE ->
+                if (status.mqttDiscoveryPublished) "Discovery sent" else "Connected"
+            IotCameraStatus.SinkState.FAILED -> status.mqttError ?: "Failed"
+        }
+        StatusRow(label = "MQTT", value = mqttText, tint = sinkTint(status.mqtt))
+        StatusRow(
+            label = "SUBSCRIBERS",
+            value = subscriberCount.toString(),
+            tint = if (subscriberCount > 0) R1.AccentGreen else R1.InkSoft,
+            mono = true,
         )
         StatusRow(
             label = "BITRATE",
             value = formatBitrate(status.bitrateBps),
             tint = if (status.bitrateBps > 0L) R1.AccentGreen else R1.InkSoft,
+            mono = true,
         )
         StatusRow(
-            label = "DATA SENT",
+            label = "TOTAL SENT",
             value = formatByteCount(status.bytesUploadedTotal),
             tint = R1.Ink,
-        )
-        val mjpegText = when (status.mjpeg) {
-            IotCameraStatus.SinkState.OFF -> "Off"
-            IotCameraStatus.SinkState.STARTING -> "Starting…"
-            IotCameraStatus.SinkState.ACTIVE -> "Listening"
-            IotCameraStatus.SinkState.FAILED -> status.mjpegError ?: "Failed"
-        }
-        StatusRow(
-            label = "MJPEG",
-            value = mjpegText,
-            tint = sinkTint(status.mjpeg),
-        )
-        val mqttText = when (status.mqtt) {
-            IotCameraStatus.SinkState.OFF -> "Off"
-            IotCameraStatus.SinkState.STARTING -> "Connecting…"
-            IotCameraStatus.SinkState.ACTIVE ->
-                if (status.mqttDiscoveryPublished) "Connected · discovery sent" else "Connected"
-            IotCameraStatus.SinkState.FAILED -> status.mqttError ?: "Failed"
-        }
-        StatusRow(
-            label = "MQTT",
-            value = mqttText,
-            tint = sinkTint(status.mqtt),
+            mono = true,
         )
     }
 }
@@ -813,7 +568,8 @@ private fun StatusCard(status: IotCameraStatus.Snapshot, lanIp: String?) {
 private fun StatusRow(
     label: String,
     value: String,
-    tint: androidx.compose.ui.graphics.Color,
+    tint: Color,
+    mono: Boolean = false,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -822,22 +578,21 @@ private fun StatusRow(
             color = R1.InkMuted,
             modifier = Modifier.weight(1f),
         )
-        Text(text = value, style = R1.labelMicro, color = tint)
+        Text(
+            text = value,
+            style = if (mono) R1.numeralS.copy(color = tint) else R1.labelMicro,
+            color = tint,
+        )
     }
 }
 
-/** Human-friendly bitrate string. Caps at Mbps for legibility; raw bps
- *  shows up only when nothing is flowing. */
 private fun formatBitrate(bps: Long): String = when {
-    bps <= 0L -> "—"
+    bps <= 0L -> "0 bps"
     bps < 1_000L -> "$bps bps"
     bps < 1_000_000L -> "${bps / 1_000L} kbps"
     else -> "${"%.2f".format(bps / 1_000_000.0)} Mbps"
 }
 
-/** Human-friendly byte count. Matches the iEC binary convention HA itself
- *  uses for camera throughput (KiB / MiB / GiB), so the readout aligns
- *  with what the user sees on the HA side. */
 private fun formatByteCount(bytes: Long): String = when {
     bytes < 1024L -> "$bytes B"
     bytes < 1024L * 1024L -> "${"%.1f".format(bytes / 1024.0)} KiB"
@@ -845,38 +600,478 @@ private fun formatByteCount(bytes: Long): String = when {
     else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GiB"
 }
 
-private fun sinkTint(state: IotCameraStatus.SinkState): androidx.compose.ui.graphics.Color =
-    when (state) {
-        IotCameraStatus.SinkState.OFF -> R1.InkSoft
-        IotCameraStatus.SinkState.STARTING -> R1.AccentWarm
-        IotCameraStatus.SinkState.ACTIVE -> R1.AccentGreen
-        IotCameraStatus.SinkState.FAILED -> R1.StatusRed
-    }
+private fun sinkTint(state: IotCameraStatus.SinkState): Color = when (state) {
+    IotCameraStatus.SinkState.OFF -> R1.InkSoft
+    IotCameraStatus.SinkState.STARTING -> R1.AccentWarm
+    IotCameraStatus.SinkState.ACTIVE -> R1.AccentGreen
+    IotCameraStatus.SinkState.FAILED -> R1.StatusRed
+}
 
-/**
- * Expandable walk-through of how to surface the camera inside Home
- * Assistant. Two paths because the two sinks reach HA very differently:
- *
- *   - MQTT discovery is HA's first-class auto-discover path; if the MQTT
- *     integration is installed and pointed at the same broker R1HA is
- *     publishing to, the camera entity registers itself.
- *
- *   - MJPEG has no native auto-discovery in HA; you add it manually as
- *     a Generic Camera with the URL we built for you.
- *
- * Body is rendered as plain numbered steps; the URL row is tappable to
- * copy. Kept inline rather than a separate route so the user doesn't
- * lose the context of which toggles they set.
- */
+// ── Lens picker ──────────────────────────────────────────────────────────
+
+@Composable
+private fun LensPickerBlock(
+    cameras: List<CameraEnumerator.CameraDescriptor>,
+    pickedCameraId: String?,
+    onPick: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp),
+    ) {
+        Text("Lens", style = R1.bodyEmph, color = R1.Ink)
+        if (cameras.isEmpty()) {
+            Text(
+                "No cameras detected on this device.",
+                style = R1.body,
+                color = R1.StatusAmber,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            return@Column
+        }
+        Text(
+            text = "Pick the lens HA should see.",
+            style = R1.body,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+        )
+        cameras.forEach { c ->
+            val isPicked = (pickedCameraId == c.id)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .clip(R1.ShapeS)
+                    .background(if (isPicked) R1.Bg else R1.SurfaceMuted)
+                    .border(
+                        1.dp,
+                        if (isPicked) R1.AccentWarm else R1.Hairline,
+                        R1.ShapeS,
+                    )
+                    .r1Pressable({ onPick(c.id) })
+                    .defaultMinSize(minHeight = 48.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        c.label,
+                        style = R1.bodyEmph,
+                        color = if (isPicked) R1.AccentWarm else R1.Ink,
+                    )
+                    Text(
+                        c.description,
+                        style = R1.numeralS,
+                        color = R1.InkMuted,
+                        modifier = Modifier.padding(top = 1.dp),
+                    )
+                }
+                if (isPicked) {
+                    Text("ACTIVE", style = R1.labelMicro, color = R1.AccentWarm)
+                }
+            }
+        }
+    }
+}
+
+// ── Resolution ───────────────────────────────────────────────────────────
+
+@Composable
+private fun ResolutionBlock(
+    supportedSizes: List<android.util.Size>,
+    currentWidth: Int,
+    currentHeight: Int,
+    onPick: (Int, Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp),
+    ) {
+        Text("Resolution", style = R1.bodyEmph, color = R1.Ink)
+        Text(
+            "Larger means sharper but more bandwidth.",
+            style = R1.body,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+        )
+        if (supportedSizes.isEmpty()) {
+            Text("Pick a lens first.", style = R1.body, color = R1.InkMuted)
+            return@Column
+        }
+        val picks = supportedSizes
+            .filter { it.width * 9 == it.height * 16 || it.width * 3 == it.height * 4 }
+            .ifEmpty { supportedSizes }
+            .take(8)
+        picks.forEach { sz ->
+            val isPicked = sz.width == currentWidth && sz.height == currentHeight
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+                    .clip(R1.ShapeS)
+                    .background(if (isPicked) R1.Bg else R1.SurfaceMuted)
+                    .border(
+                        1.dp,
+                        if (isPicked) R1.AccentWarm else R1.Hairline,
+                        R1.ShapeS,
+                    )
+                    .r1Pressable({ onPick(sz.width, sz.height) })
+                    .defaultMinSize(minHeight = 48.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${sz.width} × ${sz.height}",
+                    style = R1.numeralS.copy(
+                        color = if (isPicked) R1.AccentWarm else R1.Ink,
+                    ),
+                    color = if (isPicked) R1.AccentWarm else R1.Ink,
+                    modifier = Modifier.weight(1f),
+                )
+                val ratio = if (sz.width * 9 == sz.height * 16) "16:9" else
+                    if (sz.width * 3 == sz.height * 4) "4:3" else ""
+                if (ratio.isNotEmpty()) {
+                    Text(ratio, style = R1.labelMicro, color = R1.InkMuted)
+                }
+            }
+        }
+    }
+}
+
+// ── Frame rate / Quality ─────────────────────────────────────────────────
+
+@Composable
+private fun FrameRateBlock(fps: Int, onDec: () -> Unit, onInc: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Frame rate", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    "Higher is smoother; costs CPU and bandwidth.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            StepperButtons(
+                valueLabel = "${fps} fps",
+                onDec = onDec,
+                onInc = onInc,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QualityBlock(quality: Int, onDec: () -> Unit, onInc: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("JPEG quality", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    "10 to 100. About 70 is fine for surveillance use.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            StepperButtons(
+                valueLabel = "$quality",
+                onDec = onDec,
+                onInc = onInc,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RotationBlock(rotation: Int, onLeft: () -> Unit, onRight: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+        Text("Rotation", style = R1.bodyEmph, color = R1.Ink)
+        Text(
+            "Burns rotation into every frame before fan-out.",
+            style = R1.body,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            GlyphButton(glyph = "↺", onClick = onLeft, description = "rotate counter-clockwise")
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "${rotation}°",
+                style = R1.numeralM.copy(color = R1.AccentWarm),
+                color = R1.AccentWarm,
+                modifier = Modifier.weight(1f),
+            )
+            GlyphButton(glyph = "↻", onClick = onRight, description = "rotate clockwise")
+        }
+    }
+}
+
+@Composable
+private fun StepperButtons(valueLabel: String, onDec: () -> Unit, onInc: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        GlyphButton(glyph = "−", onClick = onDec, description = "decrement")
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = valueLabel,
+            style = R1.numeralM.copy(color = R1.AccentWarm),
+            color = R1.AccentWarm,
+            modifier = Modifier
+                .defaultMinSize(minWidth = 72.dp)
+                .padding(horizontal = 6.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        GlyphButton(glyph = "+", onClick = onInc, description = "increment")
+    }
+}
+
+@Composable
+private fun GlyphButton(glyph: String, onClick: () -> Unit, description: String) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable(onClick = onClick, contentDescription = description)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(glyph, style = R1.bodyEmph, color = R1.InkSoft)
+    }
+}
+
+@Composable
+private fun ChipButton(
+    text: String,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeS)
+            .background(R1.Bg)
+            .border(1.dp, accent, R1.ShapeS)
+            .r1Pressable(onClick = onClick)
+            .defaultMinSize(minHeight = 48.dp)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = R1.labelMicro, color = accent)
+    }
+}
+
+// ── Sinks ────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SinkToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(
+                1.dp,
+                if (checked) R1.AccentWarm else R1.Hairline,
+                R1.ShapeS,
+            )
+            .r1Pressable(onClick = onToggle)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = R1.bodyEmph, color = if (checked) R1.AccentWarm else R1.Ink)
+            Text(subtitle, style = R1.body, color = R1.InkMuted, modifier = Modifier.padding(top = 1.dp))
+        }
+        R1Switch(checked = checked, onCheckedChange = { onToggle() })
+    }
+}
+
+@Composable
+private fun BrokerSummaryRow(
+    host: String,
+    port: Int,
+    tls: Boolean,
+    onEdit: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("BROKER", style = R1.labelMicro, color = R1.InkSoft)
+            Text(
+                text = "$host:$port" + if (tls) " · TLS" else "",
+                style = R1.numeralS,
+                color = R1.Ink,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        ChipButton(text = "EDIT", accent = R1.AccentWarm, onClick = onEdit)
+    }
+}
+
+@Composable
+private fun MjpegConfigBlock(
+    cam: IotCameraSettings,
+    lanIp: String?,
+    clipboard: ClipboardManager,
+    onUpdate: ((IotCameraSettings) -> IotCameraSettings) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text("PORT", style = R1.labelMicro, color = R1.InkSoft)
+        R1TextField(
+            value = cam.mjpegPort.toString(),
+            onValueChange = { v ->
+                val p = v.toIntOrNull() ?: return@R1TextField
+                onUpdate { it.copy(mjpegPort = p.coerceIn(1024, 65535)) }
+            },
+            placeholder = "8181",
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Require auth", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    text = if (cam.mjpegAuthEnabled) {
+                        "Basic auth on every request."
+                    } else {
+                        "Open. Anyone on the LAN can view."
+                    },
+                    style = R1.body,
+                    color = if (cam.mjpegAuthEnabled) R1.InkMuted else R1.StatusAmber,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            R1Switch(
+                checked = cam.mjpegAuthEnabled,
+                onCheckedChange = { v -> onUpdate { it.copy(mjpegAuthEnabled = v) } },
+            )
+        }
+        if (cam.mjpegAuthEnabled) {
+            Spacer(Modifier.height(10.dp))
+            Text("USERNAME", style = R1.labelMicro, color = R1.InkSoft)
+            R1TextField(
+                value = cam.mjpegUsername,
+                onValueChange = { v -> onUpdate { it.copy(mjpegUsername = v) } },
+                placeholder = "r1ha",
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("PASSWORD", style = R1.labelMicro, color = R1.InkSoft)
+            R1TextField(
+                value = cam.mjpegPassword,
+                onValueChange = { v -> onUpdate { it.copy(mjpegPassword = v) } },
+                placeholder = "auto-generated on first enable",
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChipButton(
+                    text = "REGENERATE",
+                    accent = R1.AccentWarm,
+                    onClick = {
+                        val pw = randomPassword()
+                        onUpdate { it.copy(mjpegPassword = pw) }
+                        Toaster.show("New MJPEG password set")
+                    },
+                )
+                ChipButton(
+                    text = "COPY URL",
+                    accent = R1.AccentWarm,
+                    onClick = {
+                        val url = "http://${cam.mjpegUsername}:" +
+                            "${cam.mjpegPassword.ifBlank { "<password>" }}@${lanIp ?: "<device-ip>"}:" +
+                            "${cam.mjpegPort}/stream"
+                        clipboard.setText(AnnotatedString(url))
+                        Toaster.show("Stream URL copied")
+                    },
+                )
+            }
+        } else {
+            Spacer(Modifier.height(10.dp))
+            ChipButton(
+                text = "COPY URL",
+                accent = R1.AccentWarm,
+                onClick = {
+                    val url = "http://${lanIp ?: "<device-ip>"}:${cam.mjpegPort}/stream"
+                    clipboard.setText(AnnotatedString(url))
+                    Toaster.show("Stream URL copied")
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun MqttConfigBlock(
+    cam: IotCameraSettings,
+    onUpdate: ((IotCameraSettings) -> IotCameraSettings) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text("DISCOVERY PREFIX", style = R1.labelMicro, color = R1.InkSoft)
+        R1TextField(
+            value = cam.mqttDiscoveryPrefix,
+            onValueChange = { v -> onUpdate { it.copy(mqttDiscoveryPrefix = v) } },
+            placeholder = "homeassistant",
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Text("NODE ID", style = R1.labelMicro, color = R1.InkSoft)
+        R1TextField(
+            value = cam.mqttNodeId,
+            onValueChange = { v -> onUpdate { it.copy(mqttNodeId = v) } },
+            placeholder = "auto-generated on first enable",
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        Text("ENTITY NAME", style = R1.labelMicro, color = R1.InkSoft)
+        R1TextField(
+            value = cam.entityName,
+            onValueChange = { v -> onUpdate { it.copy(entityName = v) } },
+            placeholder = "R1HA Camera",
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+    }
+}
+
+// ── How to add in HA ─────────────────────────────────────────────────────
+
 @Composable
 private fun HowToAddInHa(
-    cam: com.github.itskenny0.r1ha.core.prefs.IotCameraSettings,
+    cam: IotCameraSettings,
     lanIp: String?,
+    clipboard: ClipboardManager,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val clipboard: ClipboardManager = LocalClipboardManager.current
-
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -884,160 +1079,155 @@ private fun HowToAddInHa(
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable({ expanded = !expanded })
+                .defaultMinSize(minHeight = 48.dp)
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("How to surface this in HA", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    text = "Step-by-step for each enabled sink.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
             Text(
-                "WHERE TO FIND THIS IN HA",
+                text = if (expanded) "HIDE" else "SHOW",
                 style = R1.labelMicro,
-                color = R1.AccentWarm,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = if (expanded) "−" else "+",
-                style = R1.bodyEmph,
                 color = R1.AccentWarm,
             )
         }
-        if (expanded) {
-            Spacer(Modifier.height(8.dp))
-            if (cam.mqttEnabled) {
-                Text("MQTT AUTO-DISCOVERY", style = R1.labelMicro, color = R1.AccentGreen)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "1. In HA: Settings → Devices & Services. Confirm the MQTT " +
-                        "integration is installed and shows the same broker " +
-                        "R1HA is publishing to (the MQTT BROKER section above).",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "2. The entity registers automatically as " +
-                        "camera.r1ha_${cam.mqttNodeId.ifBlank { "<nodeid>" }}_${cam.mqttObjectId} " +
-                        "under MQTT → Devices → \"R1HA " +
-                        "${cam.mqttNodeId.ifBlank { "<nodeid>" }}\".",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "If the STATUS card above doesn't say \"discovery sent\", " +
-                        "the broker isn't reachable yet. Recheck the broker " +
-                        "host / port / credentials above.",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-            if (cam.mjpegEnabled) {
-                Text(
-                    "MJPEG (GENERIC CAMERA)",
-                    style = R1.labelMicro,
-                    color = R1.AccentGreen,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "HA can't auto-discover arbitrary MJPEG streams; add it " +
-                        "manually:",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "1. HA → Settings → Devices & Services → + ADD INTEGRATION → " +
-                        "search \"Generic Camera\".",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "2. Still Image URL:",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                CopyableUrlRow(
-                    url = mjpegUrlFor(cam, lanIp, path = "snapshot"),
-                    clipboard = clipboard,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "3. Stream Source URL:",
-                    style = R1.body,
-                    color = R1.Ink,
-                )
-                CopyableUrlRow(
-                    url = mjpegUrlFor(cam, lanIp, path = "stream"),
-                    clipboard = clipboard,
-                )
-                if (cam.mjpegAuthEnabled) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "4. Username: ${cam.mjpegUsername} · Password: " +
-                            (if (cam.mjpegPassword.isBlank()) "(not set)" else "the password above"),
-                        style = R1.body,
-                        color = R1.InkMuted,
+        if (!expanded) return@Column
+
+        Spacer(Modifier.height(8.dp))
+        if (!cam.mjpegEnabled && !cam.mqttEnabled) {
+            InfoCallout(
+                label = "NO SINKS ENABLED",
+                body = "Turn on MJPEG or MQTT under SINKS first.",
+            )
+            return@Column
+        }
+        if (cam.mqttEnabled) {
+            HaPathCard(
+                heading = "MQTT auto-discovery",
+                steps = listOf(
+                    "Open Settings; Devices & Services. The MQTT integration should be installed and pointed at the broker shown above.",
+                    "The camera entity registers automatically. Look under MQTT; Devices for the R1HA device, then the camera entity inside it.",
+                ),
+                footnoteText = if (cam.mqttNodeId.isBlank()) {
+                    "The entity id materialises on first successful publish. Wait for STATUS; MQTT to show \"Discovery sent\"."
+                } else {
+                    "Entity id: camera.r1ha_${cam.mqttNodeId}_${cam.mqttObjectId}."
+                },
+            )
+        }
+        if (cam.mjpegEnabled) {
+            if (cam.mqttEnabled) Spacer(Modifier.height(10.dp))
+            HaPathCard(
+                heading = "MJPEG (Generic Camera)",
+                steps = listOf(
+                    "Open Settings; Devices & Services; ADD INTEGRATION; search \"Generic Camera\".",
+                    "Still image URL:",
+                ),
+                trailingContent = {
+                    CopyableUrl(
+                        url = mjpegUrlFor(cam, lanIp, path = "snapshot"),
+                        clipboard = clipboard,
                     )
-                }
-                if (lanIp == null) {
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Connect this device to Wi-Fi or Ethernet first — we " +
-                            "couldn't detect a LAN IP to put in the URL.",
-                        style = R1.body,
-                        color = R1.StatusAmber,
+                    Text("Stream source URL:", style = R1.body, color = R1.Ink)
+                    CopyableUrl(
+                        url = mjpegUrlFor(cam, lanIp, path = "stream"),
+                        clipboard = clipboard,
                     )
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-            if (!cam.mjpegEnabled && !cam.mqttEnabled) {
-                Text(
-                    "No sinks enabled yet. Turn on MJPEG and/or MQTT above first.",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                )
-            }
-            Text(
-                "The camera also shows up under R1HA → Cameras once HA has " +
-                    "the entity, since that screen lists HA camera entities.",
-                style = R1.body,
-                color = R1.InkMuted,
+                    if (cam.mjpegAuthEnabled) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Username: ${cam.mjpegUsername}. Password: " +
+                                if (cam.mjpegPassword.isBlank()) "(not set)" else "the password above.",
+                            style = R1.body,
+                            color = R1.InkMuted,
+                        )
+                    }
+                    if (lanIp == null) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Connect to Wi-Fi or Ethernet first; no LAN IP yet.",
+                            style = R1.body,
+                            color = R1.StatusAmber,
+                        )
+                    }
+                },
+                footnoteText = null,
             )
         }
     }
 }
 
 @Composable
-private fun CopyableUrlRow(url: String, clipboard: ClipboardManager) {
+private fun HaPathCard(
+    heading: String,
+    steps: List<String>,
+    footnoteText: String?,
+    trailingContent: (@Composable () -> Unit)? = null,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(text = heading, style = R1.labelMicro, color = R1.AccentGreen)
+        steps.forEachIndexed { i, step ->
+            Row {
+                Text(
+                    text = "${i + 1}.",
+                    style = R1.numeralS,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+                Text(text = step, style = R1.body, color = R1.Ink)
+            }
+        }
+        trailingContent?.invoke()
+        if (footnoteText != null) {
+            Text(text = footnoteText, style = R1.body, color = R1.InkMuted)
+        }
+    }
+}
+
+@Composable
+private fun CopyableUrl(url: String, clipboard: ClipboardManager) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp)
             .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
+            .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable({
                 clipboard.setText(AnnotatedString(url))
                 Toaster.show("Copied")
             })
+            .defaultMinSize(minHeight = 48.dp)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = url,
-            style = R1.body,
-            color = R1.Ink,
+            text = buildAnnotatedString {
+                withStyle(R1.monoSpan.copy(color = R1.Ink)) { append(url) }
+            },
+            style = R1.numeralS,
             modifier = Modifier.weight(1f),
         )
         Text("COPY", style = R1.labelMicro, color = R1.AccentWarm)
     }
 }
 
-private fun mjpegUrlFor(
-    cam: com.github.itskenny0.r1ha.core.prefs.IotCameraSettings,
-    lanIp: String?,
-    path: String,
-): String {
+private fun mjpegUrlFor(cam: IotCameraSettings, lanIp: String?, path: String): String {
     val host = lanIp ?: "<device-ip>"
     return if (cam.mjpegAuthEnabled) {
         "http://${cam.mjpegUsername}:${cam.mjpegPassword.ifBlank { "<password>" }}@$host:${cam.mjpegPort}/$path"
@@ -1046,6 +1236,8 @@ private fun mjpegUrlFor(
     }
 }
 
+// ── Live preview ─────────────────────────────────────────────────────────
+
 /**
  * Live preview of whatever the capture pipeline is currently emitting.
  * Subscribes to the shared [com.github.itskenny0.r1ha.core.iotcamera.FrameBus]
@@ -1053,25 +1245,15 @@ private fun mjpegUrlFor(
  * don't burn the user's battery decoding 30 JPEGs per second just to feed
  * a thumbnail, and renders the decoded bitmap inside a 16:9 tile.
  *
- * SHOW PREVIEW toggle: per-session switch (default OFF). Off-default
- * because users on the settings screen are usually doing config (lens
- * picker, port edits) rather than aiming the camera — the preview burns
- * CPU encoding frames the user doesn't need to see. When off, the tile
- * still renders so the section doesn't pop in/out as the user fiddles,
- * but the JPEG-decode collector dies and the FrameBus loses a
- * subscriber. That matters when *no* other sink is connected — the
- * capture pipeline's subscriberCount-zero gate skips encoding entirely,
- * so the default-off preview means a settings-screen-only enable drops
- * the encode workload to nothing. Not persisted: this is UI affordance,
- * not config.
- *
- * Tile states (when preview-on):
- *   - master OFF → grey placeholder with "ENABLE TO PREVIEW" hint
- *   - master ON but no frame yet → "STARTING…" while the camera warms up
- *   - frame available → live JPEG, repainting at ~3 fps
- *
- * The collector also dies if the composable leaves composition (back-stack
- * pop, screen rotate) thanks to LaunchedEffect's structured cancel.
+ * SHOW PREVIEW toggle: per-session switch (default OFF). Off-default because
+ * users on the settings screen are usually doing config (lens picker, port
+ * edits) rather than aiming the camera; the preview burns CPU encoding
+ * frames the user doesn't need to see. When off, the JPEG-decode collector
+ * dies and the FrameBus loses a subscriber. That matters when no other sink
+ * is connected; the capture pipeline's subscriberCount-zero gate skips
+ * encoding entirely, so the default-off preview means a settings-screen-only
+ * enable drops the encode workload to nothing. Not persisted: this is UI
+ * affordance, not config.
  */
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
@@ -1082,25 +1264,19 @@ private fun LivePreviewTile(enabled: Boolean) {
     }
     var previewOn by remember { mutableStateOf(false) }
     var bitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+    var lastFrameAtMs by remember { mutableLongStateOf(0L) }
+    var nowTickMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     LaunchedEffect(enabled, previewOn, frameBus) {
         if (!enabled || !previewOn || frameBus == null) {
             bitmap = null
+            lastFrameAtMs = 0L
             return@LaunchedEffect
         }
-        // sample() takes the latest emission per window so we sip from the
-        // stream at preview cadence rather than draining every frame. 333
-        // ms = ~3 fps, plenty for "is the camera pointed at the right
-        // thing" verification without churning the GC.
         frameBus.frames
             .sample(PREVIEW_SAMPLE_MILLIS)
             .collect { jpeg ->
                 val decoded = withContext(Dispatchers.Default) {
-                    // Subsample to ~480 px wide max — preview tile is
-                    // capped at ~360 dp on a phone, so any larger source
-                    // wastes memory on pixels we'll never paint. The
-                    // simple inSampleSize heuristic avoids parsing the
-                    // header twice on every frame.
                     val opts = BitmapFactory.Options().apply {
                         inSampleSize = 2
                         inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
@@ -1111,34 +1287,42 @@ private fun LivePreviewTile(enabled: Boolean) {
                 }
                 if (decoded != null) {
                     bitmap = decoded
+                    lastFrameAtMs = System.currentTimeMillis()
                 }
             }
+    }
+
+    LaunchedEffect(enabled, previewOn) {
+        if (!enabled || !previewOn) return@LaunchedEffect
+        while (true) {
+            nowTickMs = System.currentTimeMillis()
+            delay(500L)
+        }
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = 22.dp, vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "PREVIEW",
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = if (previewOn) "SHOW" else "HIDE",
-                style = R1.labelMicro,
-                color = R1.InkMuted,
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            R1Switch(
-                checked = previewOn,
-                onCheckedChange = { previewOn = it },
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Live preview", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    text = previewStatusText(
+                        enabled = enabled,
+                        previewOn = previewOn,
+                        hasFrame = bitmap != null,
+                        ageMs = if (lastFrameAtMs > 0L) nowTickMs - lastFrameAtMs else -1L,
+                    ),
+                    style = R1.body,
+                    color = R1.InkMuted,
+                    modifier = Modifier.padding(top = 1.dp),
+                )
+            }
+            R1Switch(checked = previewOn, onCheckedChange = { previewOn = it })
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1151,11 +1335,7 @@ private fun LivePreviewTile(enabled: Boolean) {
             val img = bitmap
             when {
                 !previewOn -> {
-                    Text(
-                        "PREVIEW HIDDEN",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
+                    Text("PREVIEW OFF", style = R1.labelMicro, color = R1.InkMuted)
                 }
                 img != null -> {
                     Image(
@@ -1166,58 +1346,58 @@ private fun LivePreviewTile(enabled: Boolean) {
                     )
                 }
                 !enabled -> {
-                    Text(
-                        "ENABLE TO PREVIEW",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
+                    Text("ENABLE THE STREAM TO PREVIEW", style = R1.labelMicro, color = R1.InkMuted)
                 }
                 else -> {
-                    Text(
-                        "STARTING…",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
+                    PreviewSkeleton()
                 }
             }
         }
     }
 }
 
-private const val PREVIEW_SAMPLE_MILLIS = 333L
-
 @Composable
-private fun StepperRow(value: String, onDec: () -> Unit, onInc: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Box(
+private fun PreviewSkeleton() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SkeletonBlock(
             modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.SurfaceMuted)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onDec)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        ) { Text("−", style = R1.bodyEmph, color = R1.InkSoft) }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = value,
-            style = R1.bodyEmph,
-            color = R1.AccentWarm,
-            modifier = Modifier.weight(1f),
+                .fillMaxWidth(fraction = 0.6f)
+                .height(14.dp),
         )
-        Box(
+        Spacer(Modifier.size(8.dp))
+        SkeletonBlock(
             modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.SurfaceMuted)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onInc)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        ) { Text("+", style = R1.bodyEmph, color = R1.InkSoft) }
+                .fillMaxWidth(fraction = 0.4f)
+                .height(10.dp),
+        )
+        Spacer(Modifier.size(12.dp))
+        Text("WARMING UP CAMERA", style = R1.labelMicro, color = R1.InkSoft)
     }
 }
 
+private fun previewStatusText(
+    enabled: Boolean,
+    previewOn: Boolean,
+    hasFrame: Boolean,
+    ageMs: Long,
+): String = when {
+    !previewOn -> "Off. Toggle on to sample frames at 3 fps."
+    !enabled -> "Stream is off; nothing to preview."
+    !hasFrame -> "Warming up; waiting for the first frame."
+    ageMs in 0..1_500 -> "Live; last frame ${ageMs} ms ago."
+    ageMs in 0..30_000 -> "Stalled; last frame ${ageMs / 1000} s ago."
+    else -> "No frames in a while; check the service."
+}
+
+private const val PREVIEW_SAMPLE_MILLIS = 333L
+
 private fun randomPassword(): String {
-    // 16-char alphanumeric. Sufficient entropy against LAN brute-force on
-    // an HTTP server that's auth-throttled by accept latency anyway.
     val chars = ('a'..'z') + ('A'..'Z') + ('0'..'9')
     return (1..16).map { chars.random() }.joinToString("")
 }
