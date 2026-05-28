@@ -2991,6 +2991,57 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun listDevices(): Result<List<DeviceInfo>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("config/device_registry/list").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray
+                ?: return@mapCatching emptyList()
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(k: String): String? = (o[k] as? JsonPrimitive)?.content
+                val id = str("id") ?: return@mapNotNull null
+                DeviceInfo(
+                    id = id,
+                    name = str("name"),
+                    nameByUser = str("name_by_user"),
+                    manufacturer = str("manufacturer"),
+                    model = str("model"),
+                    areaId = str("area_id"),
+                    disabledBy = str("disabled_by"),
+                    viaDeviceId = str("via_device_id"),
+                    swVersion = str("sw_version"),
+                    hwVersion = str("hw_version"),
+                    configurationUrl = str("configuration_url"),
+                )
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.devices", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun listEntityRegistry(): Result<List<EntityRegistryEntry>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("config/entity_registry/list").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray
+                ?: return@mapCatching emptyList()
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(k: String): String? = (o[k] as? JsonPrimitive)?.content
+                val entityId = str("entity_id") ?: return@mapNotNull null
+                EntityRegistryEntry(
+                    entityId = entityId,
+                    name = str("name"),
+                    originalName = str("original_name"),
+                    deviceId = str("device_id"),
+                    areaId = str("area_id"),
+                    platform = str("platform"),
+                    disabledBy = str("disabled_by"),
+                    hiddenBy = str("hidden_by"),
+                )
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.entityRegistry", "list failed: ${t.message}")
+        }
+    }
+
     /** Decode one [MediaBrowseEntry] from a HA browse_media payload object. */
     private fun parseMediaEntry(obj: kotlinx.serialization.json.JsonObject): MediaBrowseEntry? {
         fun str(key: String): String? = (obj[key] as? JsonPrimitive)?.content

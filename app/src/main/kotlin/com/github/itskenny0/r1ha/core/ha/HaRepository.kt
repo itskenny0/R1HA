@@ -393,6 +393,24 @@ interface HaRepository {
      */
     suspend fun setUserData(key: String, value: kotlinx.serialization.json.JsonElement): Result<Unit>
 
+    /**
+     * List every device HA's device registry knows about via
+     * `config/device_registry/list`. Powers the native Devices browser
+     * which sections devices by area / manufacturer and drills into the
+     * entity list for each device. Read-only: editing a device's name
+     * / area / disabled state is left to HA's web UI (the WS protocol
+     * supports it but each of those flows wants its own confirm UX).
+     */
+    suspend fun listDevices(): Result<List<DeviceInfo>>
+
+    /**
+     * List every entry in HA's entity registry via
+     * `config/entity_registry/list`. The Devices browser pulls this
+     * once and filters client-side by `device_id` for each drill-in
+     * (one round trip vs one-per-device when drilling in repeatedly).
+     */
+    suspend fun listEntityRegistry(): Result<List<EntityRegistryEntry>>
+
     suspend fun start()
     suspend fun stop()
 

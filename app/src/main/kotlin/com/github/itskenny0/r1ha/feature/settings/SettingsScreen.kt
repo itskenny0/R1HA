@@ -172,6 +172,10 @@ fun SettingsScreen(
     onOpenDevice: () -> Unit,
     onOpenModifiedSettings: () -> Unit,
     onOpenKeyBindings: () -> Unit = {},
+    /** Native device-registry browser (sectioned by area / manufacturer,
+     *  drill-in shows the device's entities). Defaulted so older callers
+     *  still compile. */
+    onOpenDevices: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1791,6 +1795,16 @@ fun SettingsScreen(
                     label = "Lovelace (WebView)",
                     value = "Open HA's frontend in-app",
                     onClick = onOpenLovelace,
+                )
+            }
+            // Native browser for HA's device registry. Appended at the end
+            // of POWER TOOLS so concurrent edits in other Settings sections
+            // merge cleanly.
+            item {
+                NavRow(
+                    label = "Devices",
+                    value = "Browse HA's device registry",
+                    onClick = onOpenDevices,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a
