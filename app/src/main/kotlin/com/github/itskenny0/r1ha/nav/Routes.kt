@@ -100,4 +100,9 @@ object Routes {
      *  search, copy-to-clipboard, and auto-refresh. Replaces the
      *  WebView-only HA Settings → Logs panel. */
     const val LOGS = "logs"
+
+    /** Read-only browser for HA's user registry (config/auth/list).
+     *  Admin-only; surfaces a friendly "needs admin" state when the
+     *  call returns auth_error. */
+    const val USERS = "users"
 }

@@ -179,6 +179,7 @@ fun SettingsScreen(
     /** Native config_entries browser with per-row reload. */
     onOpenIntegrations: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
+    onOpenUsers: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1821,6 +1822,13 @@ fun SettingsScreen(
                     label = "Logs",
                     value = "Full /api/error_log with level + search",
                     onClick = onOpenLogs,
+                )
+            }
+            item {
+                NavRow(
+                    label = "Users",
+                    value = "Read-only HA user list (admin)",
+                    onClick = onOpenUsers,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a

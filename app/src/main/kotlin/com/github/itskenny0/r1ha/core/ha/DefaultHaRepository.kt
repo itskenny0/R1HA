@@ -3121,6 +3121,33 @@ class DefaultHaRepository(
             }
         }
 
+    override suspend fun listAuthUsers(): Result<List<HaUser>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("config/auth/list").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray
+                ?: error("config/auth/list returned a non-array payload")
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(key: String): String? = (o[key] as? JsonPrimitive)?.content
+                fun bool(key: String): Boolean =
+                    (o[key] as? JsonPrimitive)?.booleanOrNull == true
+                val id = str("id") ?: return@mapNotNull null
+                val groups = (o["group_ids"] as? kotlinx.serialization.json.JsonArray)
+                    ?.mapNotNull { (it as? JsonPrimitive)?.content }
+                    .orEmpty()
+                HaUser(
+                    id = id,
+                    name = str("name").orEmpty(),
+                    systemGenerated = bool("system_generated"),
+                    isActive = bool("is_active"),
+                    localOnly = bool("local_only"),
+                    groupIds = groups,
+                )
+            }.sortedBy { it.name.lowercase().ifBlank { "~~" + it.id } }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.authUsers", "list failed: ${t.message}")
+        }
+    }
+
     /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last

@@ -448,6 +448,14 @@ interface HaRepository {
      * to last N bytes" hint).
      */
     suspend fun fetchErrorLogFull(maxBytes: Int = 512 * 1024): Result<ErrorLogTail>
+
+    /**
+     * List every HA user via the `config/auth/list` WS command. Admin-only —
+     * non-admin tokens receive a permission_denied / auth_error reply which we
+     * surface as a Result.failure carrying a friendly message; the Users screen
+     * shows a "needs admin" empty state rather than a stack trace.
+     */
+    suspend fun listAuthUsers(): Result<List<HaUser>>
 }
 
 /**
