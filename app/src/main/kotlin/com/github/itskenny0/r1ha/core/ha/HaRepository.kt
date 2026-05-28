@@ -438,4 +438,26 @@ interface HaRepository {
      * (which can be 30+ seconds on the 20th consecutive failure).
      */
     fun reconnectNow()
+
+    /**
+     * Full /api/error_log fetch, capped client-side at [maxBytes]. Same streaming
+     * tail mechanic as [fetchErrorLog] but with a larger ceiling so the native
+     * Logs viewer can show meaningfully more than the 32 KB tail the System
+     * Health screen renders. Returns the tail and a flag indicating whether the
+     * server's full body exceeded [maxBytes] (so the UI can render a "truncated
+     * to last N bytes" hint).
+     */
+    suspend fun fetchErrorLogFull(maxBytes: Int = 512 * 1024): Result<ErrorLogTail>
 }
+
+/**
+ * Plain-text tail of HA's /api/error_log along with a flag indicating
+ * whether the server's full body was longer than the requested cap.
+ * Memory-bounded: even on a multi-megabyte log only [body] bytes ever
+ * land in memory.
+ */
+data class ErrorLogTail(
+    val body: String,
+    val truncated: Boolean,
+    val totalBytes: Long,
+)

@@ -178,6 +178,7 @@ fun SettingsScreen(
     onOpenDevices: () -> Unit = {},
     /** Native config_entries browser with per-row reload. */
     onOpenIntegrations: () -> Unit = {},
+    onOpenLogs: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1799,9 +1800,7 @@ fun SettingsScreen(
                     onClick = onOpenLovelace,
                 )
             }
-            // Native browser for HA's device registry. Appended at the end
-            // of POWER TOOLS so concurrent edits in other Settings sections
-            // merge cleanly.
+            // Native browser for HA's device registry.
             item {
                 NavRow(
                     label = "Devices",
@@ -1814,6 +1813,14 @@ fun SettingsScreen(
                     label = "Integrations",
                     value = "Configured integrations + reload",
                     onClick = onOpenIntegrations,
+                )
+            }
+            // Native replacements for WebView-only HA panels.
+            item {
+                NavRow(
+                    label = "Logs",
+                    value = "Full /api/error_log with level + search",
+                    onClick = onOpenLogs,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a

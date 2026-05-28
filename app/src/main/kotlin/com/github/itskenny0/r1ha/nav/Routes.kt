@@ -95,4 +95,9 @@ object Routes {
      *  StringType path segments as raw strings — `.` and `_` are
      *  allowed in route paths. */
     fun historyRoute(entityId: String): String = "history/$entityId"
+
+    /** Full /api/error_log viewer with level chip filter, substring
+     *  search, copy-to-clipboard, and auto-refresh. Replaces the
+     *  WebView-only HA Settings → Logs panel. */
+    const val LOGS = "logs"
 }

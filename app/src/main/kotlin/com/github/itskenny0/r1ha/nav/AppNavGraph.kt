@@ -403,6 +403,9 @@ fun AppNavGraph(
                 settings = settings,
                 wheelInput = wheelInput,
                 onBack = { navController.popBackStack() },
+                onOpenFullLog = {
+                    navController.navigate(Routes.LOGS) { launchSingleTop = true }
+                },
             )
         }
         composable(Routes.AREAS) {
@@ -573,6 +576,14 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.LOGS) {
+            com.github.itskenny0.r1ha.feature.logs.LogsScreen(
+                haRepository = haRepository,
+                settings = settings,
+                wheelInput = wheelInput,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.DASHBOARD) { backStackEntry ->
             // canGoBack — true when Dashboard was reached via nav, false
             // when it's the start destination. previousBackStackEntry is
@@ -704,6 +715,7 @@ private fun SettingsRouteContent(
         onOpenKeyBindings = { navController.navigate(Routes.SETTINGS_KEY_BINDINGS) { launchSingleTop = true } },
         onOpenDevices = { navController.navigate(Routes.DEVICES) { launchSingleTop = true } },
         onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) { launchSingleTop = true } },
+        onOpenLogs = { navController.navigate(Routes.LOGS) { launchSingleTop = true } },
         onSignedOut = {
             navController.navigate(Routes.ONBOARDING) {
                 popUpTo(0) { inclusive = true }

@@ -48,6 +48,10 @@ fun SystemHealthScreen(
     settings: com.github.itskenny0.r1ha.core.prefs.SettingsRepository,
     wheelInput: com.github.itskenny0.r1ha.core.input.WheelInput,
     onBack: () -> Unit,
+    /** Drill into the dedicated full-log viewer. Default no-op keeps this
+     *  composable callable from contexts that don't have nav wiring (tests,
+     *  preview). Production wires it to [Routes.LOGS]. */
+    onOpenFullLog: () -> Unit = {},
 ) {
     val vm: SystemHealthViewModel = viewModel(factory = SystemHealthViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
@@ -131,7 +135,24 @@ fun SystemHealthScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "ERROR LOG (tail)", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
+                    // OPEN FULL — drills into the dedicated Logs viewer
+                    // which streams a larger tail (512 KB vs 32 KB here),
+                    // parses log-line levels into chip filters, and supports
+                    // substring search + auto-refresh. The COPY chip still
+                    // copies whatever's visible on this screen so the bug-
+                    // report flow doesn't lose its one-tap path.
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable(onClick = onOpenFullLog)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(text = "OPEN FULL", style = R1.labelMicro, color = R1.AccentWarm)
+                    }
                     if (ui.errorLog.isNotBlank()) {
+                        Spacer(Modifier.size(6.dp))
                         Box(
                             modifier = Modifier
                                 .clip(R1.ShapeS)

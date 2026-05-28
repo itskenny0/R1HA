@@ -3099,5 +3099,65 @@ class DefaultHaRepository(
             thumbnail = str("thumbnail"),
         )
     }
+
+    override suspend fun fetchErrorLogFull(maxBytes: Int): Result<ErrorLogTail> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val s = settings.settings.first()
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val url = "${server.url.trimEnd('/')}/api/error_log"
+                val tail = simpleAuthedGetTailWithSize(url, maxBytes) ?: run {
+                    if (refresher?.forceRefresh() == true) {
+                        simpleAuthedGetTailWithSize(url, maxBytes)
+                            ?: error("Home Assistant returned HTTP 401 for /api/error_log after refresh.")
+                    } else {
+                        error("Home Assistant returned HTTP 401 for /api/error_log.")
+                    }
+                }
+                tail
+            }.onFailure { t ->
+                R1Log.w("HaRepo.errorLogFull", "fetch failed: ${t.message}")
+            }
+        }
+
+    /**
+     * Variant of [simpleAuthedGetTail] that also reports the total body
+     * size pre-truncation so callers can render an accurate "showing last
+     * N of M bytes" hint. Memory profile is identical: bounded by
+     * [maxBytes] + one 4 KB read buffer regardless of upstream size.
+     */
+    private suspend fun simpleAuthedGetTailWithSize(url: String, maxBytes: Int): ErrorLogTail? =
+        withContext(Dispatchers.IO) {
+            val t = tokens.load()
+                ?: error("Authentication tokens missing. Sign out & reconnect from Settings.")
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${t.accessToken}")
+                .get()
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (resp.code == 401) return@withContext null
+                require(resp.isSuccessful) { "HTTP ${resp.code} for $url" }
+                val source = resp.body?.source()
+                    ?: return@withContext ErrorLogTail(body = "", truncated = false, totalBytes = 0L)
+                val window = okio.Buffer()
+                val tmp = okio.Buffer()
+                val chunk = 4 * 1024L
+                var totalRead = 0L
+                while (true) {
+                    val n = source.read(tmp, chunk)
+                    if (n == -1L) break
+                    totalRead += n
+                    tmp.readAll(window)
+                    val over = window.size - maxBytes
+                    if (over > 0) window.skip(over)
+                }
+                val truncated = totalRead > window.size
+                val tail = window.readUtf8()
+                ErrorLogTail(body = tail, truncated = truncated, totalBytes = totalRead)
+            }
+        }
+
 }
 
