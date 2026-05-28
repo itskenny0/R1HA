@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,7 +32,6 @@ import com.github.itskenny0.r1ha.core.mqtt.MqttPublisher
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -37,19 +39,21 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.launch
 
 /**
- * Top-level MQTT broker config. Lifted out of the Dev menu's one-shot
- * publish surface so the IoT Camera Mode flow has somewhere obvious to
- * send users when their broker isn't configured yet — burying broker
- * credentials under "Dev menu" suggested a power-user experiment when
- * for the IoT Camera path it's a required step.
+ * Top-level MQTT broker config. Surfaced as its own settings subpage rather
+ * than under Dev menu so the IoT Camera / IoT Sensors flows have somewhere
+ * obvious to send users when their broker isn't yet configured.
  *
- * Backing fields still live on [com.github.itskenny0.r1ha.core.prefs.AdvancedSettings]
- * for storage compatibility; this screen is a friendlier surface over the
- * same struct so a user who configured MQTT here will also see it work
- * in the Dev menu's publish controls without reconfiguring.
+ * Backing fields still live on AdvancedSettings for storage compatibility;
+ * this screen is a friendlier surface over the same struct so the Dev
+ * menu's publish controls keep working off whatever was set here.
  *
- * Consumers list at the bottom is informational — saves the user the
- * forensic "what's using this?" question after they edit.
+ * Layout shape from top to bottom:
+ *   1. Connection state pill (IDLE / TESTING / CONNECTED / FAILED) with
+ *      the last inline error, never a toast.
+ *   2. Broker config block: host / port / username / password / TLS /
+ *      client id.
+ *   3. Test connection chip + persistent last-result.
+ *   4. Per-feature MQTT enablement (which features hit this broker).
  */
 @Composable
 fun MqttSettingsScreen(
@@ -61,14 +65,12 @@ fun MqttSettingsScreen(
     val s by vm.state.collectAsStateWithLifecycle()
     val advanced = s.advanced
     val scope = rememberCoroutineScope()
+
     // Per-session test-button state. Holds the most recent test outcome
-    // so the user can verify a config edit reached the broker without
-    // having to enable IoT Camera Mode + watch the status card. Not
-    // persisted — the broker either works or it doesn't on every fresh
-    // attempt.
-    var testInFlight by remember { mutableStateOf(false) }
-    var lastTestResult by remember { mutableStateOf<String?>(null) }
-    var lastTestOk by remember { mutableStateOf(false) }
+    // inline so the user can verify a config edit reached the broker
+    // without enabling a sink and watching its status card. Not persisted;
+    // the broker either works or it doesn't on every fresh attempt.
+    var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
 
     Column(
         modifier = Modifier
@@ -79,49 +81,31 @@ fun MqttSettingsScreen(
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
                 Text(
-                    text = "Shared MQTT broker config. Same broker your Home " +
-                        "Assistant is connected to — the IoT Camera Mode " +
-                        "feature publishes auto-discovery + frames here, and " +
-                        "the Dev menu's publish tool talks to it too.",
+                    text = "Shared broker config. The IoT Camera Mode " +
+                        "feature publishes auto-discovery and frames here; " +
+                        "the IoT Sensors Mode feature publishes battery, " +
+                        "light, vibration and subscribes to control topics. " +
+                        "Dev menu's publish tool talks to the same broker.",
                     style = R1.body,
                     color = R1.InkMuted,
                     modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
                 )
             }
+
+            // ── State pill ────────────────────────────────────────────
             item {
-                val configured = advanced.mqttHost.isNotBlank()
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 6.dp)
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(
-                            1.dp,
-                            if (configured) R1.Hairline else R1.StatusAmber,
-                            R1.ShapeS,
-                        )
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                ) {
-                    Text(
-                        text = if (configured) "CONFIGURED" else "NOT CONFIGURED",
-                        style = R1.labelMicro,
-                        color = if (configured) R1.AccentGreen else R1.StatusAmber,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = if (configured) {
-                            "Host: ${advanced.mqttHost}:${advanced.mqttPort} · " +
-                                (if (advanced.mqttUseTls) "TLS · " else "") +
-                                (if (advanced.mqttUsername.isNotBlank()) "auth" else "anonymous")
-                        } else {
-                            "Fill in the fields below to enable any feature that depends on MQTT."
-                        },
-                        style = R1.body,
-                        color = R1.InkSoft,
-                    )
-                }
+                ConnectionStateCard(
+                    configured = advanced.mqttHost.isNotBlank(),
+                    host = advanced.mqttHost,
+                    port = advanced.mqttPort,
+                    tls = advanced.mqttUseTls,
+                    auth = advanced.mqttUsername.isNotBlank(),
+                    testState = testState,
+                )
             }
+
+            // ── Broker config ─────────────────────────────────────────
+            item { SubHeader("BROKER") }
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
                     Text("Host", style = R1.labelMicro, color = R1.InkSoft)
@@ -193,101 +177,315 @@ fun MqttSettingsScreen(
                     )
                 }
             }
+
+            // ── Test connection ───────────────────────────────────────
+            item { SubHeader("TEST") }
             item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 12.dp),
-                ) {
-                    val label = when {
-                        testInFlight -> "TESTING…"
-                        else -> "TEST CONNECTION"
-                    }
-                    val tint = when {
-                        testInFlight -> R1.InkSoft
-                        advanced.mqttHost.isBlank() -> R1.InkMuted
-                        else -> R1.AccentWarm
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                if (testInFlight || advanced.mqttHost.isBlank()) return@r1Pressable
-                                testInFlight = true
-                                lastTestResult = null
-                                scope.launch {
-                                    // Fire one CONNECT + PUBLISH + DISCONNECT
-                                    // round-trip. Topic is intentionally
-                                    // namespaced under r1ha/diagnostic so it
-                                    // doesn't collide with anything HA cares
-                                    // about; payload is the wall-clock so the
-                                    // user can verify on the broker side
-                                    // (mosquitto_sub etc.) which test fired.
-                                    val ts = System.currentTimeMillis()
-                                    val result = MqttPublisher.publish(
-                                        host = advanced.mqttHost,
-                                        port = advanced.mqttPort,
+                TestConnectionBlock(
+                    enabled = advanced.mqttHost.isNotBlank(),
+                    state = testState,
+                    onRun = {
+                        testState = TestState.Running
+                        scope.launch {
+                            val ts = System.currentTimeMillis()
+                            val result = MqttPublisher.publish(
+                                host = advanced.mqttHost,
+                                port = advanced.mqttPort,
+                                topic = "r1ha/diagnostic/test",
+                                payload = "r1ha test ping @ $ts".toByteArray(Charsets.UTF_8),
+                                username = advanced.mqttUsername.ifBlank { null },
+                                password = advanced.mqttPassword.ifBlank { null },
+                                useTls = advanced.mqttUseTls,
+                            )
+                            testState = result.fold(
+                                onSuccess = {
+                                    TestState.Success(
                                         topic = "r1ha/diagnostic/test",
-                                        payload = "r1ha test ping @ $ts"
-                                            .toByteArray(Charsets.UTF_8),
-                                        username = advanced.mqttUsername.ifBlank { null },
-                                        password = advanced.mqttPassword.ifBlank { null },
-                                        useTls = advanced.mqttUseTls,
+                                        atMillis = System.currentTimeMillis(),
                                     )
-                                    testInFlight = false
-                                    result.onSuccess {
-                                        lastTestOk = true
-                                        lastTestResult = "Connected + published OK"
-                                        Toaster.show("MQTT broker reachable")
-                                    }.onFailure { t ->
-                                        lastTestOk = false
-                                        lastTestResult = t.message
-                                            ?: t::class.java.simpleName
-                                        Toaster.error("MQTT test failed: $lastTestResult")
-                                    }
-                                }
-                            })
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(label, style = R1.labelMicro, color = tint)
-                    }
-                    val outcome = lastTestResult
-                    if (outcome != null) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = if (lastTestOk) "SUCCESS · $outcome" else "FAILED · $outcome",
-                            style = R1.labelMicro,
-                            color = if (lastTestOk) R1.AccentGreen else R1.StatusRed,
-                        )
-                    }
-                    Text(
-                        text = "Sends a small payload to r1ha/diagnostic/test " +
-                            "and closes. Use mosquitto_sub on the broker side to " +
-                            "verify the publish landed.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
+                                },
+                                onFailure = { t ->
+                                    TestState.Failure(
+                                        reason = t.message ?: t::class.java.simpleName,
+                                        atMillis = System.currentTimeMillis(),
+                                    )
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+
+            // ── Per-feature MQTT enablement ───────────────────────────
+            // Hierarchy: broker (above) is the connection; the rows below
+            // are the features that USE that connection. Each is a quick
+            // toggle / link so the user can see at a glance what's
+            // currently writing to this broker.
+            item { SubHeader("USED BY") }
+            item {
+                FeatureRow(
+                    title = "IoT Camera Mode",
+                    on = s.iotCamera.enabled && s.iotCamera.mqttEnabled,
+                    detail = if (s.iotCamera.mqttEnabled) {
+                        "MQTT sink on; publishes discovery and JPEG frames"
+                    } else {
+                        "Camera mode's MQTT sink is off (configure in IoT Camera Mode)"
+                    },
+                )
             }
             item {
-                Text(
-                    text = "USED BY",
-                    style = R1.labelMicro,
-                    color = R1.InkSoft,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 16.dp, bottom = 4.dp),
+                FeatureRow(
+                    title = "IoT Sensors Mode",
+                    on = s.iotSensors.enabled,
+                    detail = if (s.iotSensors.enabled) {
+                        "Publishing sensors and subscribed to control topics"
+                    } else {
+                        "Off (configure in IoT Sensors Mode)"
+                    },
                 )
-                Text(
-                    text = "· IoT Camera Mode — publishes discovery + frames\n" +
-                        "· Dev menu → MQTT — one-shot publish for testing",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 24.dp),
+            }
+            item {
+                FeatureRow(
+                    title = "Dev menu publish tool",
+                    on = false,
+                    detail = "One-shot manual publish for testing topics",
                 )
             }
             item { Spacer(Modifier.height(48.dp)) }
         }
     }
+}
+
+/** Test-state lattice rendered inline by the test block. */
+private sealed interface TestState {
+    object Idle : TestState
+    object Running : TestState
+    data class Success(val topic: String, val atMillis: Long) : TestState
+    data class Failure(val reason: String, val atMillis: Long) : TestState
+}
+
+@Composable
+private fun ConnectionStateCard(
+    configured: Boolean,
+    host: String,
+    port: Int,
+    tls: Boolean,
+    auth: Boolean,
+    testState: TestState,
+) {
+    val pill = when {
+        testState is TestState.Running -> Pill("TESTING", R1.StatusAmber)
+        testState is TestState.Success -> Pill("REACHABLE", R1.AccentGreen)
+        testState is TestState.Failure -> Pill("FAILED", R1.StatusRed)
+        configured -> Pill("CONFIGURED", R1.AccentGreen)
+        else -> Pill("NOT CONFIGURED", R1.StatusAmber)
+    }
+    val borderTint = when {
+        testState is TestState.Failure -> R1.StatusRed
+        testState is TestState.Success -> R1.AccentGreen
+        !configured -> R1.StatusAmber
+        else -> R1.Hairline
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, borderTint, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatePill(label = pill.label, tint = pill.tint)
+            Spacer(Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        if (configured) {
+            Text(
+                text = "$host:$port",
+                style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                color = R1.Ink,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = buildString {
+                    append(if (tls) "TLS" else "PLAIN")
+                    append(" · ")
+                    append(if (auth) "auth" else "anonymous")
+                },
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+            )
+        } else {
+            Text(
+                text = "Fill in the fields below to enable any feature that depends on MQTT.",
+                style = R1.body,
+                color = R1.InkSoft,
+            )
+        }
+        when (val ts = testState) {
+            is TestState.Failure -> {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "LAST ERROR",
+                    style = R1.labelMicro,
+                    color = R1.StatusRed,
+                )
+                Text(
+                    text = ts.reason,
+                    style = R1.body,
+                    color = R1.StatusRed,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            else -> Unit
+        }
+    }
+}
+
+private data class Pill(val label: String, val tint: Color)
+
+@Composable
+private fun StatePill(label: String, tint: Color) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeRound)
+            .background(tint.copy(alpha = 0.16f))
+            .border(1.dp, tint.copy(alpha = 0.55f), R1.ShapeRound)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(text = label, style = R1.labelMicro, color = tint)
+    }
+}
+
+@Composable
+private fun TestConnectionBlock(
+    enabled: Boolean,
+    state: TestState,
+    onRun: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+    ) {
+        val running = state is TestState.Running
+        val tint = when {
+            running -> R1.InkSoft
+            !enabled -> R1.InkMuted
+            state is TestState.Success -> R1.AccentGreen
+            state is TestState.Failure -> R1.StatusRed
+            else -> R1.AccentWarm
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = { if (enabled && !running) onRun() }),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = when {
+                    running -> "TESTING…"
+                    state is TestState.Success -> "TEST AGAIN"
+                    state is TestState.Failure -> "RETRY"
+                    else -> "TEST CONNECTION"
+                },
+                style = R1.labelMicro,
+                color = tint,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        when (state) {
+            TestState.Idle -> {
+                Text(
+                    text = "Sends a tiny payload to r1ha/diagnostic/test and " +
+                        "closes the socket. Use mosquitto_sub on the broker " +
+                        "side to verify the publish landed.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+            }
+            TestState.Running -> {
+                Text(
+                    text = "Opening socket, sending CONNECT + PUBLISH…",
+                    style = R1.body,
+                    color = R1.InkSoft,
+                )
+            }
+            is TestState.Success -> {
+                Text(
+                    text = "SUCCESS",
+                    style = R1.labelMicro,
+                    color = R1.AccentGreen,
+                )
+                Text(
+                    text = "Published to ${state.topic} at " +
+                        formatClock(state.atMillis) +
+                        ". Broker accepted the CONNECT + PUBLISH cycle.",
+                    style = R1.body,
+                    color = R1.InkSoft,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            is TestState.Failure -> {
+                Text(
+                    text = "FAILED at " + formatClock(state.atMillis),
+                    style = R1.labelMicro,
+                    color = R1.StatusRed,
+                )
+                Text(
+                    text = state.reason,
+                    style = R1.body,
+                    color = R1.StatusRed,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeatureRow(title: String, on: Boolean, detail: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(R1.ShapeRound)
+                .background(if (on) R1.AccentGreen else R1.InkMuted),
+        )
+        Spacer(Modifier.size(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = R1.bodyEmph, color = R1.Ink)
+            Text(detail, style = R1.labelMicro, color = R1.InkMuted)
+        }
+    }
+}
+
+@Composable
+private fun SubHeader(text: String) {
+    Text(
+        text = text,
+        style = R1.sectionHeader,
+        color = R1.AccentWarm,
+        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp),
+    )
+}
+
+private fun formatClock(millis: Long): String {
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = millis }
+    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val m = cal.get(java.util.Calendar.MINUTE)
+    val s = cal.get(java.util.Calendar.SECOND)
+    return "%02d:%02d:%02d".format(h, m, s)
 }
