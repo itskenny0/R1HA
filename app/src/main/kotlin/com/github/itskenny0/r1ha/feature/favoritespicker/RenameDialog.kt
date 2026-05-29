@@ -192,10 +192,17 @@ private fun CustomizeHub(
         val effectiveName = name.trim().ifBlank { entity.friendlyName }
         entity.copy(friendlyName = effectiveName)
     }
+    // Keyed on entity id + override only — NOT on `name`. The hub recomposes on
+    // every keystroke into the inline name field, and rebuilding this map there
+    // would hand CompositionLocalProvider a fresh instance each time, needlessly
+    // re-invalidating every LocalEntityOverrides reader in the EntityCard preview
+    // subtree even though the override map is unchanged. The preview's name still
+    // updates live via [previewState].
+    val previewOverrides = remember(entity.id.value, override) {
+        mapOf(entity.id.value to override)
+    }
     androidx.compose.runtime.CompositionLocalProvider(
-        com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides provides mapOf(
-            entity.id.value to override,
-        ),
+        com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides provides previewOverrides,
     ) {
         Box(
             modifier = Modifier

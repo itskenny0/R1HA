@@ -113,6 +113,17 @@ private val SECTION_CATEGORY: Map<String, SettingsCategory> = mapOf(
     "POWER TOOLS" to SettingsCategory.BROWSE,
 )
 
+/** Every collapsible section header in registry order. Hoisted to a file-level
+ *  constant so it isn't re-allocated on each SettingsScreen recomposition (the
+ *  screen recomposes on every settings emit because it reads the whole settings
+ *  state at the top). Used to seed the all-expanded default and to drive the
+ *  COLLAPSE ALL / EXPAND ALL bulk toggles. */
+private val ALL_SECTION_NAMES: List<String> = listOf(
+    "SERVER", "SCROLL WHEEL", "CARD UI", "BEHAVIOUR",
+    "BACKUP & RESTORE", "SECURITY", "DASHBOARD", "INTEGRATIONS", "APPEARANCE",
+    "TODAY", "TALK & FIRE", "STATUS VIEWS", "POWER TOOLS",
+)
+
 private fun categoryTitle(category: SettingsCategory): String = when (category) {
     SettingsCategory.ROOT -> "SETTINGS"
     SettingsCategory.CONNECTION -> "CONNECTION"
@@ -238,11 +249,7 @@ fun SettingsScreen(
     // settings header. Persisted only for the current screen lifetime — sections
     // re-expand on screen re-entry, which keeps the discoverability of the full
     // settings tree as the entry point.
-    val allSectionNames = listOf(
-        "SERVER", "SCROLL WHEEL", "CARD UI", "BEHAVIOUR",
-        "BACKUP & RESTORE", "SECURITY", "DASHBOARD", "INTEGRATIONS", "APPEARANCE",
-        "TODAY", "TALK & FIRE", "STATUS VIEWS", "POWER TOOLS",
-    )
+    val allSectionNames = ALL_SECTION_NAMES
     var expandedSections by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(allSectionNames.toSet())
     }
