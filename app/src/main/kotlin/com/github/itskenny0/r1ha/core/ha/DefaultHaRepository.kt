@@ -59,6 +59,16 @@ private fun JsonElement?.asBoolean(): Boolean? {
     }
 }
 
+/**
+ * Best-available human-readable text for a failed [HaInbound.Result]. HA's error object can
+ * carry a `message`, only a `code` (e.g. "not_found" / an integer code), or in rare frames
+ * neither. Prefer the message, fall back to the code string, and only then the opaque
+ * "ha_error" sentinel. Surfacing the code instead of swallowing it makes failure toasts and
+ * logs diagnosable when an integration omits the message field.
+ */
+private fun HaInbound.Result.Error?.bestMessage(): String =
+    this?.message ?: this?.codeString ?: "ha_error"
+
 class DefaultHaRepository(
     private val ws: HaWebSocketClient,
     private val http: OkHttpClient,
@@ -293,7 +303,7 @@ class DefaultHaRepository(
                             deferred.complete(
                                 if (msg.success) Result.success(Unit)
                                 else Result.failure(
-                                    IllegalStateException(msg.error?.message ?: "ha_error")
+                                    IllegalStateException(msg.error.bestMessage())
                                 )
                             )
                         }
@@ -304,7 +314,7 @@ class DefaultHaRepository(
                             payloadDeferred.complete(
                                 if (msg.success) Result.success(msg.result)
                                 else Result.failure(
-                                    IllegalStateException(msg.error?.message ?: "ha_error")
+                                    IllegalStateException(msg.error.bestMessage())
                                 )
                             )
                         }
@@ -670,7 +680,12 @@ class DefaultHaRepository(
         val idStr = raw.entityId ?: ev.event.variables.trigger.entityId
         val prefix = idStr.substringBefore('.', missingDelimiterValue = "")
         if (!Domain.isSupportedPrefix(prefix)) return
-        val id = EntityId(idStr)
+        // The prefix check above accepts a supported domain, but EntityId's init also
+        // rejects malformed ids (empty object_id, e.g. "sensor."). A throw here would
+        // escape the inbound onEach and cancel the whole message-processing flow for the
+        // session, silently freezing all live updates. Guard it the same way the REST
+        // seed path does (see seedCacheFromHa / listAllControllable) and drop the event.
+        val id = runCatching { EntityId(idStr) }.getOrNull() ?: return
         // State-string → isOn mapping, branched by domain. Each domain has its own state
         // vocabulary in HA: lights/switches/input_boolean/automation/humidifier use
         // "on"/"off", media_players use "playing"/"paused"/"idle", covers use "open"/

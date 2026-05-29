@@ -60,6 +60,19 @@ class HaInboundTest {
         val r = m as HaInbound.Result
         assertThat(r.error?.codeString).isEqualTo("15")
     }
+    @Test fun `result error with code but no message exposes code for surfacing`() {
+        // Some HA error frames / integrations send only `code`, no `message`. The repository's
+        // failure path falls back to codeString so the toast/log carries the real reason
+        // ("not_found") instead of the opaque "ha_error" sentinel. Lock that the model keeps
+        // the code available and reports a null message in this shape.
+        val m = HaJson.decodeFromString<HaInbound>(
+            """{"id":9,"type":"result","success":false,"error":{"code":"not_found"}}"""
+        )
+        val r = m as HaInbound.Result
+        assertThat(r.success).isFalse()
+        assertThat(r.error?.message).isNull()
+        assertThat(r.error?.codeString).isEqualTo("not_found")
+    }
     @Test fun `pong`() {
         val m = HaJson.decodeFromString<HaInbound>("""{"id":1,"type":"pong"}""")
         assertThat(m).isInstanceOf(HaInbound.Pong::class.java)
