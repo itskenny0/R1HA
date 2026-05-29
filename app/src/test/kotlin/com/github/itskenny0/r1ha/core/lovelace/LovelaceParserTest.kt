@@ -130,6 +130,61 @@ class LovelaceParserTest {
         assertEquals(1, g.cards.size)
     }
 
+    @Test fun `sections view flattens concrete section cards and skips strategy sections`() {
+        // HA's UI editor produces "sections" views (default since 2024.x) where
+        // cards live under sections[].cards, not the legacy top-level cards[].
+        // A strategy section carries no concrete cards and must be skipped, not
+        // crash the parse.
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "type": "sections",
+                    "path": "home",
+                    "title": "Home",
+                    "sections": [
+                      {"type": "grid", "cards": [
+                        {"type": "tile", "entity": "light.kitchen"},
+                        {"type": "tile", "entity": "switch.fan"}
+                      ]},
+                      {"type": "grid", "cards": [
+                        {"type": "entities", "entities": ["sensor.temp"]}
+                      ]},
+                      {"strategy": {"type": "area", "area": "living_room"}}
+                    ]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
+        assertEquals(3, cards.size)
+        assertEquals("light.kitchen", (cards[0] as LovelaceCard.Tile).entityId)
+        assertEquals("switch.fan", (cards[1] as LovelaceCard.Tile).entityId)
+        assertEquals("sensor.temp", (cards[2] as LovelaceCard.Entities).entities.first().entityId)
+    }
+
+    @Test fun `view with both top-level cards and sections concatenates them`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "path": "mix",
+                    "cards": [{"type": "tile", "entity": "light.a"}],
+                    "sections": [{"type": "grid", "cards": [{"type": "tile", "entity": "light.b"}]}]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
+        assertEquals(2, cards.size)
+        assertEquals("light.a", (cards[0] as LovelaceCard.Tile).entityId)
+        assertEquals("light.b", (cards[1] as LovelaceCard.Tile).entityId)
+    }
+
     @Test fun `dashboard list parses entries and skips malformed rows`() {
         val arr = (Json.parseToJsonElement(
             """[{"id":"a","url_path":"lights","title":"Lights","mode":"storage"},
