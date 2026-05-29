@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
@@ -17,23 +18,25 @@ import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
- * Shared top-bar for sub-screens: chevron-back + screen title + 1dp hairline divider.
- * Identical across Settings, Favorites Picker, About, and Theme Picker — pull it out so
- * the four screens stay aligned to the pixel and any future restyling lands in one place.
+ * The single canonical top-bar for every sub-screen: an optional chevron-back, the screen
+ * title, an optional trailing action slot, and a 1dp hairline rule. This is the one way to
+ * head a screen so Settings, the registry browsers, Logbook, About, and the pickers all stay
+ * aligned to the pixel and any future restyling lands here.
  *
- * The 44dp chevron lives flush-left at x=4dp so its visual centre lines up with the
- * 22dp content gutter used by the rows below. [title] is rendered in [R1.screenTitle]
- * (deliberately not uppercase here — callers pass an already-uppercase string when they
- * want all-caps).
+ * The chevron lives flush-left so its visual centre lines up with the content gutter the
+ * rows below use ([R1.space.l]). [title] renders in [R1.screenTitle]; pass it already
+ * uppercased when you want all-caps chrome (most browser screens do).
+ *
+ * [onBack] is nullable: pass null for a top-level surface that has no back affordance (the
+ * title then starts flush at the gutter). All current call sites pass a handler, so this is
+ * a source-compatible widening.
  */
 @Composable
 fun R1TopBar(
     title: String,
-    onBack: () -> Unit,
-    /** Optional trailing-edge slot — usually a small chip such as
-     *  REFRESH or DISMISS ALL. Pushed to the right edge of the bar with
-     *  the title taking the remaining width. Null = legacy layout
-     *  (title aligns flush against the chevron, no trailing chip). */
+    onBack: (() -> Unit)? = null,
+    /** Optional trailing-edge slot, usually a small [R1Chip] such as REFRESH or DISMISS ALL.
+     *  Pushed to the right edge with the title taking the remaining width. */
     action: (@Composable () -> Unit)? = null,
 ) {
     Column {
@@ -41,22 +44,30 @@ fun R1TopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp, end = 22.dp, top = 6.dp, bottom = 6.dp),
+                .heightIn(min = R1.MinTarget)
+                .padding(
+                    start = if (onBack != null) R1.space.xs else R1.space.l,
+                    end = R1.space.l,
+                    top = R1.space.xs,
+                    bottom = R1.space.xs,
+                ),
         ) {
-            ChevronBack(onClick = onBack)
-            Spacer(Modifier.width(4.dp))
+            if (onBack != null) {
+                ChevronBack(onClick = onBack)
+                Spacer(Modifier.width(R1.space.xs))
+            }
+            // Title always takes the weight so a trailing action sits flush against the
+            // right gutter without shifting the title. Without an action the weight is
+            // harmless (the title left-aligns either way).
+            Text(
+                title,
+                style = R1.screenTitle,
+                color = R1.Ink,
+                modifier = Modifier.weight(1f),
+            )
             if (action != null) {
-                // Title takes weight so the action chip can sit flush
-                // against the right gutter without the title shifting.
-                Text(
-                    title,
-                    style = R1.screenTitle,
-                    color = R1.Ink,
-                    modifier = Modifier.weight(1f),
-                )
+                Spacer(Modifier.width(R1.space.s))
                 action()
-            } else {
-                Text(title, style = R1.screenTitle, color = R1.Ink)
             }
         }
         Box(
