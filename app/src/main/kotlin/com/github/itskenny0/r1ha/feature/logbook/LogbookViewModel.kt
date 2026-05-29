@@ -35,9 +35,11 @@ class LogbookViewModel(
 ) : ViewModel() {
 
     enum class Window(val hours: Int, val label: String) {
+        H1(1, "1 H"),
         H12(12, "12 H"),
         H24(24, "24 H"),
         D3(72, "3 D"),
+        D7(168, "7 D"),
         ;
 
         companion object {
@@ -60,6 +62,12 @@ class LogbookViewModel(
          *  every keystroke. */
         val all: List<LogbookEntry> = emptyList(),
         val query: String = "",
+        /** Optional entity_id filter, set via the entity picker. Null = all
+         *  entities. Matches Lovelace logbook-card's per-entity scoping. */
+        val entityFilter: String? = null,
+        /** Optional domain filter, set via the domain chips. Null = all
+         *  domains. */
+        val domainFilter: String? = null,
         val error: String? = null,
         /** TAIL mode: subscribed to HA's logbook_entry event stream so new
          *  events arrive in real time and prepend to [all]. */
@@ -69,29 +77,41 @@ class LogbookViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    /** Snapshot of the filter dimensions, used to key the derived flows so the
+     *  filter only re-runs when one actually changes (not on, e.g., a `tail`
+     *  toggle or the per-second timestamp tick). */
+    private data class FilterKey(
+        val all: List<LogbookEntry>,
+        val query: String,
+        val entity: String?,
+        val domain: String?,
+    )
+
+    private val filterKey =
+        _ui.map { FilterKey(it.all, it.query, it.entityFilter, it.domainFilter) }
+            .distinctUntilChanged()
+
     /**
-     * Filtered subset shown in the list, derived off Main. Previously this was a
-     * computed `UiState.entries` get() that re-filtered (and re-lowercased every
-     * row) on every read; collected directly in `items()`, it re-ran on every
-     * recomposition, including the per-second RelativeTimeLabel ticks, and handed
-     * Compose a fresh List instance each time. Hoisting it to a Default-dispatched
-     * StateFlow keyed on (all, query) means the filter runs once per data/query
-     * change, off the main thread, with a stable identity between unrelated
-     * recompositions. Substring-matches case-insensitively against the event name,
-     * message and entity_id.
+     * Filtered subset shown in the list, derived off Main. Hoisting it to a
+     * Default-dispatched StateFlow keyed on the filter dimensions means the
+     * filter runs once per data/filter change, off the main thread, with a
+     * stable identity between unrelated recompositions (e.g. the per-second
+     * RelativeTimeLabel ticks). Delegates to the pure [applyFilters] helper so
+     * the entity / domain / text scoping stays unit-testable.
      */
     val visibleEntries: StateFlow<List<LogbookEntry>> =
-        _ui.map { it.all to it.query }
+        filterKey
+            .map { key -> applyFilters(key.all, key.entity, key.domain, key.query) }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Domains present in the current window, for the filter chip row. Derived
+     *  off the full (unfiltered) set so the chips don't disappear once a domain
+     *  filter is applied. */
+    val domains: StateFlow<List<String>> =
+        _ui.map { it.all }
             .distinctUntilChanged()
-            .map { (all, query) ->
-                if (query.isBlank()) return@map all
-                val q = query.trim().lowercase()
-                all.filter { e ->
-                    e.name.lowercase().contains(q) ||
-                        e.message.lowercase().contains(q) ||
-                        (e.entityId?.value?.lowercase()?.contains(q) ?: false)
-                }
-            }
+            .map { availableDomains(it) }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
@@ -142,6 +162,30 @@ class LogbookViewModel(
     fun setQuery(query: String) {
         if (_ui.value.query == query) return
         _ui.value = _ui.value.copy(query = query)
+    }
+
+    /** Scope the feed to a single entity_id (from the picker), or clear it with
+     *  null. Local-only: re-filters [all] without re-fetching from HA. */
+    fun setEntityFilter(entityId: String?) {
+        val next = entityId?.takeIf { it.isNotBlank() }
+        if (_ui.value.entityFilter == next) return
+        _ui.value = _ui.value.copy(entityFilter = next)
+    }
+
+    /** Toggle the domain filter: selecting the active domain again clears it.
+     *  Local-only, like the entity filter. */
+    fun setDomainFilter(domain: String?) {
+        val next = domain?.takeIf { it.isNotBlank() }
+        val resolved = if (_ui.value.domainFilter == next) null else next
+        if (_ui.value.domainFilter == resolved) return
+        _ui.value = _ui.value.copy(domainFilter = resolved)
+    }
+
+    /** Clear all local filters (entity, domain, text) in one shot. */
+    fun clearFilters() {
+        val s = _ui.value
+        if (s.entityFilter == null && s.domainFilter == null && s.query.isEmpty()) return
+        _ui.value = s.copy(entityFilter = null, domainFilter = null, query = "")
     }
 
     /** Live subscription to HA's logbook_entry events. Active when TAIL is on. */

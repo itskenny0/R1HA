@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.logbook
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +40,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.feature.settings.EntityPickerSheet
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -80,9 +86,17 @@ fun LogbookScreen(
     // list doesn't re-filter the full buffer on every recomposition (incl. the
     // per-second relative-timestamp ticks).
     val visibleEntries by vm.visibleEntries.collectAsState()
+    val domains by vm.domains.collectAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // Entity-picker overlay visibility. The picker itself is the shared
+    // EntityPickerSheet idiom used by Settings; tapping a result scopes the feed
+    // to that entity_id.
+    var pickerOpen by remember { mutableStateOf(false) }
+    // Day-grouped view of the filtered rows, computed off the device zone.
+    val zone = remember { java.time.ZoneId.systemDefault() }
+    val groups = remember(visibleEntries) { groupByDay(visibleEntries, zone) }
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     val appSettings by settings.settings.collectAsState(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
@@ -122,6 +136,7 @@ fun LogbookScreen(
             }
         }
     }
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -151,6 +166,15 @@ fun LogbookScreen(
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
         SearchBar(query = ui.query, onQueryChange = { vm.setQuery(it) })
+        FilterControls(
+            entityFilter = ui.entityFilter,
+            domainFilter = ui.domainFilter,
+            domains = domains,
+            onPickEntity = { pickerOpen = true },
+            onClearEntity = { vm.setEntityFilter(null) },
+            onToggleDomain = { vm.setDomainFilter(it) },
+            onClearAll = { vm.clearFilters() },
+        )
         when {
             ui.loading -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -176,9 +200,15 @@ fun LogbookScreen(
                 // everything so the user knows whether to wait, change
                 // window, or clear the search.
                 val hasAny = ui.all.isNotEmpty()
+                val filtered = ui.entityFilter != null || ui.domainFilter != null ||
+                    ui.query.isNotBlank()
                 val msg = when {
                     !hasAny -> "Nothing happened in the selected window."
+                    ui.entityFilter != null -> "No activity for ${ui.entityFilter} in this window."
+                    ui.domainFilter != null && ui.query.isBlank() ->
+                        "No ${ui.domainFilter} activity in this window."
                     ui.query.isNotBlank() -> "No matches for '${ui.query}' in this window."
+                    filtered -> "No matches for the active filters in this window."
                     else -> "Logbook is empty for the selected window."
                 }
                 Text(text = msg, style = R1.body, color = R1.InkMuted)
@@ -199,33 +229,63 @@ fun LogbookScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
-                    items(
-                        items = visibleEntries,
-                    // Stable key: timestamp nanos + entity-id + name keeps
-                    // duplicate-message rows distinct (two automations firing
-                    // at the same wall-clock second on different entities).
-                    key = { it.timestamp.toEpochMilli().toString() + "|" + (it.entityId?.value ?: it.name) },
-                    ) { entry ->
-                        LogbookRow(
-                            entry,
-                            // Tap drills into the entity's history — feels
-                            // like a natural follow-on from 'I just saw
-                            // this state-change'. Falls back to the
-                            // detail toast for entries without an
-                            // entity_id (typical for system events,
-                            // automation triggers without a target).
-                            onTap = {
-                                val eid = entry.entityId?.value
-                                if (!eid.isNullOrBlank()) onOpenHistory(eid)
-                                else vm.showDetail(entry)
+                    // Rows are bucketed under relative-day headers ("TODAY",
+                    // "YESTERDAY", then absolute dates) using the shared
+                    // R1Section header so the grouping reads like the rest of
+                    // the app. Each group's count rides in the section pill.
+                    for (group in groups) {
+                        item(key = "hdr|${group.header}") {
+                            R1Section(
+                                title = group.header,
+                                count = group.entries.size,
+                                topSpace = R1.space.s,
+                            ) {}
+                        }
+                        items(
+                            items = group.entries,
+                            // Stable key: timestamp millis + entity-id + name keeps
+                            // duplicate-message rows distinct (two automations firing
+                            // at the same wall-clock second on different entities).
+                            key = {
+                                it.timestamp.toEpochMilli().toString() + "|" +
+                                    (it.entityId?.value ?: it.name)
                             },
-                            onLongPress = { openInHa(entry) },
-                        )
+                        ) { entry ->
+                            LogbookRow(
+                                entry,
+                                // Tap drills into the entity's history — feels
+                                // like a natural follow-on from 'I just saw
+                                // this state-change'. Falls back to the
+                                // detail toast for entries without an
+                                // entity_id (typical for system events,
+                                // automation triggers without a target).
+                                onTap = {
+                                    val eid = entry.entityId?.value
+                                    if (!eid.isNullOrBlank()) onOpenHistory(eid)
+                                    else vm.showDetail(entry)
+                                },
+                                onLongPress = { openInHa(entry) },
+                            )
+                        }
                     }
                 }
             }
         }
         } // AdaptiveContent
+    }
+        // Entity-picker overlay — reuses the shared EntityPickerSheet idiom from
+        // Settings. Picking an entity scopes the feed to that entity_id; the
+        // sheet dismisses on pick / backdrop tap / back.
+        if (pickerOpen) {
+            EntityPickerSheet(
+                haRepository = haRepository,
+                onPick = { entityId ->
+                    vm.setEntityFilter(entityId)
+                    pickerOpen = false
+                },
+                onDismiss = { pickerOpen = false },
+            )
+        }
     }
 }
 
@@ -247,6 +307,79 @@ private fun WindowChips(
                 selected = w == current,
                 onClick = { onSelect(w) },
             )
+        }
+    }
+}
+
+/**
+ * Filter row: an ENTITY chip that opens the shared entity picker (showing the
+ * active scope or "ENTITY +" when clear), a horizontally-scrollable run of
+ * domain chips for the domains present in the current window, and a CLEAR chip
+ * shown only when any filter is active. Mirrors Lovelace logbook-card's
+ * entity / domain scoping on top of the existing window fetch.
+ */
+@Composable
+private fun FilterControls(
+    entityFilter: String?,
+    domainFilter: String?,
+    domains: List<String>,
+    onPickEntity: () -> Unit,
+    onClearEntity: () -> Unit,
+    onToggleDomain: (String) -> Unit,
+    onClearAll: () -> Unit,
+) {
+    val anyActive = entityFilter != null || domainFilter != null
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // ENTITY chip — shows the active entity_id (or a "+" affordance).
+            // When set, tapping clears it; when clear, tapping opens the picker.
+            R1Chip(
+                text = entityFilter?.let { "● " + it } ?: "ENTITY +",
+                variant = R1ChipVariant.Filter,
+                selected = entityFilter != null,
+                onClick = { if (entityFilter != null) onClearEntity() else onPickEntity() },
+                contentDescription = if (entityFilter != null) {
+                    "Clear entity filter"
+                } else {
+                    "Pick entity to filter"
+                },
+            )
+            if (anyActive) {
+                Spacer(Modifier.weight(1f))
+                R1Chip(
+                    text = "CLEAR",
+                    variant = R1ChipVariant.Action,
+                    onClick = onClearAll,
+                    contentDescription = "Clear all filters",
+                )
+            }
+        }
+        if (domains.isNotEmpty()) {
+            val scroll = androidx.compose.foundation.rememberScrollState()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scroll),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+            ) {
+                for (d in domains) {
+                    R1Chip(
+                        text = domainGlyph(d) + " " + d.uppercase(),
+                        variant = R1ChipVariant.Filter,
+                        selected = d == domainFilter,
+                        onClick = { onToggleDomain(d) },
+                    )
+                }
+            }
         }
     }
 }
@@ -274,19 +407,35 @@ private fun LogbookRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Domain accent label — coloured by HA-side domain so a glance
-        // separates lights from automations from scenes. Domains we don't
-        // recognise get the neutral ink colour.
-        Text(
-            text = (entry.domain ?: "—").uppercase(),
-            style = R1.labelMicro,
-            color = accentFor(entry.domain),
-        )
+        // Per-domain glyph in a fixed-width column so the name text aligns
+        // across rows regardless of which glyph renders. Coloured by HA-side
+        // domain so a glance separates lights from automations from scenes;
+        // domains we don't recognise get the neutral ink colour.
+        Column(
+            modifier = Modifier.width(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = domainGlyph(entry.domain),
+                style = R1.body,
+                color = accentFor(entry.domain),
+            )
+            Text(
+                text = (entry.domain ?: "—").uppercase().take(4),
+                style = R1.labelMicro,
+                color = accentFor(entry.domain),
+                maxLines = 1,
+            )
+        }
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = entry.name, style = R1.bodyEmph, color = R1.Ink, maxLines = 2)
+            // Friendly state-change line: the message HA gave us, plus an arrow
+            // to the post-event state when one is present ("turned on → on").
+            // Falls back to the bare message for stateless events (automation
+            // triggers).
             Text(
-                text = entry.message,
+                text = entry.state?.let { "${entry.message} → $it" } ?: entry.message,
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 2,
