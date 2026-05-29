@@ -719,6 +719,8 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     Domain.UPDATE -> R1.AccentCool
     // Remote/IR blasters — cool accent matches the cardstack's REMOTE colour.
     Domain.REMOTE -> R1.AccentCool
+    // Alarm — warm matches the cardstack's high-attention treatment.
+    Domain.ALARM_CONTROL_PANEL -> R1.AccentWarm
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
@@ -752,4 +754,5 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.INPUT_DATETIME -> "DATETIME"
     Domain.UPDATE -> "UPDATE"
     Domain.REMOTE -> "REMOTE"
+    Domain.ALARM_CONTROL_PANEL -> "ALARM"
 }

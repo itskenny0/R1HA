@@ -83,6 +83,10 @@ fun EntityCard(
         // generic on/off domains; the RemotePanel below the card carries the
         // activity-chip / custom-button content.
         Domain.REMOTE -> CardRenderModel.Glyph.SWITCH
+        // Alarm control panel — reuses the LOCK glyph so the security-affordance
+        // visual reads the same family as smart locks. The AlarmPanel below
+        // surfaces the per-mode chips that distinguish an alarm from a lock.
+        Domain.ALARM_CONTROL_PANEL -> CardRenderModel.Glyph.LOCK
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -130,6 +134,10 @@ fun EntityCard(
         // Remote — cool accent. IR/RF is a "send" affordance like media transport,
         // and the colour cue mirrors media_player so the deck reads consistently.
         Domain.REMOTE -> CardRenderModel.AccentRole.COOL
+        // Alarm — warm to read as a high-attention security affordance, matching
+        // the "this is important, don't tap it accidentally" framing of the
+        // disarmed → armed transitions.
+        Domain.ALARM_CONTROL_PANEL -> CardRenderModel.AccentRole.WARM
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour
@@ -247,10 +255,15 @@ fun EntityCard(
                 // REMOTE shares the SWITCH glyph but should read as "REMOTE"
                 // on the card chip — otherwise an IR blaster reads as a
                 // generic switch and the user can't tell at a glance what
-                // the card represents. Domain-specific override here, all
+                // the card represents. Same idea for ALARM_CONTROL_PANEL,
+                // which shares the LOCK glyph but represents a different
+                // family of device. Domain-specific overrides here, all
                 // other glyphs fall through to the glyph-derived label.
-                domainLabel = if (state.id.domain == Domain.REMOTE) "REMOTE"
-                              else domainLabel(glyph),
+                domainLabel = when (state.id.domain) {
+                    Domain.REMOTE -> "REMOTE"
+                    Domain.ALARM_CONTROL_PANEL -> "ALARM"
+                    else -> domainLabel(glyph)
+                },
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 onTapToggle = onTapToggle,
                 onSetOn = onSetOn ?: { _ -> onTapToggle() },

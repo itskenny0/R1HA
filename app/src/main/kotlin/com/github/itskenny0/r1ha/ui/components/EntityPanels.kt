@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.github.itskenny0.r1ha.core.ha.AlarmAction
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.LawnMowerAction
@@ -206,7 +207,11 @@ fun LawnMowerPanel(state: EntityState, accent: Color, modifier: Modifier = Modif
 fun LockPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
     if (state.id.domain != Domain.LOCK) return
     val dispatch = LocalOnEntityCall.current
-    val needsCode = !state.lockCodeFormat.isNullOrBlank()
+    val overrides = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current
+    val override = overrides[state.id.value]
+    val needsServerCode = !state.lockCodeFormat.isNullOrBlank()
+    val needsClientPin = override?.requirePinToUnlock == true
+    val needsCode = needsServerCode || needsClientPin
     val hasChangedBy = !state.lockChangedBy.isNullOrBlank()
     // Bail early for locks that have nothing to render — neither a code
     // keypad to surface nor a `changed_by` attribute to display. The
@@ -239,17 +244,48 @@ fun LockPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) 
     }
 
     if (showKeypad) {
+        // Client-side PIN check when the gate is configured locally. Skip the
+        // server-code path because the lock doesn't accept one anyway — sending
+        // would just earn a HA validation toast. When [requirePinHash] is set
+        // we compare the entered digits against the stored SHA-256 before
+        // firing; when it's null we accept any non-empty entry as the
+        // 'deliberate gesture' that the gate provides.
+        val expectedHash = override?.requirePinHash
         PinKeypadDialog(
             title = if (pendingLock) "LOCK" else "UNLOCK",
-            codeFormat = state.lockCodeFormat,
+            // For client-side gates with a stored hash, validate against
+            // any-digit-sequence at typing time; the actual hash comparison
+            // happens on OK so the keypad reflects "any PIN you've entered
+            // could be the right one".
+            codeFormat = if (needsClientPin) null else state.lockCodeFormat,
             accent = accent,
             onDismiss = { showKeypad = false },
             onConfirm = { code ->
-                showKeypad = false
-                dispatch?.invoke(ServiceCall.lockSet(state.id, pendingLock, code))
+                if (needsClientPin && !needsServerCode) {
+                    val ok = if (expectedHash.isNullOrBlank()) code.isNotEmpty()
+                             else sha256Hex(code).equals(expectedHash, ignoreCase = true)
+                    if (!ok) {
+                        com.github.itskenny0.r1ha.core.util.Toaster.error("Wrong PIN")
+                        return@PinKeypadDialog
+                    }
+                    showKeypad = false
+                    dispatch?.invoke(ServiceCall.lockSet(state.id, pendingLock, code = null))
+                } else {
+                    showKeypad = false
+                    dispatch?.invoke(ServiceCall.lockSet(state.id, pendingLock, code))
+                }
             },
         )
     }
+}
+
+/** SHA-256 of [input] as lowercase hex. Used by the client-side lock PIN gate
+ *  so the user's PIN never sits in plaintext on disk; the keypad rehashes the
+ *  entered digits and compares against the stored hex. */
+internal fun sha256Hex(input: String): String {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
+    return bytes.joinToString("") { "%02x".format(it) }
 }
 
 /**
@@ -735,6 +771,131 @@ fun WaterHeaterPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
                 )
             }
         }
+    }
+}
+
+/**
+ * Alarm control panel — surfaces DISARM plus one chip per arm mode the
+ * integration advertises (AWAY / HOME / NIGHT / VACATION / BYPASS), gated on
+ * [EntityState.AlarmFeature]. Every chip opens the PIN keypad when the
+ * integration sets `code_format`; arm chips skip the keypad when
+ * `code_arm_required` is false. The currently-active arm state highlights as
+ * selected so the user can tell at a glance which mode the panel is in.
+ */
+@Composable
+fun AlarmPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    if (state.id.domain != Domain.ALARM_CONTROL_PANEL) return
+    val dispatch = LocalOnEntityCall.current
+    val codeRequired = !state.alarmCodeFormat.isNullOrBlank()
+    val armNeedsCode = codeRequired && state.alarmCodeArmRequired
+
+    var pendingAction by remember { mutableStateOf<AlarmAction?>(null) }
+    val raw = state.rawState?.lowercase().orEmpty()
+    val selectedFor: (AlarmAction) -> Boolean = { action ->
+        when (action) {
+            AlarmAction.DISARM -> raw == "disarmed"
+            AlarmAction.ARM_AWAY -> raw == "armed_away"
+            AlarmAction.ARM_HOME -> raw == "armed_home"
+            AlarmAction.ARM_NIGHT -> raw == "armed_night"
+            AlarmAction.ARM_VACATION -> raw == "armed_vacation"
+            AlarmAction.ARM_CUSTOM_BYPASS -> raw == "armed_custom_bypass"
+            AlarmAction.TRIGGER -> raw == "triggered"
+        }
+    }
+    val fire: (AlarmAction) -> Unit = { action ->
+        val needCode = when (action) {
+            AlarmAction.DISARM -> codeRequired
+            AlarmAction.TRIGGER -> false
+            else -> armNeedsCode
+        }
+        if (needCode) {
+            pendingAction = action
+        } else {
+            dispatch?.invoke(ServiceCall.alarmAction(state.id, action, code = null))
+        }
+    }
+
+    val showAway = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_AWAY)
+    val showHome = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_HOME)
+    val showNight = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_NIGHT)
+    val showVacation = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_VACATION)
+    val showBypass = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_CUSTOM_BYPASS)
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(text = "MODE", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            PanelChip(
+                label = "DISARM",
+                accent = accent,
+                selected = selectedFor(AlarmAction.DISARM),
+                onClick = { fire(AlarmAction.DISARM) },
+            )
+            if (showAway) PanelChip(
+                label = "AWAY",
+                accent = accent,
+                selected = selectedFor(AlarmAction.ARM_AWAY),
+                onClick = { fire(AlarmAction.ARM_AWAY) },
+            )
+            if (showHome) PanelChip(
+                label = "HOME",
+                accent = accent,
+                selected = selectedFor(AlarmAction.ARM_HOME),
+                onClick = { fire(AlarmAction.ARM_HOME) },
+            )
+            if (showNight) PanelChip(
+                label = "NIGHT",
+                accent = accent,
+                selected = selectedFor(AlarmAction.ARM_NIGHT),
+                onClick = { fire(AlarmAction.ARM_NIGHT) },
+            )
+            if (showVacation) PanelChip(
+                label = "VACATION",
+                accent = accent,
+                selected = selectedFor(AlarmAction.ARM_VACATION),
+                onClick = { fire(AlarmAction.ARM_VACATION) },
+            )
+            if (showBypass) PanelChip(
+                label = "BYPASS",
+                accent = accent,
+                selected = selectedFor(AlarmAction.ARM_CUSTOM_BYPASS),
+                onClick = { fire(AlarmAction.ARM_CUSTOM_BYPASS) },
+            )
+        }
+        if (!state.alarmChangedBy.isNullOrBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "BY ${state.alarmChangedBy.uppercase()}",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+
+    val pending = pendingAction
+    if (pending != null) {
+        PinKeypadDialog(
+            title = when (pending) {
+                AlarmAction.DISARM -> "DISARM"
+                AlarmAction.ARM_AWAY -> "ARM AWAY"
+                AlarmAction.ARM_HOME -> "ARM HOME"
+                AlarmAction.ARM_NIGHT -> "ARM NIGHT"
+                AlarmAction.ARM_VACATION -> "ARM VACATION"
+                AlarmAction.ARM_CUSTOM_BYPASS -> "ARM BYPASS"
+                AlarmAction.TRIGGER -> "TRIGGER"
+            },
+            codeFormat = state.alarmCodeFormat,
+            accent = accent,
+            onDismiss = { pendingAction = null },
+            onConfirm = { code ->
+                pendingAction = null
+                dispatch?.invoke(ServiceCall.alarmAction(state.id, pending, code))
+            },
+        )
     }
 }
 

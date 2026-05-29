@@ -17,6 +17,7 @@ class EntityDomainTest {
         assertThat(Domain.fromPrefix("humidifier")).isEqualTo(Domain.HUMIDIFIER)
         assertThat(Domain.fromPrefix("sensor")).isEqualTo(Domain.SENSOR)
         assertThat(Domain.fromPrefix("binary_sensor")).isEqualTo(Domain.BINARY_SENSOR)
+        assertThat(Domain.fromPrefix("alarm_control_panel")).isEqualTo(Domain.ALARM_CONTROL_PANEL)
     }
 
     @Test fun `fromPrefix rejects unknown prefix`() {

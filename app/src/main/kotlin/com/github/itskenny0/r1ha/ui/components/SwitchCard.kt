@@ -159,10 +159,21 @@ fun SwitchCard(
         // without the code and HA would reject with `code_required`,
         // looking like the app silently lost the tap. For locks without a
         // code_format the track still drives the entity directly since
-        // there's no keypad to gate it.
+        // there's no keypad to gate it. The per-card 'Require PIN to
+        // unlock' override also triggers this path so users can gate locks
+        // HA doesn't mark code-required.
+        val perCardOverride = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides
+            .current[state.id.value]
         val needsLockCode = state.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK &&
-            !state.lockCodeFormat.isNullOrBlank()
-        if (!needsLockCode) {
+            (!state.lockCodeFormat.isNullOrBlank() ||
+                perCardOverride?.requirePinToUnlock == true)
+        // Alarm control panel never surfaces the binary switch track — the
+        // valid actions are a finite set of arm modes plus disarm, all of
+        // which live on AlarmPanel. The switch track would force an
+        // ambiguous "on" mapping that doesn't reflect any single HA service.
+        val hideTrackForAlarm = state.id.domain ==
+            com.github.itskenny0.r1ha.core.ha.Domain.ALARM_CONTROL_PANEL
+        if (!needsLockCode && !hideTrackForAlarm) {
             SwitchTrack(
                 isOn = state.isOn,
                 accent = accent,
@@ -196,6 +207,8 @@ fun SwitchCard(
                 WaterHeaterPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
             com.github.itskenny0.r1ha.core.ha.Domain.CLIMATE ->
                 ClimatePanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            com.github.itskenny0.r1ha.core.ha.Domain.ALARM_CONTROL_PANEL ->
+                AlarmPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
             else -> Unit
         }
 
@@ -440,6 +453,19 @@ private fun friendlySwitchStateWord(state: EntityState): String {
             "standby" -> "STANDBY"
             "buffering" -> "BUFFERING"
             else -> raw.uppercase()
+        }
+        com.github.itskenny0.r1ha.core.ha.Domain.ALARM_CONTROL_PANEL -> when (raw) {
+            "disarmed" -> "DISARMED"
+            "armed_away" -> "ARMED AWAY"
+            "armed_home" -> "ARMED HOME"
+            "armed_night" -> "ARMED NIGHT"
+            "armed_vacation" -> "ARMED VACATION"
+            "armed_custom_bypass" -> "ARMED BYPASS"
+            "pending" -> "PENDING"
+            "arming" -> "ARMING"
+            "disarming" -> "DISARMING"
+            "triggered" -> "TRIGGERED"
+            else -> raw.replace('_', ' ').uppercase()
         }
         else -> if (state.isOn) "ON" else "OFF"
     }

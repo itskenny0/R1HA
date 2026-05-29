@@ -349,6 +349,80 @@ fun RenameDialog(
                 ),
             )
 
+            // ── REQUIRE PIN TO UNLOCK (locks only) ──────────────────────────────────
+            // Surfaced only for lock entities since the gate is meaningless on
+            // anything else; HA-enforced code-required locks already prompt
+            // server-side and don't need this client gate, but the user can
+            // still flip it on to add a second deliberate-gesture confirm.
+            if (entity.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LOCK) {
+                SectionHeader("REQUIRE PIN TO UNLOCK")
+                Text(
+                    text = "When ON, this lock card hides its direct UNLOCK / LOCK switch and " +
+                        "routes the action through a PIN keypad. Useful for locks HA doesn't " +
+                        "enforce a code on but you want a deliberate-gesture confirm for. " +
+                        "Set a PIN below to require an exact match; leave blank to accept any " +
+                        "non-empty digit sequence as the confirm.",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(6.dp))
+                TapToToggleRow(
+                    selected = override.requirePinToUnlock,
+                    onSelect = { override = override.copy(requirePinToUnlock = it) },
+                )
+                if (override.requirePinToUnlock == true) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (override.requirePinHash.isNullOrBlank()) "PIN NOT SET (any digits accepted)"
+                               else "PIN SET",
+                        style = R1.labelMicro,
+                        color = if (override.requirePinHash.isNullOrBlank()) R1.StatusAmber else R1.AccentGreen,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        var newPin by remember(entity.id.value) { mutableStateOf("") }
+                        Box(modifier = Modifier.width(140.dp)) {
+                            R1TextField(
+                                value = newPin,
+                                onValueChange = { v -> newPin = v.filter { it.isDigit() }.take(12) },
+                                placeholder = "4-12 digits",
+                                monospace = true,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeS)
+                                .r1Pressable(onClick = {
+                                    if (newPin.length >= 4) {
+                                        val hash = com.github.itskenny0.r1ha.ui.components.sha256Hex(newPin)
+                                        override = override.copy(requirePinHash = hash)
+                                        newPin = ""
+                                    }
+                                })
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Text(text = "SET PIN", style = R1.labelMicro, color = R1.AccentWarm)
+                        }
+                        if (!override.requirePinHash.isNullOrBlank()) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(R1.ShapeS)
+                                    .background(R1.SurfaceMuted)
+                                    .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
+                                    .r1Pressable(onClick = {
+                                        override = override.copy(requirePinHash = null)
+                                    })
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                Text(text = "CLEAR PIN", style = R1.labelMicro, color = R1.StatusRed)
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── CUSTOM BUTTONS ───────────────────────────────────────────────────────
             SectionHeader("CUSTOM BUTTONS")
             Text(

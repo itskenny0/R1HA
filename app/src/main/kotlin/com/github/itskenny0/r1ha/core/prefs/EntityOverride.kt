@@ -106,6 +106,27 @@ data class EntityOverride(
      * Empty list = no extra chips render, no overhead.
      */
     val customActions: List<CustomAction> = emptyList(),
+    /**
+     * Client-side PIN gate for lock entities that don't enforce a code
+     * server-side. When true, the lock card hides its direct UNLOCK/LOCK
+     * switch and routes the action through the same PIN keypad
+     * code-required locks use. The actual code isn't sent to HA (the lock
+     * doesn't accept one) — the keypad's role is purely to require a
+     * deliberate, multi-step gesture so a stray tap can't unlock the
+     * door. Stored per-entity because adding the gate makes sense only
+     * for the specific lock the user wants to harden; null / false means
+     * the lock behaves as before (direct tap toggles).
+     */
+    val requirePinToUnlock: Boolean? = null,
+    /**
+     * The PIN the user must enter when [requirePinToUnlock] is true.
+     * Stored as the SHA-256 of the PIN (hex-encoded) so the actual digits
+     * never sit in plaintext on disk. Null / blank means "any non-empty
+     * digit sequence accepted" — the gate then degrades to a deliberate-
+     * gesture confirm rather than a true secret check, but the user can
+     * always fill the PIN in later from the customize sheet to upgrade.
+     */
+    val requirePinHash: String? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */

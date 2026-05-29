@@ -139,6 +139,20 @@ enum class Domain(val prefix: String) {
      */
     UPDATE("update"),
     /**
+     * Alarm control panels (Ring, Bosch, Alarmo, MQTT alarms). State is the
+     * armed status: `disarmed`, `armed_away`, `armed_home`, `armed_night`,
+     * `armed_vacation`, `armed_custom_bypass`, `pending`, `arming`,
+     * `triggered`, `disarming`. Services: `alarm_arm_away`, `alarm_arm_home`,
+     * `alarm_arm_night`, `alarm_arm_vacation`, `alarm_arm_custom_bypass`,
+     * `alarm_disarm`, `alarm_trigger`. Every service takes an optional `code`
+     * data field; integrations that set `code_arm_required: true` reject
+     * arming without a code, integrations with `code_format != null` reject
+     * disarming without one. Renders as a switch-style card whose body shows
+     * the current armed state and surfaces a PIN keypad on every action chip
+     * when a code is required.
+     */
+    ALARM_CONTROL_PANEL("alarm_control_panel"),
+    /**
      * IR / RF blasters and activity remotes. Two flavours land here:
      *  - Activity remotes (Harmony Hub, ESPHome IR with activities) — expose
      *    `current_activity` + `activity_list`; the RemotePanel renders one chip

@@ -46,4 +46,25 @@ class ServiceCallTest {
         assertThat(ServiceCall.tapAction(EntityId("cover.x"), isOn = false).service).isEqualTo("open_cover")
         assertThat(ServiceCall.tapAction(EntityId("media_player.x"), isOn = true).service).isEqualTo("media_play_pause")
     }
+    @Test fun `alarm action maps to per-mode service`() {
+        val target = EntityId("alarm_control_panel.front_door")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.DISARM).service).isEqualTo("alarm_disarm")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.ARM_AWAY).service).isEqualTo("alarm_arm_away")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.ARM_HOME).service).isEqualTo("alarm_arm_home")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.ARM_NIGHT).service).isEqualTo("alarm_arm_night")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.ARM_VACATION).service).isEqualTo("alarm_arm_vacation")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.ARM_CUSTOM_BYPASS).service)
+            .isEqualTo("alarm_arm_custom_bypass")
+        assertThat(ServiceCall.alarmAction(target, AlarmAction.TRIGGER).service).isEqualTo("alarm_trigger")
+    }
+    @Test fun `alarm action carries code when provided`() {
+        val call = ServiceCall.alarmAction(EntityId("alarm_control_panel.x"), AlarmAction.DISARM, code = "1234")
+        assertThat(call.data["code"]).isEqualTo(JsonPrimitive("1234"))
+    }
+    @Test fun `alarm action omits code when null or blank`() {
+        val noCode = ServiceCall.alarmAction(EntityId("alarm_control_panel.x"), AlarmAction.ARM_HOME, code = null)
+        assertThat(noCode.data).isEqualTo(JsonObject(emptyMap()))
+        val blank = ServiceCall.alarmAction(EntityId("alarm_control_panel.x"), AlarmAction.ARM_HOME, code = "")
+        assertThat(blank.data).isEqualTo(JsonObject(emptyMap()))
+    }
 }

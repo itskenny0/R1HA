@@ -834,7 +834,13 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
                 ),
                 "UTF-8",
             )
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr"
+        // Per-card 'Require PIN to unlock' gate for lock entities (and the
+        // hashed PIN itself). Tri-state for the gate slot mirrors the other
+        // booleans; the hash slot is plain hex (never the raw PIN) and may
+        // be blank to mean "any non-empty digit sequence accepted".
+        val pinReqStr = when (o.requirePinToUnlock) { true -> "1"; false -> "0"; null -> "?" }
+        val pinHashStr = o.requirePinHash.orEmpty()
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr"
     }
 }
 
@@ -891,6 +897,11 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                         java.net.URLDecoder.decode(customRaw, "UTF-8"),
                     )
                 }.getOrDefault(emptyList())
+            // Per-card lock PIN gate. Older saves without slots 12/13 land
+            // here as null / blank via getOrNull and keep the previous
+            // direct-toggle behaviour.
+            val pinReq = when (parts.getOrNull(12)) { "1" -> true; "0" -> false; else -> null }
+            val pinHash = parts.getOrNull(13)?.takeIf { it.isNotBlank() }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -904,6 +915,8 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 wheelEnabled = wheel,
                 hideWhenUnavailable = hideUnavail,
                 customActions = customActions,
+                requirePinToUnlock = pinReq,
+                requirePinHash = pinHash,
             )
         }.getOrNull()
     }.toMap()

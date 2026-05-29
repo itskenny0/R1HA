@@ -145,6 +145,15 @@ data class ServiceCall(
                     if (clamped == 0) "turn_off" else "turn_on",
                     JsonObject(emptyMap()),
                 )
+                // Alarm control panels never enter the percent path — every
+                // action goes through the dedicated AlarmPanel chips with a
+                // PIN keypad. Defensive update_entity no-op keeps a stray
+                // dispatch harmless.
+                Domain.ALARM_CONTROL_PANEL -> ServiceCall(
+                    target,
+                    "update_entity",
+                    JsonObject(emptyMap()),
+                )
             }
         }
 
@@ -403,6 +412,16 @@ data class ServiceCall(
                 if (isOn) "turn_off" else "turn_on",
                 JsonObject(emptyMap()),
             )
+            // Alarm: card tap is intentionally inert. Arming and disarming run
+            // through the AlarmPanel's labelled chips so the action that lands
+            // on HA is unambiguous (an accidental tap dispatching alarm_disarm
+            // would be the worst possible 'on/off' surprise). Defensive no-op
+            // refresh.
+            Domain.ALARM_CONTROL_PANEL -> ServiceCall(
+                target,
+                "update_entity",
+                JsonObject(emptyMap()),
+            )
         }
 
         /**
@@ -482,6 +501,13 @@ data class ServiceCall(
             // dispatches never reach them today. Defensive no-op keeps every
             // generic dispatch path safe if a future surface routes here.
             Domain.UPDATE -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
+            // Alarm: explicit setSwitch has no sensible mapping; routed
+            // through the AlarmPanel chips instead.
+            Domain.ALARM_CONTROL_PANEL -> ServiceCall(
+                target,
+                "update_entity",
+                JsonObject(emptyMap()),
+            )
         }
 
         /**
@@ -682,6 +708,32 @@ data class ServiceCall(
                 "select_source",
                 buildJsonObject { put("source", JsonPrimitive(source)) },
             )
+
+        /**
+         * Alarm-control-panel action dispatch. Maps an [AlarmAction] to the
+         * matching HA service. Disarm always requires a code when the alarm
+         * has `code_format != null`; arm services additionally require one
+         * when `code_arm_required` is true. Pass `code` = null only when the
+         * caller has already confirmed the alarm accepts code-less calls.
+         */
+        fun alarmAction(target: EntityId, action: AlarmAction, code: String? = null): ServiceCall =
+            ServiceCall(
+                target,
+                when (action) {
+                    AlarmAction.DISARM -> "alarm_disarm"
+                    AlarmAction.ARM_AWAY -> "alarm_arm_away"
+                    AlarmAction.ARM_HOME -> "alarm_arm_home"
+                    AlarmAction.ARM_NIGHT -> "alarm_arm_night"
+                    AlarmAction.ARM_VACATION -> "alarm_arm_vacation"
+                    AlarmAction.ARM_CUSTOM_BYPASS -> "alarm_arm_custom_bypass"
+                    AlarmAction.TRIGGER -> "alarm_trigger"
+                },
+                if (code.isNullOrBlank()) {
+                    JsonObject(emptyMap())
+                } else {
+                    buildJsonObject { put("code", JsonPrimitive(code)) }
+                },
+            )
     }
 }
 
@@ -693,4 +745,9 @@ enum class VacuumAction {
 /** Lawn-mower command set surfaced on LawnMowerCard. */
 enum class LawnMowerAction {
     START_MOWING, PAUSE, DOCK,
+}
+
+/** Alarm-control-panel command set surfaced on AlarmPanel. */
+enum class AlarmAction {
+    DISARM, ARM_AWAY, ARM_HOME, ARM_NIGHT, ARM_VACATION, ARM_CUSTOM_BYPASS, TRIGGER,
 }

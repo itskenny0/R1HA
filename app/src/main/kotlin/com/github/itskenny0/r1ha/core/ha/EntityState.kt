@@ -265,6 +265,23 @@ data class EntityState(
      *  remote can switch to via `remote.turn_on { activity: <name> }`. Empty
      *  for learned-command blasters that don't expose activities. */
     val remoteActivityList: List<String> = emptyList(),
+    /**
+     * Alarm-only: `code_format` attribute. HA exposes one of `"number"` /
+     * `"text"` / null; null means no code is accepted (the alarm has no PIN).
+     * Treated as the gate for whether the keypad surfaces on action chips.
+     */
+    val alarmCodeFormat: String? = null,
+    /**
+     * Alarm-only: `code_arm_required` attribute. When true, arming services
+     * (`alarm_arm_*`) also require a code; when false they accept without.
+     * Disarm always requires a code if [alarmCodeFormat] is set.
+     */
+    val alarmCodeArmRequired: Boolean = true,
+    /**
+     * Alarm-only: `changed_by` attribute — last user / source that flipped
+     * the state (mirrors the lock idiom).
+     */
+    val alarmChangedBy: String? = null,
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)
@@ -405,6 +422,24 @@ data class EntityState(
         const val AWAY_MODE = 4
         const val ON_OFF = 8
     }
+
+    /**
+     * Subset of HA's `AlarmControlPanelEntityFeature`. Gates which arm chips
+     * appear on the alarm card — an integration that only advertises AWAY +
+     * HOME doesn't get NIGHT / VACATION buttons, so the user can't fire a
+     * service HA will reject.
+     */
+    object AlarmFeature {
+        const val ARM_HOME = 1
+        const val ARM_AWAY = 2
+        const val ARM_NIGHT = 4
+        const val TRIGGER = 8
+        const val ARM_CUSTOM_BYPASS = 16
+        const val ARM_VACATION = 32
+    }
+
+    fun hasAlarmFeature(featureBit: Int): Boolean =
+        supportedFeatures == 0 || (supportedFeatures and featureBit) != 0
 
     companion object {
         fun normaliseLightBrightness(raw: Int): Int = ((raw.coerceIn(0, 255)) * 100.0 / 255.0).roundToInt()

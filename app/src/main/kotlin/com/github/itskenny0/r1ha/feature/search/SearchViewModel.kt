@@ -60,6 +60,7 @@ class SearchViewModel(
         Domain.LOCK, Domain.INPUT_BOOLEAN, Domain.HUMIDIFIER, Domain.CLIMATE,
         Domain.WATER_HEATER, Domain.VACUUM, Domain.LAWN_MOWER, Domain.VALVE, Domain.NUMBER,
         Domain.INPUT_NUMBER, Domain.SELECT, Domain.INPUT_SELECT,
+        Domain.ALARM_CONTROL_PANEL,
         // Counter + timer are controllable too (counter.increment etc.,
         // timer.start etc.) so they live under CONTROLS for filtering.
         Domain.COUNTER, Domain.TIMER -> Bucket.CONTROLS

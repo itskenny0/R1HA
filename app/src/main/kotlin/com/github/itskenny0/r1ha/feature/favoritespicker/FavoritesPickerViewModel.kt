@@ -34,7 +34,11 @@ enum class PickerFilter(val label: String, val matches: (Domain) -> Boolean) {
     // by searching "valve".
     VALVES("VALVES", { it == Domain.VALVE }),
     CLIMATE("CLIMATE", { it == Domain.CLIMATE || it == Domain.HUMIDIFIER || it == Domain.FAN || it == Domain.WATER_HEATER }),
-    LOCKS("LOCKS", { it == Domain.LOCK }),
+    // LOCKS bucket also catches alarm control panels — they share the security
+    // affordance vocabulary on the deck (PIN keypad, armed-state framing) so
+    // grouping them under one chip keeps discovery sensible without inflating
+    // the chip strip with a one-domain ALARMS bucket.
+    LOCKS("LOCKS", { it == Domain.LOCK || it == Domain.ALARM_CONTROL_PANEL }),
     MEDIA("MEDIA", { it == Domain.MEDIA_PLAYER }),
     // Action-only entities — scene/script/button/input_button. SCENES is the
     // human-friendly umbrella label even though it also covers scripts/buttons,

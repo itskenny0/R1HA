@@ -735,6 +735,11 @@ class DefaultHaRepository(
             // the chrome pill reads sensibly.
             Domain.REMOTE -> !stateStr.equals("off", ignoreCase = true) &&
                 stateStr != "unavailable" && stateStr != "unknown"
+            // Alarm: "on" when the panel is armed in any flavour, triggered,
+            // or in the arming / pending / disarming transitions. Disarmed
+            // reads as off so the chrome pill reads false-as-safe.
+            Domain.ALARM_CONTROL_PANEL -> !stateStr.equals("disarmed", ignoreCase = true) &&
+                stateStr != "unavailable" && stateStr != "unknown" && stateStr.isNotBlank()
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
         val pct = computePercentWithState(id.domain, raw.attributes, stateStr)
@@ -814,7 +819,8 @@ class DefaultHaRepository(
             // Lawn-mower / climate / valve / water_heater each read this field
             // via [EntityState.hasFeature] to gate their respective chips.
             supportedFeatures = when (id.domain) {
-                Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER ->
+                Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
+                Domain.ALARM_CONTROL_PANEL ->
                     raw.attributes["supported_features"].asInt() ?: 0
                 else -> 0
             },
@@ -875,6 +881,12 @@ class DefaultHaRepository(
                 raw.attributes["current_activity"].asString() else null,
             remoteActivityList = if (id.domain == Domain.REMOTE)
                 extractStringList(raw.attributes["activity_list"]) else emptyList(),
+            alarmCodeFormat = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                raw.attributes["code_format"].asString() else null,
+            alarmCodeArmRequired = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                (raw.attributes["code_arm_required"].asBoolean() ?: true) else true,
+            alarmChangedBy = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                raw.attributes["changed_by"].asString() else null,
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -949,7 +961,9 @@ class DefaultHaRepository(
         // percent null.
         Domain.UPDATE,
         // Remote — IR / RF send-only; no scalar.
-        Domain.REMOTE -> null
+        Domain.REMOTE,
+        // Alarm — categorical armed-state, not a 0..100 scalar.
+        Domain.ALARM_CONTROL_PANEL -> null
     }
 
     /**
@@ -1041,7 +1055,9 @@ class DefaultHaRepository(
         // screen reads directly; no card-stack raw value to expose.
         Domain.UPDATE,
         // Remote — IR / RF send-only; no numeric raw.
-        Domain.REMOTE -> null
+        Domain.REMOTE,
+        // Alarm — armed state is categorical, no numeric raw to surface.
+        Domain.ALARM_CONTROL_PANEL -> null
     }
 
     /**
@@ -1127,6 +1143,9 @@ class DefaultHaRepository(
         // Remote — IR / RF blasters; send-only, no scalar. Renders as a
         // switch card with the RemotePanel for activities + custom buttons.
         Domain.REMOTE -> false
+        // Alarm — discrete armed states; rendered as a switch card with the
+        // AlarmPanel surfacing the per-mode chips. No wheel-driven scalar.
+        Domain.ALARM_CONTROL_PANEL -> false
     }
 
     override fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>> =
@@ -1278,6 +1297,9 @@ class DefaultHaRepository(
                         // Remote: anything non-off / available counts as on.
                         Domain.REMOTE -> !stateStr.equals("off", ignoreCase = true) &&
                             stateStr != "unavailable" && stateStr != "unknown"
+                        // Alarm: any non-disarmed armed/triggered state reads as on.
+                        Domain.ALARM_CONTROL_PANEL -> !stateStr.equals("disarmed", ignoreCase = true) &&
+                            available && stateStr.isNotBlank()
                     },
                     percent = pct,
                     raw = rawNum,
@@ -1340,7 +1362,8 @@ class DefaultHaRepository(
                     vacuumSupportedFeatures = if (id.domain == Domain.VACUUM)
                         attrs["supported_features"].asInt() ?: 0 else 0,
                     supportedFeatures = when (id.domain) {
-                        Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER ->
+                        Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
+                        Domain.ALARM_CONTROL_PANEL ->
                             attrs["supported_features"].asInt() ?: 0
                         else -> 0
                     },
@@ -1401,6 +1424,12 @@ class DefaultHaRepository(
                         attrs["current_activity"].asString() else null,
                     remoteActivityList = if (id.domain == Domain.REMOTE)
                         extractStringList(attrs["activity_list"]) else emptyList(),
+                    alarmCodeFormat = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                        attrs["code_format"].asString() else null,
+                    alarmCodeArmRequired = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                        (attrs["code_arm_required"].asBoolean() ?: true) else true,
+                    alarmChangedBy = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                        attrs["changed_by"].asString() else null,
                 )
                 }.getOrElse { t ->
                     R1Log.w("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")
