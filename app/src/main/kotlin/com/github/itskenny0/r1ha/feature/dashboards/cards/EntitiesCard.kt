@@ -36,7 +36,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 @Composable
 fun EntitiesCard(
     card: LovelaceCard.Entities,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -55,7 +55,7 @@ fun EntitiesCard(
 @Composable
 private fun EntityRowItem(
     row: EntityRow,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
 ) {
     val eid = safeEntityId(row.entityId)

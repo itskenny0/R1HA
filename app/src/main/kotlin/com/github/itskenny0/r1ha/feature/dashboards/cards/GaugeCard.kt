@@ -22,8 +22,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.EntityId
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -41,7 +39,7 @@ import com.github.itskenny0.r1ha.core.theme.R1
 @Composable
 fun GaugeCard(
     card: LovelaceCard.Gauge,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     modifier: Modifier = Modifier,
 ) {
     val eid = safeEntityId(card.entityId)

@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LovelaceCardRenderer(
     card: LovelaceCard,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -188,7 +188,7 @@ fun defaultTapAction(entityId: String): LovelaceAction {
  */
 fun evaluateConditions(
     conditions: List<LovelaceCondition>,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
 ): Boolean {
     if (conditions.isEmpty()) return true
     return conditions.all { cond ->

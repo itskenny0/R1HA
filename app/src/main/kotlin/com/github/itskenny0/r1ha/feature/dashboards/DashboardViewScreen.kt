@@ -157,7 +157,7 @@ fun DashboardViewScreen(
             )
             else -> ViewModeBody(
                 cards = renderedCards,
-                stateMap = entities ?: emptyMap(),
+                stateMap = entities,
                 onAction = { action ->
                     scope.launch {
                         dispatchLovelaceAction(
@@ -217,9 +217,16 @@ private fun TopChip(text: String, accent: androidx.compose.ui.graphics.Color, on
 @Composable
 private fun ViewModeBody(
     cards: List<LovelaceCard>,
-    stateMap: Map<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>,
+    stateMap: Map<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>?,
     onAction: (LovelaceAction) -> Unit,
 ) {
+    // Wrap the live map in a stable, value-equal holder once per emission.
+    // A bare Map is an unstable Compose parameter, so without this every
+    // card recomposes on every websocket state event; the holder + per-card
+    // slicing below lets a card skip when its own entities didn't change.
+    val states = remember(stateMap) {
+        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.of(stateMap ?: emptyMap())
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -227,8 +234,18 @@ private fun ViewModeBody(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        cards.forEach { card ->
-            LovelaceCardRenderer(card = card, stateMap = stateMap, onAction = onAction)
+        cards.forEachIndexed { index, card ->
+            // key() keeps each card's composition identity stable across
+            // state churn; the per-card slice means an unrelated entity
+            // update doesn't invalidate this card. Index is folded into the
+            // key so two cards with identical raw JSON stay distinct.
+            androidx.compose.runtime.key(index, card.raw) {
+                LovelaceCardRenderer(
+                    card = card,
+                    stateMap = states.sliceFor(card),
+                    onAction = onAction,
+                )
+            }
         }
         Spacer(Modifier.height(28.dp))
     }
@@ -312,7 +329,7 @@ private fun EditCardWrapper(
         Spacer(Modifier.height(6.dp))
         LovelaceCardRenderer(
             card = rendered.card,
-            stateMap = emptyMap(),
+            stateMap = com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.EMPTY,
             onAction = { /* inert in edit mode */ },
         )
         Spacer(Modifier.height(8.dp))

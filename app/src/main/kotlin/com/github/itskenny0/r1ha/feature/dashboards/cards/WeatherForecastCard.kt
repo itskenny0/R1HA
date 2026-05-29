@@ -16,8 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.EntityId
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
 import kotlinx.serialization.json.JsonArray
@@ -37,7 +35,7 @@ import kotlinx.serialization.json.JsonPrimitive
 @Composable
 fun WeatherForecastCard(
     card: LovelaceCard.WeatherForecast,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     modifier: Modifier = Modifier,
 ) {
     val eid = safeEntityId(card.entityId)

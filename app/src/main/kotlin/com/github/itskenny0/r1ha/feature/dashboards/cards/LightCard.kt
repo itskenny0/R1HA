@@ -22,10 +22,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.EntityId
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
-import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Light
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -40,7 +37,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 @Composable
 fun LightCard(
     card: Light,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {

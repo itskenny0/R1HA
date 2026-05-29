@@ -11,8 +11,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.EntityId
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -26,7 +24,7 @@ import com.github.itskenny0.r1ha.core.theme.R1
 @Composable
 fun VerticalStackCard(
     card: LovelaceCard.VerticalStack,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -42,7 +40,9 @@ fun VerticalStackCard(
             )
         }
         card.cards.forEach { child ->
-            LovelaceCardRenderer(child, stateMap, onAction)
+            // Hand each child only its own entity slice so a state change on
+            // one row doesn't recompose its siblings.
+            LovelaceCardRenderer(child, stateMap.sliceFor(child), onAction)
         }
     }
 }
@@ -52,7 +52,7 @@ fun VerticalStackCard(
 @Composable
 fun HorizontalStackCard(
     card: LovelaceCard.HorizontalStack,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -72,7 +72,7 @@ fun HorizontalStackCard(
             card.cards.forEach { child ->
                 LovelaceCardRenderer(
                     card = child,
-                    stateMap = stateMap,
+                    stateMap = stateMap.sliceFor(child),
                     onAction = onAction,
                     modifier = Modifier.weight(1f),
                 )
@@ -90,7 +90,7 @@ fun HorizontalStackCard(
 @Composable
 fun GridCard(
     card: LovelaceCard.Grid,
-    stateMap: Map<EntityId, EntityState>,
+    stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -106,7 +106,7 @@ fun GridCard(
             ) {
                 rowCards.forEach { child ->
                     androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
-                        LovelaceCardRenderer(card = child, stateMap = stateMap, onAction = onAction)
+                        LovelaceCardRenderer(card = child, stateMap = stateMap.sliceFor(child), onAction = onAction)
                     }
                 }
                 // Pad the trailing slots so the last row doesn't stretch
