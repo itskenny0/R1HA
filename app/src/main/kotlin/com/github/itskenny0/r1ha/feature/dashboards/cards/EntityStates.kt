@@ -95,6 +95,16 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
             }
             collectEntityIds(card.card, sink)
         }
+        is LovelaceCard.Sensor -> sink.addEntity(card.entityId)
+        is LovelaceCard.PictureGlance -> {
+            card.cameraImage?.let { sink.addEntity(it) }
+            card.entities.forEach { sink.addEntity(it.entityId) }
+        }
+        is LovelaceCard.PictureEntity -> sink.addEntity(card.entityId)
+        is LovelaceCard.Area -> card.entities.forEach { sink.addEntity(it.entityId) }
+        is LovelaceCard.HistoryGraph -> card.entities.forEach { sink.addEntity(it.entityId) }
+        is LovelaceCard.AlarmPanel -> sink.addEntity(card.entityId)
+        is LovelaceCard.Map -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> Unit
         is LovelaceCard.Unsupported -> Unit

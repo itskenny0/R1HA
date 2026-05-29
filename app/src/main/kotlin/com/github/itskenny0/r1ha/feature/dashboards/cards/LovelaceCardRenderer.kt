@@ -65,6 +65,13 @@ fun LovelaceCardRenderer(
         is LovelaceCard.VerticalStack -> VerticalStackCard(card, stateMap, onAction, modifier)
         is LovelaceCard.HorizontalStack -> HorizontalStackCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Grid -> GridCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.Sensor -> SensorCard(card, stateMap, modifier)
+        is LovelaceCard.PictureGlance -> PictureGlanceCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.PictureEntity -> PictureEntityCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.Area -> AreaCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.HistoryGraph -> HistoryGraphCard(card, stateMap, modifier)
+        is LovelaceCard.AlarmPanel -> AlarmPanelCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.Map -> MapCard(card, stateMap, modifier)
         is LovelaceCard.Conditional -> {
             val passes = remember(card.conditions, stateMap) {
                 evaluateConditions(card.conditions, stateMap)

@@ -673,6 +673,9 @@ fun AppNavGraph(
                 dashboardUrlPath = dashboardUrlPath,
                 viewPath = viewPath,
                 onBack = { navController.popBackStack() },
+                onOpenLovelace = {
+                    navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
+                },
             )
         }
         composable(Routes.DASHBOARD) { backStackEntry ->

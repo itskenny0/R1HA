@@ -377,6 +377,19 @@ class DashboardsViewModel(
                 card.cards.forEach { collectEntityIdsFromCard(it, sink) }
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Conditional ->
                 collectEntityIdsFromCard(card.card, sink)
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Sensor -> sink.addOptional(card.entityId)
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.PictureGlance -> {
+                card.cameraImage?.let { sink.addOptional(it) }
+                card.entities.forEach { sink.addOptional(it.entityId) }
+            }
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.PictureEntity -> sink.addOptional(card.entityId)
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Area ->
+                card.entities.forEach { sink.addOptional(it.entityId) }
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.HistoryGraph ->
+                card.entities.forEach { sink.addOptional(it.entityId) }
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.AlarmPanel -> sink.addOptional(card.entityId)
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Map ->
+                card.entities.forEach { sink.addOptional(it.entityId) }
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Markdown -> Unit
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Heading -> Unit
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Unsupported -> Unit

@@ -185,6 +185,131 @@ class LovelaceParserTest {
         assertEquals("light.b", (cards[1] as LovelaceCard.Tile).entityId)
     }
 
+    @Test fun `parses sensor picture-glance picture-entity area history-graph alarm-panel map`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "path": "p",
+                    "cards": [
+                      {"type": "sensor", "entity": "sensor.power", "graph": "line", "hours_to_show": 12},
+                      {"type": "picture-glance", "title": "Porch", "image": "/local/porch.jpg",
+                       "entities": ["light.porch", "switch.porch"]},
+                      {"type": "picture-entity", "entity": "camera.front", "show_state": false},
+                      {"type": "area", "area": "living_room", "navigation_path": "/lovelace/0"},
+                      {"type": "history-graph", "entities": ["sensor.a", "sensor.b"], "hours_to_show": 48},
+                      {"type": "alarm-panel", "entity": "alarm_control_panel.home",
+                       "states": ["arm_home", "arm_away"]},
+                      {"type": "map", "entities": ["device_tracker.phone"], "hours_to_show": 6}
+                    ]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
+        assertEquals(7, cards.size)
+        val sensor = cards[0] as LovelaceCard.Sensor
+        assertEquals("sensor.power", sensor.entityId)
+        assertTrue(sensor.graph)
+        assertEquals(12, sensor.hoursToShow)
+        val pg = cards[1] as LovelaceCard.PictureGlance
+        assertEquals("/local/porch.jpg", pg.image)
+        assertEquals(listOf("light.porch", "switch.porch"), pg.entities.map { it.entityId })
+        val pe = cards[2] as LovelaceCard.PictureEntity
+        assertEquals("camera.front", pe.entityId)
+        assertEquals(false, pe.showState)
+        val area = cards[3] as LovelaceCard.Area
+        assertEquals("living_room", area.area)
+        assertEquals("/lovelace/0", area.navigationPath)
+        val hg = cards[4] as LovelaceCard.HistoryGraph
+        assertEquals(48, hg.hoursToShow)
+        assertEquals(2, hg.entities.size)
+        val alarm = cards[5] as LovelaceCard.AlarmPanel
+        assertEquals("alarm_control_panel.home", alarm.entityId)
+        assertEquals(listOf("arm_home", "arm_away"), alarm.states)
+        val map = cards[6] as LovelaceCard.Map
+        assertEquals(listOf("device_tracker.phone"), map.entities.map { it.entityId })
+        assertEquals(6, map.hoursToShow)
+    }
+
+    @Test fun `sensor without graph defaults to no line and 24h`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"sensor","entity":"sensor.x"}"""),
+        ) as LovelaceCard.Sensor
+        assertEquals(false, card.graph)
+        assertEquals(24, card.hoursToShow)
+    }
+
+    @Test fun `sensor and area without required entity fall to Unsupported`() {
+        val noEntity = LovelaceParser.parseCard(obj("""{"type":"sensor"}"""))
+        assertTrue(noEntity is LovelaceCard.Unsupported)
+        val noArea = LovelaceParser.parseCard(obj("""{"type":"area"}"""))
+        assertTrue(noArea is LovelaceCard.Unsupported)
+    }
+
+    @Test fun `picture-glance uses entity as camera image when camera_image absent`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"picture-glance","entity":"camera.kitchen","entities":["light.k"]}"""),
+        ) as LovelaceCard.PictureGlance
+        assertEquals("camera.kitchen", card.cameraImage)
+    }
+
+    @Test fun `root-level strategy with no views flags isStrategyGenerated`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj("""{"strategy":{"type":"original-states"}}"""),
+        )
+        assertTrue(cfg.isStrategyGenerated)
+        assertTrue(cfg.views.isEmpty())
+    }
+
+    @Test fun `view-level strategy with no cards flags the view but a concrete view does not`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [
+                    {"path": "auto", "strategy": {"type": "areas"}},
+                    {"path": "manual", "cards": [{"type": "tile", "entity": "light.a"}]}
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val auto = cfg.views[0]
+        val manual = cfg.views[1]
+        assertTrue(auto.isStrategyGenerated)
+        assertTrue(auto.cards.isEmpty())
+        assertTrue(!manual.isStrategyGenerated)
+        // Mixed dashboard (one strategy view + one concrete view) is NOT a
+        // wholly strategy-generated dashboard.
+        assertTrue(!cfg.isStrategyGenerated)
+    }
+
+    @Test fun `sections all-strategy view flags isStrategyGenerated`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "type": "sections",
+                    "path": "home",
+                    "sections": [
+                      {"strategy": {"type": "area", "area": "kitchen"}},
+                      {"strategy": {"type": "area", "area": "bedroom"}}
+                    ]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val view = cfg.views.first()
+        assertTrue(view.isStrategyGenerated)
+        assertTrue(view.cards.isEmpty())
+        assertTrue(cfg.isStrategyGenerated)
+    }
+
     @Test fun `dashboard list parses entries and skips malformed rows`() {
         val arr = (Json.parseToJsonElement(
             """[{"id":"a","url_path":"lights","title":"Lights","mode":"storage"},
