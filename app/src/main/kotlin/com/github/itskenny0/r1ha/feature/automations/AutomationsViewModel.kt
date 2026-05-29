@@ -104,15 +104,13 @@ class AutomationsViewModel(
                         Entry(
                             id = EntityId(row.entityId),
                             name = row.friendlyName,
-                            enabled = row.state.equals("on", ignoreCase = true),
-                            mode = (row.attributes["mode"] as? JsonPrimitive)?.content
-                                ?.let { modeOf(it) } ?: Mode.UNKNOWN,
+                            enabled = enabledFrom(row.state),
+                            mode = modeOf((row.attributes["mode"] as? JsonPrimitive)?.content),
                             currentRunning = (row.attributes["current"] as? JsonPrimitive)?.content
                                 ?.toIntOrNull() ?: 0,
-                            lastTriggered = (row.attributes["last_triggered"] as? JsonPrimitive)
-                                ?.content?.let { raw ->
-                                    runCatching { Instant.parse(raw) }.getOrNull()
-                                },
+                            lastTriggered = lastTriggeredOf(
+                                (row.attributes["last_triggered"] as? JsonPrimitive)?.content,
+                            ),
                         )
                     }.sortedBy { it.name.lowercase() }
                     R1Log.i("Automations", "loaded ${entries.size}")
@@ -129,17 +127,6 @@ class AutomationsViewModel(
                 },
             )
         }
-    }
-
-    /** Map HA's mode attribute to one of our [Mode] enum cases.
-     *  Unknown values (a future HA mode we haven't enumerated) fall
-     *  through to [Mode.UNKNOWN] so the chip still renders. */
-    private fun modeOf(raw: String): Mode = when (raw.lowercase()) {
-        "single" -> Mode.SINGLE
-        "parallel" -> Mode.PARALLEL
-        "queued" -> Mode.QUEUED
-        "restart" -> Mode.RESTART
-        else -> Mode.UNKNOWN
     }
 
     /**
@@ -182,6 +169,12 @@ class AutomationsViewModel(
      *  service contract — and the state attribute reflects this
      *  exactly. */
     fun setEnabled(entry: Entry, enabled: Boolean) {
+        // Optimistic update: flip the row's enabled flag in-place right away so
+        // the inline toggle reflects the intent without waiting on the round
+        // trip. The follow-up refresh reconciles against HA's authoritative
+        // state; on a failed dispatch the row snaps back to its real value once
+        // that refresh lands.
+        _ui.value = _ui.value.copy(all = withEnabled(_ui.value.all, entry.id, enabled))
         viewModelScope.launch {
             val call = ServiceCall(
                 target = entry.id,
@@ -198,6 +191,12 @@ class AutomationsViewModel(
                 onFailure = { t ->
                     R1Log.w("Automations", "toggle ${entry.id.value} failed: ${t.message}")
                     Toaster.error("Toggle failed: ${t.message ?: "unknown"}")
+                    // Revert the optimistic flip immediately on failure; the
+                    // refresh below still runs but this keeps the row honest
+                    // even if the network is down and the refresh also fails.
+                    _ui.value = _ui.value.copy(
+                        all = withEnabled(_ui.value.all, entry.id, !enabled),
+                    )
                 },
             )
             kotlinx.coroutines.delay(400L)
@@ -259,6 +258,44 @@ class AutomationsViewModel(
     }
 
     companion object {
+        /** Derive the enabled flag from an automation's raw state string.
+         *  HA reports "on" for an enabled automation (its triggers fire) and
+         *  "off" for a disabled one. Anything else (unavailable, unknown,
+         *  blank) is treated as not-enabled so the toggle reads off rather
+         *  than guessing. Case-insensitive to match HA's loose casing. */
+        internal fun enabledFrom(rawState: String?): Boolean =
+            rawState?.trim()?.equals("on", ignoreCase = true) == true
+
+        /** Map HA's `mode` attribute to one of our [Mode] enum cases. A null
+         *  attribute or a future HA mode we haven't enumerated falls through
+         *  to [Mode.UNKNOWN] so the badge still renders. */
+        internal fun modeOf(raw: String?): Mode = when (raw?.trim()?.lowercase()) {
+            "single" -> Mode.SINGLE
+            "parallel" -> Mode.PARALLEL
+            "queued" -> Mode.QUEUED
+            "restart" -> Mode.RESTART
+            else -> Mode.UNKNOWN
+        }
+
+        /** Parse the `last_triggered` attribute into an [Instant]. Returns
+         *  null for a never-fired automation (null/blank attribute) or a
+         *  malformed timestamp, so the relative-time label silently hides
+         *  rather than throwing. */
+        internal fun lastTriggeredOf(raw: String?): Instant? {
+            val trimmed = raw?.trim().orEmpty()
+            if (trimmed.isEmpty()) return null
+            return runCatching { Instant.parse(trimmed) }.getOrNull()
+        }
+
+        /** Return a copy of [all] with the entry matching [id] flipped to
+         *  [enabled]. Pure list transform backing the optimistic toggle so it
+         *  can be exercised without a live ViewModel / repository. */
+        internal fun withEnabled(
+            all: List<Entry>,
+            id: EntityId,
+            enabled: Boolean,
+        ): List<Entry> = all.map { if (it.id == id) it.copy(enabled = enabled) else it }
+
         fun factory(
             haRepository: HaRepository,
             settings: com.github.itskenny0.r1ha.core.prefs.SettingsRepository,
