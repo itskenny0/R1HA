@@ -171,4 +171,33 @@ class WeatherForecastTest {
         assertThat(degreesToCompass(359.0)).isEqualTo("N")
         assertThat(degreesToCompass(-90.0)).isEqualTo("W")
     }
+
+    @Test
+    fun `parseForecastResponse pulls forecast array from per-entity object`() {
+        // weather.get_forecasts returns the per-entity object as {"forecast":[...]}.
+        val el = Json.parseToJsonElement(
+            """
+            {
+              "forecast": [
+                {"datetime":"2026-05-29T12:00:00+00:00","condition":"sunny","temperature":21.5},
+                {"datetime":"2026-05-29T13:00:00+00:00","condition":"cloudy","temperature":20.0}
+              ]
+            }
+            """.trimIndent(),
+        )
+        val entries = parseForecastResponse(el)
+        assertThat(entries).hasSize(2)
+        assertThat(entries.first().condition).isEqualTo("sunny")
+        assertThat(entries.first().temperature).isEqualTo(21.5)
+        assertThat(entries[1].condition).isEqualTo("cloudy")
+    }
+
+    @Test
+    fun `parseForecastResponse tolerates missing or malformed shapes`() {
+        // Null, a non-object element, and an object without a forecast array all
+        // yield empty so the ViewModel falls back to the legacy attribute.
+        assertThat(parseForecastResponse(null)).isEmpty()
+        assertThat(parseForecastResponse(Json.parseToJsonElement("[]"))).isEmpty()
+        assertThat(parseForecastResponse(Json.parseToJsonElement("""{"other":1}"""))).isEmpty()
+    }
 }

@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.weather
 
 import androidx.compose.runtime.Stable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
@@ -79,6 +80,21 @@ fun parseForecastEntries(arr: JsonArray?): List<ForecastEntry> {
             windBearingText = bearingRaw?.takeIf { it.toDoubleOrNull() == null },
         )
     }
+}
+
+/**
+ * Parse the per-entity object returned by the `weather.get_forecasts`
+ * response-only service into [ForecastEntry] rows. HA shapes the
+ * per-entity service response as `{ "forecast": [ ... ] }`, so we pull
+ * the `forecast` array out and reuse [parseForecastEntries]. Anything
+ * that isn't an object carrying a `forecast` JSON array (an empty
+ * fallback object, a malformed payload) yields an empty list so the
+ * caller can fall back to the legacy attribute.
+ */
+fun parseForecastResponse(element: JsonElement?): List<ForecastEntry> {
+    val obj = element as? JsonObject ?: return emptyList()
+    val arr = obj["forecast"] as? JsonArray ?: return emptyList()
+    return parseForecastEntries(arr)
 }
 
 /**

@@ -18,14 +18,15 @@ import kotlinx.serialization.json.JsonPrimitive
  * HA's weather domain reports — condition (raw state, e.g.
  * "partlycloudy"), temperature, humidity, wind speed, pressure.
  *
- * Forecast handling reads the legacy `forecast` attribute and splits it
- * into hourly + daily buckets (an integration usually exposes one or the
- * other; some expose both across a refresh). Parsing + classification +
- * label formatting live in WeatherForecast.kt as pure helpers so they're
- * unit tested directly. Newer HA installs that dropped the legacy
- * attribute in favour of the `weather.get_forecasts` service-with-
- * response need a repository method that forwards `?return_response`;
- * see the agent report.
+ * Forecast handling prefers the modern `weather.get_forecasts`
+ * response-only service (requested once for `hourly` and once for
+ * `daily` per entity via [HaRepository.getWeatherForecasts]), which is
+ * the only path newer HA integrations expose. When the service errors or
+ * returns nothing (older integrations, providers that only do one
+ * cadence) it falls back to the legacy `forecast` attribute and buckets
+ * that by its detected cadence. Parsing + classification + label
+ * formatting live in WeatherForecast.kt as pure helpers so they're unit
+ * tested directly.
  */
 class WeatherViewModel(
     private val haRepository: HaRepository,
@@ -76,23 +77,7 @@ class WeatherViewModel(
                 onSuccess = { rows ->
                     val list = rows.map { row ->
                         val attrs = row.attributes
-                        val forecastArr = attrs["forecast"] as? kotlinx.serialization.json.JsonArray
-                        val entries = parseForecastEntries(forecastArr)
-                        // The legacy attribute carries a single cadence; bucket
-                        // it so the UI can offer a toggle if a future refresh
-                        // (or merged entity) ever surfaces both.
-                        val hourly: List<ForecastEntry>
-                        val daily: List<ForecastEntry>
-                        when (classifyForecastKind(entries)) {
-                            ForecastKind.Hourly -> {
-                                hourly = entries.take(MAX_HOURLY)
-                                daily = emptyList()
-                            }
-                            ForecastKind.Daily -> {
-                                hourly = emptyList()
-                                daily = entries.take(MAX_DAILY)
-                            }
-                        }
+                        val (hourly, daily) = loadForecasts(row.entityId, attrs)
                         Weather(
                             entityId = row.entityId,
                             name = row.friendlyName,
@@ -122,6 +107,43 @@ class WeatherViewModel(
                 },
             )
         }
+    }
+
+    /**
+     * Resolve a weather entity's hourly + daily forecast buckets. Tries the
+     * modern `weather.get_forecasts` service first (one call per cadence),
+     * then falls back to the legacy `forecast` attribute for any bucket the
+     * service couldn't fill. The fallback classifies the single legacy list by
+     * its detected cadence so it lands in the matching bucket.
+     */
+    private suspend fun loadForecasts(
+        entityId: String,
+        attrs: kotlinx.serialization.json.JsonObject,
+    ): Pair<List<ForecastEntry>, List<ForecastEntry>> {
+        val hourlyEntries = haRepository.getWeatherForecasts(entityId, "hourly")
+            .map { parseForecastResponse(it) }
+            .getOrDefault(emptyList())
+        val dailyEntries = haRepository.getWeatherForecasts(entityId, "daily")
+            .map { parseForecastResponse(it) }
+            .getOrDefault(emptyList())
+
+        var hourly = hourlyEntries.take(MAX_HOURLY)
+        var daily = dailyEntries.take(MAX_DAILY)
+
+        // Legacy fallback: when get_forecasts returned nothing for either
+        // cadence, classify the single legacy attribute list and slot it into
+        // the matching empty bucket.
+        if (hourly.isEmpty() || daily.isEmpty()) {
+            val legacyArr = attrs["forecast"] as? kotlinx.serialization.json.JsonArray
+            val legacy = parseForecastEntries(legacyArr)
+            if (legacy.isNotEmpty()) {
+                when (classifyForecastKind(legacy)) {
+                    ForecastKind.Hourly -> if (hourly.isEmpty()) hourly = legacy.take(MAX_HOURLY)
+                    ForecastKind.Daily -> if (daily.isEmpty()) daily = legacy.take(MAX_DAILY)
+                }
+            }
+        }
+        return hourly to daily
     }
 
     companion object {
