@@ -561,9 +561,15 @@ sealed class LovelaceAction {
     @Immutable
     data class Url(val url: String) : LovelaceAction()
 
-    /** `toggle` / `more-info` / `none`. */
+    /**
+     * `toggle` / `more-info` / `none`. [entityId] carries the target so the
+     * dispatcher can resolve the entity (and its live state, for a toggle)
+     * without relying on a card-level fallback. Null only when the action
+     * came from config with no resolvable entity (the dispatcher then falls
+     * back to the card's own entity id).
+     */
     @Immutable
-    data class Builtin(val name: String) : LovelaceAction()
+    data class Builtin(val name: String, val entityId: String? = null) : LovelaceAction()
 }
 
 /** Severity bands for the gauge card. colour the needle when the value
@@ -576,15 +582,30 @@ data class GaugeSeverity(
 )
 
 /**
- * Condition for [LovelaceCard.Conditional]. We model the two most common
- * shapes (state equals / numeric state) and treat anything else as a
- * permissive `true` so the wrapped card always renders rather than being
- * silently hidden by an unsupported condition.
+ * Condition for [LovelaceCard.Conditional]. We model the common shapes
+ * (state / state_not / numeric_state). A condition shape we cannot evaluate
+ * locally maps to [Never] so the wrapped card is hidden rather than shown:
+ * a condition exists precisely to gate visibility, and showing a card whose
+ * gate we cannot evaluate is the wrong default (it leaks cards HA would hide).
  */
 @Immutable
 sealed class LovelaceCondition {
+    /**
+     * HA `state` / `state_not` condition. [states] is the set of accepted
+     * state strings (HA allows a single `state:` value or a `state:` list).
+     * When [negate] is true (a `state_not` condition) the rule passes when the
+     * entity's state is NOT in [states].
+     */
     @Immutable
-    data class StateEquals(val entityId: String, val state: String) : LovelaceCondition()
+    data class StateEquals(
+        val entityId: String,
+        val states: List<String>,
+        val negate: Boolean = false,
+    ) : LovelaceCondition() {
+        /** Back-compat single-state constructor used by tests + simple call sites. */
+        constructor(entityId: String, state: String, negate: Boolean = false) :
+            this(entityId, listOf(state), negate)
+    }
 
     @Immutable
     data class NumericState(
@@ -593,7 +614,15 @@ sealed class LovelaceCondition {
         val below: Double?,
     ) : LovelaceCondition()
 
-    /** Catch-all: condition shape we don't understand. Evaluates to true. */
+    /** Catch-all for a condition shape we can't evaluate. Fails CLOSED
+     *  (hides the card) so an unmodelled condition never leaks a card HA
+     *  would have hidden. */
+    @Immutable
+    data object Never : LovelaceCondition()
+
+    /** A condition that is satisfied unconditionally. Reserved for shapes we
+     *  deliberately treat as "always show" (e.g. an empty/degenerate rule);
+     *  unmodelled shapes use [Never] instead. */
     @Immutable
     data object AlwaysTrue : LovelaceCondition()
 }

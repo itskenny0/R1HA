@@ -541,21 +541,44 @@ object LovelaceParser {
             val condition = obj["condition"]?.asStringOrNull()?.lowercase()
             val entity = obj["entity"]?.asStringOrNull()
             when {
-                entity == null -> LovelaceCondition.AlwaysTrue
-                condition == "state" || condition == null -> {
-                    val state = obj["state"]?.asStringOrNull()
-                        ?: obj["state_not"]?.asStringOrNull()
-                        ?: return@mapNotNull LovelaceCondition.AlwaysTrue
-                    LovelaceCondition.StateEquals(entityId = entity, state = state)
+                // `state` / `state_not` — HA's most common gate. Accepts a single
+                // `state:` value or a `state:` list; `state_not` negates the match.
+                // A state condition with no entity, or with neither state nor
+                // state_not, can't be evaluated, so it fails closed.
+                condition == "state" || condition == "state_not" ||
+                    (condition == null && entity != null) -> {
+                    if (entity == null) return@mapNotNull LovelaceCondition.Never
+                    val negate = condition == "state_not" || obj["state_not"] != null
+                    val raw = if (negate) obj["state_not"] else obj["state"]
+                    val states = parseConditionStates(raw)
+                    if (states.isEmpty()) LovelaceCondition.Never
+                    else LovelaceCondition.StateEquals(entityId = entity, states = states, negate = negate)
                 }
-                condition == "numeric_state" -> LovelaceCondition.NumericState(
+                condition == "numeric_state" && entity != null -> LovelaceCondition.NumericState(
                     entityId = entity,
                     above = obj["above"]?.asDoubleOrNull(),
                     below = obj["below"]?.asDoubleOrNull(),
                 )
-                else -> LovelaceCondition.AlwaysTrue
+                // Conditions we can't evaluate locally — `screen` (media-query
+                // breakpoints), `user` (logged-in user id), template conditions,
+                // an `and`/`or`/`not` group, or a malformed rule. HA evaluates
+                // these server/client-side; we can't, so we fail closed and hide
+                // the card rather than leaking it.
+                else -> LovelaceCondition.Never
             }
         }
+    }
+
+    /**
+     * Pull the accepted-state list out of a `state:` / `state_not:` value. HA
+     * accepts either a single string or a list of strings; numbers/booleans are
+     * coerced to their string form so `state: 1` and `state: on` both match.
+     */
+    private fun parseConditionStates(el: JsonElement?): List<String> = when (el) {
+        null -> emptyList()
+        is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.contentOrNull() }
+        is JsonPrimitive -> el.contentOrNull()?.let { listOf(it) } ?: emptyList()
+        else -> emptyList()
     }
 
     // Per-element accessors that mirror HA's loose JSON shape: numbers
