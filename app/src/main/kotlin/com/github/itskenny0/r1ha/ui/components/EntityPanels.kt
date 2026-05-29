@@ -978,3 +978,159 @@ private fun formatTemperature(value: Double): String {
     val rounded = Math.round(value * 10.0) / 10.0
     return if (rounded == rounded.toLong().toDouble()) rounded.toLong().toString() else rounded.toString()
 }
+
+// ── Raw-attribute readers ────────────────────────────────────────────────────────────────
+// The cover/humidifier panels read straight from the entity's raw attributes map
+// rather than relying on typed EntityState fields, because the repository doesn't
+// parse these particular attributes into dedicated fields (and this slice doesn't
+// touch the repository). attributesJson is the verbatim HA attributes object, so
+// these readers mirror HA's own attribute names exactly.
+
+private fun EntityState.attrInt(key: String): Int? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+
+private fun EntityState.attrString(key: String): String? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+private fun EntityState.attrStringList(key: String): List<String> =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        ?: emptyList()
+
+/**
+ * `supported_features` bitmask read straight from the entity's raw attributes.
+ * EntityState.supportedFeatures is only populated by the repository for a handful
+ * of domains (climate / valve / water_heater / lawn_mower / alarm); cover and
+ * humidifier aren't among them, so the dedicated panels read the bit directly.
+ * Returns 0 when the attribute is absent, which the panels treat as
+ * "forgive the omission" the same way [EntityState.hasFeature] does.
+ */
+private fun EntityState.rawSupportedFeatures(): Int = attrInt("supported_features") ?: 0
+
+/** True when [bit] is set in the raw `supported_features`, or when the integration
+ *  didn't advertise a bitmask at all (== 0) — same forgive-an-omission rule the
+ *  typed [EntityState.hasFeature] helpers use. */
+private fun EntityState.rawHasFeature(bit: Int): Boolean {
+    val sf = rawSupportedFeatures()
+    return sf == 0 || (sf and bit) != 0
+}
+
+/**
+ * Cover control panel — tilt controls for venetian blinds / shutters. The
+ * SwitchCard's OPEN/CLOSE end-stops (and the scalar card's wheel) already drive
+ * the main position; this panel adds the slat-tilt actions HA exposes alongside.
+ *
+ * Each chip is gated on the corresponding tilt bit of `supported_features`
+ * (OPEN_TILT / CLOSE_TILT / STOP_TILT). A plain roller blind that advertises no
+ * tilt bits renders nothing here. The current tilt position (when the cover
+ * reports `current_tilt_position`) shows as a small readout so the user can see
+ * where the slats sit without a separate more-info pop.
+ */
+@Composable
+fun CoverPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    if (state.id.domain != Domain.COVER) return
+    val dispatch = LocalOnEntityCall.current
+    val showOpenTilt = state.rawHasFeature(EntityState.CoverFeature.OPEN_TILT)
+    val showCloseTilt = state.rawHasFeature(EntityState.CoverFeature.CLOSE_TILT)
+    val showStopTilt = state.rawHasFeature(EntityState.CoverFeature.STOP_TILT)
+    // Tilt position-stepping chips only make sense when the integration accepts an
+    // explicit tilt position. We surface a coarse -/+ pair (10% steps) rather than a
+    // second wheel binding — the wheel already drives the cover's main position, and
+    // a duplicate wheel mode would need theme-side plumbing this slice doesn't own.
+    val hasTiltPosition = state.rawHasFeature(EntityState.CoverFeature.SET_TILT_POSITION) &&
+        state.attrInt("current_tilt_position") != null
+    // Gate the whole panel on at least one tilt capability being advertised. We
+    // require an explicit tilt bit (not the forgive-omission default) here so a
+    // plain blind with supported_features == 0 doesn't sprout a dead tilt row.
+    val sf = state.rawSupportedFeatures()
+    val anyTiltBit = sf != 0 && (sf and (
+        EntityState.CoverFeature.OPEN_TILT or
+            EntityState.CoverFeature.CLOSE_TILT or
+            EntityState.CoverFeature.STOP_TILT or
+            EntityState.CoverFeature.SET_TILT_POSITION
+        )) != 0
+    if (!anyTiltBit) return
+    val tiltPos = state.attrInt("current_tilt_position")
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(text = "TILT", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (showOpenTilt) PanelChip("OPEN", accent) {
+                dispatch?.invoke(ServiceCall.coverOpenTilt(state.id))
+            }
+            if (showCloseTilt) PanelChip("CLOSE", accent) {
+                dispatch?.invoke(ServiceCall.coverCloseTilt(state.id))
+            }
+            if (showStopTilt) PanelChip("STOP", accent) {
+                dispatch?.invoke(ServiceCall.coverStopTilt(state.id))
+            }
+            if (hasTiltPosition) {
+                val current = tiltPos ?: 0
+                PanelChip("TILT −", accent) {
+                    dispatch?.invoke(
+                        ServiceCall.coverSetTiltPosition(state.id, (current - 10).coerceIn(0, 100)),
+                    )
+                }
+                PanelChip("TILT +", accent) {
+                    dispatch?.invoke(
+                        ServiceCall.coverSetTiltPosition(state.id, (current + 10).coerceIn(0, 100)),
+                    )
+                }
+            }
+        }
+        if (tiltPos != null) {
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "AT", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.width(6.dp))
+                Text(text = "$tiltPos%", style = R1.labelMicro, color = accent)
+            }
+        }
+    }
+}
+
+/**
+ * Humidifier control panel — surfaces the operating-mode picker
+ * (normal / eco / away / boost / sleep / etc.) when the humidifier advertises
+ * the MODES feature bit and reports an `available_modes` list. The
+ * target-humidity setpoint stays wheel-driven (ServiceCall.setPercent routes
+ * humidifier through `set_humidity`), so this panel only adds the discrete
+ * mode chips. Renders nothing for humidifiers without modes.
+ */
+@Composable
+fun HumidifierPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
+    if (state.id.domain != Domain.HUMIDIFIER) return
+    val dispatch = LocalOnEntityCall.current
+    val modes = state.attrStringList("available_modes")
+    val hasModes = modes.isNotEmpty() &&
+        state.rawHasFeature(EntityState.HumidifierFeature.MODES)
+    if (!hasModes) return
+    val current = state.attrString("mode")
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(text = "MODE", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(4.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            modes.forEach { mode ->
+                PanelChip(
+                    label = mode.replace('_', ' ').uppercase(),
+                    accent = accent,
+                    selected = current.equals(mode, ignoreCase = true),
+                    onClick = {
+                        dispatch?.invoke(ServiceCall.humidifierSetMode(state.id, mode))
+                    },
+                )
+            }
+        }
+    }
+}

@@ -209,6 +209,16 @@ fun SwitchCard(
                 ClimatePanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
             com.github.itskenny0.r1ha.core.ha.Domain.ALARM_CONTROL_PANEL ->
                 AlarmPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            // Covers reach the SwitchCard path when they advertise no position
+            // (tilt-only venetian blinds, simple open/close shutters). The tilt
+            // chips self-gate on the cover's tilt feature bits, so a plain
+            // open/close blind renders nothing here.
+            com.github.itskenny0.r1ha.core.ha.Domain.COVER ->
+                CoverPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
+            // Humidifiers without a `humidity` scalar land on the SwitchCard path;
+            // the mode picker self-gates on the MODES feature bit + available_modes.
+            com.github.itskenny0.r1ha.core.ha.Domain.HUMIDIFIER ->
+                HumidifierPanel(state = state, accent = accent, modifier = Modifier.padding(top = 12.dp))
             else -> Unit
         }
 
