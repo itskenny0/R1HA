@@ -86,7 +86,7 @@ fun WeatherScreen(
                 )
             }
             ui.error != null && ui.weathers.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Distinct from "empty integration" — surface the actual
@@ -99,7 +99,7 @@ fun WeatherScreen(
                 )
             }
             ui.weathers.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -117,9 +117,9 @@ fun WeatherScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     items(items = ui.weathers, key = { it.entityId }) { w ->
                         WeatherRow(w)
@@ -139,7 +139,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -147,10 +147,10 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 style = R1.body,
                 color = conditionAccent(w.condition),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = w.name,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -158,12 +158,12 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             if (w.temperature != null) {
                 Text(
                     text = formatTemp(w.temperature, w.temperatureUnit),
-                    style = R1.body,
+                    style = R1.numeralM,
                     color = R1.Ink,
                 )
             }
         }
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Text(
             text = w.condition.replace('-', ' ').uppercase(),
             style = R1.labelMicro,
@@ -185,7 +185,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             }
         }
         if (parts.isNotEmpty()) {
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = parts.joinToString(" · "),
                 style = R1.labelMicro,
@@ -197,12 +197,12 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
         // weather.get_forecasts (service-with-response) which we don't
         // dispatch yet; that's a follow-up.
         if (w.forecast.isNotEmpty()) {
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(R1.space.s))
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
                 for (day in w.forecast) {
                     ForecastTile(day, w.temperatureUnit)
@@ -218,7 +218,7 @@ private fun ForecastTile(day: WeatherViewModel.ForecastDay, tempUnit: String?) {
         modifier = Modifier
             .clip(R1.ShapeS)
             .background(R1.Bg)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
