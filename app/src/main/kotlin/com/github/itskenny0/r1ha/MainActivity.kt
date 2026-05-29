@@ -22,7 +22,9 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.theme.LocalUiOptions
@@ -221,9 +223,22 @@ class MainActivity : ComponentActivity() {
                     kotlinx.coroutines.delay(msUntilMinute.coerceAtLeast(1_000L))
                 }
             }
+            // Provide LocalUiOptions from a NARROWED flow so the CompositionLocal
+            // only re-provides (and recomposes the whole card world below) when
+            // UiOptions actually changes — not on every unrelated settings edit
+            // (a wheel-step toggle, a key rebind, etc.) that mints a new AppSettings.
+            // UiOptions is a value-equal @Immutable data class, so
+            // distinctUntilChanged collapses no-op emissions. Seeded from the
+            // already-collected `settings` so there's no extra suspend before the
+            // first frame.
+            val uiOptions by remember {
+                graph.settings.settings
+                    .map { it.ui }
+                    .distinctUntilChanged()
+            }.collectAsStateWithLifecycle(initialValue = settings.ui)
             R1ThemeHost(themeId = themeNow) {
                 CompositionLocalProvider(
-                    LocalUiOptions provides settings.ui,
+                    LocalUiOptions provides uiOptions,
                     com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken provides bearerToken,
                 ) {
                     // Wrap the nav graph in a Box so the in-app ToastHost can
