@@ -6,6 +6,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +38,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -45,22 +48,22 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
 /**
- * Helpers browser — mirrors HA's frontend Helpers configuration panel
- * (Settings → Devices & Services → Helpers).
+ * Helpers browser, mirrors HA's frontend Helpers configuration panel
+ * (Settings, Devices & Services, Helpers).
  *
  * Each helper domain gets its own per-row control archetype:
- *   - input_boolean → ON / OFF chip (tap toggles)
- *   - input_number → −/+ stepper with current value + unit
- *   - counter → −/+ + RESET (counter only steps by the configured `step`)
- *   - input_select → tap to cycle through options (long-press shows full list — future)
- *   - input_text / input_datetime → read-only value display (editing
+ *   - input_boolean: ON / OFF chip (tap toggles)
+ *   - input_number: -/+ stepper with current value + unit
+ *   - counter: -/+ + RESET (counter only steps by the configured `step`)
+ *   - input_select: tap to cycle through options (long-press shows full list)
+ *   - input_text / input_datetime: read-only value display (editing
  *     these on a wheel-input device isn't great UX; we display only)
- *   - input_button → PRESS chip
- *   - timer → state label + START / PAUSE / CANCEL pills
+ *   - input_button: PRESS chip
+ *   - timer: state label + START / PAUSE / CANCEL pills
  *
  * The screen never tries to be a full editor; for that the user has the
  * web UI. This is the at-a-glance "what helpers do I have, can I poke
- * them?" surface — matches HA Companion's helpers list parity item.
+ * them?" surface, matches HA Companion's helpers list parity item.
  */
 @Composable
 fun HelpersScreen(
@@ -164,25 +167,17 @@ fun HelpersScreen(
             title = "HELPERS",
             onBack = onBack,
             action = {
-                // REFRESH chip — same idiom the Energy / Zones /
+                // REFRESH chip, same idiom the Energy / Zones /
                 // Automations surfaces use. The list also auto-pulls
                 // on every helper service dispatch with a 300-500 ms
                 // settle, but a manual refresh is still useful after
                 // an external HA change.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "…" else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = if (ui.loading) "…" else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh helpers",
+                )
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -200,7 +195,7 @@ fun HelpersScreen(
                 )
             }
             ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -210,18 +205,18 @@ fun HelpersScreen(
                 )
             }
             ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "No helpers defined. Add them under Settings → " +
-                        "Devices & Services → Helpers in HA's web UI.",
+                    text = "No helpers defined. Add them under Settings, " +
+                        "Devices & Services, Helpers in HA's web UI.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
             }
             ui.entries.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -239,10 +234,10 @@ fun HelpersScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                        contentPadding = PaddingValues(
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         items(items = ui.entries, key = { it.id.value }) { entry ->
                             HelperRow(
@@ -275,28 +270,20 @@ private fun BucketChips(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(scroll)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         HelpersViewModel.Bucket.entries.forEach { bucket ->
             val count = counts[bucket] ?: 0
             // Hide empty per-kind chips (except ALL) so the strip stays
             // tight on small installs.
             if (count == 0 && bucket != HelpersViewModel.Bucket.ALL) return@forEach
-            val active = bucket == current
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(bucket) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = "${bucket.label} · $count",
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = "${bucket.label}  $count",
+                variant = R1ChipVariant.Filter,
+                selected = bucket == current,
+                onClick = { onSelect(bucket) },
+            )
         }
     }
 }
@@ -306,14 +293,14 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "FIND",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = R1.space.s),
         )
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
@@ -324,9 +311,11 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
-                modifier = Modifier.size(48.dp).r1Pressable({ onQueryChange("") }),
+                modifier = Modifier
+                    .size(R1.MinTarget)
+                    .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
@@ -354,6 +343,10 @@ private fun HelperRow(
      */
     onToggleWheel: () -> Unit = {},
 ) {
+    // Helper rows are bespoke control cards (each domain renders a different
+    // per-kind affordance below the header), so they stay hand-rolled rather
+    // than collapsing to R1Row. They adopt the canonical boxed surface and the
+    // spacing scale so they read flush with the rest of the app.
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -367,12 +360,13 @@ private fun HelperRow(
                 if (isWheelActive) R1.AccentWarm else R1.Hairline,
                 R1.ShapeS,
             )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = entry.name,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
@@ -385,22 +379,28 @@ private fun HelperRow(
                     style = R1.labelMicro,
                     color = R1.AccentWarm,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
-            Spacer(Modifier.width(6.dp))
-            // ☆ pin-to-favourites — only for helpers whose entity_id
+            // ☆ pin-to-favourites, only for helpers whose entity_id
             // domain is recognised by the card stack (input_boolean
             // renders as SwitchCard, input_number as a scalar slider,
             // input_select as SelectCard, input_button as ActionCard).
             // counter / timer / input_text / input_datetime aren't on
             // the card stack's supported-domain list yet, so the star
-            // would silently no-op for those — hide it instead of
+            // would silently no-op for those, hide it instead of
             // misleading the user.
             if (entry.kind in CARD_STACK_FRIENDLY_KINDS) {
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .r1Pressable(onClick = { vm.addToFavorites(entry) }),
+                        .size(R1.MinTarget)
+                        .r1Pressable(
+                            onClick = { vm.addToFavorites(entry) },
+                            contentDescription = if (isFavorite) {
+                                "Pinned to favourites"
+                            } else {
+                                "Pin to favourites"
+                            },
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -410,11 +410,11 @@ private fun HelperRow(
                     )
                 }
             }
-            Spacer(Modifier.width(4.dp))
-            Text(
+            Spacer(Modifier.width(R1.space.xs))
+            R1Chip(
                 text = entry.kind.name,
-                style = R1.labelMicro,
-                color = accentForKind(entry.kind),
+                variant = R1ChipVariant.Pill,
+                tone = accentForKind(entry.kind),
             )
         }
         Text(
@@ -423,8 +423,8 @@ private fun HelperRow(
             color = R1.InkSoft,
             maxLines = 1,
         )
-        Spacer(Modifier.size(6.dp))
-        // Per-kind control row — branches on entry.kind so each domain
+        Spacer(Modifier.height(R1.space.s))
+        // Per-kind control row, branches on entry.kind so each domain
         // gets the affordance that fits HA's native semantic.
         when (entry.kind) {
             HelpersViewModel.Kind.BOOLEAN -> BooleanControl(entry, vm)
@@ -449,24 +449,14 @@ private fun HelperRow(
 private fun BooleanControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
     val isOn = entry.state.equals("on", ignoreCase = true)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(if (isOn) R1.AccentGreen.copy(alpha = 0.22f) else R1.Bg)
-                .border(
-                    1.dp,
-                    if (isOn) R1.AccentGreen.copy(alpha = 0.5f) else R1.Hairline,
-                    R1.ShapeS,
-                )
-                .r1Pressable(onClick = { vm.toggleBoolean(entry) })
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = if (isOn) "ON" else "OFF",
-                style = R1.body,
-                color = if (isOn) R1.AccentGreen else R1.InkSoft,
-            )
-        }
+        R1Chip(
+            text = if (isOn) "ON" else "OFF",
+            variant = R1ChipVariant.Filter,
+            selected = isOn,
+            tone = R1.AccentGreen,
+            onClick = { vm.toggleBoolean(entry) },
+            contentDescription = if (isOn) "Turn ${entry.name} off" else "Turn ${entry.name} on",
+        )
     }
 }
 
@@ -483,12 +473,12 @@ private fun NumberControl(
         StepPill(label = "−", onClick = {
             if (value != null) vm.setNumber(entry, (value - step).coerceAtLeast(entry.min ?: Double.NEGATIVE_INFINITY))
         })
-        Spacer(Modifier.width(8.dp))
-        // Live value display — formatted as integer when the step is
+        Spacer(Modifier.width(R1.space.s))
+        // Live value display, formatted as integer when the step is
         // whole, otherwise as a one-decimal float so 0.5° helpers
         // don't get rounded to an unhelpful integer. Tap toggles wheel
         // stepping for this row so the user can dial a value with the
-        // R1 wheel instead of repeatedly hitting +/−. Visual accent
+        // R1 wheel instead of repeatedly hitting +/-. Visual accent
         // matches the row's WHEEL chip / border highlight.
         val formatted = when {
             value == null -> entry.state
@@ -498,7 +488,7 @@ private fun NumberControl(
         val withUnit = if (entry.unit.isNullOrBlank()) formatted else "$formatted ${entry.unit}"
         Text(
             text = withUnit,
-            style = R1.body,
+            style = R1.bodyEmph,
             color = if (isWheelActive) R1.AccentWarm else R1.Ink,
             modifier = Modifier
                 .weight(1f)
@@ -507,7 +497,7 @@ private fun NumberControl(
                     contentDescription = if (isWheelActive)
                         "Stop wheel stepping" else "Use wheel to step this value",
                 )
-                .padding(vertical = 4.dp),
+                .padding(vertical = R1.space.xs),
         )
         StepPill(label = "+", onClick = {
             if (value != null) vm.setNumber(entry, (value + step).coerceAtMost(entry.max ?: Double.POSITIVE_INFINITY))
@@ -529,39 +519,33 @@ private fun CounterControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) 
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         StepPill(label = "−", onClick = { vm.counterDecrement(entry) })
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = value?.toInt()?.toString() ?: entry.state,
-            style = R1.body,
+            style = R1.bodyEmph,
             color = R1.Ink,
             modifier = Modifier.weight(1f),
         )
         StepPill(label = "+", onClick = { vm.counterIncrement(entry) })
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(R1.space.s))
         // RESET wipes the running count and some users hang days-since-X counters
         // off these. Two-stage confirm (tap arms, second tap commits within 3s)
         // so a stray tap doesn't blow away a multi-month accumulation.
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(if (armed.value) R1.StatusAmber.copy(alpha = 0.28f) else R1.Bg)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onClick = {
-                    if (armed.value) {
-                        armed.value = false
-                        vm.counterReset(entry)
-                    } else {
-                        armed.value = true
-                    }
-                })
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        ) {
-            Text(
-                text = if (armed.value) "CONFIRM" else "RESET",
-                style = R1.labelMicro,
-                color = R1.StatusAmber,
-            )
-        }
+        R1Chip(
+            text = if (armed.value) "CONFIRM" else "RESET",
+            variant = R1ChipVariant.Action,
+            selected = armed.value,
+            tone = R1.StatusAmber,
+            onClick = {
+                if (armed.value) {
+                    armed.value = false
+                    vm.counterReset(entry)
+                } else {
+                    armed.value = true
+                }
+            },
+            contentDescription = "Reset ${entry.name}",
+        )
     }
 }
 
@@ -596,31 +580,26 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
                         }
                     },
                 )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .heightIn(min = 32.dp)
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(text = entry.state, style = R1.body, color = R1.AccentWarm, maxLines = 1)
+            Text(text = entry.state, style = R1.bodyEmph, color = R1.AccentWarm, maxLines = 1)
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = "${currentIdx + 1} / ${options.size.coerceAtLeast(1)}",
             style = R1.labelMicro,
             color = R1.InkSoft,
         )
         if (options.size > 3) {
-            Spacer(Modifier.width(6.dp))
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(
-                        onClick = { showPicker.value = true },
-                        contentDescription = "Pick from full list",
-                    )
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            ) {
-                Text(text = "···", style = R1.labelMicro, color = R1.InkSoft)
-            }
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = "···",
+                variant = R1ChipVariant.Action,
+                onClick = { showPicker.value = true },
+                contentDescription = "Pick from full list",
+            )
         }
     }
     if (showPicker.value) {
@@ -638,7 +617,7 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
 }
 
 /**
- * Full-list option picker for input_select. Rendered as an AlertDialog so it
+ * Full-list option picker for input_select. Rendered as a Dialog so it
  * sits above the helpers screen with a scrim and a native dismiss gesture.
  * The current option is highlighted in AccentWarm; everything else reads as
  * a plain row to keep the picker visually quiet against the busy helpers list.
@@ -657,7 +636,7 @@ private fun SelectOptionPicker(
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
         ) {
             Text(
                 text = label.uppercase(),
@@ -665,10 +644,10 @@ private fun SelectOptionPicker(
                 color = R1.InkSoft,
                 maxLines = 1,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             androidx.compose.foundation.lazy.LazyColumn(
                 modifier = Modifier.heightIn(max = 240.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
             ) {
                 items(items = options, key = { it }) { opt ->
                     val isCurrent = opt == current
@@ -680,7 +659,8 @@ private fun SelectOptionPicker(
                                 if (isCurrent) R1.AccentWarm.copy(alpha = 0.18f) else R1.Bg,
                             )
                             .r1Pressable(onClick = { onPick(opt) })
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                            .heightIn(min = R1.MinTarget)
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -702,16 +682,14 @@ private fun SelectOptionPicker(
 
 @Composable
 private fun ButtonControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(R1.AccentGreen.copy(alpha = 0.18f))
-            .border(1.dp, R1.AccentGreen.copy(alpha = 0.5f), R1.ShapeS)
-            .r1Pressable(onClick = { vm.pressButton(entry) })
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    ) {
-        Text(text = "PRESS", style = R1.body, color = R1.AccentGreen)
-    }
+    R1Chip(
+        text = "PRESS",
+        variant = R1ChipVariant.Action,
+        selected = true,
+        tone = R1.AccentGreen,
+        onClick = { vm.pressButton(entry) },
+        contentDescription = "Press ${entry.name}",
+    )
 }
 
 @Composable
@@ -724,7 +702,7 @@ private fun TimerControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
             else -> entry.state.uppercase() to R1.InkSoft
         }
         Text(text = label, style = R1.labelMicro, color = color, modifier = Modifier.width(72.dp))
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(R1.space.s))
         // Show either the static remaining string (paused) or a
         // ticking countdown (active). Falls through to plain text for
         // idle timers.
@@ -747,7 +725,7 @@ private fun TimerControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
             },
         )
         if (!isIdle) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.s))
             StepPill(label = "✕", onClick = { vm.timerService(entry, "cancel") })
         }
     }
@@ -755,15 +733,19 @@ private fun TimerControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
 
 @Composable
 private fun StepPill(label: String, onClick: () -> Unit) {
+    // Bespoke -/+/timer pill: same surface/border treatment as R1Chip's
+    // unselected Action state but on a square 48dp target so the wheel-tap
+    // hit area on stepper controls stays comfortable.
     Box(
         modifier = Modifier
             .clip(R1.ShapeS)
             .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .r1Pressable(onClick = onClick, contentDescription = label)
+            .size(R1.MinTarget),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.body, color = R1.InkSoft)
+        Text(text = label, style = R1.bodyEmph, color = R1.InkSoft)
     }
 }
 
