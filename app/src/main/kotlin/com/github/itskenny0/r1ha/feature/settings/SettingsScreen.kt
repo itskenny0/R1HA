@@ -250,6 +250,28 @@ fun SettingsScreen(
     // the picker renders above the page body.
     val tilePickerOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
+    // Featured spotlight trio for the ROOT list. The pool is built only from
+    // features whose deep-link callback is actually wired, then [featuredFor]
+    // picks a rotating window. The selection is computed once (remembered with no
+    // recomposing keys) so it stays stable for the whole Settings session and
+    // never reshuffles on navigation / back-stack changes; it advances per cold
+    // start because [FeaturedRotation.sessionIndex] is sampled fresh each process.
+    val featuredTrio = androidx.compose.runtime.remember {
+        val pool = listOf(
+            FeaturedItem("⊞", "Dashboards", "Browse every native Lovelace dashboard", onOpenDashboards),
+            FeaturedItem("⚡", "Energy", "Live power flow and consumption totals", onOpenEnergy),
+            FeaturedItem("◎", "Assist", "Talk to Home Assistant from the wheel", onOpenAssist),
+            FeaturedItem("◉", "Cameras", "Snapshots and live streams at a glance", onOpenCameras),
+            FeaturedItem("⚙", "Automations", "Inspect, trigger and trace your rules", onOpenAutomations),
+            FeaturedItem("∿", "Statistics", "Long-term history for any sensor", onOpenStatistics),
+            FeaturedItem("≡", "Logbook", "Recent activity across the whole home", onOpenLogbook),
+            FeaturedItem("✦", "Scenes", "Fire a saved scene in one tap", onOpenScenes),
+            FeaturedItem("☀", "Weather", "Forecast and conditions for your zone", onOpenWeather),
+            FeaturedItem("▦", "Media", "Browse media sources and libraries", onOpenMediaBrowse),
+        )
+        featuredFor(pool, FeaturedRotation.sessionIndex, count = 3)
+    }
+
     // SAF launchers for backup export / import (Connection > Backup & restore).
     val pendingBackupBlob = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -331,6 +353,7 @@ fun SettingsScreen(
                 when (node) {
                     SettingsNode.ROOT -> rootCategories(
                         s = s,
+                        featured = featuredTrio,
                         groupBadge = ::groupBadge,
                         push = push,
                         onOpenCategory = onOpenCategory,
@@ -478,11 +501,13 @@ fun SettingsScreen(
 
 private fun LazyListScope.rootCategories(
     s: AppSettings,
+    featured: List<FeaturedItem>,
     groupBadge: (Array<out String>) -> Int,
     push: (SettingsNode) -> Unit,
     onOpenCategory: (SettingsCategory) -> Unit,
     onOpenAbout: () -> Unit,
 ) {
+    featuredSection(featured)
     item { CategoryRow(node = SettingsNode.CONNECTION, summary = s.server?.url ?: "Not connected", badge = groupBadge(arrayOf("SERVER")), onClick = { push(SettingsNode.CONNECTION) }) }
     item { CategoryRow(node = SettingsNode.APPEARANCE, summary = "Theme: ${prettyEnumName(s.theme.name)}", badge = groupBadge(arrayOf("APPEARANCE", "CARD UI")), onClick = { push(SettingsNode.APPEARANCE) }) }
     item { CategoryRow(node = SettingsNode.INPUT, summary = "Wheel step: ${s.wheel.stepPercent}%", badge = groupBadge(arrayOf("SCROLL WHEEL")), onClick = { push(SettingsNode.INPUT) }) }
