@@ -302,8 +302,13 @@ private fun AutomationRow(
                         text = if (modeExplain.value) modeExplainer(entry.mode) else entry.mode.label,
                         style = R1.labelMicro,
                         color = R1.AccentNeutral,
+                        // The badge sits inside the row, so its own gesture
+                        // detector swallows taps before they reach the row's
+                        // enabled-toggle. Forward a tap to onToggleEnabled so
+                        // tapping the badge behaves identically to tapping the
+                        // rest of the row; long-press keeps the mode explainer.
                         modifier = Modifier.r1RowPressable(
-                            onTap = { /* no-op; tap is reserved for the row */ },
+                            onTap = onToggleEnabled,
                             onLongPress = { modeExplain.value = true },
                         ),
                     )
