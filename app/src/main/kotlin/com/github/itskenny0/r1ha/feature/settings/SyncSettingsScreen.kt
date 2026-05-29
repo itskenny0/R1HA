@@ -11,10 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +35,12 @@ import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.sync.HaSettingsSync
 import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Button
+import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -86,7 +90,7 @@ fun SyncSettingsScreen(
                         "device-local and never synced.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.m),
                 )
             }
 
@@ -115,94 +119,99 @@ fun SyncSettingsScreen(
                 item { ConflictModelCard() }
 
                 // ── Live stats ────────────────────────────────────────
-                item { SubHeader("STATUS") }
-                item { StatsCard(stats) }
+                item {
+                    R1Section(title = "Status") { StatsCard(stats) }
+                }
 
                 // ── Manual triggers ───────────────────────────────────
-                item { SubHeader("MANUAL") }
                 item {
-                    SyncActionsRow(
-                        onSyncNow = { syncManager?.pullNow() },
-                        onPushNow = { syncManager?.pushNow() },
-                    )
-                }
-                item {
-                    SwitchInlineRow(
-                        title = "Manual only",
-                        subtitle = if (s.integrations.haSyncManualOnly) {
-                            "No auto-pull or auto-push. SYNC / PUSH chips still work."
-                        } else {
-                            "Sync runs automatically on edit and on interval."
-                        },
-                        checked = s.integrations.haSyncManualOnly,
-                        onCheckedChange = { v ->
-                            vm.updateIntegrations { it.copy(haSyncManualOnly = v) }
-                        },
-                    )
-                }
-
-                // ── Interval ──────────────────────────────────────────
-                item { SubHeader("INTERVAL") }
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 8.dp),
-                    ) {
-                        Text(
-                            text = "How often to check HA for changes from other " +
-                                "devices. Pushes from this device happen on " +
-                                "every edit (debounced ~5s).",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(bottom = 6.dp),
+                    R1Section(title = "Manual") {
+                        SyncActionsRow(
+                            onSyncNow = { syncManager?.pullNow() },
+                            onPushNow = { syncManager?.pushNow() },
                         )
-                        IntervalStepperRow(
-                            seconds = s.integrations.haSyncIntervalSec,
-                            onChange = { v ->
-                                vm.updateIntegrations { it.copy(haSyncIntervalSec = v) }
+                        SwitchInlineRow(
+                            title = "Manual only",
+                            subtitle = if (s.integrations.haSyncManualOnly) {
+                                "No auto-pull or auto-push. SYNC / PUSH chips still work."
+                            } else {
+                                "Sync runs automatically on edit and on interval."
+                            },
+                            checked = s.integrations.haSyncManualOnly,
+                            onCheckedChange = { v ->
+                                vm.updateIntegrations { it.copy(haSyncManualOnly = v) }
                             },
                         )
                     }
                 }
 
-                // ── Reset and rebroadcast ─────────────────────────────
-                item { SubHeader("RESET") }
+                // ── Interval ──────────────────────────────────────────
                 item {
-                    ResetRebroadcastRow(
-                        onConfirm = { syncManager?.pushNow() },
-                    )
+                    R1Section(title = "Interval") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = R1.space.xl),
+                        ) {
+                            Text(
+                                text = "How often to check HA for changes from other " +
+                                    "devices. Pushes from this device happen on " +
+                                    "every edit (debounced ~5s).",
+                                style = R1.body,
+                                color = R1.InkMuted,
+                                modifier = Modifier.padding(bottom = R1.space.s),
+                            )
+                            IntervalStepperRow(
+                                seconds = s.integrations.haSyncIntervalSec,
+                                onChange = { v ->
+                                    vm.updateIntegrations { it.copy(haSyncIntervalSec = v) }
+                                },
+                            )
+                        }
+                    }
+                }
+
+                // ── Reset and rebroadcast ─────────────────────────────
+                item {
+                    R1Section(title = "Reset") {
+                        ResetRebroadcastRow(
+                            onConfirm = { syncManager?.pushNow() },
+                        )
+                    }
                 }
 
                 // ── What to sync ──────────────────────────────────────
-                item { SubHeader("WHAT TO SYNC") }
                 item {
-                    Text(
-                        text = "All categories sync by default. Switch a category " +
-                            "off to keep its values local to this device; the " +
-                            "remote value won't overwrite local on pull, and " +
-                            "local edits in that category won't be pushed to HA.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
-                    )
-                }
-                items(SyncCategory.entries) { category ->
-                    val included = !s.integrations.haSyncExcludedCategories.contains(category.name)
-                    CategoryRow(
-                        category = category,
-                        included = included,
-                        onChange = { newIncluded ->
-                            vm.updateIntegrations { prev ->
-                                val next = prev.haSyncExcludedCategories.toMutableSet()
-                                if (newIncluded) next.remove(category.name)
-                                else next.add(category.name)
-                                prev.copy(haSyncExcludedCategories = next)
+                    R1Section(
+                        title = "What to sync",
+                        description = "All categories sync by default. Switch one off " +
+                            "to keep its values local to this device.",
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        ) {
+                            SyncCategory.entries.forEach { category ->
+                                val included =
+                                    !s.integrations.haSyncExcludedCategories.contains(category.name)
+                                CategoryRow(
+                                    category = category,
+                                    included = included,
+                                    onChange = { newIncluded ->
+                                        vm.updateIntegrations { prev ->
+                                            val next =
+                                                prev.haSyncExcludedCategories.toMutableSet()
+                                            if (newIncluded) next.remove(category.name)
+                                            else next.add(category.name)
+                                            prev.copy(haSyncExcludedCategories = next)
+                                        }
+                                    },
+                                )
                             }
-                        },
-                    )
+                        }
+                    }
                 }
-                item { Spacer(Modifier.height(48.dp)) }
+                item { Spacer(Modifier.height(R1.MinTarget)) }
             }
         }
     }
@@ -218,7 +227,7 @@ private fun MasterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(
@@ -227,7 +236,7 @@ private fun MasterRow(
                 R1.ShapeS,
             )
             .r1Pressable(onClick = { onCheckedChange(!checked) })
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -245,18 +254,18 @@ private fun ConflictModelCard() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text(
             text = "CONFLICT MODEL",
             style = R1.labelMicro,
             color = R1.AccentWarm,
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(
             text = "Last-write-wins by wall-clock timestamp. Whichever device " +
                 "edited most recently overwrites the older value on the " +
@@ -275,42 +284,24 @@ private fun SyncActionsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = R1.space.xl),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ActionChip(
-            label = "SYNC NOW",
-            tint = R1.AccentWarm,
-            modifier = Modifier.weight(1f),
+        R1Button(
+            text = "SYNC NOW",
+            variant = R1ButtonVariant.Outlined,
+            accent = R1.AccentWarm,
+            modifier = Modifier.weight(1f).height(R1.MinTarget),
             onClick = onSyncNow,
         )
-        ActionChip(
-            label = "PUSH",
-            tint = R1.AccentGreen,
-            modifier = Modifier.weight(1f),
+        R1Button(
+            text = "PUSH",
+            variant = R1ButtonVariant.Outlined,
+            accent = R1.AccentGreen,
+            modifier = Modifier.weight(1f).height(R1.MinTarget),
             onClick = onPushNow,
         )
-    }
-}
-
-@Composable
-private fun ActionChip(
-    label: String,
-    tint: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = modifier
-            .height(48.dp)
-            .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = label, style = R1.labelMicro, color = tint)
     }
 }
 
@@ -321,22 +312,12 @@ private fun SwitchInlineRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .r1Pressable(
-                onClick = { onCheckedChange(!checked) },
-                hapticOnClick = false,
-            )
-            .padding(horizontal = 22.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = R1.bodyEmph, color = R1.Ink)
-            Text(subtitle, style = R1.body, color = R1.InkMuted)
-        }
-        R1Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
+    R1Row(
+        label = title,
+        description = subtitle,
+        onClick = { onCheckedChange(!checked) },
+        trailing = { R1Switch(checked = checked, onCheckedChange = onCheckedChange) },
+    )
 }
 
 /** Two-stage armed/commit reset. First tap arms (label flips, 3s auto-disarm);
@@ -352,11 +333,11 @@ private fun ResetRebroadcastRow(onConfirm: () -> Unit) {
             armed = false
         }
     }
-    Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) {
+    Column(modifier = Modifier.padding(horizontal = R1.space.xl)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(R1.MinTarget)
                 .clip(R1.ShapeS)
                 .background(if (armed) R1.StatusAmber.copy(alpha = 0.22f) else R1.SurfaceMuted)
                 .border(
@@ -380,7 +361,7 @@ private fun ResetRebroadcastRow(onConfirm: () -> Unit) {
                 color = if (armed) R1.StatusAmber else R1.AccentWarm,
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(
             text = if (armed) {
                 "Tap again to push this device's snapshot. Other devices " +
@@ -401,27 +382,12 @@ private fun CategoryRow(
     included: Boolean,
     onChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .r1Pressable(
-                onClick = { onChange(!included) },
-                hapticOnClick = false,
-            )
-            .padding(horizontal = 22.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(category.displayLabel, style = R1.bodyEmph, color = R1.Ink)
-            Text(
-                text = category.description,
-                style = R1.body,
-                color = R1.InkMuted,
-                modifier = Modifier.padding(top = 1.dp),
-            )
-        }
-        R1Switch(checked = included, onCheckedChange = onChange)
-    }
+    R1Row(
+        label = category.displayLabel,
+        description = category.description,
+        onClick = { onChange(!included) },
+        trailing = { R1Switch(checked = included, onCheckedChange = onChange) },
+    )
 }
 
 /** Compact stats block: state pill, last pull / push, last error. Formatted
@@ -448,15 +414,15 @@ private fun StatsCard(stats: HaSettingsSync.Stats) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StatePill(label = pillLabel, tint = pillTint)
+            R1Chip(text = pillLabel, variant = R1ChipVariant.Pill, tone = pillTint)
             Spacer(Modifier.weight(1f))
             Text(
                 text = "${stats.pullCount} pulls · ${stats.pushCount} pushes",
@@ -464,7 +430,7 @@ private fun StatsCard(stats: HaSettingsSync.Stats) {
                 color = R1.InkMuted,
             )
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(R1.space.xxs))
         StatRow(
             label = "LAST PULL",
             value = relativeAge(stats.lastPullAtMillis, now.value),
@@ -485,7 +451,7 @@ private fun StatsCard(stats: HaSettingsSync.Stats) {
             tint = R1.InkSoft,
         )
         if (stats.lastErrorMessage != null) {
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = "LAST ERROR · ${relativeAge(stats.lastErrorAtMillis, now.value)}",
                 style = R1.labelMicro,
@@ -495,22 +461,9 @@ private fun StatsCard(stats: HaSettingsSync.Stats) {
                 text = stats.lastErrorMessage,
                 style = R1.body,
                 color = R1.StatusRed,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
-    }
-}
-
-@Composable
-private fun StatePill(label: String, tint: Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeRound)
-            .background(tint.copy(alpha = 0.16f))
-            .border(1.dp, tint.copy(alpha = 0.55f), R1.ShapeRound)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = tint)
     }
 }
 
@@ -520,16 +473,6 @@ private fun StatRow(label: String, value: String, tint: Color) {
         Text(text = label, style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.weight(1f))
         Text(text = value, style = R1.labelMicro, color = tint)
     }
-}
-
-@Composable
-private fun SubHeader(text: String) {
-    Text(
-        text = text,
-        style = R1.sectionHeader,
-        color = R1.AccentWarm,
-        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp),
-    )
 }
 
 /** "12s ago" / "5m ago" / "2h ago" / "3d ago" / "never" for never-fired
@@ -558,7 +501,7 @@ private fun IntervalStepperRow(seconds: Int, onChange: (Int) -> Unit) {
             enabled = seconds > 30,
             onClick = { onChange((seconds - 30).coerceAtLeast(30)) },
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = "${seconds}s",
             style = R1.bodyEmph,
@@ -577,12 +520,12 @@ private fun IntervalStepperRow(seconds: Int, onChange: (Int) -> Unit) {
 private fun StepChip(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .height(48.dp)
+            .height(R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = { if (enabled) onClick() })
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = R1.space.l),
         contentAlignment = Alignment.Center,
     ) {
         Text(
