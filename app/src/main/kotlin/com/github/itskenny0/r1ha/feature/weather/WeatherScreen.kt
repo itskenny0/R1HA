@@ -243,7 +243,7 @@ private fun ForecastTile(day: WeatherViewModel.ForecastDay, tempUnit: String?) {
         }
         if (day.precipitation != null && day.precipitation > 0.0) {
             Text(
-                text = "${"%.1f".format(day.precipitation)}mm",
+                text = "${"%.1f".format(java.util.Locale.US, day.precipitation)}mm",
                 style = R1.labelMicro,
                 color = R1.AccentCool,
             )
@@ -267,7 +267,7 @@ private fun formatTemp(t: Double, unit: String?): String =
 
 private fun formatNumber(d: Double): String =
     // One decimal for sub-100 values, integer for larger (pressure is usually 4 digits)
-    if (kotlin.math.abs(d) < 100) "%.1f".format(d) else "%.0f".format(d)
+    if (kotlin.math.abs(d) < 100) "%.1f".format(java.util.Locale.US, d) else "%.0f".format(java.util.Locale.US, d)
 
 /** Map HA standard weather conditions to a single-glyph preview.
  *  Falls back to '·' for unknown / future conditions. */

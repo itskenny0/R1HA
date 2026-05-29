@@ -578,10 +578,12 @@ private fun SummaryRow(
     }
 }
 
-/** Drop unhelpful trailing decimals: 23.0 → "23", 23.45 → "23.45". */
+/** Drop unhelpful trailing decimals: 23.0 -> "23", 23.45 -> "23.45".
+ *  Locale.US so the decimal separator is a point in every locale, matching
+ *  the rest of the app's numeric formatting (and the shared snapshots). */
 private fun formatNum(v: Double): String =
     if (kotlin.math.abs(v - v.toLong()) < 1e-9) "${v.toLong()}"
-    else "%.2f".format(v)
+    else "%.2f".format(java.util.Locale.US, v)
 
 /**
  * Pre-projected chart data: x/y in [0..1] space so the per-frame Canvas draw

@@ -362,5 +362,5 @@ private fun OutsideRow(names: List<String>) {
 /** "152m" / "1.2km" — match the rest of the app's compact metric
  *  language. */
 private fun formatRadius(meters: Double): String =
-    if (meters >= 1000) "${"%.1f".format(meters / 1000.0)}km"
+    if (meters >= 1000) "${"%.1f".format(java.util.Locale.US, meters / 1000.0)}km"
     else "${meters.toInt()}m"

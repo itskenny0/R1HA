@@ -444,7 +444,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                 Text(text = "SUN", style = R1.labelMicro, color = R1.InkSoft)
                 Text(
                     text = (if (isUp) "ABOVE HORIZON" else "BELOW HORIZON") +
-                        (s.elevation?.let { " · ${"%.1f".format(it)}°" } ?: ""),
+                        (s.elevation?.let { " · ${"%.1f".format(java.util.Locale.US, it)}°" } ?: ""),
                     style = R1.body.copy(fontWeight = FontWeight.SemiBold),
                     color = R1.Ink,
                 )

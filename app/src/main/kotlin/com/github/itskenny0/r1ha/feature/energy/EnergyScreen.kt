@@ -144,7 +144,7 @@ fun EnergyScreen(
                 BigStatTile(
                     modifier = Modifier.fillMaxWidth(),
                     label = "TODAY",
-                    value = ui.todayKwh?.let { "${"%.2f".format(it)} kWh" } ?: "—",
+                    value = ui.todayKwh?.let { "${"%.2f".format(java.util.Locale.US, it)} kWh" } ?: "—",
                     accent = if ((ui.todayKwh ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
                 )
                 // ── TOP CONSUMERS ──────────────────────────────────────
@@ -279,7 +279,7 @@ private fun ConsumerRow(c: EnergyViewModel.Consumer, onClick: () -> Unit) {
  *  unit suffix is uppercase to match the rest of the app's all-caps
  *  metric language. */
 private fun formatWatts(w: Double): String =
-    if (kotlin.math.abs(w) >= 1000) "${"%.1f".format(w / 1000.0)} kW"
+    if (kotlin.math.abs(w) >= 1000) "${"%.1f".format(java.util.Locale.US, w / 1000.0)} kW"
     else "${w.toInt()} W"
 
 /** Three-band accent for draw values: green under 200 W (idle
