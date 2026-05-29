@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.devices
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -25,9 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,12 +34,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.DeviceInfo
 import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
+import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -66,10 +67,28 @@ fun DevicesScreen(
 ) {
     val vm: DevicesViewModel = viewModel(factory = DevicesViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    val detail by vm.detail.collectAsState()
     val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val detailListState = rememberLazyListState()
+    // The wheel drives whichever surface is visible: the detail list while
+    // a device is drilled in, the device list otherwise.
+    WheelScrollFor(
+        wheelInput = wheelInput,
+        listState = if (detail != null) detailListState else listState,
+        settings = settings,
+    )
     LaunchedEffect(Unit) { vm.refresh() }
-    var openedDeviceId by remember { mutableStateOf<String?>(null) }
+    // Hardware Back: close the drill-in first, only then leave the screen.
+    BackHandler(enabled = detail != null) { vm.closeDevice() }
+    val openDetail = detail
+    if (openDetail != null) {
+        DeviceDetailScreen(
+            detail = openDetail,
+            listState = detailListState,
+            onBack = { vm.closeDevice() },
+        )
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -168,14 +187,8 @@ fun DevicesScreen(
                                             DeviceRow(
                                                 device = device,
                                                 areaName = device.areaId?.let { areaName[it] },
-                                                expanded = openedDeviceId == device.id,
                                                 entityCount = deviceEntities.size,
-                                                entities = if (openedDeviceId == device.id)
-                                                    deviceEntities else emptyList(),
-                                                onToggle = {
-                                                    openedDeviceId = if (openedDeviceId == device.id)
-                                                        null else device.id
-                                                },
+                                                onOpen = { vm.openDevice(device.id) },
                                             )
                                         }
                                     }
@@ -285,10 +298,8 @@ private fun SectionHeader(label: String, count: Int) {
 private fun DeviceRow(
     device: DeviceInfo,
     areaName: String?,
-    expanded: Boolean,
     entityCount: Int,
-    entities: List<EntityRegistryEntry>,
-    onToggle: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     val disabled = device.disabledBy != null
     Column(
@@ -297,7 +308,7 @@ private fun DeviceRow(
             .clip(R1.ShapeS)
             .background(if (disabled) R1.Bg else R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onToggle)
+            .r1Pressable(onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -316,7 +327,7 @@ private fun DeviceRow(
             )
             Spacer(Modifier.width(6.dp))
             Text(
-                text = if (expanded) "v" else ">",
+                text = ">",
                 style = R1.labelMicro,
                 color = R1.InkSoft,
             )
@@ -347,74 +358,6 @@ private fun DeviceRow(
                 )
             }
         }
-        if (expanded) {
-            Spacer(Modifier.height(8.dp))
-            val versions = listOfNotNull(
-                device.swVersion?.let { "sw $it" },
-                device.hwVersion?.let { "hw $it" },
-            ).joinToString(", ")
-            if (versions.isNotBlank()) {
-                Text(text = versions, style = R1.labelMicro, color = R1.InkMuted)
-                Spacer(Modifier.height(4.dp))
-            }
-            if (!device.configurationUrl.isNullOrBlank()) {
-                Text(
-                    text = "config: ${device.configurationUrl}",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                    maxLines = 2,
-                )
-                Spacer(Modifier.height(4.dp))
-            }
-            Text(text = "ENTITIES", style = R1.labelMicro, color = R1.AccentWarm)
-            Spacer(Modifier.height(4.dp))
-            if (entities.isEmpty()) {
-                Text(
-                    text = "No entities registered for this device.",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    for (entity in entities) {
-                        EntityRow(entity = entity)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EntityRow(entity: EntityRegistryEntry) {
-    val disabled = entity.disabledBy != null || entity.hiddenBy != null
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = entity.displayName,
-                style = R1.body,
-                color = if (disabled) R1.InkMuted else R1.Ink,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            if (entity.platform != null) {
-                Text(
-                    text = entity.platform.uppercase(),
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
-            }
-        }
-        Text(
-            text = entity.entityId,
-            style = R1.labelMicro,
-            color = R1.InkSoft,
-            maxLines = 1,
-        )
     }
 }
 
