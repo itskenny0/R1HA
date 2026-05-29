@@ -823,7 +823,7 @@ private fun AdvancedSubscreen(
 
     SectionHeader("RESET")
     Text(
-        text = "Wipe every override on this card. The name override (on the root view) is preserved — clear that field from QUICK NAME if you want the HA friendly_name back too.",
+        text = "Wipe every override on this card. The name override (on the root view) is preserved; clear that field from QUICK NAME if you want the HA friendly_name back too.",
         style = R1.body,
         color = R1.InkMuted,
     )
