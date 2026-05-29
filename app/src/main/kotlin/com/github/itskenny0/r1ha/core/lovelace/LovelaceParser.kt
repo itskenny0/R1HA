@@ -731,16 +731,29 @@ object LovelaceParser {
                     if (states.isEmpty()) LovelaceCondition.Never
                     else LovelaceCondition.StateEquals(entityId = entity, states = states, negate = negate)
                 }
-                condition == "numeric_state" && entity != null -> LovelaceCondition.NumericState(
-                    entityId = entity,
-                    above = obj["above"]?.asDoubleOrNull(),
-                    below = obj["below"]?.asDoubleOrNull(),
-                )
-                // Conditions we can't evaluate locally — `screen` (media-query
-                // breakpoints), `user` (logged-in user id), template conditions,
-                // an `and`/`or`/`not` group, or a malformed rule. HA evaluates
-                // these server/client-side; we can't, so we fail closed and hide
-                // the card rather than leaking it.
+                condition == "numeric_state" && entity != null -> {
+                    val above = obj["above"]?.asDoubleOrNull()
+                    val below = obj["below"]?.asDoubleOrNull()
+                    // A numeric_state with no parseable bound can never be proven
+                    // (the reported `above: never` on a timestamp helper parsed to
+                    // an unbounded range that matched everything and leaked the
+                    // card). With neither side numeric there is nothing to compare,
+                    // so fail closed.
+                    if (above == null && below == null) LovelaceCondition.Never
+                    else LovelaceCondition.NumericState(
+                        entityId = entity,
+                        above = above,
+                        below = below,
+                    )
+                }
+                // `screen` is a media-query breakpoint hint. We can't evaluate the
+                // query locally, but on a single-window app the card is meant to be
+                // visible, so fail OPEN rather than hiding content the user expects.
+                condition == "screen" -> LovelaceCondition.AlwaysTrue
+                // Conditions we can't evaluate locally — `user` (logged-in user id),
+                // template conditions, an `and`/`or`/`not` group, or a malformed
+                // rule. HA evaluates these server/client-side; we can't, so we fail
+                // closed and hide the card rather than leaking it.
                 else -> LovelaceCondition.Never
             }
         }
