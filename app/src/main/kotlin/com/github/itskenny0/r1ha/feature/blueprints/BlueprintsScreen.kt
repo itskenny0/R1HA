@@ -40,6 +40,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -82,36 +84,23 @@ fun BlueprintsScreen(
             title = "BLUEPRINTS",
             onBack = onBack,
             action = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.AccentWarm.copy(alpha = 0.18f))
-                            .border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeS)
-                            .r1Pressable(onClick = { vm.openImportDialog() })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = "IMPORT URL",
-                            style = R1.labelMicro,
-                            color = R1.AccentWarm,
-                        )
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = { vm.refresh() })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = if (ui.loading) "..." else "REFRESH",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                        )
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+                ) {
+                    R1Chip(
+                        text = "IMPORT URL",
+                        variant = R1ChipVariant.Action,
+                        selected = true,
+                        onClick = { vm.openImportDialog() },
+                        contentDescription = "Import blueprint from URL",
+                    )
+                    R1Chip(
+                        text = if (ui.loading) "..." else "REFRESH",
+                        variant = R1ChipVariant.Action,
+                        onClick = { vm.refresh() },
+                        contentDescription = "Refresh blueprints",
+                    )
                 }
             },
         )
@@ -140,8 +129,8 @@ fun BlueprintsScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        contentPadding = PaddingValues(horizontal = R1.space.m, vertical = R1.space.s),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         item(key = "automation_header") {
                             SectionHeader(
@@ -219,26 +208,32 @@ private fun SectionHeader(
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
+    // Canonical group-header treatment (matches R1Section's title line) made tappable so the
+    // section collapses: uppercase section-header type in the accent colour, a hairline rule
+    // filling the gap, a count pill, and a +/- expand glyph at the right edge.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
-            .r1Pressable(onClick = onToggle)
-            .padding(top = 8.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+            .r1Pressable(onClick = onToggle, contentDescription = "Toggle $label")
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label,
-            style = R1.labelMicro,
+            style = R1.sectionHeader,
             color = R1.AccentWarm,
-            modifier = Modifier.weight(1f),
         )
-        Text(
-            text = "$count",
-            style = R1.labelMicro,
-            color = R1.InkMuted,
-            modifier = Modifier.padding(end = 6.dp),
+        Spacer(Modifier.width(R1.space.m))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
         )
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(text = "$count", variant = R1ChipVariant.Pill, tone = R1.InkSoft)
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = if (expanded) "−" else "+",
             style = R1.bodyEmph,
@@ -255,8 +250,8 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -266,8 +261,12 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            Spacer(Modifier.width(8.dp))
-            DomainChip(domain = blueprint.domain)
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = blueprint.domain.uppercase(),
+                variant = R1ChipVariant.Pill,
+                tone = domainTone(blueprint.domain),
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -278,10 +277,11 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 maxLines = 1,
             )
             if (blueprint.inputCount > 0) {
-                Spacer(Modifier.width(6.dp))
-                MicroChip(
+                Spacer(Modifier.width(R1.space.s))
+                R1Chip(
                     text = "${blueprint.inputCount} INPUT" +
                         if (blueprint.inputCount == 1) "" else "S",
+                    variant = R1ChipVariant.Pill,
                     tone = R1.AccentCool,
                 )
             }
@@ -306,35 +306,11 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
     }
 }
 
-@Composable
-private fun DomainChip(domain: String) {
-    val tone = when (domain.lowercase()) {
-        "automation" -> R1.AccentWarm
-        "script" -> R1.AccentCool
-        else -> R1.InkMuted
-    }
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(tone.copy(alpha = 0.18f))
-            .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(text = domain.uppercase(), style = R1.labelMicro, color = tone)
-    }
-}
-
-@Composable
-private fun MicroChip(text: String, tone: Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(tone.copy(alpha = 0.18f))
-            .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text = text, style = R1.labelMicro, color = tone)
-    }
+/** Domain accent: automation = warm, script = cool, anything else muted. */
+private fun domainTone(domain: String): Color = when (domain.lowercase()) {
+    "automation" -> R1.AccentWarm
+    "script" -> R1.AccentCool
+    else -> R1.InkMuted
 }
 
 @Composable
@@ -342,7 +318,7 @@ private fun EmptySectionHint(message: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Text(text = message, style = R1.labelMicro, color = R1.InkMuted)
     }
@@ -351,7 +327,7 @@ private fun EmptySectionHint(message: String) {
 @Composable
 private fun EmptyState(message: String) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(22.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = message, style = R1.body, color = R1.InkMuted)
@@ -361,14 +337,14 @@ private fun EmptyState(message: String) {
 @Composable
 private fun ErrorState(message: String) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "COULDN'T LOAD BLUEPRINTS", style = R1.labelMicro, color = R1.StatusAmber)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         Text(text = message, style = R1.body, color = R1.InkSoft)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text(
             text = "blueprint/list only flows over the live WebSocket. Retry once it reconnects.",
             style = R1.labelMicro,
@@ -402,8 +378,8 @@ private fun ImportFlowDialog(
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = R1.space.l, vertical = R1.space.l),
+            verticalArrangement = Arrangement.spacedBy(R1.space.m),
         ) {
             Text(
                 text = when (phase) {
@@ -441,7 +417,7 @@ private fun ImportFlowDialog(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
                         R1Button(
                             text = "CANCEL",
@@ -479,7 +455,7 @@ private fun ImportFlowDialog(
                         phase == BlueprintsViewModel.ImportPhase.PREVIEW
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
                         R1Button(
                             text = "CANCEL",
@@ -510,8 +486,8 @@ private fun PreviewPane(preview: BlueprintInfo) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -521,8 +497,12 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            Spacer(Modifier.width(8.dp))
-            DomainChip(domain = preview.domain)
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = preview.domain.uppercase(),
+                variant = R1ChipVariant.Pill,
+                tone = domainTone(preview.domain),
+            )
         }
         if (preview.path.isNotBlank()) {
             Text(
@@ -533,9 +513,10 @@ private fun PreviewPane(preview: BlueprintInfo) {
             )
         }
         if (preview.inputCount > 0) {
-            MicroChip(
+            R1Chip(
                 text = "${preview.inputCount} INPUT" +
                     if (preview.inputCount == 1) "" else "S",
+                variant = R1ChipVariant.Pill,
                 tone = R1.AccentCool,
             )
         }
