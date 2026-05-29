@@ -12,6 +12,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 /**
  * Drives the Calendars surface. For each `calendar.*` entity HA
@@ -97,25 +101,48 @@ class CalendarsViewModel(
         }
     }
 
-    /** HA's calendar attributes use a mix of "YYYY-MM-DD HH:MM:SS" (local)
-     *  and ISO-8601 with offset depending on the integration. Try both
-     *  rather than picking one; null on parse failure. */
-    private fun parseLooseTime(raw: String): Instant? {
-        // Try strict ISO-8601 first.
-        runCatching { return Instant.parse(raw) }
-        // "2026-05-15T08:30:00" (local, no offset) — assume UTC for sort
-        // purposes; the UI displays a relative timestamp anyway, so the
-        // offset doesn't bite us.
-        runCatching {
-            val normalised = if (raw.contains('T')) raw else raw.replace(' ', 'T')
-            return Instant.parse(normalised + "Z")
-        }
-        return null
-    }
+    private fun parseLooseTime(raw: String): Instant? = parseCalendarInstant(raw)
 
     companion object {
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { CalendarsViewModel(haRepository) }
         }
     }
+}
+
+/**
+ * Resolves a Home Assistant calendar `start_time` / `end_time` string to an
+ * [Instant]. HA emits a mix of forms depending on the integration:
+ *  - ISO-8601 with an offset or 'Z' for timed events (e.g. 2026-05-15T09:00:00+02:00),
+ *  - an offset-less local datetime (e.g. "2026-05-15 08:30:00" or "2026-05-15T08:30:00"),
+ *  - a bare date for all-day events (e.g. "2026-05-15").
+ *
+ * Timezone policy (explicit): values resolve in the device-local zone.
+ *  - Offset-bearing datetimes are honoured exactly.
+ *  - Offset-less datetimes are treated as local wall-clock time.
+ *  - A bare date resolves to local midnight of that day, so a same-day all-day
+ *    event sorts ahead of later timed events instead of falling back to
+ *    [Instant.MAX] (which previously hid all-day events from the Calendars
+ *    sort and the Dashboard "next event" tile).
+ *
+ * Returns null on a blank or unparseable value.
+ */
+internal fun parseCalendarInstant(
+    raw: String?,
+    zone: ZoneId = ZoneId.systemDefault(),
+): Instant? {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return null
+
+    // Offset-aware datetime (carries an explicit offset or 'Z').
+    runCatching { return OffsetDateTime.parse(value).toInstant() }
+
+    // Offset-less local datetime; tolerate a space separator in place of 'T'.
+    val normalised = if (value.contains('T')) value else value.replace(' ', 'T')
+    runCatching { return LocalDateTime.parse(normalised).atZone(zone).toInstant() }
+
+    // Bare date (all-day event): local midnight of that day.
+    runCatching { return LocalDate.parse(value).atStartOfDay(zone).toInstant() }
+
+    return null
 }

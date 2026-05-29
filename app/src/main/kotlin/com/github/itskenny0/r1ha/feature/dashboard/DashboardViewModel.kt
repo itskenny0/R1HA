@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.PersistentNotification
+import com.github.itskenny0.r1ha.feature.calendars.parseCalendarInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -214,7 +215,7 @@ class DashboardViewModel(
                         val title = (row.attributes["message"] as? JsonPrimitive)?.content
                             ?: return@mapNotNull null
                         val startRaw = (row.attributes["start_time"] as? JsonPrimitive)?.content
-                        val start = startRaw?.let { runCatching { Instant.parse(it.replace(' ', 'T') + "Z") }.getOrNull() }
+                        val start = parseCalendarInstant(startRaw)
                         // All-day events arrive as date-only strings (no T
                         // or space separator with a time component). Length
                         // 10 = 'YYYY-MM-DD'; longer = has time.
