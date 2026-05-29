@@ -8,6 +8,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.LogbookEntry
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -255,8 +256,19 @@ class LogbookViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        runCatching {
-            kotlinx.coroutines.runBlocking { tailSubscription?.cancel() }
+        // Best-effort teardown so a screen-exit doesn't leak the WS subscription.
+        // onCleared runs on the main thread and viewModelScope is already cancelled
+        // by the time it fires, so fire the unsubscribe on a short-lived detached IO
+        // scope rather than runBlocking: blocking here would stall the UI while a
+        // (possibly dead) WS round-trips for up to the socket timeout. cancel() is
+        // safe to run detached because the subscription's inbound collector lives on
+        // the repository's own scope, not this ViewModel's, so it survives the frame.
+        val sub = tailSubscription
+        tailSubscription = null
+        if (sub != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                runCatching { sub.cancel() }
+            }
         }
     }
 
