@@ -38,7 +38,9 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.prefs.EntityOverride
 import com.github.itskenny0.r1ha.core.prefs.PositionDotLocation
 import com.github.itskenny0.r1ha.core.prefs.TapAction
+import com.github.itskenny0.r1ha.core.prefs.ValueBarLocation
 import com.github.itskenny0.r1ha.core.prefs.positionDotLocationLabel
+import com.github.itskenny0.r1ha.core.prefs.valueBarLocationLabel
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
@@ -444,6 +446,18 @@ private fun LayoutSubscreen(
         onSelect = { onChange(override.copy(positionDotLocation = it)) },
     )
 
+    SectionHeader("VALUE BAR")
+    Text(
+        text = "Override which edge this card's brightness / volume / setpoint slider sits on, or hide it. INHERIT follows the global setting.",
+        style = R1.body,
+        color = R1.InkMuted,
+    )
+    Spacer(Modifier.height(6.dp))
+    ValueBarOverridePicker(
+        selected = override.valueBarLocation,
+        onSelect = { onChange(override.copy(valueBarLocation = it)) },
+    )
+
     SectionHeader("VISIBILITY")
     TristateRow(
         label = "Show on/off pill",
@@ -487,6 +501,7 @@ private fun LayoutSubscreen(
             onChange(
                 override.copy(
                     positionDotLocation = null,
+                    valueBarLocation = null,
                     showOnOffPill = null,
                     showAreaLabel = null,
                     textSizeSp = null,
@@ -966,12 +981,14 @@ private fun identitySummary(name: String, o: EntityOverride): String = buildList
 }
 
 private fun isLayoutModified(o: EntityOverride): Boolean =
-    o.positionDotLocation != null || o.showOnOffPill != null || o.showAreaLabel != null ||
+    o.positionDotLocation != null || o.valueBarLocation != null ||
+        o.showOnOffPill != null || o.showAreaLabel != null ||
         o.textSizeSp != null || o.maxDecimalPlaces != null
 
 private fun layoutSummary(entity: EntityState, o: EntityOverride): String {
     val mods = buildList {
         if (o.positionDotLocation != null) add("pip:${positionDotLocationLabel(o.positionDotLocation).split(' ').first()}")
+        if (o.valueBarLocation != null) add("bar:${valueBarLocationLabel(o.valueBarLocation).lowercase()}")
         if (o.showOnOffPill != null) add(if (o.showOnOffPill == true) "pill on" else "pill off")
         if (o.showAreaLabel != null) add(if (o.showAreaLabel == true) "area on" else "area off")
         if (o.textSizeSp != null) add("${o.textSizeSp}sp")
@@ -1202,6 +1219,122 @@ private fun PositionDotOverridePicker(
 }
 
 /**
+ * Per-card value-bar override picker: an INHERIT / HIDDEN chip row over a
+ * cross of LEFT / TOP / RIGHT / BOTTOM tiles. INHERIT (null) follows the
+ * global setting and is the default selection; HIDDEN drops the bar on this
+ * card. Same chrome as [PositionDotOverridePicker] so the two override rows
+ * sitting next to each other read consistently.
+ */
+@Composable
+private fun ValueBarOverridePicker(
+    selected: ValueBarLocation?,
+    onSelect: (ValueBarLocation?) -> Unit,
+) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(R1.ShapeS)
+                .background(if (selected == null) R1.AccentWarm else R1.SurfaceMuted)
+                .border(
+                    1.dp,
+                    if (selected == null) R1.AccentWarm else R1.Hairline,
+                    R1.ShapeS,
+                )
+                .r1Pressable({ onSelect(null) })
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "INHERIT", style = R1.labelMicro, color = if (selected == null) R1.Bg else R1.InkSoft)
+        }
+        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(R1.ShapeS)
+                .background(if (selected == ValueBarLocation.HIDDEN) R1.AccentWarm else R1.SurfaceMuted)
+                .border(
+                    1.dp,
+                    if (selected == ValueBarLocation.HIDDEN) R1.AccentWarm else R1.Hairline,
+                    R1.ShapeS,
+                )
+                .r1Pressable({ onSelect(ValueBarLocation.HIDDEN) })
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "HIDDEN",
+                style = R1.labelMicro,
+                color = if (selected == ValueBarLocation.HIDDEN) R1.Bg else R1.InkSoft,
+            )
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+    val rows: List<List<Pair<String, ValueBarLocation>?>> = listOf(
+        listOf(null, "↑" to ValueBarLocation.TOP, null),
+        listOf(
+            "←" to ValueBarLocation.LEFT,
+            "·" to ValueBarLocation.HIDDEN,
+            "→" to ValueBarLocation.RIGHT,
+        ),
+        listOf(null, "↓" to ValueBarLocation.BOTTOM, null),
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        rows.forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                row.forEach { cell ->
+                    if (cell == null) {
+                        Spacer(Modifier.weight(1f).height(44.dp).padding(2.dp))
+                    } else {
+                        val (glyph, loc) = cell
+                        // The centre cell maps to HIDDEN conceptually but the
+                        // HIDDEN chip above already covers that, so re-selecting
+                        // the centre tile clears to INHERIT for parity with the
+                        // position-pip picker's 3x3 centre behaviour.
+                        val isCenterHidden = loc == ValueBarLocation.HIDDEN
+                        val isSelected = selected == loc && !isCenterHidden
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .padding(2.dp)
+                                .clip(R1.ShapeS)
+                                .background(if (isSelected) R1.AccentWarm else R1.SurfaceMuted)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) R1.AccentWarm else R1.Hairline,
+                                    R1.ShapeS,
+                                )
+                                .r1Pressable({
+                                    if (isCenterHidden) onSelect(null) else onSelect(loc)
+                                }),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = glyph,
+                                style = R1.bodyEmph,
+                                color = if (isSelected) R1.Bg else R1.InkSoft,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = "Current: ${
+            when (selected) {
+                null -> "INHERIT GLOBAL"
+                else -> valueBarLocationLabel(selected)
+            }
+        }",
+        style = R1.labelMicro,
+        color = R1.InkMuted,
+    )
+}
+
+/**
  * INHERIT / TOGGLE / FIRE / NAV / NOOP picker for the per-card tap and
  * wheel-press action overrides. INHERIT is the leftmost chip so the
  * default-position is easy to reach back to after experimentation.
@@ -1288,6 +1421,11 @@ private fun ActiveOverridesList(
     if (override.positionDotLocation != null) {
         rows += Triple("Position pip", positionDotLocationLabel(override.positionDotLocation)) {
             onChange(override.copy(positionDotLocation = null))
+        }
+    }
+    if (override.valueBarLocation != null) {
+        rows += Triple("Value bar", valueBarLocationLabel(override.valueBarLocation)) {
+            onChange(override.copy(valueBarLocation = null))
         }
     }
     if (override.actionOnTap != null) {
