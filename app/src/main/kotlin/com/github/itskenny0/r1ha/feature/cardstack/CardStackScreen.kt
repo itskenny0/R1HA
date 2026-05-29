@@ -2872,6 +2872,7 @@ private fun ChromeRow(
                 .r1RowPressable(
                     onTap = onOpenFavoritesPicker,
                     onLongPress = onLongPressHamburger,
+                    contentDescription = "Favourites and quick actions",
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -2935,7 +2936,7 @@ private fun ChromeRow(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .r1Pressable(onOpenAssist),
+                                .r1Pressable(onOpenAssist, contentDescription = "Open Assist"),
                             contentAlignment = Alignment.Center,
                         ) {
                             com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 16.dp)
@@ -2947,7 +2948,7 @@ private fun ChromeRow(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .r1Pressable(onEditActive),
+                                .r1Pressable(onEditActive, contentDescription = "Customize card"),
                             contentAlignment = Alignment.Center,
                         ) {
                             com.github.itskenny0.r1ha.ui.components.EditGlyph(
@@ -2965,6 +2966,7 @@ private fun ChromeRow(
                                 .r1RowPressable(
                                     onTap = onOpenSettings,
                                     onLongPress = onLongPressGear,
+                                    contentDescription = "Settings",
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
