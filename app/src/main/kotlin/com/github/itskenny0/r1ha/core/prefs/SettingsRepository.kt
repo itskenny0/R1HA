@@ -189,6 +189,10 @@ class SettingsRepository private constructor(
         // semantics change on every reorder.
         val uiChromeButtons = stringPreferencesKey("ui.chrome_buttons.json")
         val uiShowZeroPercentWhenOff = booleanPreferencesKey("ui.show_zero_percent_when_off")
+        /** Card-stack peek-deck presentation. Stored as the [CardPeekMode]
+         *  enum name. Absent / unknown → AUTO (peek only on phone-portrait),
+         *  so existing installs on the R1 / sub-compact tier see no change. */
+        val uiCardPeekMode = stringPreferencesKey("ui.card_peek_mode")
 
         val theme = stringPreferencesKey("theme")
         val autoThemeEnabled = booleanPreferencesKey("theme.auto_enabled")
@@ -283,6 +287,13 @@ class SettingsRepository private constructor(
                     infiniteScroll = p[K.uiInfiniteScroll] ?: false,
                     chromeButtons = decodeChromeButtons(p[K.uiChromeButtons]),
                     showZeroPercentWhenOff = p[K.uiShowZeroPercentWhenOff] ?: false,
+                    // Absent / unknown name → AUTO. Existing installs have no
+                    // key written, so they decode as AUTO and the R1 / sub-
+                    // compact tier keeps full-viewport (AUTO never enables peek
+                    // there) — no behaviour change on upgrade.
+                    cardPeekMode = p[K.uiCardPeekMode]
+                        ?.let { runCatching { CardPeekMode.valueOf(it) }.getOrNull() }
+                        ?: CardPeekMode.AUTO,
                 ),
                 behavior = Behavior(
                     haptics = p[K.behaviorHaptics] ?: true,
@@ -476,6 +487,7 @@ class SettingsRepository private constructor(
                 p[K.uiInfiniteScroll] = next.ui.infiniteScroll
                 p[K.uiChromeButtons] = encodeChromeButtons(next.ui.chromeButtons)
                 p[K.uiShowZeroPercentWhenOff] = next.ui.showZeroPercentWhenOff
+                p[K.uiCardPeekMode] = next.ui.cardPeekMode.name
                 p[K.theme] = next.theme.name
                 p[K.autoThemeEnabled] = next.autoThemeEnabled
                 p[K.nightTheme] = next.nightTheme.name

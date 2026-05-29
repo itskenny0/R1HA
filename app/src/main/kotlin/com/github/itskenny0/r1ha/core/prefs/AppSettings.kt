@@ -18,6 +18,20 @@ enum class OrientationMode { FOLLOW_DEVICE, PORTRAIT_ONLY }
 enum class DisplayMode { PERCENT, RAW }
 
 /**
+ * Controls the card-stack "peek deck" presentation, where cards render at roughly half
+ * the viewport height with the active card centred and the previous / next cards peeking
+ * above and below it.
+ *
+ * AUTO   — peek only on a phone-width tier in portrait orientation; every other device
+ *          (the R1 / sub-compact tier, landscape, tablet / expanded tiers) keeps the
+ *          historical full-viewport single-card behaviour. This is the default.
+ * ALWAYS — peek on every device and orientation. Lets R1 / small-phone users who like
+ *          the at-a-glance neighbour view opt in even though AUTO would not pick it.
+ * NEVER  — always full-viewport, regardless of device or orientation.
+ */
+enum class CardPeekMode { AUTO, ALWAYS, NEVER }
+
+/**
  * Display unit for temperature readouts. AUTO follows HA's reported unit
  * (`temperature_unit` attribute on climate entities, defaults to Celsius); CELSIUS and
  * FAHRENHEIT force the display + conversion regardless of HA's setting.
@@ -148,6 +162,17 @@ data class UiOptions(
      * Default OFF to match the original behaviour: the arc shows whatever HA reported.
      */
     val showZeroPercentWhenOff: Boolean = false,
+    /**
+     * Card-stack "peek deck" presentation. AUTO (default) renders the peek deck only on
+     * a phone-width tier in portrait, leaving the R1 / sub-compact tier, landscape, and
+     * tablet / expanded tiers on the historical full-viewport single-card layout. ALWAYS
+     * forces the peek deck everywhere (the opt-in path for R1 / small-phone users); NEVER
+     * forces full-viewport everywhere. See [com.github.itskenny0.r1ha.feature.cardstack
+     * .effectivePeek] for the pure decision function the card stack reads.
+     *
+     * Default AUTO so existing installs see no change on the R1 / sub-compact tier.
+     */
+    val cardPeekMode: CardPeekMode = CardPeekMode.AUTO,
 )
 
 @Immutable

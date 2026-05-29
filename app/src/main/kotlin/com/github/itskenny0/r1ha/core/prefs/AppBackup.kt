@@ -73,6 +73,9 @@ data class AppBackup(
     val uiMaxDecimalPlaces: Int = 2,
     val uiTempUnit: TemperatureUnit = TemperatureUnit.CELSIUS,
     val uiInfiniteScroll: Boolean = false,
+    /** Card-stack peek-deck mode. Older backup files without this field decode
+     *  as AUTO (peek only on phone-portrait), matching the live default. */
+    val uiCardPeekMode: CardPeekMode = CardPeekMode.AUTO,
 
     val behaviorHaptics: Boolean = true,
     val behaviorKeepScreenOn: Boolean = true,
@@ -143,6 +146,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiMaxDecimalPlaces = ui.maxDecimalPlaces,
     uiTempUnit = ui.tempUnit,
     uiInfiniteScroll = ui.infiniteScroll,
+    uiCardPeekMode = ui.cardPeekMode,
     behaviorHaptics = behavior.haptics,
     behaviorKeepScreenOn = behavior.keepScreenOn,
     behaviorTapToToggle = behavior.tapToToggle,
@@ -215,6 +219,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             maxDecimalPlaces = uiMaxDecimalPlaces,
             tempUnit = uiTempUnit,
             infiniteScroll = uiInfiniteScroll,
+            cardPeekMode = uiCardPeekMode,
         ),
         behavior = Behavior(
             haptics = behaviorHaptics,

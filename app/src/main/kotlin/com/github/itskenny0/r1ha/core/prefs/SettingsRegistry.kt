@@ -232,6 +232,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { if (it.ui.showZeroPercentWhenOff) "ON" else "OFF" },
     ),
     SettingEntry(
+        id = "ui.cardPeekMode",
+        category = SettingCategory.CARD_UI,
+        label = "Peek deck",
+        description = "Half-height cards with the previous and next card peeking; auto only on phone-portrait",
+        isDefault = { it.ui.cardPeekMode == defaults.ui.cardPeekMode },
+        currentDisplay = { cardPeekModeLabel(it.ui.cardPeekMode) },
+    ),
+    SettingEntry(
         id = "ui.textHistoryLength",
         category = SettingCategory.CARD_UI,
         label = "Sensor history length",
@@ -563,6 +571,17 @@ fun valueBarLocationLabel(loc: ValueBarLocation): String = when (loc) {
     ValueBarLocation.TOP -> "TOP"
     ValueBarLocation.BOTTOM -> "BOTTOM"
     ValueBarLocation.HIDDEN -> "HIDDEN"
+}
+
+/**
+ * Compact human label for a [CardPeekMode] value. Shared by the Settings
+ * peek-deck selector and the registry `currentDisplay` so the diff screen
+ * shows the same word the user picked.
+ */
+fun cardPeekModeLabel(mode: CardPeekMode): String = when (mode) {
+    CardPeekMode.AUTO -> "AUTO"
+    CardPeekMode.ALWAYS -> "ALWAYS"
+    CardPeekMode.NEVER -> "NEVER"
 }
 
 fun searchSettings(query: String): List<SettingEntry> {
