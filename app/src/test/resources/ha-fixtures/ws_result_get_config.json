@@ -1,0 +1,25 @@
+{
+  "id": 2,
+  "type": "result",
+  "success": true,
+  "result": {
+    "latitude": 52.3731,
+    "longitude": 4.8922,
+    "elevation": 2,
+    "unit_system": {
+      "length": "km",
+      "mass": "g",
+      "temperature": "°C",
+      "volume": "L"
+    },
+    "location_name": "Home",
+    "time_zone": "Europe/Amsterdam",
+    "components": ["sensor", "light", "weather", "frontend", "lovelace"],
+    "config_dir": "/config",
+    "version": "2024.12.5",
+    "config_source": "storage",
+    "state": "RUNNING",
+    "internal_url": null,
+    "external_url": null
+  }
+}

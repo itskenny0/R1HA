@@ -1,0 +1,42 @@
+{
+  "changed_states": [],
+  "service_response": {
+    "weather.home": {
+      "forecast": [
+        {
+          "condition": "partlycloudy",
+          "datetime": "2024-12-20T12:00:00+00:00",
+          "wind_bearing": 225.0,
+          "temperature": 8.0,
+          "templow": 3.0,
+          "wind_speed": 18.4,
+          "precipitation": 0.2,
+          "humidity": 81,
+          "precipitation_probability": 20
+        },
+        {
+          "condition": "rainy",
+          "datetime": "2024-12-21T12:00:00+00:00",
+          "wind_bearing": 200.0,
+          "temperature": 9.0,
+          "templow": 5.0,
+          "wind_speed": 24.1,
+          "precipitation": 4.6,
+          "humidity": 92,
+          "precipitation_probability": 80
+        },
+        {
+          "condition": "cloudy",
+          "datetime": "2024-12-22T12:00:00+00:00",
+          "wind_bearing": 270.0,
+          "temperature": 7.0,
+          "templow": 2.0,
+          "wind_speed": 12.0,
+          "precipitation": 0.0,
+          "humidity": 78,
+          "precipitation_probability": 10
+        }
+      ]
+    }
+  }
+}

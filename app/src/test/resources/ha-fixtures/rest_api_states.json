@@ -1,0 +1,104 @@
+[
+  {
+    "entity_id": "light.living_room",
+    "state": "on",
+    "attributes": {
+      "min_color_temp_kelvin": 2000,
+      "max_color_temp_kelvin": 6535,
+      "supported_color_modes": ["color_temp", "xy"],
+      "color_mode": "color_temp",
+      "brightness": 204,
+      "color_temp_kelvin": 3500,
+      "color_temp": 285,
+      "friendly_name": "Living Room",
+      "supported_features": 44
+    },
+    "last_changed": "2024-12-20T09:31:55.872004+00:00",
+    "last_updated": "2024-12-20T09:31:55.872004+00:00",
+    "context": {"id": "01JFKDQ7", "parent_id": null, "user_id": "abc123"}
+  },
+  {
+    "entity_id": "climate.thermostat",
+    "state": "heat",
+    "attributes": {
+      "hvac_modes": ["off", "heat", "cool", "auto"],
+      "min_temp": 7,
+      "max_temp": 35,
+      "target_temp_step": 0.5,
+      "current_temperature": 19.5,
+      "temperature": 21.0,
+      "hvac_action": "heating",
+      "preset_mode": "comfort",
+      "preset_modes": ["eco", "comfort", "away"],
+      "friendly_name": "Thermostat",
+      "supported_features": 401
+    },
+    "last_changed": "2024-12-20T07:00:00.000000+00:00",
+    "last_updated": "2024-12-20T09:00:00.000000+00:00",
+    "context": {"id": "01JFKAAA", "parent_id": null, "user_id": null}
+  },
+  {
+    "entity_id": "sensor.outside_temperature",
+    "state": "4.7",
+    "attributes": {
+      "state_class": "measurement",
+      "unit_of_measurement": "°C",
+      "device_class": "temperature",
+      "friendly_name": "Outside Temperature"
+    },
+    "last_changed": "2024-12-20T09:25:00.000000+00:00",
+    "last_updated": "2024-12-20T09:30:00.000000+00:00",
+    "context": {"id": "01JFKBBB", "parent_id": null, "user_id": null}
+  },
+  {
+    "entity_id": "media_player.living_room_speaker",
+    "state": "playing",
+    "attributes": {
+      "volume_level": 0.35,
+      "is_volume_muted": false,
+      "media_content_type": "music",
+      "media_duration": 215,
+      "media_position": 42,
+      "media_position_updated_at": "2024-12-20T09:31:00.000000+00:00",
+      "media_title": "Some Track",
+      "media_artist": "Some Artist",
+      "media_album_name": "Some Album",
+      "shuffle": false,
+      "repeat": "off",
+      "source": "Spotify",
+      "source_list": ["Spotify", "Radio", "TV"],
+      "friendly_name": "Living Room Speaker",
+      "supported_features": 152511
+    },
+    "last_changed": "2024-12-20T09:30:00.000000+00:00",
+    "last_updated": "2024-12-20T09:31:00.000000+00:00",
+    "context": {"id": "01JFKCCC", "parent_id": null, "user_id": null}
+  },
+  {
+    "entity_id": "cover.garage_door",
+    "state": "closed",
+    "attributes": {
+      "current_position": 0,
+      "device_class": "garage",
+      "friendly_name": "Garage Door",
+      "supported_features": 11
+    },
+    "last_changed": "2024-12-19T22:10:00.000000+00:00",
+    "last_updated": "2024-12-19T22:10:00.000000+00:00",
+    "context": {"id": "01JFK000", "parent_id": null, "user_id": null}
+  },
+  {
+    "entity_id": "person.alice",
+    "state": "home",
+    "attributes": {
+      "editable": true,
+      "id": "alice",
+      "user_id": "abc123",
+      "device_trackers": ["device_tracker.alice_phone"],
+      "friendly_name": "Alice"
+    },
+    "last_changed": "2024-12-20T06:00:00.000000+00:00",
+    "last_updated": "2024-12-20T06:00:00.000000+00:00",
+    "context": {"id": "01JFK111", "parent_id": null, "user_id": null}
+  }
+]

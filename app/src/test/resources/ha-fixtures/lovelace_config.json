@@ -1,0 +1,46 @@
+{
+  "title": "Home",
+  "views": [
+    {
+      "title": "Overview",
+      "path": "default_view",
+      "icon": "mdi:home",
+      "badges": [],
+      "cards": [
+        {
+          "type": "entities",
+          "title": "Lights",
+          "entities": [
+            "light.living_room",
+            {"entity": "light.kitchen", "name": "Kitchen Spots"}
+          ]
+        },
+        {
+          "type": "weather-forecast",
+          "entity": "weather.home",
+          "show_forecast": true
+        },
+        {
+          "type": "thermostat",
+          "entity": "climate.thermostat"
+        }
+      ]
+    },
+    {
+      "title": "Sections",
+      "path": "sections",
+      "type": "sections",
+      "max_columns": 3,
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {"type": "heading", "heading": "Climate"},
+            {"type": "tile", "entity": "climate.thermostat"},
+            {"type": "tile", "entity": "sensor.outside_temperature"}
+          ]
+        }
+      ]
+    }
+  ]
+}
