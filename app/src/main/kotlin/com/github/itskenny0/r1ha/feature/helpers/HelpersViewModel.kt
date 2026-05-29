@@ -181,17 +181,18 @@ class HelpersViewModel(
         }
     }
 
-    /** Set an `input_number` or `counter` to a specific value. For
-     *  input_number HA uses `set_value`; for counter we instead do
-     *  increment/decrement via the dedicated services so the configured
-     *  step is respected. */
+    /** Set an `input_number` to a specific value via `set_value`. Counter
+     *  rows never reach this path: the screen drives them through
+     *  [counterIncrement] / [counterDecrement] / [counterReset] so HA's
+     *  configured step is respected. `counter.set_value` is also valid, so
+     *  routing a counter here would still work, but the wheel/stepper UI
+     *  only ever passes input_number entries. */
     fun setNumber(entry: Entry, newValue: Double) {
         viewModelScope.launch {
-            val service = if (entry.kind == Kind.COUNTER) "set_value" else "set_value"
             haRepository.call(
                 ServiceCall(
                     target = entry.id,
-                    service = service,
+                    service = "set_value",
                     data = buildJsonObject {
                         put("value", JsonPrimitive(newValue))
                     },
