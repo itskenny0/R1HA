@@ -118,6 +118,7 @@ object ColorfulCardsTheme : R1Theme {
                     style = R1.titleCard,
                     color = Color.White,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised composable so the ticker

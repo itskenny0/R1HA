@@ -101,6 +101,7 @@ object MinimalDarkTheme : R1Theme {
                     style = R1.titleCard,
                     color = R1.Ink,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised into its own composable so
