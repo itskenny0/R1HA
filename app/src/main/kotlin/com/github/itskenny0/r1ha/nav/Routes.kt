@@ -7,17 +7,7 @@ object Routes {
     const val FAVORITES_PICKER = "favorites_picker"
     const val SETTINGS = "settings"
 
-    /** Android-Settings-style subpages, each scoping the Settings screen to
-     *  a single top-level group. Settings root opens at [SETTINGS]; tapping
-     *  a group card navigates here. Each is a distinct back-stack entry so
-     *  system-back returns to the root, not the previous app screen. */
-    const val SETTINGS_CONNECTION = "settings/connection"
-    const val SETTINGS_APPEARANCE = "settings/appearance"
-    const val SETTINGS_BEHAVIOUR = "settings/behaviour"
-    const val SETTINGS_INTEGRATIONS = "settings/integrations"
-    const val SETTINGS_ADVANCED = "settings/advanced"
-    const val SETTINGS_BROWSE = "settings/browse"
-    /** Hardware-key bindings editor — drilled into from Settings → Behaviour. */
+    /** Hardware-key bindings editor, drilled into from Settings, Behaviour. */
     const val SETTINGS_KEY_BINDINGS = "settings/key_bindings"
     /** Multi-device settings sync — opt-in toggle, interval, manual triggers, stats. */
     const val SETTINGS_SYNC = "settings/sync"

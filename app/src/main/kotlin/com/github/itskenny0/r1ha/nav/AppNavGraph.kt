@@ -156,57 +156,6 @@ fun AppNavGraph(
                 tokens = tokens,
                 haRepository = haRepository,
                 wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ROOT,
-            )
-        }
-        composable(Routes.SETTINGS_CONNECTION) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.CONNECTION,
-            )
-        }
-        composable(Routes.SETTINGS_APPEARANCE) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.APPEARANCE,
-            )
-        }
-        composable(Routes.SETTINGS_BEHAVIOUR) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BEHAVIOUR,
-            )
-        }
-        composable(Routes.SETTINGS_INTEGRATIONS) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.INTEGRATIONS,
-            )
-        }
-        composable(Routes.SETTINGS_ADVANCED) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ADVANCED,
             )
         }
         composable(Routes.SETTINGS_KEY_BINDINGS) {
@@ -248,16 +197,6 @@ fun AppNavGraph(
                     navController.navigate(Routes.SETTINGS_MQTT) { launchSingleTop = true }
                 },
                 onBack = { navController.popBackStack() },
-            )
-        }
-        composable(Routes.SETTINGS_BROWSE) {
-            SettingsRouteContent(
-                navController = navController,
-                settings = settings,
-                tokens = tokens,
-                haRepository = haRepository,
-                wheelInput = wheelInput,
-                category = com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BROWSE,
             )
         }
         composable(Routes.THEME_PICKER) {
@@ -745,10 +684,11 @@ fun AppNavGraph(
 }
 
 /**
- * Settings screen invocation shared by every settings/<category> route. Wires
- * the 28-ish onOpenXXX callbacks once instead of duplicating them per route,
- * and routes the new `onOpenCategory` to the matching SETTINGS_* sub-route so
- * each subpage gets its own back-stack entry.
+ * Settings screen invocation for the single [Routes.SETTINGS] entry. Wires the
+ * 28-ish onOpenXXX callbacks. The Settings surface owns its own internal drill-in
+ * back-stack, so config-category navigation never leaves this route; `onOpenCategory`
+ * is invoked only for the standalone feature screens that are their own nav routes
+ * (Sync, IoT Camera / Sensors, MQTT).
  */
 @Composable
 private fun SettingsRouteContent(
@@ -757,29 +697,29 @@ private fun SettingsRouteContent(
     tokens: TokenStore,
     haRepository: HaRepository,
     wheelInput: WheelInput,
-    category: com.github.itskenny0.r1ha.feature.settings.SettingsCategory,
 ) {
     com.github.itskenny0.r1ha.feature.settings.SettingsScreen(
         settings = settings,
         tokens = tokens,
         haRepository = haRepository,
         wheelInput = wheelInput,
-        currentCategory = category,
         onOpenCategory = { target ->
             val route = when (target) {
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ROOT -> Routes.SETTINGS
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.CONNECTION -> Routes.SETTINGS_CONNECTION
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.APPEARANCE -> Routes.SETTINGS_APPEARANCE
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BEHAVIOUR -> Routes.SETTINGS_BEHAVIOUR
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.INTEGRATIONS -> Routes.SETTINGS_INTEGRATIONS
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.SYNC -> Routes.SETTINGS_SYNC
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.IOT_CAMERA -> Routes.SETTINGS_IOT_CAMERA
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.IOT_SENSORS -> Routes.SETTINGS_IOT_SENSORS
                 com.github.itskenny0.r1ha.feature.settings.SettingsCategory.MQTT -> Routes.SETTINGS_MQTT
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ADVANCED -> Routes.SETTINGS_ADVANCED
-                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BROWSE -> Routes.SETTINGS_BROWSE
+                // Config categories drill in internally; they never reach here.
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ROOT,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.CONNECTION,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.APPEARANCE,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BEHAVIOUR,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.INTEGRATIONS,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.ADVANCED,
+                com.github.itskenny0.r1ha.feature.settings.SettingsCategory.BROWSE,
+                -> null
             }
-            navController.navigate(route) { launchSingleTop = true }
+            if (route != null) navController.navigate(route) { launchSingleTop = true }
         },
         onOpenThemePicker = { navController.navigate(Routes.THEME_PICKER) { launchSingleTop = true } },
         onOpenAbout = { navController.navigate(Routes.ABOUT) { launchSingleTop = true } },
