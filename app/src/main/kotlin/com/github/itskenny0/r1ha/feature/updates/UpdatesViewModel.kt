@@ -78,6 +78,11 @@ class UpdatesViewModel(
          *  badge ("AUTO") so the user understands no manual install is
          *  required for this entity. */
         val autoUpdate: Boolean,
+        /** True when the user has previously skipped the currently-offered
+         *  version: HA keeps the entity "available" but sets `skipped_version`
+         *  to the latest. Drives a SKIPPED badge plus the clear-skip action so
+         *  a skip isn't a one-way door. */
+        val skipped: Boolean = false,
     ) {
         val hasReleaseNotes: Boolean get() =
             !releaseUrl.isNullOrBlank() || !releaseSummary.isNullOrBlank()
@@ -140,6 +145,14 @@ class UpdatesViewModel(
                         val pct = (attrs["update_percentage"] as? JsonPrimitive)?.content?.toIntOrNull()
                             ?.coerceIn(0, 100)
                         val autoUpdate = (attrs["auto_update"] as? JsonPrimitive)?.content == "true"
+                        // HA marks a skipped update by stamping skipped_version with
+                        // the version that was skipped; it matches latest_version
+                        // until a newer release lands. Treat any non-blank
+                        // skipped_version that equals the offered latest as skipped.
+                        val skippedVersion = (attrs["skipped_version"] as? JsonPrimitive)?.content
+                            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                        val skipped = skippedVersion != null &&
+                            (latest == null || skippedVersion == latest)
                         Entry(
                             id = EntityId(row.entityId),
                             title = title,
@@ -156,6 +169,7 @@ class UpdatesViewModel(
                             inProgress = inProgress,
                             progressPercent = pct,
                             autoUpdate = autoUpdate,
+                            skipped = skipped,
                         )
                     }
                     R1Log.i("Updates", "loaded ${entries.size} update entities")
@@ -232,6 +246,25 @@ class UpdatesViewModel(
                 onFailure = { t ->
                     R1Log.w("Updates", "skip ${entry.id.value} failed: ${t.message}")
                     Toaster.error("Skip failed: ${t.message ?: "unknown"}")
+                },
+            )
+            kotlinx.coroutines.delay(400L)
+            refresh()
+        }
+    }
+
+    /** Un-skip a previously-skipped update so it re-surfaces for install. The
+     *  inverse of [skip]; uses HA's `update.clear_skipped`. */
+    fun clearSkipped(entry: Entry) {
+        viewModelScope.launch {
+            haRepository.call(ServiceCall.clearSkippedUpdate(entry.id)).fold(
+                onSuccess = {
+                    R1Log.i("Updates", "cleared skip for ${entry.id.value}")
+                    Toaster.show("Restored '${entry.title}'")
+                },
+                onFailure = { t ->
+                    R1Log.w("Updates", "clear-skip ${entry.id.value} failed: ${t.message}")
+                    Toaster.error("Restore failed: ${t.message ?: "unknown"}")
                 },
             )
             kotlinx.coroutines.delay(400L)

@@ -184,6 +184,10 @@ fun UpdatesScreen(
                 detailFor = null
                 vm.skip(entry)
             },
+            onClearSkipped = {
+                detailFor = null
+                vm.clearSkipped(entry)
+            },
         )
     }
 }
@@ -265,6 +269,18 @@ private fun UpdateRow(
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
+            if (entry.skipped) {
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(text = "SKIPPED", style = R1.labelMicro, color = R1.InkMuted)
+                }
+                Spacer(Modifier.width(4.dp))
+            }
             if (entry.autoUpdate) {
                 Box(
                     modifier = Modifier
@@ -333,6 +349,7 @@ private fun UpdateDetailDialog(
     onDismiss: () -> Unit,
     onInstall: (backup: Boolean) -> Unit,
     onSkip: () -> Unit,
+    onClearSkipped: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     // Backup toggle only meaningful when the underlying integration reports
@@ -468,9 +485,17 @@ private fun UpdateDetailDialog(
         },
         dismissButton = {
             // SKIP is only meaningful for available updates the user wants to
-            // dismiss without installing. Hidden for up-to-date / in-progress
-            // entries so the dialog footer stays uncluttered.
-            if (entry.updateAvailable && !entry.inProgress) {
+            // dismiss without installing. Once skipped, the same slot offers
+            // RESTORE so the user can un-skip without leaving the device.
+            // Hidden for up-to-date / in-progress entries so the dialog footer
+            // stays uncluttered.
+            if (entry.updateAvailable && !entry.inProgress && entry.skipped) {
+                R1Button(
+                    text = "RESTORE",
+                    onClick = onClearSkipped,
+                    variant = R1ButtonVariant.Outlined,
+                )
+            } else if (entry.updateAvailable && !entry.inProgress) {
                 R1Button(
                     text = "SKIP",
                     onClick = onSkip,
