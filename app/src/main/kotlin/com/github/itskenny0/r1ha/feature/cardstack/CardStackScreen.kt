@@ -612,9 +612,17 @@ fun CardStackScreen(
         // weight-based interior layout, so the cap was more harmful than
         // helpful. Matches the earlier fix that turned ResponsiveColumn
         // into a passthrough for the same reason.
-        // displayedCards is hoisted here (outside the island Box) so the full-screen
-        // overlays (customize dialog, jump picker, etc.) can reference it too.
-        val cards = state.displayedCards
+        // Outer-scope card list for chrome counter, pip overlay, tutorial gate, and the
+        // jump-picker / context-menu overlays. We bind to the raw reference-stable
+        // [state.cards] rather than [state.displayedCards] here: the optimistic overlay
+        // only rewrites percent / select-option on individual cards, never adds, removes
+        // or reorders them, and none of these consumers render an optimistic-affected
+        // value (chrome shows the count, the pip shows position, the jump rows show
+        // friendly name + domain). Reading displayedCards at this hot outer scope would
+        // re-run its mapping allocation on every wheel detent (optimisticPercents changes
+        // each detent) for no visible difference. The per-card optimistic view still
+        // flows to each EntityCard via PageDeck's own pageCards derivation.
+        val cards = state.cards
         Box(modifier = Modifier.fillMaxSize()) {
         when {
             // Cold-start splash. DataStore is async on first read so for a brief
@@ -837,6 +845,14 @@ fun CardStackScreen(
                     // immediately. The crash trace identified the pip-thumb
                     // spring overshoot as the cause, not this peek; restored.
                     beyondViewportPageCount = 1,
+                    // Stable per-page key = the page's id (a UUID), not the slot
+                    // index. Without it Compose matches pages positionally, so a
+                    // page insert / delete / reorder threw away every PageDeck's
+                    // saved sub-composition (its VerticalPager state, card layout)
+                    // and rebuilt from scratch. Keying on id lets the pager carry
+                    // an unchanged page's deck across a tab-set mutation. Falls
+                    // back to the index for the rare out-of-range slot.
+                    key = { pageIdx -> state.pages.getOrNull(pageIdx)?.id ?: pageIdx },
                 ) { pageIdx ->
                     val page = state.pages.getOrNull(pageIdx) ?: return@HorizontalPager
                     val pageCardsRaw = state.cardsByPage[page.id].orEmpty()
@@ -1590,6 +1606,14 @@ private fun PageDeck(
         val navBarBottom = androidx.compose.foundation.layout.WindowInsets.navigationBars
             .asPaddingValues().calculateBottomPadding()
         val pagerBottomPadding = navBarBottom + 16.dp
+        // Card corner shape hoisted out of the per-page content lambda. Previously a
+        // fresh RoundedCornerShape(14.dp) was allocated for every page on every
+        // composition (and the graphicsLayer block below reads it on every draw
+        // frame during a fling); a single remembered instance is value-equal and
+        // lets the graphicsLayer skip re-allocating the clip shape.
+        val cardShape = androidx.compose.runtime.remember {
+            androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+        }
         VerticalPager(
             state = pagerState,
             // No peek — off-screen cards are hidden entirely until the user starts dragging.
@@ -1598,12 +1622,23 @@ private fun PageDeck(
             contentPadding = PaddingValues(top = pagerTopPadding, bottom = pagerBottomPadding),
             pageSize = PageSize.Fill,
             pageSpacing = 0.dp,
+            // Stable per-card key in FINITE mode = the card's entity_id, so a deck
+            // mutation (favourite added / removed / reordered) keeps each surviving
+            // card's sub-composition instead of rebuilding positionally. In
+            // INFINITE-scroll mode the same card id repeats across the 200k virtual
+            // pages, so an id key would collide; there the virtual page index is the
+            // only unique identity and we fall back to the pager default (null).
+            key = if (infiniteScroll) {
+                null
+            } else {
+                { page -> cards.getOrNull(page)?.id?.value ?: page }
+            },
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             // ~85% viewport — pad the card inward so the bg shows around it. Combined with a
-            // rounded corner shape and the shadow elevation, the card looks like a free-
-            // floating panel rather than a full-screen surface.
-            val cardShape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
+            // rounded corner shape (hoisted to PageDeck scope above) and the shadow
+            // elevation, the card looks like a free-floating panel rather than a
+            // full-screen surface.
             Box(
                 modifier = Modifier
                     .fillMaxSize()
