@@ -29,6 +29,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -201,7 +203,10 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean) {
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .heightIn(min = R1.MinTarget)
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s)
+            .clearAndSetSemantics {
+                contentDescription = eventRowDescription(e, happeningNow = isHappeningNow)
+            },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isHappeningNow) {

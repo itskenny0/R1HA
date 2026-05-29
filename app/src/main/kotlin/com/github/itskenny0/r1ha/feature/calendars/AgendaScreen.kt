@@ -29,6 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -187,7 +191,8 @@ private fun CalendarChipRow(ui: AgendaViewModel.UiState, onToggle: (String) -> U
                 tone = accent,
                 onClick = { onToggle(cal.entityId) },
                 leadingContent = { CalendarDot(accent) },
-                contentDescription = "Toggle ${cal.name}",
+                // Selection state is spoken, not just shown by the accent dot.
+                contentDescription = calendarToggleDescription(cal.name, selected),
             )
         }
     }
@@ -208,7 +213,8 @@ private fun DayHeader(header: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = R1.space.s, bottom = R1.space.xxs),
+            .padding(top = R1.space.s, bottom = R1.space.xxs)
+            .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = header, style = R1.sectionHeader, color = R1.AccentWarm)
@@ -236,7 +242,10 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .heightIn(min = R1.MinTarget)
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s)
+            .clearAndSetSemantics {
+                contentDescription = agendaRowDescription(event, entry.calendarName, now)
+            },
     ) {
         // Accent rail: the per-calendar colour, so events read as a set.
         Box(

@@ -28,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -180,7 +182,17 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
             .heightIn(min = R1.MinTarget)
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s)
+            .clearAndSetSemantics {
+                contentDescription = calendarRowDescription(
+                    name = c.name,
+                    happeningNow = c.state == "on",
+                    allDay = c.allDay,
+                    relativeTime = "",
+                    message = c.eventMessage,
+                    location = c.eventLocation,
+                )
+            },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (c.state == "on") {
