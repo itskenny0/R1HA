@@ -1,5 +1,7 @@
 package com.github.itskenny0.r1ha.core.lovelace
 
+import com.google.common.truth.Truth.assertThat
+import java.util.Locale
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
@@ -541,7 +543,7 @@ class LovelaceParserTest {
             {"type":"conditional","conditions":$conditionsJson,
              "card":{"type":"markdown","content":"x"}}
         """.trimIndent()
-        return (LovelaceParser.parseCard(Json.parseToJsonElement(json)) as LovelaceCard.Conditional).conditions
+        return (LovelaceParser.parseCard(obj(json)) as LovelaceCard.Conditional).conditions
     }
 
     @Test
