@@ -1,11 +1,13 @@
 package com.github.itskenny0.r1ha.nav
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
+import kotlinx.coroutines.flow.first
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.feature.about.AboutScreen
@@ -667,11 +669,18 @@ fun AppNavGraph(
             // Decode the "_default_" sentinel back into null so the
             // repository call hits HA's default-dashboard path.
             val dashboardUrlPath = dashRaw.takeUnless { it == "_default_" }
+            // Server base URL so picture/area card relative entity_picture
+            // paths resolve (the bearer token is already provided globally
+            // by MainActivity). Same source cameras/history use.
+            val dashServerUrl by androidx.compose.runtime.produceState<String?>(null, settings) {
+                value = settings.settings.first().server?.url
+            }
             com.github.itskenny0.r1ha.feature.dashboards.DashboardViewScreen(
                 haRepository = haRepository,
                 overrideStore = store,
                 dashboardUrlPath = dashboardUrlPath,
                 viewPath = viewPath,
+                serverUrl = dashServerUrl,
                 onBack = { navController.popBackStack() },
                 onOpenLovelace = {
                     navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
