@@ -417,6 +417,82 @@ sealed class LovelaceCard {
         override val type: String = "humidifier"
     }
 
+    /**
+     * Entity-filter card: a list of candidate [entities] narrowed at render
+     * time to only those whose live state matches one of [stateFilter]. HA's
+     * card supports rich per-condition filters; we model the common
+     * "string state equals" form (the `state_filter: ["on", "home"]`
+     * shorthand) since that covers the bulk of real configs. The surviving
+     * entities render as an entities-style list. An empty [stateFilter]
+     * leaves every entity visible (HA's behaviour when no filter is given).
+     */
+    @Immutable
+    data class EntityFilter(
+        override val raw: JsonObject,
+        val title: String?,
+        val entities: List<EntityRow>,
+        /** State strings an entity must currently match to be shown. */
+        val stateFilter: List<String>,
+        /** HA's `show_empty`: when false the whole card hides if nothing
+         *  passes the filter. Defaults true (HA's default). */
+        val showEmpty: Boolean,
+    ) : LovelaceCard() {
+        override val type: String = "entity-filter"
+    }
+
+    /**
+     * Statistic card: a single long-term-statistics readout for one entity.
+     * Shows the requested [statType] aggregate (mean / min / max / sum /
+     * change / state) computed over [period] worth of recorder buckets. The
+     * renderer fetches `statistics_during_period` lazily; an entity HA's
+     * recorder doesn't track shows a graceful "no statistics" placeholder.
+     */
+    @Immutable
+    data class Statistic(
+        override val raw: JsonObject,
+        val entityId: String,
+        val name: String?,
+        /** HA's `stat_type`: one of mean/min/max/sum/state/change. */
+        val statType: String,
+        /** Human-friendly period label HA's card accepts (`day`, `week`,
+         *  `month`, `year`). Drives the lookback window. */
+        val period: String,
+    ) : LovelaceCard() {
+        override val type: String = "statistic"
+    }
+
+    /**
+     * Logbook card: a recent-events feed scoped to a set of [entities].
+     * The renderer fetches HA's logbook and shows the entries whose entity
+     * falls in the configured set (or every entry when none are listed),
+     * going back [hoursToShow] hours.
+     */
+    @Immutable
+    data class Logbook(
+        override val raw: JsonObject,
+        val title: String?,
+        /** Entity ids to scope the feed to. Empty = show the whole logbook. */
+        val entities: List<String>,
+        val hoursToShow: Int,
+    ) : LovelaceCard() {
+        override val type: String = "logbook"
+    }
+
+    /**
+     * Clock card: a self-contained local-time display. Carries no entities;
+     * the renderer ticks a local clock. [showSeconds] mirrors HA's option;
+     * [analog] selects the analog face over the default digital readout.
+     */
+    @Immutable
+    data class Clock(
+        override val raw: JsonObject,
+        val title: String?,
+        val showSeconds: Boolean,
+        val analog: Boolean,
+    ) : LovelaceCard() {
+        override val type: String = "clock"
+    }
+
     /** Any card type we don't natively render.
      *
      * Best-effort fallback: even for a type we don't model, most cards carry

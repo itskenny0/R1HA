@@ -407,8 +407,13 @@ class DashboardsViewModel(
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Thermostat -> sink.addOptional(card.entityId)
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.MediaControl -> sink.addOptional(card.entityId)
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Humidifier -> sink.addOptional(card.entityId)
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.EntityFilter ->
+                card.entities.forEach { sink.addOptional(it.entityId) }
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Statistic -> sink.addOptional(card.entityId)
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Markdown -> Unit
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Heading -> Unit
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Logbook -> Unit
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Clock -> Unit
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Unsupported ->
                 card.entityRefs.forEach { sink.addOptional(it) }
         }

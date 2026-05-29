@@ -108,8 +108,12 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
         is LovelaceCard.Thermostat -> sink.addEntity(card.entityId)
         is LovelaceCard.MediaControl -> sink.addEntity(card.entityId)
         is LovelaceCard.Humidifier -> sink.addEntity(card.entityId)
+        is LovelaceCard.EntityFilter -> card.entities.forEach { sink.addEntity(it.entityId) }
+        is LovelaceCard.Statistic -> sink.addEntity(card.entityId)
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> Unit
+        is LovelaceCard.Logbook -> Unit
+        is LovelaceCard.Clock -> Unit
         is LovelaceCard.Unsupported -> card.entityRefs.forEach { sink.addEntity(it) }
     }
 }

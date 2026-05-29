@@ -325,6 +325,35 @@ object LovelaceParser {
                     name = obj["name"]?.asStringOrNull(),
                 )
             }
+            "entity-filter" -> LovelaceCard.EntityFilter(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                entities = parseEntityRows(obj["entities"]),
+                stateFilter = parseStateFilter(obj["state_filter"]),
+                showEmpty = obj["show_empty"]?.asBooleanOrNull() ?: true,
+            )
+            "statistic" -> {
+                val entity = parseStatisticEntity(obj) ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Statistic(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                    statType = obj["stat_type"]?.asStringOrNull()?.lowercase() ?: "mean",
+                    period = parseStatisticPeriod(obj["period"]),
+                )
+            }
+            "logbook" -> LovelaceCard.Logbook(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                entities = parseLogbookEntities(obj),
+                hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 12,
+            )
+            "clock" -> LovelaceCard.Clock(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                showSeconds = obj["show_seconds"]?.asBooleanOrNull() ?: false,
+                analog = obj["clock_style"]?.asStringOrNull()?.equals("analog", ignoreCase = true) ?: false,
+            )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> bestEffortUnsupported(obj, type)
         }
@@ -396,6 +425,77 @@ object LovelaceParser {
                 else -> null
             }
         }
+    }
+
+    /**
+     * Parse the `state_filter` of an entity-filter card. HA accepts either a
+     * bare list of state strings (`["on", "home"]`) or a list of objects
+     * carrying a `value` / `state` key (the richer operator form). We pull
+     * the plain state value out of both shapes and ignore operators we can't
+     * evaluate locally; the empty result means "no filter, show everything".
+     */
+    private fun parseStateFilter(el: JsonElement?): List<String> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) item.content else null
+                is JsonObject -> item["value"]?.asStringOrNull() ?: item["state"]?.asStringOrNull()
+                else -> null
+            }
+        }
+    }
+
+    /** Resolve the statistic card's entity id, accepting either the modern
+     *  `entities: [id]` list or a bare `entity` string. */
+    private fun parseStatisticEntity(obj: JsonObject): String? {
+        (obj["entities"] as? JsonArray)?.firstOrNull()?.let { first ->
+            when (first) {
+                is JsonPrimitive -> if (first.isString) return first.content
+                is JsonObject -> first["entity"]?.asStringOrNull()?.let { return it }
+                else -> Unit
+            }
+        }
+        return obj["entity"]?.asStringOrNull()
+    }
+
+    /** Normalise the statistic card's `period`. HA accepts a rich object
+     *  (fixed_period / calendar / rolling_window) plus legacy string forms;
+     *  we collapse to a coarse lookback bucket the renderer can act on. */
+    private fun parseStatisticPeriod(el: JsonElement?): String {
+        when (el) {
+            is JsonPrimitive -> if (el.isString) return el.content.lowercase()
+            is JsonObject -> {
+                (el["calendar"] as? JsonObject)?.get("period")?.asStringOrNull()?.let { return it.lowercase() }
+                if (el["fixed_period"] != null) return "month"
+                if (el["rolling_window"] != null) return "week"
+            }
+            else -> Unit
+        }
+        return "day"
+    }
+
+    /** Logbook entity scope: prefer the modern `target.entity_id`, fall back
+     *  to the deprecated `entities` list. Accepts a single id or an array. */
+    private fun parseLogbookEntities(obj: JsonObject): List<String> {
+        val out = LinkedHashSet<String>()
+        val targetEntity = (obj["target"] as? JsonObject)?.get("entity_id")
+        when (targetEntity) {
+            is JsonPrimitive -> if (targetEntity.isString) out.add(targetEntity.content)
+            is JsonArray -> targetEntity.forEach { it.asStringOrNull()?.let(out::add) }
+            else -> Unit
+        }
+        when (val ents = obj["entities"]) {
+            is JsonArray -> ents.forEach { item ->
+                when (item) {
+                    is JsonPrimitive -> if (item.isString) out.add(item.content)
+                    is JsonObject -> item["entity"]?.asStringOrNull()?.let(out::add)
+                    else -> Unit
+                }
+            }
+            is JsonPrimitive -> if (ents.isString) out.add(ents.content)
+            else -> Unit
+        }
+        return out.toList()
     }
 
     private fun parseAction(obj: JsonObject?): LovelaceAction? {

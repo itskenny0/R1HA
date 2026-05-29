@@ -377,4 +377,24 @@ val PICKER_TEMPLATES: List<Pair<String, JsonObject>> = listOf(
             put("entity", kotlinx.serialization.json.JsonPrimitive(""))
         })
     },
+    "entity-filter" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("entity-filter"))
+        put("entities", buildJsonArray { })
+        put("state_filter", buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("on")) })
+    },
+    "statistic" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("statistic"))
+        put("entity", kotlinx.serialization.json.JsonPrimitive(""))
+        put("stat_type", kotlinx.serialization.json.JsonPrimitive("mean"))
+        put("period", kotlinx.serialization.json.JsonPrimitive("day"))
+    },
+    "logbook" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("logbook"))
+        put("entities", buildJsonArray { })
+        put("hours_to_show", kotlinx.serialization.json.JsonPrimitive(12))
+    },
+    "clock" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("clock"))
+        put("show_seconds", kotlinx.serialization.json.JsonPrimitive(true))
+    },
 )

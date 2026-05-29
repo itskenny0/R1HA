@@ -388,6 +388,92 @@ class LovelaceParserTest {
         assertEquals(listOf("light.ok"), card.entityRefs)
     }
 
+    @Test fun `parses entity-filter statistic logbook and clock cards`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "path": "p",
+                    "cards": [
+                      {"type": "entity-filter", "title": "Lights on",
+                       "entities": ["light.a", {"entity": "light.b", "name": "Bee"}],
+                       "state_filter": ["on", {"value": "home"}]},
+                      {"type": "statistic", "entity": "sensor.power",
+                       "stat_type": "MEAN", "period": "week", "name": "Avg"},
+                      {"type": "logbook", "title": "Recent",
+                       "target": {"entity_id": ["light.a", "switch.b"]},
+                       "hours_to_show": 6},
+                      {"type": "clock", "title": "Now",
+                       "clock_style": "analog", "show_seconds": true}
+                    ]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
+        assertEquals(4, cards.size)
+
+        val filter = cards[0] as LovelaceCard.EntityFilter
+        assertEquals("Lights on", filter.title)
+        assertEquals(2, filter.entities.size)
+        assertEquals("light.a", filter.entities[0].entityId)
+        assertEquals("Bee", filter.entities[1].name)
+        assertEquals(listOf("on", "home"), filter.stateFilter)
+        assertTrue(filter.showEmpty)
+
+        val stat = cards[1] as LovelaceCard.Statistic
+        assertEquals("sensor.power", stat.entityId)
+        assertEquals("mean", stat.statType)
+        assertEquals("week", stat.period)
+        assertEquals("Avg", stat.name)
+
+        val logbook = cards[2] as LovelaceCard.Logbook
+        assertEquals("Recent", logbook.title)
+        assertEquals(listOf("light.a", "switch.b"), logbook.entities)
+        assertEquals(6, logbook.hoursToShow)
+
+        val clock = cards[3] as LovelaceCard.Clock
+        assertEquals("Now", clock.title)
+        assertTrue(clock.analog)
+        assertTrue(clock.showSeconds)
+    }
+
+    @Test fun `statistic accepts entities list and defaults stat_type and period`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"statistic","entities":["sensor.energy"]}"""),
+        ) as LovelaceCard.Statistic
+        assertEquals("sensor.energy", card.entityId)
+        assertEquals("mean", card.statType)
+        assertEquals("day", card.period)
+    }
+
+    @Test fun `logbook falls back to deprecated entities list`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"logbook","entities":["light.x","light.y"]}"""),
+        ) as LovelaceCard.Logbook
+        assertEquals(listOf("light.x", "light.y"), card.entities)
+        assertEquals(12, card.hoursToShow)
+    }
+
+    @Test fun `entity-filter without filter keeps empty filter list and clock defaults to digital`() {
+        val filter = LovelaceParser.parseCard(
+            obj("""{"type":"entity-filter","entities":["light.a"]}"""),
+        ) as LovelaceCard.EntityFilter
+        assertTrue(filter.stateFilter.isEmpty())
+        val clock = LovelaceParser.parseCard(obj("""{"type":"clock"}""")) as LovelaceCard.Clock
+        assertTrue(!clock.analog)
+        assertTrue(!clock.showSeconds)
+    }
+
+    @Test fun `statistic without entity falls to Unsupported`() {
+        assertTrue(LovelaceParser.parseCard(obj("""{"type":"statistic"}""")) is LovelaceCard.Unsupported)
+        assertTrue(
+            LovelaceParser.parseCard(obj("""{"type":"statistic","entities":[]}""")) is LovelaceCard.Unsupported,
+        )
+    }
+
     @Test fun `dashboard list parses entries and skips malformed rows`() {
         val arr = (Json.parseToJsonElement(
             """[{"id":"a","url_path":"lights","title":"Lights","mode":"storage"},
