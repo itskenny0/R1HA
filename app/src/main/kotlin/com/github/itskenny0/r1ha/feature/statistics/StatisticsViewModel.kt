@@ -90,6 +90,17 @@ class StatisticsViewModel(
             TimedValue(b.start, v)
         }
 
+    /** True once a statistic is picked that the recorder tracks with
+     *  neither a mean nor a sum, so no aggregation chip can ever plot it.
+     *  HA does surface such ids (e.g. a `total` sensor whose state_class
+     *  was reconfigured, or an integration that registered the id before
+     *  populating any column). The chart would otherwise sit on a bare
+     *  "NO STATISTICS" with no hint why every chip is inert. */
+    fun hasNoPlottableAggregation(state: UiState = _ui.value): Boolean {
+        val s = state.selected ?: return false
+        return !s.hasMean && !s.hasSum
+    }
+
     /** Which aggregation chips should be enabled for the current
      *  statistic. Falls back to "everything on" while nothing is selected
      *  so the chip row never collapses to a single chip. */

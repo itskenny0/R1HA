@@ -116,14 +116,21 @@ fun StatisticsScreen(
             ) {
                 StatisticPickerBar(ui = ui, onOpen = { vm.openPicker() })
                 if (ui.selected != null) {
-                    WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
-                    AggregationChips(
-                        current = ui.aggregation,
-                        supported = vm.supportedAggregations(ui),
-                        onSelect = { vm.setAggregation(it) },
-                    )
-                    StatisticsChartPanel(vm = vm, ui = ui)
-                    SummaryPanel(vm = vm, ui = ui)
+                    if (vm.hasNoPlottableAggregation(ui)) {
+                        // A statistic with neither mean nor sum can't drive any
+                        // aggregation chip; spell that out rather than leaving
+                        // an inert chip row over an empty chart.
+                        NoPlottablePanel()
+                    } else {
+                        WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
+                        AggregationChips(
+                            current = ui.aggregation,
+                            supported = vm.supportedAggregations(ui),
+                            onSelect = { vm.setAggregation(it) },
+                        )
+                        StatisticsChartPanel(vm = vm, ui = ui)
+                        SummaryPanel(vm = vm, ui = ui)
+                    }
                 } else if (!ui.catalogueLoading && ui.catalogueError == null) {
                     EmptyHero()
                 }
@@ -568,6 +575,33 @@ private fun EmptyHero() {
                 "meter the recorder is tracking.",
             style = R1.body,
             color = R1.InkSoft,
+        )
+    }
+}
+
+@Composable
+private fun NoPlottablePanel() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = R1.space.l, vertical = R1.space.l),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
+    ) {
+        Text(text = "NOTHING TO PLOT", style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(
+            text = "The recorder tracks this statistic with neither a mean nor a sum, " +
+                "so there's no series any aggregation can chart. It may still feed " +
+                "energy totals or diagnostics inside Home Assistant.",
+            style = R1.body,
+            color = R1.InkSoft,
+        )
+        Text(
+            text = "Pick a different statistic, or one that shows a MEAN or SUM badge in the picker.",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
         )
     }
 }
