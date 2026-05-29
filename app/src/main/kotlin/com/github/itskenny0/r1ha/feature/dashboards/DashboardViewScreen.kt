@@ -187,11 +187,19 @@ fun DashboardViewScreen(
                     scope.launch {
                         dispatchLovelaceAction(
                             action = action,
-                            fallbackEntityId = (action as? LovelaceAction.CallService)?.entityId,
+                            fallbackEntityId = when (action) {
+                                is LovelaceAction.CallService -> action.entityId
+                                is LovelaceAction.Builtin -> action.entityId
+                                else -> null
+                            },
                             haRepository = haRepository,
                             onNavigate = { /* navigation is dashboard-internal only today */ },
                             onOpenUrl = { url -> launchUrl(context, url) },
                             onMoreInfo = { /* TODO: hook into card-stack drill-in */ },
+                            // Live state lookup by raw id so a toggle flips the right
+                            // direction (the dispatcher reads isOn to pick turn_on vs
+                            // turn_off / open vs close).
+                            stateLookup = { rawId -> entities?.get(rawId) },
                         )
                     }
                 },
@@ -243,7 +251,7 @@ private fun TopChip(text: String, accent: androidx.compose.ui.graphics.Color, on
 @Composable
 private fun ViewModeBody(
     cards: List<LovelaceCard>,
-    stateMap: Map<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>?,
+    stateMap: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
     onAction: (LovelaceAction) -> Unit,
 ) {
     // Wrap the live map in a stable, value-equal holder once per emission.
@@ -251,7 +259,7 @@ private fun ViewModeBody(
     // card recomposes on every websocket state event; the holder + per-card
     // slicing below lets a card skip when its own entities didn't change.
     val states = remember(stateMap) {
-        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.of(stateMap ?: emptyMap())
+        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(stateMap ?: emptyMap())
     }
     Column(
         modifier = Modifier

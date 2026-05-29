@@ -41,12 +41,13 @@ fun TileCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val eid = safeEntityId(card.entityId)
-    val state = eid?.let { stateMap[it] }
+    val state = stateMap.byRaw(card.entityId)
     val accent = stateAccentFor(card.entityId, state)
     val name = resolveName(card.name, state, card.entityId)
-    val action = card.tapAction ?: defaultTapAction(card.entityId)
-    val stateText = state?.let(::compactStateText) ?: ". "
+    // Bind the card's entity to a config tap_action that omits one (toggle /
+    // more-info / target-less call-service) so the dispatcher always has a target.
+    val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
+    val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() }
 
     val tileSurface = Modifier
         .fillMaxWidth()
@@ -71,7 +72,7 @@ fun TileCard(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            if (!card.hideState) {
+            if (!card.hideState && stateText != null) {
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = stateText,
@@ -95,7 +96,7 @@ fun TileCard(
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
-                if (!card.hideState) {
+                if (!card.hideState && stateText != null) {
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = stateText,

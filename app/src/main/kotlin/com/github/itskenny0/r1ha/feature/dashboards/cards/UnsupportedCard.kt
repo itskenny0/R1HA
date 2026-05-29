@@ -68,7 +68,12 @@ fun UnsupportedCard(
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modifier) {
-    val url = card.url ?: return
+    val rawUrl = card.url ?: return
+    // HA's iframe `url` is often relative (e.g. "/local/panel.html"). A relative
+    // string handed to WebView.loadUrl renders blank, so resolve it against the
+    // configured HA server origin the way the picture cards resolve images.
+    val serverUrl = com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl.current
+    val url = remember(rawUrl, serverUrl) { resolveIframeUrl(rawUrl, serverUrl) } ?: return
     val ratio = remember(card.raw) { parseAspectRatio(card.raw["aspect_ratio"]?.let { aspectString(it) }) }
     Column(
         modifier = modifier
@@ -85,8 +90,28 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
                 .clip(R1.ShapeM),
             factory = { ctx ->
                 WebView(ctx).apply {
+                    // Match the parent so the AndroidView's aspectRatio constraint
+                    // gives the WebView a real, non-zero height. Without explicit
+                    // layout params a freshly-constructed WebView can measure to 0,
+                    // which renders as a blank card.
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                     webViewClient = WebViewClient()
                     settings.javaScriptEnabled = true
+                    // Most embeds (Grafana panels, weather widgets, HA add-on UIs)
+                    // need DOM storage; without it many render blank or error out.
+                    settings.domStorageEnabled = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    // A dashboard served over https embedding an http panel (or the
+                    // reverse on a LAN install) is blocked by the default
+                    // MIXED_CONTENT_NEVER_ALLOW, leaving the card blank. Compatibility
+                    // mode loads the secure content and upgrades/allows the rest the
+                    // way a normal browser does.
+                    settings.mixedContentMode =
+                        android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
                     @Suppress("DEPRECATION")
@@ -97,6 +122,9 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
                 }
             },
             update = { web ->
+                // Only (re)load when the target actually changed. web.url is null
+                // before the first load and tracks redirects after, so the initial
+                // composition always loads once.
                 if (web.url != url) web.loadUrl(url)
             },
         )
@@ -153,10 +181,9 @@ private fun GenericEntityRow(
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val eid = safeEntityId(ref)
-    val state = eid?.let { stateMap[it] }
+    val state = stateMap.byRaw(ref)
     val name = resolveName(null, state, ref)
-    val stateText = state?.let { compactStateText(it) } ?: ". "
+    val stateText = state?.let { compactStateText(it) }?.takeUnless { it.isBlank() }
     val accent = stateAccentFor(ref, state)
     Row(
         modifier = Modifier
@@ -173,8 +200,10 @@ private fun GenericEntityRow(
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.width(10.dp))
-        StateChip(text = stateText, accent = accent)
+        if (stateText != null) {
+            Spacer(Modifier.width(10.dp))
+            StateChip(text = stateText, accent = accent)
+        }
     }
 }
 
@@ -242,6 +271,23 @@ private fun RawJsonCard(card: LovelaceCard.Unsupported, modifier: Modifier = Mod
 
 private fun aspectString(el: kotlinx.serialization.json.JsonElement): String? =
     (el as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+/**
+ * Resolve an iframe card `url` into something [WebView.loadUrl] can load.
+ * Absolute http(s) URLs pass through; a server-relative path ("/local/...")
+ * is joined onto the HA origin; anything else (blank, unsupported scheme with
+ * no origin to anchor it) returns null so the card renders its placeholder
+ * rather than a blank WebView.
+ */
+internal fun resolveIframeUrl(raw: String, serverUrl: String?): String? {
+    val s = raw.trim()
+    return when {
+        s.isEmpty() -> null
+        s.startsWith("http://") || s.startsWith("https://") -> s
+        s.startsWith("/") && !serverUrl.isNullOrBlank() -> serverUrl.trimEnd('/') + s
+        else -> null
+    }
+}
 
 /**
  * Parse HA's `aspect_ratio` ("16:9", "50%", "1.5") into a width/height ratio

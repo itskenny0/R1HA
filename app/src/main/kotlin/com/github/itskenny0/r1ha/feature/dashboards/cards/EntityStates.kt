@@ -24,9 +24,19 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
  * keep working verbatim after the parameter type swap.
  */
 @Immutable
-class EntityStates(private val map: Map<EntityId, EntityState>) {
+class EntityStates private constructor(private val map: Map<String, EntityState>) {
 
-    operator fun get(id: EntityId): EntityState? = map[id]
+    /** Look up by typed id. Kept so existing `stateMap[eid]` call sites work. */
+    operator fun get(id: EntityId): EntityState? = map[id.value]
+
+    /**
+     * Look up by the raw `domain.object_id` string. This is the domain-agnostic
+     * path: an entity whose domain isn't in R1HA's [com.github.itskenny0.r1ha.core.ha.Domain]
+     * enum (a custom integration, `sun`, `device_tracker`, etc.) can't be turned
+     * into an [EntityId], but HA still serves its state. Cards key on the raw id
+     * so those entities render their reading instead of a blank.
+     */
+    fun byRaw(rawId: String): EntityState? = map[rawId]
 
     val isEmpty: Boolean get() = map.isEmpty()
 
@@ -37,10 +47,10 @@ class EntityStates(private val map: Map<EntityId, EntityState>) {
      */
     fun sliceFor(card: LovelaceCard): EntityStates {
         if (map.isEmpty()) return this
-        val ids = HashSet<EntityId>()
+        val ids = LinkedHashSet<String>()
         collectEntityIds(card, ids)
         if (ids.isEmpty()) return EMPTY
-        val slice = LinkedHashMap<EntityId, EntityState>(ids.size)
+        val slice = LinkedHashMap<String, EntityState>(ids.size)
         for (id in ids) {
             map[id]?.let { slice[id] = it }
         }
@@ -58,8 +68,13 @@ class EntityStates(private val map: Map<EntityId, EntityState>) {
     companion object {
         val EMPTY: EntityStates = EntityStates(emptyMap())
 
-        fun of(map: Map<EntityId, EntityState>): EntityStates =
+        /** Build from a raw-id-keyed map (the domain-agnostic dashboards path). */
+        fun ofRaw(map: Map<String, EntityState>): EntityStates =
             if (map.isEmpty()) EMPTY else EntityStates(map)
+
+        /** Build from a typed-id-keyed map (legacy/favourites path). */
+        fun of(map: Map<EntityId, EntityState>): EntityStates =
+            if (map.isEmpty()) EMPTY else EntityStates(map.mapKeys { it.key.value })
     }
 }
 
@@ -68,7 +83,7 @@ class EntityStates(private val map: Map<EntityId, EntityState>) {
  * traversal in DashboardsViewModel.collectEntityIdsFromCard but stays in the
  * renderer layer so the per-card slicing is self-contained.
  */
-internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
+internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
     when (card) {
         is LovelaceCard.Entities -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Glance -> card.entities.forEach { sink.addEntity(it.entityId) }
@@ -90,6 +105,7 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
                         sink.addEntity(cond.entityId)
                     is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState ->
                         sink.addEntity(cond.entityId)
+                    com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
                     com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
                 }
             }
@@ -118,6 +134,9 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
     }
 }
 
-private fun MutableSet<EntityId>.addEntity(raw: String) {
-    safeEntityId(raw)?.let { add(it) }
+/** Add a raw entity id, keyed verbatim. Domain-agnostic: a `domain.object_id`
+ *  shape is accepted regardless of whether the domain is in R1HA's enum, so
+ *  custom-integration entities are sliced/observed like any other. */
+private fun MutableSet<String>.addEntity(raw: String) {
+    if (raw.isNotBlank() && raw.indexOf('.').let { it > 0 && it < raw.length - 1 }) add(raw)
 }

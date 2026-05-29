@@ -117,6 +117,7 @@ suspend fun dispatchLovelaceAction(
     onNavigate: (String) -> Unit,
     onOpenUrl: (String) -> Unit,
     onMoreInfo: (String) -> Unit,
+    stateLookup: (String) -> EntityState? = { null },
 ) {
     when (action) {
         is LovelaceAction.CallService -> {
@@ -140,16 +141,21 @@ suspend fun dispatchLovelaceAction(
         is LovelaceAction.Url -> onOpenUrl(action.url)
         is LovelaceAction.Builtin -> when (action.name) {
             "toggle" -> {
-                val target = fallbackEntityId ?: return
+                // Prefer the action's own entity id (cards now attach it), then the
+                // card-level fallback. Without one there's nothing to toggle.
+                val target = action.entityId ?: fallbackEntityId ?: return
                 safeEntityId(target)?.let { eid ->
-                    // For domains we know, use the strongly-typed setSwitch helper
-                    // so the right HA service name is picked (turn_on/turn_off for
-                    // switches, open_cover/close_cover for covers, etc.). Fall back
-                    // to homeassistant.toggle for anything outside our [Domain] enum.
-                    val state = stateMapForToggle()
-                    val isOn = state?.let { runCatching { it[eid] }.getOrNull()?.isOn } ?: false
+                    // For domains we model, read the live on/off state and pick the
+                    // opposite-direction service (turn_off when on, open_cover when
+                    // closed, etc.) via the strongly-typed tapAction helper. The
+                    // earlier stub always reported "off", so an already-on entity
+                    // got another turn_on and visibly did nothing.
+                    val isOn = stateLookup(target)?.isOn ?: false
                     haRepository.call(ServiceCall.tapAction(eid, isOn))
                 } ?: run {
+                    // Domain isn't in our [Domain] enum (custom integration, etc.).
+                    // homeassistant.toggle is state-agnostic server-side, so it flips
+                    // correctly without us needing to model the domain.
                     haRepository.callRawService(
                         domain = "homeassistant",
                         service = "toggle",
@@ -159,18 +165,12 @@ suspend fun dispatchLovelaceAction(
                     )
                 }
             }
-            "more-info" -> fallbackEntityId?.let(onMoreInfo)
+            "more-info" -> (action.entityId ?: fallbackEntityId)?.let(onMoreInfo)
             "none" -> Unit
             else -> Unit
         }
     }
 }
-
-/** Stub used by the toggle path. currently always null because HA's
- *  per-domain `<domain>.toggle` services inspect server-side state.
- *  Kept as a function so a future caller can plumb the real state map
- *  through without touching every renderer. */
-private fun stateMapForToggle(): Map<EntityId, EntityState>? = null
 
 /**
  * Default action when a card-level `tap_action` is missing. Mirrors HA:
@@ -187,13 +187,27 @@ fun defaultTapAction(entityId: String): LovelaceAction {
         "light", "switch", "input_boolean", "automation", "fan", "lock",
         "cover", "media_player", "humidifier", "climate", "remote", "siren",
         "valve", "vacuum", "lawn_mower", "water_heater" ->
-            LovelaceAction.Builtin("toggle")
+            LovelaceAction.Builtin("toggle", entityId)
         "scene" -> LovelaceAction.CallService("scene.turn_on", entityId, null)
         "script" -> LovelaceAction.CallService("script.turn_on", entityId, null)
         "button" -> LovelaceAction.CallService("button.press", entityId, null)
         "input_button" -> LovelaceAction.CallService("input_button.press", entityId, null)
-        else -> LovelaceAction.Builtin("more-info")
+        else -> LovelaceAction.Builtin("more-info", entityId)
     }
+}
+
+/**
+ * Attach a card's own entity id to a parsed [tap_action] that doesn't carry
+ * one. A config `tap_action: toggle` / `more-info` parses to a [Builtin] with
+ * no entity (the parser sees only the action object, not the card), and a
+ * `call-service` may omit `target`. Binding the card's entity here means the
+ * dispatcher always has a target to act on. Actions that already name an
+ * entity, or that don't need one (navigate / url), pass through unchanged.
+ */
+fun LovelaceAction.boundTo(entityId: String?): LovelaceAction = when (this) {
+    is LovelaceAction.Builtin -> if (this.entityId == null && entityId != null) copy(entityId = entityId) else this
+    is LovelaceAction.CallService -> if (this.entityId == null && entityId != null) copy(entityId = entityId) else this
+    else -> this
 }
 
 /**
@@ -208,23 +222,25 @@ fun evaluateConditions(
     return conditions.all { cond ->
         when (cond) {
             is LovelaceCondition.StateEquals -> {
-                val eid = safeEntityId(cond.entityId) ?: return@all true
                 // Fail closed when the gating entity has no live state: HA hides
                 // a conditional whose entity is missing/unknown rather than
                 // showing it. Condition entities are subscribed (see the
                 // ViewModel + EntityStates traversal), so a genuinely-present
                 // entity will have state here; only truly-absent entities fail.
-                val state = stateMap[eid] ?: return@all false
-                state.rawState.equals(cond.state, ignoreCase = true)
+                val state = stateMap.byRaw(cond.entityId) ?: return@all false
+                val current = state.rawState.orEmpty()
+                val matches = cond.states.any { current.equals(it, ignoreCase = true) }
+                if (cond.negate) !matches else matches
             }
             is LovelaceCondition.NumericState -> {
-                val eid = safeEntityId(cond.entityId) ?: return@all true
-                val state = stateMap[eid] ?: return@all false
+                val state = stateMap.byRaw(cond.entityId) ?: return@all false
                 val value = state.raw?.toDouble() ?: state.rawState?.toDoubleOrNull() ?: return@all false
                 val above = cond.above?.let { value > it } ?: true
                 val below = cond.below?.let { value < it } ?: true
                 above && below
             }
+            // Unmodelled condition shape: fail closed (hide the card).
+            LovelaceCondition.Never -> false
             LovelaceCondition.AlwaysTrue -> true
         }
     }

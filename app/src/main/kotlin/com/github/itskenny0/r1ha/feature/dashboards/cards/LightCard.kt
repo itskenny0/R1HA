@@ -41,8 +41,7 @@ fun LightCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val eid = safeEntityId(card.entityId)
-    val state = eid?.let { stateMap[it] }
+    val state = stateMap.byRaw(card.entityId)
     val isOn = state?.isOn == true
     val pct = state?.percent ?: 0
     val name = resolveName(card.name, state, card.entityId)
@@ -54,7 +53,7 @@ fun LightCard(
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeM)
-            .r1Pressable(onClick = { onAction(LovelaceAction.Builtin("toggle")) })
+            .r1Pressable(onClick = { onAction(LovelaceAction.Builtin("toggle", card.entityId)) })
             .padding(horizontal = 14.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

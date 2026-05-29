@@ -31,11 +31,13 @@ fun ButtonCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val eid = card.entityId?.let { safeEntityId(it) }
-    val state = eid?.let { stateMap[it] }
+    val state = card.entityId?.let { stateMap.byRaw(it) }
     val accent = stateAccentFor(card.entityId.orEmpty(), state)
     val label = card.name ?: card.entityId?.let { resolveName(null, state, it) } ?: "Action"
-    val resolvedAction = card.tapAction ?: card.entityId?.let { defaultTapAction(it) }
+    // Bind the card's entity to the resolved action so a config `tap_action:
+    // toggle` (which parses without an entity) still has a target to act on.
+    val resolvedAction = (card.tapAction ?: card.entityId?.let { defaultTapAction(it) })
+        ?.boundTo(card.entityId)
     Column(
         modifier = modifier
             .fillMaxWidth()

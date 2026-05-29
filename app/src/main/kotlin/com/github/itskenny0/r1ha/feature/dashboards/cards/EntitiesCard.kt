@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
@@ -58,11 +57,12 @@ private fun EntityRowItem(
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val eid = safeEntityId(row.entityId)
-    val state = eid?.let { stateMap[it] }
+    val state = stateMap.byRaw(row.entityId)
     val name = resolveName(row.name, state, row.entityId)
     val secondary = row.secondaryInfo?.let { secondaryInfoLine(it, state) }
-    val stateText = state?.let { compactStateText(it) } ?: ". "
+    // Genuinely-absent state hides the readout rather than printing a "."
+    // placeholder; a blank chip just looks like a rendering glitch.
+    val stateText = state?.let { compactStateText(it) }
     val accent = stateAccentFor(row.entityId, state)
     Row(
         modifier = Modifier
@@ -90,8 +90,10 @@ private fun EntityRowItem(
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
-        StateChip(text = stateText, accent = accent)
+        if (stateText != null) {
+            Spacer(Modifier.width(10.dp))
+            StateChip(text = stateText, accent = accent)
+        }
     }
 }
 
@@ -141,7 +143,9 @@ internal fun compactStateText(state: EntityState): String {
         raw.equals("not_home", ignoreCase = true) -> "away"
         raw.equals("unknown", ignoreCase = true) -> "unknown"
         state.unit != null && raw.toDoubleOrNull() != null -> "$raw ${state.unit}"
-        raw.isBlank() -> ". "
+        // No raw state to show — render an empty string; callers that can hide
+        // the chip do, and an inline readout collapses to nothing rather than a dot.
+        raw.isBlank() -> ""
         else -> raw
     }
 }

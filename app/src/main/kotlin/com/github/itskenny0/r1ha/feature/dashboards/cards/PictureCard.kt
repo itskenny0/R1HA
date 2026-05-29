@@ -94,11 +94,10 @@ fun PictureEntityCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val eid = safeEntityId(card.entityId)
-    val state = eid?.let { stateMap[it] }
+    val state = stateMap.byRaw(card.entityId)
     val name = resolveName(card.name, state, card.entityId)
     val imageUrl = card.image ?: entityPictureOf(state)
-    val action = card.tapAction ?: defaultTapAction(card.entityId)
+    val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
     val accent = stateAccentFor(card.entityId, state)
     Box(
         modifier = modifier

@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceConfig
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceDashboard
@@ -63,19 +62,22 @@ class DashboardsViewModel(
     )
 
     /**
-     * Set of entity ids referenced by the currently-rendered view. Used
-     * to drive [HaRepository.observe] so the renderer only subscribes to
-     * the entities actually on screen. Updated whenever the rendered
-     * view changes.
+     * Set of RAW entity ids referenced by the currently-rendered view. Used
+     * to drive [HaRepository.observeRaw] so the renderer subscribes to (and
+     * seeds) exactly the entities on screen, regardless of whether their
+     * domain is in R1HA's EntityId enum. Updated whenever the rendered view
+     * changes.
      */
-    private val _renderedEntities = MutableStateFlow<Set<EntityId>>(emptySet())
+    private val _renderedEntities = MutableStateFlow<Set<String>>(emptySet())
 
     /**
-     * Live entity-state map for whatever the current view is showing.
-     * `null` when the view isn't loaded or has no entities; otherwise
-     * a stable Map keyed by EntityId.
+     * Live entity-state map for whatever the current view is showing, keyed by
+     * the raw `domain.object_id` string. `null` when the view isn't loaded or
+     * has no entities; otherwise a stable map. Raw-string keys make the lookup
+     * domain-agnostic so a custom-integration sensor renders its value instead
+     * of a blank.
      */
-    val entities: StateFlow<Map<EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>?> =
+    val entities: StateFlow<Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?> =
         combine(_renderedEntities, _state) { ids, _ -> ids }
             .stateIn(
                 scope = viewModelScope,
@@ -83,13 +85,13 @@ class DashboardsViewModel(
                 initialValue = emptySet(),
             )
             .let { idsFlow ->
-                MutableStateFlow<Map<EntityId, com.github.itskenny0.r1ha.core.ha.EntityState>?>(null).also { sink ->
+                MutableStateFlow<Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?>(null).also { sink ->
                     viewModelScope.launch {
                         idsFlow.collect { ids ->
                             if (ids.isEmpty()) {
                                 sink.value = emptyMap()
                             } else {
-                                haRepository.observe(ids).collect { map -> sink.value = map }
+                                haRepository.observeRaw(ids).collect { map -> sink.value = map }
                             }
                         }
                     }
@@ -337,7 +339,7 @@ class DashboardsViewModel(
             _renderedEntities.value = emptySet()
             return
         }
-        _renderedEntities.value = collectEntityIds(view.cards)
+        _renderedEntities.value = collectRawEntityIds(view.cards)
     }
 
     private fun refreshRenderedEntities() {
@@ -345,83 +347,20 @@ class DashboardsViewModel(
         val config = _state.value.configs[key ?: DEFAULT_KEY] ?: return
         val viewPath = _state.value.selectedViewPath
         val view = viewPath?.let { p -> config.views.firstOrNull { it.path == p } } ?: return
-        _renderedEntities.value = collectEntityIds(view.cards)
+        _renderedEntities.value = collectRawEntityIds(view.cards)
     }
 
-    private fun collectEntityIds(cards: List<com.github.itskenny0.r1ha.core.lovelace.LovelaceCard>): Set<EntityId> {
-        val out = mutableSetOf<EntityId>()
-        cards.forEach { collectEntityIdsFromCard(it, out) }
+    /**
+     * Collect the raw entity ids referenced by [cards] (and descendants).
+     * Delegates to the renderer-layer traversal so the subscription set and
+     * the per-card slice can never drift apart.
+     */
+    private fun collectRawEntityIds(
+        cards: List<com.github.itskenny0.r1ha.core.lovelace.LovelaceCard>,
+    ): Set<String> {
+        val out = LinkedHashSet<String>()
+        cards.forEach { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
         return out
-    }
-
-    private fun collectEntityIdsFromCard(
-        card: com.github.itskenny0.r1ha.core.lovelace.LovelaceCard,
-        sink: MutableSet<EntityId>,
-    ) {
-        when (card) {
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Entities ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Glance ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Button ->
-                card.entityId?.let { sink.addOptional(it) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Tile -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Light -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Gauge -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.WeatherForecast -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.VerticalStack ->
-                card.cards.forEach { collectEntityIdsFromCard(it, sink) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.HorizontalStack ->
-                card.cards.forEach { collectEntityIdsFromCard(it, sink) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Grid ->
-                card.cards.forEach { collectEntityIdsFromCard(it, sink) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Conditional -> {
-                // Subscribe the condition entities too, not just the inner card.
-                // Without these the conditional can never re-evaluate when a
-                // gating entity changes, and (since the renderer now fails closed
-                // on a missing state) the wrapped card would stay hidden forever.
-                card.conditions.forEach { cond ->
-                    when (cond) {
-                        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals ->
-                            sink.addOptional(cond.entityId)
-                        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState ->
-                            sink.addOptional(cond.entityId)
-                        com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
-                    }
-                }
-                collectEntityIdsFromCard(card.card, sink)
-            }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Sensor -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.PictureGlance -> {
-                card.cameraImage?.let { sink.addOptional(it) }
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.PictureEntity -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Area ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.HistoryGraph ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.AlarmPanel -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Map ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Thermostat -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.MediaControl -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Humidifier -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.EntityFilter ->
-                card.entities.forEach { sink.addOptional(it.entityId) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Statistic -> sink.addOptional(card.entityId)
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Markdown -> Unit
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Heading -> Unit
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Logbook -> Unit
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Clock -> Unit
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Unsupported ->
-                card.entityRefs.forEach { sink.addOptional(it) }
-        }
-    }
-
-    private fun MutableSet<EntityId>.addOptional(raw: String) {
-        if (raw.isBlank() || '.' !in raw) return
-        runCatching { EntityId(raw) }.getOrNull()?.let { add(it) }
     }
 
     companion object {
