@@ -21,14 +21,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -43,19 +44,20 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 /**
  * Zones surface — a list-by-zone view of who's currently where,
  * plus a small abstract map at the top showing the relative
- * geographic layout of every zone (and their occupancy).
+ * geographic layout of every zone (and the tracked people / devices
+ * inside or around them).
  *
  * The map is a Compose Canvas — no tiles, no actual map data; it
- * draws each zone as a circle sized by its radius_m attribute and
+ * draws each zone as a circle sized by its radius attribute and
  * positioned by its lat/lon, normalised to fit inside the canvas
- * with a 10 % margin. Occupied zones get a filled accent; empty
- * zones a hairline outline. This is much less than a real map
- * but enough to communicate the geographic relationship between
- * zones at a glance.
+ * with a 10 % margin. Tracked entities reporting GPS are plotted as
+ * small dots on top. Occupied zones get a filled accent; empty zones
+ * a hairline outline. This is much less than a real map but enough to
+ * communicate the geographic relationship between zones at a glance.
  *
- * Below the map: a list of zones, each carrying its occupant
- * names + lat/lon for orientation. Outside (`not_home`) persons
- * collect under a final OUTSIDE section.
+ * Below the map: a list of zones, each carrying its icon, occupant
+ * names + radius. Outside (`not_home`) persons collect under a final
+ * OUTSIDE section.
  */
 @Composable
 fun ZonesScreen(
@@ -123,33 +125,43 @@ fun ZonesScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "No zones defined. Settings → Areas & Zones in HA's web UI.",
+                    text = "No zones defined. Settings, Areas & Zones in HA's web UI.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
             }
-            else -> LazyColumn(
-                state = listState,
+            else -> PullToRefreshBox(
+                isRefreshing = ui.loading,
+                onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 12.dp, vertical = 8.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                // Map preview — only when at least two zones carry
-                // lat/lon so there's something meaningful to draw.
-                val mappable = ui.zones.filter { it.latitude != null && it.longitude != null }
-                if (mappable.size >= 2) {
-                    item("__map__") {
-                        ZoneMap(zones = mappable)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 12.dp, vertical = 8.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Map preview — only when at least two points (zones
+                    // and/or trackers) carry lat/lon so there's something
+                    // meaningful to draw.
+                    val mappableZones = ui.zones.filter {
+                        it.latitude != null && it.longitude != null
                     }
-                }
-                items(items = ui.zones, key = { it.entityId }) { zone ->
-                    ZoneRow(zone)
-                }
-                if (ui.outside.isNotEmpty()) {
-                    item("__outside__") {
-                        OutsideRow(names = ui.outside)
+                    val points = mappableZones.size + ui.trackers.size
+                    if (mappableZones.isNotEmpty() && points >= 2) {
+                        item("__map__") {
+                            ZoneMap(zones = mappableZones, trackers = ui.trackers)
+                        }
+                    }
+                    items(items = ui.zones, key = { it.entityId }) { zone ->
+                        ZoneRow(zone)
+                    }
+                    if (ui.outside.isNotEmpty()) {
+                        item("__outside__") {
+                            OutsideRow(names = ui.outside)
+                        }
                     }
                 }
             }
@@ -159,36 +171,34 @@ fun ZonesScreen(
 }
 
 /**
- * Abstract map of every zone — Compose Canvas; not a real geo map.
- * Each zone is a circle sized by its `radius_m` attribute,
- * positioned in [0..1] coordinate space using the bounding box of
- * every zone's lat/lon, then projected onto the canvas with a 10%
- * margin so the outermost circles aren't clipped at the edge.
+ * Abstract map of every zone + tracked entity — Compose Canvas; not a
+ * real geo map. Each zone is a circle sized by its `radius` attribute,
+ * positioned in [0..1] coordinate space using the bounding box of every
+ * plotted point's lat/lon, then projected onto the canvas with a 10%
+ * margin so the outermost markers aren't clipped at the edge.
  *
- * Filled when occupied, hairline-outlined when empty — at a glance
- * the user sees both 'where are my zones relative to each other'
- * and 'which ones have someone in them right now'.
+ * Zones: filled when occupied, hairline-outlined when empty. Trackers:
+ * small dots (warm when home, cool when out). At a glance the user sees
+ * 'where are my zones relative to each other', 'which ones have someone
+ * in them', and 'where exactly is each tracked person right now'.
  */
 @Composable
-private fun ZoneMap(zones: List<ZonesViewModel.Zone>) {
-    // Bounding box across every mappable zone. We pad by 10% of each
-    // axis span so a zone at the extreme corner has room around it
-    // for its radius circle.
-    val lats = zones.mapNotNull { it.latitude }
-    val lons = zones.mapNotNull { it.longitude }
-    if (lats.isEmpty() || lons.isEmpty()) return
-    val latMin = lats.min()
-    val latMax = lats.max()
-    val lonMin = lons.min()
-    val lonMax = lons.max()
-    val latSpan = (latMax - latMin).takeIf { it > 1e-9 } ?: 0.01
-    val lonSpan = (lonMax - lonMin).takeIf { it > 1e-9 } ?: 0.01
-    // Approximate metres per degree at the bounding box's mean lat —
-    // good enough for the abstract map; we never claim it's accurate
-    // for navigation.
-    val midLat = (latMin + latMax) / 2.0
-    val metersPerLatDeg = 111_320.0
-    val metersPerLonDeg = 111_320.0 * kotlin.math.cos(Math.toRadians(midLat))
+private fun ZoneMap(
+    zones: List<ResolvedZone>,
+    trackers: List<MappableTracker>,
+) {
+    // Bounding box across every plotted point — zone centres and tracker
+    // positions both — so the frame contains everyone.
+    val points = buildList {
+        zones.forEach { z ->
+            val lat = z.latitude
+            val lon = z.longitude
+            if (lat != null && lon != null) add(lat to lon)
+        }
+        trackers.forEach { add(it.latitude to it.longitude) }
+    }
+    val bounds = geoBounds(points) ?: return
+    val metersPerLonDeg = metersPerLonDegree(bounds.midLat)
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -221,22 +231,16 @@ private fun ZoneMap(zones: List<ZonesViewModel.Zone>) {
             zones.forEach { zone ->
                 val lat = zone.latitude ?: return@forEach
                 val lon = zone.longitude ?: return@forEach
-                // Normalise lat/lon to [0.1 .. 0.9] of the canvas span
-                // so circles near the edge have margin. Y is inverted
-                // (north = up).
-                val xFrac = ((lon - lonMin) / lonSpan).toFloat() * 0.8f + 0.1f
-                val yFrac = 1f - (((lat - latMin) / latSpan).toFloat() * 0.8f + 0.1f)
+                val (xFrac, yFrac) = projectToCanvasFraction(lat, lon, bounds)
                 val centre = Offset(xFrac * w, yFrac * h)
-                // Translate radius_m to canvas units via the bounding-
-                // box span (in metres) → canvas span (in pixels) ratio.
-                // Caps are relative to canvas size so a tablet's larger
-                // viewport doesn't render the same metric radii as visually
-                // smaller circles than the R1's portrait display does. The
-                // previous absolute (8f, 48f) was tuned for the R1's 240px
-                // canvas; on a 720px tablet that made every zone read as a
-                // sub-thumbnail dot.
+                // Translate radius to canvas units via the bounding-box span
+                // (in metres) → canvas span (in pixels) ratio. Caps are
+                // relative to canvas size so a tablet's larger viewport
+                // doesn't render the same metric radii as visually smaller
+                // circles than the R1's portrait display does.
                 val radiusM = zone.radiusMeters ?: 100.0
-                val canvasPerMeter = w / (lonSpan * metersPerLonDeg).toFloat().coerceAtLeast(1f)
+                val canvasPerMeter =
+                    w / (bounds.lonSpan * metersPerLonDeg).toFloat().coerceAtLeast(1f)
                 val rMin = (w * 0.03f).coerceAtLeast(8f)
                 val rMax = (w * 0.18f).coerceAtMost(96f)
                 val r = (radiusM.toFloat() * canvasPerMeter).coerceIn(rMin, rMax)
@@ -252,13 +256,29 @@ private fun ZoneMap(zones: List<ZonesViewModel.Zone>) {
                     color = if (occupied) R1.AccentWarm else R1.Hairline,
                     radius = r,
                     center = centre,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f),
+                    style = Stroke(width = 1.5f),
                 )
-                // Centre dot — labels HA's "this is the zone's exact
-                // position" rather than its radius.
+                // Centre dot — the zone's exact position.
                 drawCircle(
                     color = if (occupied) R1.AccentWarm else R1.InkSoft,
                     radius = 2.5f,
+                    center = centre,
+                )
+            }
+            // Tracked entities on top of the zones — a small filled dot with
+            // a thin halo so it reads against a zone circle of either colour.
+            trackers.forEach { t ->
+                val (xFrac, yFrac) = projectToCanvasFraction(t.latitude, t.longitude, bounds)
+                val centre = Offset(xFrac * w, yFrac * h)
+                val dot = if (t.home) R1.AccentWarm else R1.AccentCool
+                drawCircle(
+                    color = R1.Bg,
+                    radius = 5f,
+                    center = centre,
+                )
+                drawCircle(
+                    color = dot,
+                    radius = 3.5f,
                     center = centre,
                 )
             }
@@ -267,7 +287,7 @@ private fun ZoneMap(zones: List<ZonesViewModel.Zone>) {
 }
 
 @Composable
-private fun ZoneRow(zone: ZonesViewModel.Zone) {
+private fun ZoneRow(zone: ResolvedZone) {
     val occupied = zone.occupants.isNotEmpty()
     Column(
         modifier = Modifier
@@ -282,6 +302,14 @@ private fun ZoneRow(zone: ZonesViewModel.Zone) {
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            zone.icon?.let { icon ->
+                Text(
+                    text = zoneIconLabel(icon),
+                    style = R1.labelMicro,
+                    color = R1.AccentNeutral,
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 text = zone.name,
                 style = R1.body,
@@ -364,3 +392,14 @@ private fun OutsideRow(names: List<String>) {
 private fun formatRadius(meters: Double): String =
     if (meters >= 1000) "${"%.1f".format(java.util.Locale.US, meters / 1000.0)}km"
     else "${meters.toInt()}m"
+
+/**
+ * Compact label for an HA icon string. HA stores zone icons as MDI
+ * identifiers like "mdi:home"; there is no glyph font in this app, so we
+ * surface the bare icon name ("home") as a small text tag rather than an
+ * actual glyph. Strips the "mdi:" / "hass:" prefix when present.
+ */
+private fun zoneIconLabel(icon: String): String {
+    val bare = icon.substringAfter(':', icon).trim()
+    return bare.ifBlank { icon }.uppercase(java.util.Locale.US)
+}
