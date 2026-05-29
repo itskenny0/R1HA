@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +35,9 @@ import com.github.itskenny0.r1ha.core.ha.PersistentNotification
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -81,6 +85,14 @@ fun NotificationsScreen(
     ) {
         R1TopBar(title = "NOTIFICATIONS", onBack = onBack)
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
+        // Create affordance — a small inline form (title + message) that
+        // fires persistent_notification.create. Always available, even on the
+        // empty/all-clear state, so it doubles as a way to verify the dismiss
+        // path end to end without waiting for a real integration to raise one.
+        CreateNotificationForm(
+            creating = ui.creating,
+            onCreate = { title, message -> vm.create(title, message) },
+        )
         // Bulk DISMISS ALL — only rendered when there's at least one
         // notification to dismiss. Two-stage confirm via the armed/commit
         // pattern (single tap arms, second tap within 3 s fires) so a
@@ -192,6 +204,91 @@ fun NotificationsScreen(
             }
         }
         } // AdaptiveContent
+    }
+}
+
+/**
+ * Collapsible compose affordance for `persistent_notification.create`.
+ * Renders a single NEW chip by default; tapping it expands an inline form
+ * with an optional title field, a required message field, and a CREATE
+ * button. Kept compact (no modal) so it sits naturally above the list on the
+ * R1's portrait viewport. The form clears + collapses on a successful submit.
+ */
+@Composable
+private fun CreateNotificationForm(
+    creating: Boolean,
+    onCreate: (title: String, message: String) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    var title by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+
+    // Collapse + clear once a create finishes (creating flips back to false
+    // while the form is open and a message was entered).
+    val wasCreating = remember { mutableStateOf(false) }
+    LaunchedEffect(creating) {
+        if (wasCreating.value && !creating) {
+            open = false
+            title = ""
+            message = ""
+        }
+        wasCreating.value = creating
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "PERSISTENT NOTIFICATIONS",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            R1Chip(
+                text = if (open) "CLOSE" else "+ NEW",
+                variant = R1ChipVariant.Action,
+                selected = open,
+                onClick = { open = !open },
+                contentDescription = if (open) "Close create form" else "Create notification",
+            )
+        }
+        if (open) {
+            Spacer(Modifier.size(6.dp))
+            R1TextField(
+                value = title,
+                onValueChange = { title = it },
+                placeholder = "Title (optional)",
+                monospace = false,
+                enabled = !creating,
+            )
+            Spacer(Modifier.size(6.dp))
+            R1TextField(
+                value = message,
+                onValueChange = { message = it },
+                placeholder = "Message",
+                monospace = false,
+                singleLine = false,
+                minLines = 2,
+                enabled = !creating,
+            )
+            Spacer(Modifier.size(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                val canCreate = !creating && message.isNotBlank()
+                R1Chip(
+                    text = if (creating) "CREATING…" else "CREATE",
+                    variant = R1ChipVariant.Action,
+                    selected = canCreate,
+                    onClick = if (canCreate) {
+                        { onCreate(title, message) }
+                    } else null,
+                    contentDescription = "Submit new notification",
+                )
+            }
+        }
     }
 }
 
