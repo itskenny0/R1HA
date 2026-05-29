@@ -111,6 +111,26 @@ interface HaRepository {
     ): Result<String>
 
     /**
+     * Fetch a weather entity's forecast via the response-only
+     * `weather.get_forecasts` service. Modern HA integrations (2024.x+)
+     * dropped the legacy `forecast` state attribute and expose forecasts
+     * only through this service, which HA rejects with HTTP 400 unless the
+     * REST call carries `?return_response=true` and reads the data back from
+     * the response body rather than the produced state changes.
+     *
+     * [type] is `"hourly"` or `"daily"` (HA also accepts `"twice_daily"`).
+     * Returns the per-entity service-response object verbatim, shaped
+     * `{ "forecast": [ ... ] }`, so callers can run it through their existing
+     * forecast-entry parser. Errors (HTTP 400 on integrations that don't
+     * support the requested forecast type, 401, transport failures) come back
+     * as a failed [Result] so the caller can fall back to the legacy attribute.
+     */
+    suspend fun getWeatherForecasts(
+        entityId: String,
+        type: String,
+    ): Result<kotlinx.serialization.json.JsonElement>
+
+    /**
      * Fire an arbitrary HA event by [eventType] — POSTs to
      * `/api/events/<event_type>` with the given JSON [data] as the event
      * payload. Used by the dev menu's fire-event tile for power users who

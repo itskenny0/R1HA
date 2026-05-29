@@ -497,4 +497,69 @@ class DefaultHaRepositoryTest {
         http.dispatcher.executorService.shutdown()
         http.connectionPool.evictAll()
     }
+
+    /**
+     * getWeatherForecasts must POST to /api/services/weather/get_forecasts with
+     * the ?return_response=true query param (HA rejects the response-only service
+     * with HTTP 400 without it), forward the entity_id + type in the body, and
+     * return the per-entity service-response object ({"forecast":[...]}) verbatim.
+     */
+    @Test fun `getWeatherForecasts posts return_response and returns per-entity object`() = runTest {
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl)) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val ws = HaWebSocketClient(http = http, scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+
+        // HA wraps the response data under service_response, keyed by entity_id.
+        val bodyJson = """
+            {
+              "changed_states": [],
+              "service_response": {
+                "weather.home": {
+                  "forecast": [
+                    {"datetime":"2026-05-29T12:00:00+00:00","condition":"sunny","temperature":21.5},
+                    {"datetime":"2026-05-29T13:00:00+00:00","condition":"cloudy","temperature":20.0}
+                  ]
+                }
+              }
+            }
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(bodyJson))
+
+        val result = repo.getWeatherForecasts("weather.home", "hourly")
+        assertThat(result.isSuccess).isTrue()
+
+        // The returned element is the per-entity object, not the whole envelope.
+        val obj = result.getOrThrow() as kotlinx.serialization.json.JsonObject
+        val forecast = obj["forecast"] as kotlinx.serialization.json.JsonArray
+        assertThat(forecast).hasSize(2)
+
+        val req = server.takeRequest()
+        assertThat(req.method).isEqualTo("POST")
+        assertThat(req.path).contains("/api/services/weather/get_forecasts")
+        assertThat(req.path).contains("return_response=true")
+        val sentBody = req.body.readUtf8()
+        assertThat(sentBody).contains("\"entity_id\":\"weather.home\"")
+        assertThat(sentBody).contains("\"type\":\"hourly\"")
+
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
 }
