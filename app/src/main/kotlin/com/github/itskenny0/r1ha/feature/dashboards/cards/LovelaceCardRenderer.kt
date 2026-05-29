@@ -205,12 +205,17 @@ fun evaluateConditions(
         when (cond) {
             is LovelaceCondition.StateEquals -> {
                 val eid = safeEntityId(cond.entityId) ?: return@all true
-                val state = stateMap[eid] ?: return@all true
+                // Fail closed when the gating entity has no live state: HA hides
+                // a conditional whose entity is missing/unknown rather than
+                // showing it. Condition entities are subscribed (see the
+                // ViewModel + EntityStates traversal), so a genuinely-present
+                // entity will have state here; only truly-absent entities fail.
+                val state = stateMap[eid] ?: return@all false
                 state.rawState.equals(cond.state, ignoreCase = true)
             }
             is LovelaceCondition.NumericState -> {
                 val eid = safeEntityId(cond.entityId) ?: return@all true
-                val state = stateMap[eid] ?: return@all true
+                val state = stateMap[eid] ?: return@all false
                 val value = state.raw?.toDouble() ?: state.rawState?.toDoubleOrNull() ?: return@all false
                 val above = cond.above?.let { value > it } ?: true
                 val below = cond.below?.let { value < it } ?: true

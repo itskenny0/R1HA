@@ -375,8 +375,22 @@ class DashboardsViewModel(
                 card.cards.forEach { collectEntityIdsFromCard(it, sink) }
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Grid ->
                 card.cards.forEach { collectEntityIdsFromCard(it, sink) }
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Conditional ->
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Conditional -> {
+                // Subscribe the condition entities too, not just the inner card.
+                // Without these the conditional can never re-evaluate when a
+                // gating entity changes, and (since the renderer now fails closed
+                // on a missing state) the wrapped card would stay hidden forever.
+                card.conditions.forEach { cond ->
+                    when (cond) {
+                        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals ->
+                            sink.addOptional(cond.entityId)
+                        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState ->
+                            sink.addOptional(cond.entityId)
+                        com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
+                    }
+                }
                 collectEntityIdsFromCard(card.card, sink)
+            }
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Sensor -> sink.addOptional(card.entityId)
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.PictureGlance -> {
                 card.cameraImage?.let { sink.addOptional(it) }
