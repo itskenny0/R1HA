@@ -85,13 +85,34 @@ fun CalendarsScreen(
         )
         return
     }
+    var showingAgenda by remember { mutableStateOf(false) }
+    if (showingAgenda) {
+        AgendaScreen(
+            haRepository = haRepository,
+            settings = settings,
+            wheelInput = wheelInput,
+            onBack = { showingAgenda = false },
+        )
+        return
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding(),
     ) {
-        R1TopBar(title = "CALENDARS", onBack = onBack)
+        R1TopBar(
+            title = "CALENDARS",
+            onBack = onBack,
+            action = {
+                R1Chip(
+                    text = "AGENDA",
+                    variant = R1ChipVariant.Action,
+                    onClick = { showingAgenda = true },
+                    contentDescription = "Open cross-calendar agenda",
+                )
+            },
+        )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
