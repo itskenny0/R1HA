@@ -276,6 +276,13 @@ interface HaRepository {
     suspend fun createArea(name: String): Result<AreaInfo>
 
     /**
+     * Rename an existing area via `config/area_registry/update`. Sends the
+     * stable [areaId] plus the new [name]; callers refresh the area list on
+     * success so the updated name shows everywhere it is referenced.
+     */
+    suspend fun renameArea(areaId: String, name: String): Result<Unit>
+
+    /**
      * Update one entity's registry entry — rename it (the `name` field
      * overrides the integration-supplied `original_name`) and/or assign it
      * to an area. Pass `null` for either field to leave it untouched;

@@ -12,6 +12,7 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -281,6 +282,84 @@ class DefaultHaRepositoryTest {
             expectNoEvents()
             cancelAndConsumeRemainingEvents()
         }
+
+        repo.stop()
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
+     * renameArea must emit a `config/area_registry/update` WS command carrying the
+     * stable area_id plus the new name, and resolve to Result.success once HA replies
+     * with a success result. Asserts the request shape on the wire and the return value.
+     */
+    @Test fun `renameArea sends area_registry update with id and name`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl), favorites = listOf("light.kitchen")) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val wsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val ws = HaWebSocketClient(http = http, scope = wsScope)
+
+        val wsUrl = baseUrl.replace("http://", "ws://") + "/api/websocket"
+        ws.connect(wsUrl, "TOK")
+
+        val opened = recorder.awaitOpen(5_000)
+        opened.send("""{"type":"auth_required","ha_version":"2026.5.0"}""")
+        recorder.awaitTextMessage(5_000) // auth frame
+        opened.send("""{"type":"auth_ok","ha_version":"2026.5.0"}""")
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        repo.start()
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(300)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val subFrame = recorder.awaitTextMessage(5_000)
+        assertThat(subFrame).contains("subscribe_trigger")
+
+        // renameArea suspends until HA replies, so issue it on a background coroutine,
+        // capture the outbound frame, reply success keyed to its id, then await the Result.
+        val callScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val deferred = callScope.async { repo.renameArea("kitchen", "Cocina") }
+
+        // The repo may emit additional resubscribe frames; skip past anything
+        // that isn't the area-registry update command we're asserting on.
+        var frame = recorder.awaitTextMessage(5_000)
+        while (!frame.contains("config/area_registry/update")) {
+            frame = recorder.awaitTextMessage(5_000)
+        }
+        assertThat(frame).contains("\"type\":\"config/area_registry/update\"")
+        assertThat(frame).contains("\"area_id\":\"kitchen\"")
+        assertThat(frame).contains("\"name\":\"Cocina\"")
+
+        // Echo HA's success result back, keyed to the request id from the captured frame.
+        val id = Regex("\"id\":(\\d+)").find(frame)!!.groupValues[1]
+        opened.send("""{"id":$id,"type":"result","success":true,"result":null}""")
+
+        val result = deferred.await()
+        assertThat(result.isSuccess).isTrue()
 
         repo.stop()
         server.shutdown()

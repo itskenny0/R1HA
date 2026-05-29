@@ -2994,6 +2994,16 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun renameArea(areaId: String, name: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("area_id", JsonPrimitive(areaId))
+            put("name", JsonPrimitive(name))
+        }
+        callWsExpectingPayload("config/area_registry/update", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.area", "rename '$areaId' failed: ${t.message}")
+        }
+    }
+
     override suspend fun updateEntityRegistry(
         entityId: String,
         name: String?,
