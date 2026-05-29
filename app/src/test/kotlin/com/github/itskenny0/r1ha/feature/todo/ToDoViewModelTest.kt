@@ -20,9 +20,10 @@ import org.junit.jupiter.api.Test
 class ToDoViewModelTest {
 
     private fun raw(summary: String, uid: String? = null, completed: Boolean = false) =
-        // The repository substitutes the summary as the uid when the provider
-        // gives no real one, so a "uidless" item arrives with uid == summary.
-        ToDoItem(uid = uid ?: summary, summary = summary, completed = completed)
+        // The repository now keeps uid null for items the provider gives no real
+        // one for (it no longer substitutes the summary), so a "uidless" item
+        // arrives with uid == null and the view layer derives identity from it.
+        ToDoItem(uid = uid, summary = summary, completed = completed)
 
     private val list = "todo.shopping"
 
@@ -67,10 +68,10 @@ class ToDoViewModelTest {
         // Simulate what the repository hands over: two uidless "Apples".
         val incoming = listOf(raw("Apples"), raw("Apples"), raw("Bananas"))
 
-        // OLD behaviour reproduced: keying by the summary-as-uid produced a
-        // duplicate key, which a distinctBy-style dedupe would collapse to two.
-        val oldKeys = incoming.map { it.uid }
-        assertThat(oldKeys.toSet()).hasSize(2)
+        // The repository hands uidless rows over with uid == null, so the old
+        // summary-as-uid surrogate (which collapsed two "Apples" to one key) is
+        // gone at the source: there is no per-uid distinction to collide on.
+        assertThat(incoming.map { it.uid }.toSet()).containsExactly(null)
 
         // NEW behaviour: every row keeps a distinct, collision-free key.
         val items = ToDoViewModel.toItems(list, incoming)

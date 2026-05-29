@@ -2590,25 +2590,45 @@ class DefaultHaRepository(
                     ?: kotlinx.serialization.json.JsonArray(emptyList())
                 items.mapIndexedNotNull { idx, el ->
                     val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapIndexedNotNull null
-                    // Prefer HA's stable `uid`; this is what update_item /
-                    // remove_item should target. When the provider doesn't
-                    // expose a uid (rare on Local To-do / Google Tasks /
-                    // Shopping List, but happens on some CalDAV providers)
-                    // we still need a LazyColumn key, so synthesise one
-                    // from summary + array index. The synthetic key never
-                    // leaves the ViewModel — service calls already use
-                    // the actual summary on items without a real uid.
-                    val rawUid = (obj["uid"] as? JsonPrimitive)?.content
+                    // HA's stable `uid` is what update_item / remove_item target.
+                    // Keep it NULL when the provider doesn't expose one (rare on
+                    // Local To-do / Google Tasks / Shopping List, but happens on
+                    // some CalDAV providers) rather than substituting the summary:
+                    // that substitution made two rows reading the same text look
+                    // identical, and the summary-keyed dedupe below then collapsed
+                    // them into one. The caller derives a position-based identity
+                    // for uidless rows and falls back to the summary for service
+                    // calls that need to address such an item.
+                    val rawUid = (obj["uid"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
                     val summary = (obj["summary"] as? JsonPrimitive)?.content ?: return@mapIndexedNotNull null
-                    val uid = rawUid ?: summary
                     val status = (obj["status"] as? JsonPrimitive)?.content ?: "needs_action"
-                    ToDoItem(uid = uid, summary = summary, completed = status == "completed")
+                    // HA exposes the due value under `due` (a date or datetime) on
+                    // most providers and `due_datetime` on a few; accept either.
+                    val due = (obj["due"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                        ?: (obj["due_datetime"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                    val description = (obj["description"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                    ToDoItem(
+                        uid = rawUid,
+                        summary = summary,
+                        completed = status == "completed",
+                        position = idx,
+                        due = due,
+                        description = description,
+                    )
                 }
-                    // Dedupe by uid as a final guard: a misbehaving integration
-                    // that returns two items with the same uid would otherwise
-                    // crash LazyColumn on its duplicate-key check. distinctBy
-                    // keeps the first occurrence.
-                    .distinctBy { it.uid }
+                    // Dedupe only on a real, non-null uid: a misbehaving integration
+                    // that returns two items with the same provider uid would crash
+                    // LazyColumn on its duplicate-key check, so keep the first. Items
+                    // WITHOUT a uid are never deduped here, so two rows that happen to
+                    // share a summary survive as distinct entries (the UI keys them by
+                    // position). distinctBy keeps the first occurrence per uid; null
+                    // uids all map to the same bucket, so partition them out first.
+                    .let { parsed ->
+                        val withUid = parsed.filter { it.uid != null }.distinctBy { it.uid }
+                        val withoutUid = parsed.filter { it.uid == null }
+                        // Preserve original wire order across both groups.
+                        (withUid + withoutUid).sortedBy { it.position }
+                    }
             }.onFailure { t ->
                 R1Log.w("HaRepo.todo", "fetch items for $entityId failed: ${t.message}")
             }

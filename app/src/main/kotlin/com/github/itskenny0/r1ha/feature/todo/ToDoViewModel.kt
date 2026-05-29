@@ -282,9 +282,16 @@ class ToDoViewModel(
             raw.mapIndexed { index, it ->
                 Item(
                     key = itemKey(entityId, index, it),
-                    serverRef = it.uid,
+                    // The wire reference is the provider uid when present, otherwise
+                    // the summary (HA accepts the summary as an item selector on
+                    // providers that expose no uid). The repository now keeps uid
+                    // null for uidless items rather than substituting the summary
+                    // itself, so the fallback lives here at the view layer.
+                    serverRef = it.uid ?: it.summary,
                     summary = it.summary,
                     completed = it.completed,
+                    due = it.due,
+                    description = it.description,
                 )
             }
 
@@ -299,14 +306,13 @@ class ToDoViewModel(
          * keys off `entityId + index + summary`, which is unique within the list
          * and deterministic across a refresh that keeps item order.
          *
-         * A provider uid is treated as "present" only when it differs from the
-         * summary, because the repository substitutes the summary when no real
-         * uid is on the wire.
+         * A provider uid is treated as "present" when the repository surfaced a
+         * non-null one; uidless items (uid == null) fall back to position keying.
          */
         fun itemKey(entityId: String, index: Int, item: ToDoItem): String {
-            val hasRealUid = item.uid.isNotEmpty() && item.uid != item.summary
-            return if (hasRealUid) {
-                "$entityId|uid:${item.uid}"
+            val realUid = item.uid?.takeIf { it.isNotEmpty() }
+            return if (realUid != null) {
+                "$entityId|uid:$realUid"
             } else {
                 "$entityId|idx:$index|sum:${item.summary}"
             }
