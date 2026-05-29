@@ -87,7 +87,10 @@ class VoiceSatelliteEngine(
         // We start the AudioRecord eagerly so the user sees the listening
         // animation the moment HA confirms the run. Frames buffer until we
         // have a handler byte; the recorder loop drops audio until it's set.
-        startRecorder(appContext)
+        // If the mic can't be opened at all there's no point opening the
+        // pipeline (it would sit waiting for audio that never comes); bail
+        // with the Error state startRecorder already set.
+        if (!startRecorder(appContext)) return
         scope.launch {
             val run = haRepository.startAssistPipeline(
                 pipelineId = pipelineId,
@@ -140,7 +143,10 @@ class VoiceSatelliteEngine(
         scope.launch { pipeline?.cancel() }
     }
 
-    private fun startRecorder(appContext: Context) {
+    /** Returns true when the recorder was constructed and its read loop
+     *  launched, false when the mic couldn't be opened (an Error state has
+     *  already been published in that case). */
+    private fun startRecorder(appContext: Context): Boolean {
         val sampleRate = 16000
         val channel = AudioFormat.CHANNEL_IN_MONO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
@@ -150,16 +156,32 @@ class VoiceSatelliteEngine(
         // minimum buffer is usually larger than that on most devices, so we
         // bump up to whichever is bigger to satisfy the recorder while still
         // reading chunked-out 640 byte slices.
+        // getMinBufferSize returns ERROR (-1) / ERROR_BAD_VALUE (-2) when the
+        // device rejects the format; feeding a negative size to the AudioRecord
+        // constructor throws IllegalArgumentException. Clamp to our floor so a
+        // quirky HAL can't crash the engine before we even start recording.
         val recordBuf = maxOf(minBuf, 4096)
         val frameBytes = 640
-        @Suppress("MissingPermission")
-        val rec = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            sampleRate,
-            channel,
-            encoding,
-            recordBuf,
-        )
+        // The AudioRecord constructor can throw (IllegalArgumentException for a
+        // format the device won't honour, or other RuntimeExceptions on some
+        // OEM audio HALs). start() is invoked straight from the UI thread on a
+        // button tap, so an unguarded throw here crashes the app. Surface it as
+        // an Error state instead and bail without leaving a half-built recorder
+        // around.
+        val rec = runCatching {
+            @Suppress("MissingPermission")
+            AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                sampleRate,
+                channel,
+                encoding,
+                recordBuf,
+            )
+        }.getOrElse { t ->
+            _state.value = State.Error("Couldn't open mic: ${t.message}")
+            R1Log.w("VoiceSat", "AudioRecord construction failed: ${t.message}")
+            return false
+        }
         audioRecord = rec
         recorderJob = scope.launch {
             runCatching { rec.startRecording() }.onFailure { t ->
@@ -195,6 +217,7 @@ class VoiceSatelliteEngine(
                 }
             }
         }
+        return true
     }
 
     /** Coroutine-friendly poll: the recorder loop wants to know if it should

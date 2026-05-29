@@ -45,20 +45,30 @@ object NfcReader {
         }
         val app = activity.applicationContext as? App ?: return
         val readerScope = CoroutineScope(Dispatchers.IO)
-        adapter.enableReaderMode(
-            activity,
-            { tag -> onTag(app, readerScope, tag) },
-            // Cover the common HA tag types: A (most consumer tags), B, F, V,
-            // plus the NDEF content type for tags with payload. We don't read
-            // payload — the UID alone is the HA tag_id — so the flags are
-            // essentially "wake me for any tag".
-            NfcAdapter.FLAG_READER_NFC_A
-                or NfcAdapter.FLAG_READER_NFC_B
-                or NfcAdapter.FLAG_READER_NFC_F
-                or NfcAdapter.FLAG_READER_NFC_V
-                or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-            null,
-        )
+        // enableReaderMode requires the activity to be resumed and can throw
+        // IllegalStateException if it isn't (a race against a fast pause, or
+        // certain OEM NFC stacks). bind() runs from onResume, so a throw here
+        // would crash the app on a quirky device; guard it and leave reader
+        // mode simply not engaged (onPause's unbind stays safe either way).
+        runCatching {
+            adapter.enableReaderMode(
+                activity,
+                { tag -> onTag(app, readerScope, tag) },
+                // Cover the common HA tag types: A (most consumer tags), B, F, V,
+                // plus the NDEF content type for tags with payload. We don't read
+                // payload — the UID alone is the HA tag_id — so the flags are
+                // essentially "wake me for any tag".
+                NfcAdapter.FLAG_READER_NFC_A
+                    or NfcAdapter.FLAG_READER_NFC_B
+                    or NfcAdapter.FLAG_READER_NFC_F
+                    or NfcAdapter.FLAG_READER_NFC_V
+                    or NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+                null,
+            )
+        }.onFailure {
+            R1Log.w("NfcReader", "enableReaderMode failed: ${it.message}")
+            return
+        }
         R1Log.i("NfcReader", "reader mode enabled")
     }
 
