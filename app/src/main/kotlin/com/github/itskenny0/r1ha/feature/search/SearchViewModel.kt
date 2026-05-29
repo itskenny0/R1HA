@@ -70,7 +70,10 @@ class SearchViewModel(
         // input_text / input_datetime are read-only from this app's
         // perspective; group them under SENSORS so they match the
         // 'just a value to display' user mental model.
-        Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> Bucket.SENSORS
+        Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+        // Person presence + weather are read-only info entities — group
+        // them under SENSORS alongside the other display-only readouts.
+        Domain.PERSON, Domain.WEATHER -> Bucket.SENSORS
         Domain.SCENE, Domain.SCRIPT, Domain.BUTTON, Domain.INPUT_BUTTON,
         Domain.AUTOMATION -> Bucket.ACTIONS
         // Update entities live on the dedicated Updates screen; route them

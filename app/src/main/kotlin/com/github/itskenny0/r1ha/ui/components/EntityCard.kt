@@ -87,6 +87,9 @@ fun EntityCard(
         // visual reads the same family as smart locks. The AlarmPanel below
         // surfaces the per-mode chips that distinguish an alarm from a lock.
         Domain.ALARM_CONTROL_PANEL -> CardRenderModel.Glyph.LOCK
+        // Person / weather are read-only — routed to SensorCard before the glyph
+        // is used, so the value only needs to keep the when exhaustive.
+        Domain.PERSON, Domain.WEATHER -> CardRenderModel.Glyph.SWITCH
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -138,6 +141,10 @@ fun EntityCard(
         // the "this is important, don't tap it accidentally" framing of the
         // disarmed → armed transitions.
         Domain.ALARM_CONTROL_PANEL -> CardRenderModel.AccentRole.WARM
+        // Person — cool accent reads as "presence / who's home"; weather — also
+        // cool, consistent with sensor-style read-only info. Both render via
+        // SensorCard so the accent is a defensive default.
+        Domain.PERSON, Domain.WEATHER -> CardRenderModel.AccentRole.COOL
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour

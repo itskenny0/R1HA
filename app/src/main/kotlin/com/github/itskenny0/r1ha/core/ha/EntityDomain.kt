@@ -164,6 +164,24 @@ enum class Domain(val prefix: String) {
      *    data `{"command":"<learned name>"}`.
      */
     REMOTE("remote"),
+    /**
+     * Person entities — HA's `person.*` tracker that aggregates a user's device
+     * trackers into a single presence state. State is a zone name: `"home"`,
+     * `"not_home"`, or a custom zone label (e.g. `"Work"`). Read-only from the
+     * card stack's perspective (presence isn't something the wheel sets), so it
+     * renders as a SensorCard showing the current zone. `isOn` reads as "home".
+     */
+    PERSON("person"),
+    /**
+     * Weather entities — `weather.*` forecast providers. State is the current
+     * condition string (`"sunny"`, `"cloudy"`, `"rainy"`, etc.); attributes carry
+     * `temperature`, `humidity`, `wind_speed`, and on older integrations a
+     * `forecast` array. Modern integrations drop the attribute and expose
+     * forecasts only through the `weather.get_forecasts` response-only service
+     * (see [DefaultHaRepository.getWeatherForecasts]). Read-only; rendered by the
+     * dedicated Weather screen, and as a SensorCard in the card stack.
+     */
+    WEATHER("weather"),
     ;
 
     /** Action-only domains — UI renders them as fire-and-forget ActionCard tiles. */
@@ -176,7 +194,8 @@ enum class Domain(val prefix: String) {
      *  driven device); the Helpers screen handles them with bespoke rendering. */
     val isSensor: Boolean get() =
         this == SENSOR || this == BINARY_SENSOR ||
-            this == INPUT_TEXT || this == INPUT_DATETIME
+            this == INPUT_TEXT || this == INPUT_DATETIME ||
+            this == PERSON || this == WEATHER
 
     /** Settable-enum domains — UI renders them as SelectCard. Wheel cycles options;
      *  tap opens a full-screen picker. */

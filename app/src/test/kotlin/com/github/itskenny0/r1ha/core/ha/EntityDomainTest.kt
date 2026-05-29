@@ -18,13 +18,29 @@ class EntityDomainTest {
         assertThat(Domain.fromPrefix("sensor")).isEqualTo(Domain.SENSOR)
         assertThat(Domain.fromPrefix("binary_sensor")).isEqualTo(Domain.BINARY_SENSOR)
         assertThat(Domain.fromPrefix("alarm_control_panel")).isEqualTo(Domain.ALARM_CONTROL_PANEL)
+        assertThat(Domain.fromPrefix("person")).isEqualTo(Domain.PERSON)
+        assertThat(Domain.fromPrefix("weather")).isEqualTo(Domain.WEATHER)
+    }
+
+    @Test fun `person and weather are supported read-only sensor domains`() {
+        // Both now surface (so the Weather screen + presence cards work). They're
+        // read-only: classed as sensors, never as actions or settable selects.
+        assertThat(Domain.isSupportedPrefix("person")).isTrue()
+        assertThat(Domain.isSupportedPrefix("weather")).isTrue()
+        assertThat(Domain.PERSON.prefix).isEqualTo("person")
+        assertThat(Domain.WEATHER.prefix).isEqualTo("weather")
+        assertThat(Domain.PERSON.isSensor).isTrue()
+        assertThat(Domain.WEATHER.isSensor).isTrue()
+        assertThat(Domain.PERSON.isAction).isFalse()
+        assertThat(Domain.WEATHER.isAction).isFalse()
+        assertThat(Domain.PERSON.isSelect).isFalse()
+        assertThat(Domain.WEATHER.isSelect).isFalse()
     }
 
     @Test fun `fromPrefix rejects unknown prefix`() {
-        // Domains the app deliberately doesn't surface yet — device_tracker / weather /
+        // Domains the app deliberately doesn't surface yet — device_tracker /
         // sun / etc. are read-only state surfaces without a clean R1 affordance.
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("device_tracker") }
-        assertThrows<IllegalArgumentException> { Domain.fromPrefix("weather") }
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("sun") }
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("") }
     }

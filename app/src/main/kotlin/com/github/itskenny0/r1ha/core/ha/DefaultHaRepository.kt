@@ -761,6 +761,12 @@ class DefaultHaRepository(
             // reads as off so the chrome pill reads false-as-safe.
             Domain.ALARM_CONTROL_PANEL -> !stateStr.equals("disarmed", ignoreCase = true) &&
                 stateStr != "unavailable" && stateStr != "unknown" && stateStr.isNotBlank()
+            // Person: state is a zone name. "home" reads as on so a presence pill
+            // reads true-as-home; any other zone (including "not_home") reads off.
+            Domain.PERSON -> stateStr.equals("home", ignoreCase = true)
+            // Weather: state is the current condition word, no on/off concept.
+            // Read-only forecast surface; pin to false so the chrome pill stays quiet.
+            Domain.WEATHER -> false
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
         val pct = computePercentWithState(domain, raw.attributes, stateStr)
@@ -984,7 +990,10 @@ class DefaultHaRepository(
         // Remote — IR / RF send-only; no scalar.
         Domain.REMOTE,
         // Alarm — categorical armed-state, not a 0..100 scalar.
-        Domain.ALARM_CONTROL_PANEL -> null
+        Domain.ALARM_CONTROL_PANEL,
+        // Person — presence zone is categorical; weather — a condition word plus
+        // forecast attributes. Neither maps to a 0..100 wheel scalar.
+        Domain.PERSON, Domain.WEATHER -> null
     }
 
     /**
@@ -1078,7 +1087,10 @@ class DefaultHaRepository(
         // Remote — IR / RF send-only; no numeric raw.
         Domain.REMOTE,
         // Alarm — armed state is categorical, no numeric raw to surface.
-        Domain.ALARM_CONTROL_PANEL -> null
+        Domain.ALARM_CONTROL_PANEL,
+        // Person — presence zone is a string; weather — the temperature lives in
+        // an attribute the Weather screen reads directly, not a card-stack raw.
+        Domain.PERSON, Domain.WEATHER -> null
     }
 
     /**
@@ -1167,6 +1179,8 @@ class DefaultHaRepository(
         // Alarm — discrete armed states; rendered as a switch card with the
         // AlarmPanel surfacing the per-mode chips. No wheel-driven scalar.
         Domain.ALARM_CONTROL_PANEL -> false
+        // Person / weather are read-only — rendered as SensorCard, no wheel.
+        Domain.PERSON, Domain.WEATHER -> false
     }
 
     override fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>> =
@@ -1332,6 +1346,9 @@ class DefaultHaRepository(
                         // Alarm: any non-disarmed armed/triggered state reads as on.
                         Domain.ALARM_CONTROL_PANEL -> !stateStr.equals("disarmed", ignoreCase = true) &&
                             available && stateStr.isNotBlank()
+                        // Person: "home" reads as on; weather has no on/off concept.
+                        Domain.PERSON -> stateStr.equals("home", ignoreCase = true)
+                        Domain.WEATHER -> false
                     },
                     percent = pct,
                     raw = rawNum,
@@ -2268,6 +2285,46 @@ class DefaultHaRepository(
                 else "Home Assistant returned HTTP ${resp.code} for the service call"
             }
             responseBody
+        }
+    }
+
+    override suspend fun getWeatherForecasts(
+        entityId: String,
+        type: String,
+    ): Result<kotlinx.serialization.json.JsonElement> = withContext(Dispatchers.IO) {
+        runCatching {
+            val s = settings.settings.first()
+            // get_forecasts is a read — guest mode gates writes, not reads, so a
+            // guest holding the device still sees the weather screen's forecast.
+            val server = s.server ?: error("Server URL not configured.")
+            refresher?.ensureFresh()
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+                put("type", JsonPrimitive(type))
+            }
+            // HA rejects weather.get_forecasts with HTTP 400 unless the REST call
+            // carries return_response — the param flips the body from the produced
+            // state changes to the service's response data.
+            val url = "${server.url.trimEnd('/')}/api/services/weather/get_forecasts?return_response=true"
+            val body = serviceCallRawBody(url, payload) ?: run {
+                if (refresher?.forceRefresh() == true) {
+                    serviceCallRawBody(url, payload)
+                        ?: error("HTTP 401 for weather.get_forecasts after refresh.")
+                } else {
+                    error("HTTP 401 for weather.get_forecasts.")
+                }
+            }
+            // The response body looks like:
+            // {"changed_states":[...],"service_response":{"weather.home":{"forecast":[...]}}}
+            // Return the per-entity object ({"forecast":[...]}) verbatim so the
+            // caller can run it through the existing forecast-entry parser.
+            val root = listStatesJson.decodeFromString<kotlinx.serialization.json.JsonObject>(body)
+            val serviceResponse = root["service_response"] as? kotlinx.serialization.json.JsonObject
+                ?: kotlinx.serialization.json.JsonObject(emptyMap())
+            serviceResponse[entityId]
+                ?: kotlinx.serialization.json.JsonObject(emptyMap())
+        }.onFailure { t ->
+            R1Log.w("HaRepo.weather", "get_forecasts($type) for $entityId failed: ${t.message}")
         }
     }
 

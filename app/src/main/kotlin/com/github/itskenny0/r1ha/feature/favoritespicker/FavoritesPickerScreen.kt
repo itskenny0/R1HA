@@ -727,6 +727,8 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     Domain.REMOTE -> R1.AccentCool
     // Alarm — warm matches the cardstack's high-attention treatment.
     Domain.ALARM_CONTROL_PANEL -> R1.AccentWarm
+    // Person / weather — read-only info entities; cool matches the cardstack.
+    Domain.PERSON, Domain.WEATHER -> R1.AccentCool
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
@@ -761,4 +763,6 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.UPDATE -> "UPDATE"
     Domain.REMOTE -> "REMOTE"
     Domain.ALARM_CONTROL_PANEL -> "ALARM"
+    Domain.PERSON -> "PERSON"
+    Domain.WEATHER -> "WEATHER"
 }

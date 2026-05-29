@@ -154,6 +154,14 @@ data class ServiceCall(
                     "update_entity",
                     JsonObject(emptyMap()),
                 )
+                // Person / weather are read-only — the wheel and tap are no-ops at
+                // the VM level so this branch shouldn't fire. Defensive
+                // homeassistant.update_entity keeps a stray dispatch harmless.
+                Domain.PERSON, Domain.WEATHER -> ServiceCall(
+                    target,
+                    "update_entity",
+                    JsonObject(emptyMap()),
+                )
             }
         }
 
@@ -422,6 +430,13 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // Person / weather are read-only — EntityCard skips the tap modifier for
+            // these sensor domains. Defensive update_entity no-op refresh.
+            Domain.PERSON, Domain.WEATHER -> ServiceCall(
+                target,
+                "update_entity",
+                JsonObject(emptyMap()),
+            )
         }
 
         /**
@@ -504,6 +519,12 @@ data class ServiceCall(
             // Alarm: explicit setSwitch has no sensible mapping; routed
             // through the AlarmPanel chips instead.
             Domain.ALARM_CONTROL_PANEL -> ServiceCall(
+                target,
+                "update_entity",
+                JsonObject(emptyMap()),
+            )
+            // Person / weather are read-only — no on/off concept. Defensive no-op.
+            Domain.PERSON, Domain.WEATHER -> ServiceCall(
                 target,
                 "update_entity",
                 JsonObject(emptyMap()),
