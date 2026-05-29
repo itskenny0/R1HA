@@ -8,6 +8,20 @@ interface HaRepository {
     val connection: StateFlow<ConnectionState>
     /** Hot map of currently-known entity states for the subscribed set. */
     fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>>
+
+    /**
+     * Domain-agnostic observe for the dashboards renderer. Takes RAW
+     * `domain.object_id` strings (so an entity whose domain isn't in the
+     * [Domain] enum is still requested) and, as a side effect, registers them
+     * for WS subscription + REST seeding alongside the user's favourites so a
+     * dashboard card shows live state for an entity the user never pinned.
+     *
+     * Emits a map keyed by the raw id string. An entity whose domain IS
+     * supported appears with its full [EntityState]; an entity whose domain
+     * isn't modelled is currently omitted (the typed cache can't hold it),
+     * which the renderer treats the same as "not yet loaded".
+     */
+    fun observeRaw(entityIds: Set<String>): Flow<Map<String, EntityState>>
     /**
      * Fires once per service call the repository couldn't deliver — timeout, WS dropped,
      * HA returned an error, etc. The ViewModel watches this so it can roll back its

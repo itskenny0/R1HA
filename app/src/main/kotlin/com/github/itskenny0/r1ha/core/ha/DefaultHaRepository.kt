@@ -379,6 +379,16 @@ class DefaultHaRepository(
     override val callFailures: SharedFlow<EntityId> = _callFailures.asSharedFlow()
 
     private val cache = MutableStateFlow<Map<EntityId, EntityState>>(emptyMap())
+
+    /**
+     * Raw entity ids the dashboards renderer is currently displaying. These are
+     * subscribed + REST-seeded ALONGSIDE the user's favourites so a card shows
+     * live state for an entity the user never pinned. Kept as raw strings (not
+     * [EntityId]) so an entity whose domain isn't in our [Domain] enum still
+     * gets subscribed; the WS trigger + REST seed are domain-agnostic, the
+     * typed-cache write downstream is what filters by supported domain.
+     */
+    private val _dashboardEntityIds = MutableStateFlow<Set<String>>(emptySet())
     private val pendingCalls = ConcurrentHashMap<Int, CompletableDeferred<Result<Unit>>>()
     /**
      * Parallel awaiter map keyed by the same request id space as [pendingCalls], but
@@ -747,6 +757,21 @@ class DefaultHaRepository(
                 .distinctUntilChanged()
                 .onEach {
                     R1Log.i("HaRepo.favsChange", "favorites changed to ${it.size} entries")
+                    if (ws.state.value is ConnectionState.Connected) {
+                        resubscribe()
+                        seedJob?.cancel()
+                        seedJob = scope.launch { seedCacheFromHa() }
+                    }
+                }
+                .launchIn(this)
+
+            // Same treatment for the dashboards renderer's entity set: when the user
+            // opens a dashboard view (or switches views), the renderer publishes the
+            // entities it shows via [observeRaw]. Re-subscribe + reseed so those cards
+            // get live state even when the entities aren't pinned favourites.
+            _dashboardEntityIds
+                .onEach {
+                    R1Log.i("HaRepo.dashEntities", "dashboard entity set now ${it.size} entries")
                     if (ws.state.value is ConnectionState.Connected) {
                         resubscribe()
                         seedJob?.cancel()
@@ -1211,6 +1236,21 @@ class DefaultHaRepository(
             // downstream materialize + recomposition for the no-op churn.
             .distinctUntilChanged()
 
+    override fun observeRaw(entityIds: Set<String>): Flow<Map<String, EntityState>> {
+        // Register this set for subscription + seeding. The collector wired in
+        // [start] picks up the change and re-issues the WS trigger + REST seed so
+        // these entities receive live state even when they aren't favourites.
+        _dashboardEntityIds.value = entityIds
+        return cache
+            .map { current ->
+                if (entityIds.isEmpty()) emptyMap()
+                else current.entries
+                    .filter { it.key.value in entityIds }
+                    .associate { it.key.value to it.value }
+            }
+            .distinctUntilChanged()
+    }
+
     override suspend fun call(call: ServiceCall): Result<Unit> {
         // Read-only "guest mode": if the user has flipped the Settings toggle,
         // refuse every outbound service call and surface a toast/log so the
@@ -1352,7 +1392,12 @@ class DefaultHaRepository(
      * WS Connected sometimes races HA's REST stack on slow servers.
      */
     private suspend fun seedCacheFromHa() {
-        val favIds = settings.settings.first().favorites
+        // Seed favourites AND the dashboards renderer's current entity set, so a
+        // dashboard card shows its current value immediately rather than sitting
+        // blank until the entity next transitions. Unsupported-domain ids drop out
+        // here (EntityId rejects them); that's the typed-cache limitation noted on
+        // [_dashboardEntityIds].
+        val favIds = (settings.settings.first().favorites + _dashboardEntityIds.value)
             .mapNotNull { runCatching { EntityId(it) }.getOrNull() }
             .toSet()
         if (favIds.isEmpty()) return
@@ -2601,8 +2646,12 @@ class DefaultHaRepository(
     private fun resubscribe() {
         scope.launch {
             val favs = settings.settings.first().favorites
-            if (favs.isEmpty()) {
-                // User cleared their favourites — tear down the existing subscription so HA
+            // Subscribe to favourites PLUS whatever the dashboards renderer is
+            // currently showing, so a dashboard entity the user never pinned still
+            // receives live state_changed events. Deduped; order doesn't matter.
+            val ids = (favs + _dashboardEntityIds.value).toList()
+            if (ids.isEmpty()) {
+                // Nothing to watch — tear down the existing subscription so HA
                 // stops pushing events we no longer care about, instead of leaving a stale
                 // trigger subscribed forever.
                 subscriptionId?.let { old ->
@@ -2613,7 +2662,7 @@ class DefaultHaRepository(
                 return@launch
             }
             val newId = ws.nextRequestId()
-            ws.send(HaOutbound.SubscribeStateTrigger(id = newId, entityIds = favs))
+            ws.send(HaOutbound.SubscribeStateTrigger(id = newId, entityIds = ids))
             subscriptionId?.let { old ->
                 val unsubId = ws.nextRequestId()
                 ws.send(HaOutbound.UnsubscribeEvents(id = unsubId, subscription = old))
