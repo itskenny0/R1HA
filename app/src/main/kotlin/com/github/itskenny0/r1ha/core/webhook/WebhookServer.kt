@@ -71,6 +71,12 @@ class WebhookServer(
         client.use { sock ->
             val remote = sock.inetAddress?.hostAddress ?: "?"
             runCatching {
+                // Bound the read so a peer that connects and then sends nothing
+                // can't wedge this single-threaded accept loop forever (the
+                // whole listener would stop accepting new webhooks). HA's own
+                // webhook client always completes the request promptly, so a
+                // few seconds is generous.
+                sock.soTimeout = CLIENT_READ_TIMEOUT_MS
                 val reader = BufferedReader(InputStreamReader(sock.getInputStream(), Charsets.UTF_8))
                 val statusLine = reader.readLine() ?: return@use
                 val parts = statusLine.split(' ')
@@ -119,6 +125,13 @@ class WebhookServer(
                 R1Log.d("Webhook", "client $remote: ${t.message}")
             }
         }
+    }
+
+    private companion object {
+        /** Per-connection read timeout. Long enough for any legitimate HA
+         *  webhook POST, short enough that a stalled peer can't hold the
+         *  accept loop hostage. */
+        private const val CLIENT_READ_TIMEOUT_MS = 10_000
     }
 
     private fun sendStatus(sock: Socket, code: Int, reason: String) {
