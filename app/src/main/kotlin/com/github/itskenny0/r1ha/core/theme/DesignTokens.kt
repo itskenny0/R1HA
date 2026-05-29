@@ -51,6 +51,39 @@ object R1 {
     /** Status: disconnected / auth-lost (red). */
     val StatusRed = Color(0xFFE53935)
 
+    // ── Spacing scale ────────────────────────────────────────────────────────────────────
+    /**
+     * The single spacing ramp. Every gap, gutter, and inset on a polished R1 surface should
+     * resolve to one of these so nothing drifts to an ad-hoc dp value. Steps roughly double:
+     * fine internal nudges at the bottom, screen-level gutters at the top.
+     *
+     * Intended use:
+     *  - [space.xxs] (2dp): hairline nudges; the gap between a title and its sub-label.
+     *  - [space.xs]  (4dp): chip-internal vertical padding; spacing between list items.
+     *  - [space.s]   (8dp): chip-internal horizontal padding; small inline gaps.
+     *  - [space.m]   (12dp): row internal padding; list contentPadding gutter.
+     *  - [space.l]   (16dp): comfortable block padding; button horizontal inset.
+     *  - [space.xl]  (24dp): section top breathing room; screen gutter on roomy surfaces.
+     *  - [space.xxl] (32dp): large empty-state / hero padding.
+     *
+     * The legacy "22dp gutter" some settings rows used is intentionally dropped in favour of
+     * [space.xl] (24dp); sweep agents should map the old 22 to 24.
+     */
+    val space = Space
+
+    object Space {
+        val xxs = 2.dp
+        val xs = 4.dp
+        val s = 8.dp
+        val m = 12.dp
+        val l = 16.dp
+        val xl = 24.dp
+        val xxl = 32.dp
+    }
+
+    /** Minimum interactive target height. Every tappable row/control honours this. */
+    val MinTarget = 48.dp
+
     // ── Shapes ───────────────────────────────────────────────────────────────────────────
     /** Default radius for cards & chips. Brutalist: only mild softening. */
     val ShapeS = RoundedCornerShape(2.dp)
@@ -59,6 +92,28 @@ object R1 {
     val ShapeRound = RoundedCornerShape(999.dp)
 
     // ── Type ramp ────────────────────────────────────────────────────────────────────────
+    /**
+     * One consolidated type ramp, grouped by role. Pick the role that matches the *meaning*
+     * of the text, not its size, so a palette/scale tweak stays in one place:
+     *
+     *  Numerals (monospace readouts):
+     *   - [numeralXl] big card percentage / hero readout
+     *   - [numeralM]  unit suffixes, medium readouts
+     *   - [numeralS]  entity IDs, tick labels, dense mono fragments
+     *
+     *  Chrome labels (uppercase, letter-spaced):
+     *   - [sectionHeader] the title of a grouped section (via [R1Section])
+     *   - [label]         a standard uppercase chip / field label
+     *   - [labelMicro]    domain badges, status-pill text, the smallest callout
+     *
+     *  Titles:
+     *   - [screenTitle] the top-bar / screen title (via [R1TopBar])
+     *   - [titleCard]   a friendly-name title on a card or prominent row
+     *
+     *  Body:
+     *   - [body]     standard reading text, secondary row text
+     *   - [bodyEmph] primary row label, interactive emphasis
+     */
     /** A monospace numeric readout — punchy, big. Used for the percentage on cards. */
     val numeralXl: TextStyle = TextStyle(
         fontFamily = FontFamily.Monospace,
@@ -97,6 +152,17 @@ object R1 {
         fontWeight = FontWeight.Bold,
         fontSize = 9.sp,
         letterSpacing = 2.sp,
+    )
+
+    /**
+     * All-caps standard label — one step up from [labelMicro] for chip text and field
+     * captions that need to read at arm's length without shouting. Used by [R1Chip].
+     */
+    val label: TextStyle = TextStyle(
+        fontFamily = FontFamily.SansSerif,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 11.sp,
+        letterSpacing = 1.5.sp,
     )
 
     /** Friendly-name title on the card. */
