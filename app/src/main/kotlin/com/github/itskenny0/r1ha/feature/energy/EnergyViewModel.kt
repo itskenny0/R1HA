@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.StatisticId
+import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.async
@@ -17,6 +19,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.Instant
+import java.time.ZoneId
 
 /**
  * Energy summary surface — mirrors a slim slice of HA's Energy panel.
@@ -54,6 +58,22 @@ class EnergyViewModel(
         val watts: Double,
     )
 
+    /** History window selector. Each chip picks both a span and the
+     *  recorder bucket resolution to request, following HA's own energy
+     *  card: short windows zoom into hour buckets, the month view drops to
+     *  day buckets so the chart stays legible. TODAY is the calendar day
+     *  since local midnight (matching the TODAY kWh tile above). */
+    enum class Window(val label: String) {
+        TODAY("TODAY"),
+        H24("24H"),
+        D7("7D"),
+        D30("30D"),
+    }
+
+    /** One consumption bar: the bucket's start instant and the kWh used
+     *  during that bucket (summed across every energy meter). */
+    data class HistoryBar(val timestamp: Instant, val kwh: Double)
+
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
@@ -72,6 +92,22 @@ class EnergyViewModel(
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
         val error: String? = null,
+        /** Selected history window for the consumption chart. */
+        val window: Window = Window.TODAY,
+        /** True while the recorder statistics fetch is in flight. Kept
+         *  independent of [loading] so flipping windows doesn't blank the
+         *  live tiles above. */
+        val historyLoading: Boolean = false,
+        /** Per-bucket consumption (kWh) for [window], oldest first. Empty
+         *  when the recorder has no energy statistics for the span. */
+        val historyBars: List<HistoryBar> = emptyList(),
+        /** Set when the statistics fetch itself failed (transport / auth).
+         *  Distinct from "no statistics", which renders an empty state. */
+        val historyError: String? = null,
+        /** True once the catalogue has been checked and no energy meter
+         *  statistic ids were found, so the chart shows a clear "recorder
+         *  has no energy statistics" message rather than a blank panel. */
+        val historyNoStatistics: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -113,7 +149,10 @@ class EnergyViewModel(
                 "Energy",
                 "draw=$drawRaw prod=$prodRaw kwh=$kwhRaw consumers=${top.size}",
             )
-            _ui.value = UiState(
+            // copy() over the existing state so the history section (window,
+            // bars, load flags) survives a live-tile refresh; rebuilding a
+            // fresh UiState here would blank the chart on every 30 s tick.
+            _ui.value = _ui.value.copy(
                 loading = false,
                 currentDrawW = drawRaw?.toDoubleOrNull(),
                 productionW = prodRaw?.toDoubleOrNull(),
@@ -127,6 +166,96 @@ class EnergyViewModel(
             )
         }
     }
+
+    /** Switch the history window and re-fetch its consumption series. No-op
+     *  if the window is unchanged so tapping the active chip is free. */
+    fun setWindow(window: Window) {
+        if (_ui.value.window == window) return
+        _ui.value = _ui.value.copy(window = window)
+        refreshHistory()
+    }
+
+    /**
+     * Load the consumption-per-bucket history for the selected window from
+     * the recorder. Picks the energy-meter statistic ids (the same
+     * `device_class=energy` `total_increasing` family that feeds the TODAY
+     * tile), fetches their long-term buckets, and sums each bucket's
+     * `change` (consumption during the bucket) across every meter.
+     *
+     * Reuses the existing `getStatisticsDuringPeriod` repo method, so no
+     * new repository surface is needed. Installs with no recorder energy
+     * statistics land in a clear empty state.
+     */
+    fun refreshHistory() {
+        val window = _ui.value.window
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(
+                historyLoading = true,
+                historyError = null,
+                historyNoStatistics = false,
+            )
+            val ids = energyStatisticIds.ifEmpty {
+                // Lazily resolve (and cache) the energy meter ids from the
+                // recorder catalogue the first time history is requested.
+                val resolved = haRepository.listStatisticIds().fold(
+                    onSuccess = { rows -> selectEnergyStatisticIds(rows) },
+                    onFailure = { t ->
+                        R1Log.w("Energy", "statistic catalogue load failed: ${t.message}")
+                        _ui.value = _ui.value.copy(
+                            historyLoading = false,
+                            historyError = t.message ?: "unknown",
+                        )
+                        return@launch
+                    },
+                )
+                energyStatisticIds = resolved
+                resolved
+            }
+            if (ids.isEmpty()) {
+                R1Log.i("Energy", "no energy meter statistic ids in recorder catalogue")
+                _ui.value = _ui.value.copy(
+                    historyLoading = false,
+                    historyBars = emptyList(),
+                    historyNoStatistics = true,
+                )
+                return@launch
+            }
+            val end = Instant.now()
+            val start = windowStart(window, end)
+            haRepository.getStatisticsDuringPeriod(
+                statisticIds = ids,
+                start = start,
+                end = end,
+                period = window.period(),
+            ).fold(
+                onSuccess = { byId ->
+                    val bars = aggregateConsumption(byId)
+                    R1Log.i(
+                        "Energy",
+                        "history window=${window.label} period=${window.period()} " +
+                            "ids=${ids.size} bars=${bars.size}",
+                    )
+                    _ui.value = _ui.value.copy(
+                        historyLoading = false,
+                        historyBars = bars,
+                        historyError = null,
+                    )
+                },
+                onFailure = { t ->
+                    R1Log.w("Energy", "history fetch failed: ${t.message}")
+                    Toaster.error("Energy history load failed: ${t.message ?: "unknown"}")
+                    _ui.value = _ui.value.copy(
+                        historyLoading = false,
+                        historyError = t.message,
+                    )
+                },
+            )
+        }
+    }
+
+    /** Cached energy-meter statistic ids, resolved from the recorder
+     *  catalogue on first history load and reused across window flips. */
+    private var energyStatisticIds: List<String> = emptyList()
 
     /** Parse the JSON array of [entity_id, name, watts] triples that
      *  the TOP_CONSUMERS_JSON template emits. Robust to malformed
@@ -146,6 +275,28 @@ class EnergyViewModel(
             }
         }.onFailure { R1Log.w("Energy", "top-consumers parse failed: ${it.message}") }
             .getOrNull().orEmpty()
+    }
+
+    /** Recorder bucket resolution to request for each window. Hour buckets
+     *  for spans up to a week keep the bar count sensible (24..168); the
+     *  30-day view drops to day buckets so the chart shows 30 bars rather
+     *  than 720. TODAY uses hour buckets, one bar per hour of the day. */
+    private fun Window.period(): String = when (this) {
+        Window.TODAY -> "hour"
+        Window.H24 -> "hour"
+        Window.D7 -> "hour"
+        Window.D30 -> "day"
+    }
+
+    /** Window start instant. TODAY snaps to local midnight so the chart
+     *  matches the TODAY kWh tile's "since midnight" figure; the rolling
+     *  windows subtract a fixed span from [end]. */
+    private fun windowStart(window: Window, end: Instant): Instant = when (window) {
+        Window.TODAY -> end.atZone(ZoneId.systemDefault())
+            .toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
+        Window.H24 -> end.minusSeconds(24L * 3600L)
+        Window.D7 -> end.minusSeconds(7L * 24L * 3600L)
+        Window.D30 -> end.minusSeconds(30L * 24L * 3600L)
     }
 
     /** Compose's runtime doesn't expose JsonPrimitive.contentOrNull
@@ -203,6 +354,44 @@ class EnergyViewModel(
             "{%- endif -%}" +
             "{%- endfor -%}" +
             "{{ out.items | tojson }}"
+
+        /** Sum each bucket's per-meter `change` (consumption during the
+         *  bucket) across every requested meter, keyed by bucket start,
+         *  oldest first. `change` is HA's server-computed per-bucket delta
+         *  of the cumulative sum, i.e. exactly "kWh used in this hour/day",
+         *  so no client-side differencing is needed. Buckets the recorder
+         *  left without a finite `change` (the first bucket of a series,
+         *  gaps) contribute nothing. Returns bars only for instants where
+         *  at least one meter reported, so single- and multi-meter installs
+         *  both read cleanly. */
+        fun aggregateConsumption(byId: Map<String, List<StatisticsBucket>>): List<HistoryBar> {
+            val sums = sortedMapOf<Instant, Double>()
+            for (buckets in byId.values) {
+                for (b in buckets) {
+                    val c = b.change?.takeIf { it.isFinite() } ?: continue
+                    sums[b.start] = (sums[b.start] ?: 0.0) + c
+                }
+            }
+            return sums.map { (start, kwh) -> HistoryBar(start, kwh) }
+        }
+
+        /** Pick the energy-meter statistic ids from the recorder catalogue:
+         *  the cumulative `total_increasing` kWh meters that drive HA's
+         *  Energy dashboard. We match on [StatisticId.hasSum] (only total
+         *  statistics carry a cumulative sum the recorder can difference
+         *  into `change`) AND an energy unit (Wh / kWh / MWh / GWh), so a
+         *  water or gas meter that also records a sum doesn't sneak into the
+         *  electricity chart. */
+        fun selectEnergyStatisticIds(rows: List<StatisticId>): List<String> =
+            rows.filter { it.hasSum && isEnergyUnit(it.unitOfMeasurement) }
+                .map { it.statisticId }
+
+        /** True for the recorder's electrical-energy units. Case-insensitive,
+         *  trimmed; rejects power units (W / kW) and non-energy meters. */
+        private fun isEnergyUnit(unit: String?): Boolean {
+            val u = unit?.trim()?.lowercase() ?: return false
+            return u == "wh" || u == "kwh" || u == "mwh" || u == "gwh"
+        }
 
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { EnergyViewModel(haRepository) }
