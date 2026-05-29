@@ -35,9 +35,10 @@ import com.github.itskenny0.r1ha.core.ha.HaUser
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -71,20 +72,12 @@ fun UsersScreen(
             title = "USERS",
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "…" else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = if (ui.loading) "…" else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh users",
+                )
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -119,10 +112,10 @@ fun UsersScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 8.dp,
+                        horizontal = R1.space.m,
+                        vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     item {
                         Text(
@@ -130,13 +123,13 @@ fun UsersScreen(
                                 "  ·  read-only",
                             style = R1.labelMicro,
                             color = R1.InkSoft,
-                            modifier = Modifier.padding(vertical = 4.dp),
+                            modifier = Modifier.padding(vertical = R1.space.xs),
                         )
                     }
                     items(items = ui.users, key = { it.id }) { user ->
                         UserRow(user)
                     }
-                    item { Spacer(Modifier.size(24.dp)) }
+                    item { Spacer(Modifier.size(R1.space.xl)) }
                 }
             }
         }
@@ -151,29 +144,29 @@ private fun UserRow(user: HaUser) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = user.name.ifBlank { "(no name)" },
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = if (user.isActive) R1.Ink else R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
             if (user.systemGenerated) {
-                Badge(label = "SYSTEM", accent = R1.AccentNeutral)
-                Spacer(Modifier.width(4.dp))
+                R1Chip(text = "SYSTEM", variant = R1ChipVariant.Pill, tone = R1.AccentNeutral)
+                Spacer(Modifier.width(R1.space.xs))
             }
             if (!user.isActive) {
-                Badge(label = "DISABLED", accent = R1.StatusRed)
-                Spacer(Modifier.width(4.dp))
+                R1Chip(text = "DISABLED", variant = R1ChipVariant.Pill, tone = R1.StatusRed)
+                Spacer(Modifier.width(R1.space.xs))
             }
             if (user.localOnly) {
-                Badge(label = "LOCAL", accent = R1.AccentCool)
+                R1Chip(text = "LOCAL", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
             }
         }
-        Spacer(Modifier.size(2.dp))
+        Spacer(Modifier.size(R1.space.xxs))
         Text(
             text = user.id,
             style = R1.labelMicro.copy(
@@ -184,7 +177,7 @@ private fun UserRow(user: HaUser) {
             maxLines = 1,
         )
         if (user.groupIds.isNotEmpty()) {
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = "GROUPS · " + user.groupIds.joinToString(", "),
                 style = R1.labelMicro,
@@ -196,27 +189,14 @@ private fun UserRow(user: HaUser) {
 }
 
 @Composable
-private fun Badge(label: String, accent: androidx.compose.ui.graphics.Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(accent.copy(alpha = 0.18f))
-            .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeS)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = accent)
-    }
-}
-
-@Composable
 private fun EmptyState(title: String, body: String, accent: androidx.compose.ui.graphics.Color) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(22.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = title, style = R1.sectionHeader, color = accent)
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.s))
             Text(text = body, style = R1.body, color = R1.InkSoft)
         }
     }
