@@ -52,6 +52,10 @@ private class BackupsViewModel(
         val loading: Boolean = true,
         val backups: List<BackupInfo> = emptyList(),
         val error: String? = null,
+        /** True while a backup.create is in flight. Gates the CREATE button so a
+         *  double-tap (or a tap on a busy HA instance) can't fire two overlapping
+         *  backup jobs, which HA rejects on the second call anyway. */
+        val creating: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -73,6 +77,8 @@ private class BackupsViewModel(
     }
 
     fun createBackup() {
+        if (_ui.value.creating) return
+        _ui.value = _ui.value.copy(creating = true)
         viewModelScope.launch {
             haRepository.callRawService(
                 domain = "backup",
@@ -83,9 +89,11 @@ private class BackupsViewModel(
                     Toaster.show("Backup creation started")
                     // Settle delay so the new backup shows up in the next list.
                     kotlinx.coroutines.delay(2_000)
+                    _ui.value = _ui.value.copy(creating = false)
                     refresh()
                 },
                 onFailure = { t ->
+                    _ui.value = _ui.value.copy(creating = false)
                     Toaster.errorExpandable(
                         shortText = "Backup failed to start",
                         fullText = t.message ?: t.toString(),
@@ -140,10 +148,16 @@ fun BackupsScreen(
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.createBackup() })
+                        // While a create is in flight the tap is a no-op so a
+                        // double-tap can't queue a second overlapping backup.
+                        .r1Pressable(onClick = { if (!ui.creating) vm.createBackup() })
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
-                    Text(text = "CREATE BACKUP NOW", style = R1.labelMicro, color = R1.AccentWarm)
+                    Text(
+                        text = if (ui.creating) "CREATING BACKUP…" else "CREATE BACKUP NOW",
+                        style = R1.labelMicro,
+                        color = if (ui.creating) R1.InkMuted else R1.AccentWarm,
+                    )
                 }
                 Spacer(Modifier.size(8.dp))
                 Text(
