@@ -77,11 +77,17 @@ class IotSensorsService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val cfg = currentConfig ?: return
             val (pct, charging) = readBattery(intent ?: return)
-            if (cfg.publishBattery) {
-                publishState(topicState(cfg, "battery"), pct.toString().toByteArray())
-            }
-            if (cfg.publishCharging) {
-                publishState(topicState(cfg, "charging"), if (charging) "ON".toByteArray() else "OFF".toByteArray())
+            // onReceive runs on the main thread; publishState does blocking
+            // socket I/O (and may trigger a 10 s connect on a dead session),
+            // so hand it to the IO scope to keep the broadcast dispatch from
+            // stalling the main thread / ANRing.
+            serviceScope.launch {
+                if (cfg.publishBattery) {
+                    publishState(topicState(cfg, "battery"), pct.toString().toByteArray())
+                }
+                if (cfg.publishCharging) {
+                    publishState(topicState(cfg, "charging"), if (charging) "ON".toByteArray() else "OFF".toByteArray())
+                }
             }
         }
     }
@@ -91,7 +97,11 @@ class IotSensorsService : Service() {
             val cfg = currentConfig ?: return
             if (!cfg.publishScreenOn) return
             val on = intent?.action == Intent.ACTION_SCREEN_ON
-            publishState(topicState(cfg, "screen"), if (on) "ON".toByteArray() else "OFF".toByteArray())
+            // Same rationale as batteryReceiver: keep blocking publish I/O off
+            // the main thread.
+            serviceScope.launch {
+                publishState(topicState(cfg, "screen"), if (on) "ON".toByteArray() else "OFF".toByteArray())
+            }
         }
     }
 
