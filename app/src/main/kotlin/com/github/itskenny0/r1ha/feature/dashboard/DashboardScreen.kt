@@ -26,7 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -146,13 +145,16 @@ fun DashboardScreen(
             }
             return@Column
         }
-        // On tablets cap the dashboard content at 1000 dp and centre it — wide enough
-        // to show the 2-column tile pairs without each tile stretching to 640 dp+ on
-        // a landscape 1280 dp screen. Uses AdaptiveContent's box rather than the 800 dp
-        // list-screen default because the dashboard has 2 columns and needs more room.
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(
+        // Flagship responsive surface. The Today dashboard is the reference implementation
+        // other surfaces copy: it reads the window tier once, then flows its tiles into
+        // 1 / 2 / 3 columns by tier and centres + caps the whole column on the largest
+        // windows (via R1CenteredContent) so a 13" tablet shows a genuine multi-column
+        // dashboard rather than a stretched phone layout. On R1 / compact this is a
+        // single-column passthrough, identical to before.
+        val window = com.github.itskenny0.r1ha.ui.components.rememberWindowTier()
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+        com.github.itskenny0.r1ha.ui.components.R1CenteredContent(
             modifier = Modifier.weight(1f),
-            maxWidth = 1000.dp,
         ) {
         // Wire the physical wheel to the dashboard's verticalScroll so
         // kiosk-mode users can scroll through a tall dashboard without
@@ -178,9 +180,9 @@ fun DashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
                 if (ds.showGreeting) Greeting()
                 // Error banner — surfaces a failed refresh in StatusRed so
@@ -214,143 +216,164 @@ fun DashboardScreen(
                         }
                     }
                 }
-                // On tablets (≥ 600 dp) show paired tiles side-by-side. If only one of a
-                // pair is visible it falls back to full width automatically.
-                val isTablet = LocalConfiguration.current.screenWidthDp >= 600
+                // Within a tile, pair the weather/persons + sun/calendar halves side by
+                // side once there's medium-or-wider room. (Distinct from the cross-tile
+                // column flow below, which arranges whole tiles into N columns.)
+                val pairWithinTile = window.isAtLeastMedium
 
-                // Tile rendering — each branch checks the per-tile show* flag plus any
-                // data presence guards that were already in place. Order is driven by
-                // ds.tileOrder so the user can reorder under Settings → DASHBOARD →
-                // TILE ORDER without us hardcoding the sequence here. Unknown ids are
-                // skipped (forward-compat for future tile additions).
+                // Tile rendering — order is driven by ds.tileOrder so the user can reorder
+                // under Settings → DASHBOARD → TILE ORDER without us hardcoding the sequence.
+                // Unknown ids are skipped (forward-compat for future tile additions). Each
+                // visible tile is captured as a composable lambda so the multi-column flow
+                // can distribute whole tiles across columns on big tablets.
                 val resolvedOrder = ds.tileOrder.ifEmpty {
                     com.github.itskenny0.r1ha.core.prefs.DashboardSettings.DEFAULT_TILE_ORDER
                 }
-                for (tileId in resolvedOrder.distinct()) {
-                    val tile = runCatching {
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.valueOf(tileId)
-                    }.getOrNull() ?: continue
-                    when (tile) {
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.WEATHER_PERSONS -> {
-                            DashboardPair(
-                                isTablet = isTablet,
-                                leftVisible = ds.showWeather && ui.weather != null,
-                                rightVisible = ds.showPersons && ui.persons != null,
-                                left = { ui.weather?.let { WeatherCard(it, onClick = onOpenWeather) } },
-                                right = { ui.persons?.let { PersonsCard(it, onClick = onOpenPersons) } },
-                            )
-                        }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.SUN_CALENDAR -> {
-                            DashboardPair(
-                                isTablet = isTablet,
-                                leftVisible = ds.showSun && ui.sun != null,
-                                rightVisible = ds.showNextEvent && ui.nextEvent != null,
-                                left = { ui.sun?.let { SunCard(it, onClick = { onOpenHistory("sun.sun") }) } },
-                                right = { ui.nextEvent?.let { CalendarCard(it, onClick = onOpenCalendars) } },
-                            )
-                        }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.TIMERS -> {
-                            if (ds.showTimers && ui.timers.isNotEmpty()) {
-                                R1Section(title = "Timers", count = ui.timers.size, topSpace = R1.space.s) {
-                                    if (isTablet) {
-                                        ui.timers.chunked(2).forEach { pair ->
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
-                                            ) {
-                                                pair.forEach { t ->
-                                                    Box(Modifier.weight(1f)) {
-                                                        TimerCard(
-                                                            t,
-                                                            onPause = { vm.timerService(t.entityId, "pause") },
-                                                            onResume = { vm.timerService(t.entityId, "start") },
-                                                            onCancel = { vm.timerService(t.entityId, "cancel") },
-                                                        )
+                val tiles = buildList<@Composable () -> Unit> {
+                    for (tileId in resolvedOrder.distinct()) {
+                        val tile = runCatching {
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.valueOf(tileId)
+                        }.getOrNull() ?: continue
+                        when (tile) {
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.WEATHER_PERSONS -> {
+                                val l = ds.showWeather && ui.weather != null
+                                val r = ds.showPersons && ui.persons != null
+                                if (l || r) add {
+                                    DashboardPair(
+                                        isTablet = pairWithinTile,
+                                        leftVisible = l,
+                                        rightVisible = r,
+                                        left = { ui.weather?.let { WeatherCard(it, onClick = onOpenWeather) } },
+                                        right = { ui.persons?.let { PersonsCard(it, onClick = onOpenPersons) } },
+                                    )
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.SUN_CALENDAR -> {
+                                val l = ds.showSun && ui.sun != null
+                                val r = ds.showNextEvent && ui.nextEvent != null
+                                if (l || r) add {
+                                    DashboardPair(
+                                        isTablet = pairWithinTile,
+                                        leftVisible = l,
+                                        rightVisible = r,
+                                        left = { ui.sun?.let { SunCard(it, onClick = { onOpenHistory("sun.sun") }) } },
+                                        right = { ui.nextEvent?.let { CalendarCard(it, onClick = onOpenCalendars) } },
+                                    )
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.TIMERS -> {
+                                if (ds.showTimers && ui.timers.isNotEmpty()) add {
+                                    R1Section(title = "Timers", count = ui.timers.size, topSpace = R1.space.s) {
+                                        if (pairWithinTile) {
+                                            ui.timers.chunked(2).forEach { pair ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                                                ) {
+                                                    pair.forEach { t ->
+                                                        Box(Modifier.weight(1f)) {
+                                                            TimerCard(
+                                                                t,
+                                                                onPause = { vm.timerService(t.entityId, "pause") },
+                                                                onResume = { vm.timerService(t.entityId, "start") },
+                                                                onCancel = { vm.timerService(t.entityId, "cancel") },
+                                                            )
+                                                        }
                                                     }
+                                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
                                                 }
-                                                if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                            }
+                                        } else {
+                                            for (t in ui.timers) {
+                                                TimerCard(
+                                                    t,
+                                                    onPause = { vm.timerService(t.entityId, "pause") },
+                                                    onResume = { vm.timerService(t.entityId, "start") },
+                                                    onCancel = { vm.timerService(t.entityId, "cancel") },
+                                                )
                                             }
                                         }
-                                    } else {
-                                        for (t in ui.timers) {
-                                            TimerCard(
-                                                t,
-                                                onPause = { vm.timerService(t.entityId, "pause") },
-                                                onResume = { vm.timerService(t.entityId, "start") },
-                                                onCancel = { vm.timerService(t.entityId, "cancel") },
+                                    }
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.MEDIA -> {
+                                if (ds.showMedia && ui.media.isNotEmpty()) add {
+                                    R1Section(title = "Now playing", count = ui.media.size, topSpace = R1.space.s) {
+                                        for (m in ui.media) {
+                                            MediaCard(
+                                                media = m,
+                                                onPlayPause = {
+                                                    vm.mediaTransport(
+                                                        m.entityId,
+                                                        com.github.itskenny0.r1ha.core.ha.MediaTransport.PLAY_PAUSE,
+                                                    )
+                                                },
+                                                onNext = {
+                                                    vm.mediaTransport(
+                                                        m.entityId,
+                                                        com.github.itskenny0.r1ha.core.ha.MediaTransport.NEXT,
+                                                    )
+                                                },
+                                                onPrev = {
+                                                    vm.mediaTransport(
+                                                        m.entityId,
+                                                        com.github.itskenny0.r1ha.core.ha.MediaTransport.PREVIOUS,
+                                                    )
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.METRICS -> {
+                                if (ds.showMetrics) add {
+                                    MetricsRow(
+                                        cameraCount = ui.cameraCount,
+                                        notificationCount = ui.notifications.size,
+                                        lightsOnCount = ui.lightsOnCount,
+                                        totalPowerW = if (ds.showPower) ui.totalPowerW else -1,
+                                        amberW = ds.powerAmberThresholdW,
+                                        redW = ds.powerRedThresholdW,
+                                        onLights = onOpenScenes,
+                                        onLightsLongPress = { vm.allLightsOff() },
+                                        onCameras = onOpenCameras,
+                                        onNotifications = onOpenNotifications,
+                                        onPower = onOpenEnergy,
+                                    )
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.LOW_BATTERY -> {
+                                if (ds.showLowBattery && ui.lowBatteries.isNotEmpty()) add {
+                                    LowBatteryCard(ui.lowBatteries, onOpenHistory = onOpenHistory)
+                                }
+                            }
+                            com.github.itskenny0.r1ha.core.prefs.DashboardTile.INLINE_ALERTS -> {
+                                if (ds.showInlineAlerts && ui.notifications.isNotEmpty() && ds.inlineAlertsCount > 0) add {
+                                    val shown = ui.notifications.take(ds.inlineAlertsCount)
+                                    R1Section(title = "Recent alerts", count = shown.size, topSpace = R1.space.s) {
+                                        for (notif in shown) {
+                                            NotificationPreview(
+                                                notif,
+                                                onClick = onOpenNotifications,
+                                                onDismiss = { vm.dismissNotification(notif.notificationId) },
                                             )
                                         }
                                     }
                                 }
                             }
                         }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.MEDIA -> {
-                            if (ds.showMedia && ui.media.isNotEmpty()) {
-                                R1Section(title = "Now playing", count = ui.media.size, topSpace = R1.space.s) {
-                                    for (m in ui.media) {
-                                        MediaCard(
-                                            media = m,
-                                            onPlayPause = {
-                                                vm.mediaTransport(
-                                                    m.entityId,
-                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.PLAY_PAUSE,
-                                                )
-                                            },
-                                            onNext = {
-                                                vm.mediaTransport(
-                                                    m.entityId,
-                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.NEXT,
-                                                )
-                                            },
-                                            onPrev = {
-                                                vm.mediaTransport(
-                                                    m.entityId,
-                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.PREVIOUS,
-                                                )
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.METRICS -> {
-                            if (ds.showMetrics) {
-                                MetricsRow(
-                                    cameraCount = ui.cameraCount,
-                                    notificationCount = ui.notifications.size,
-                                    lightsOnCount = ui.lightsOnCount,
-                                    totalPowerW = if (ds.showPower) ui.totalPowerW else -1,
-                                    amberW = ds.powerAmberThresholdW,
-                                    redW = ds.powerRedThresholdW,
-                                    onLights = onOpenScenes,
-                                    onLightsLongPress = { vm.allLightsOff() },
-                                    onCameras = onOpenCameras,
-                                    onNotifications = onOpenNotifications,
-                                    onPower = onOpenEnergy,
-                                )
-                            }
-                        }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.LOW_BATTERY -> {
-                            if (ds.showLowBattery && ui.lowBatteries.isNotEmpty()) {
-                                LowBatteryCard(ui.lowBatteries, onOpenHistory = onOpenHistory)
-                            }
-                        }
-                        com.github.itskenny0.r1ha.core.prefs.DashboardTile.INLINE_ALERTS -> {
-                            if (ds.showInlineAlerts && ui.notifications.isNotEmpty() && ds.inlineAlertsCount > 0) {
-                                val shown = ui.notifications.take(ds.inlineAlertsCount)
-                                R1Section(title = "Recent alerts", count = shown.size, topSpace = R1.space.s) {
-                                    for (notif in shown) {
-                                        NotificationPreview(
-                                            notif,
-                                            onClick = onOpenNotifications,
-                                            onDismiss = { vm.dismissNotification(notif.notificationId) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
+                // Flow whole tiles into the tier's column count. One column on R1 / compact
+                // (a plain stack, identical to before); two on medium / expanded; three on
+                // extra-large, so a big tablet shows a true multi-column dashboard. Tiles are
+                // distributed by [distributeIntoColumns] which keeps source order top-to-bottom
+                // within each column.
+                DashboardColumns(
+                    columns = dimens.dashboardColumns,
+                    gap = dimens.sectionGap,
+                    tiles = tiles,
+                )
                 if (!anyVisible) {
                     Spacer(Modifier.size(R1.space.xl))
                     Text(
@@ -373,8 +396,57 @@ fun DashboardScreen(
                 Spacer(Modifier.size(R1.space.xl))
             }
         }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
+}
+
+/**
+ * Renders [tiles] either as a single vertical stack ([columns] == 1, the R1 / compact path,
+ * byte-for-byte the old behaviour) or distributed across [columns] balanced columns for the
+ * multi-column tablet dashboard. Distribution preserves source order top-to-bottom within
+ * each column via [distributeIntoColumns]; columns share width equally and each tile keeps
+ * its own internal `fillMaxWidth`, so nothing stretches awkwardly.
+ */
+@Composable
+private fun DashboardColumns(
+    columns: Int,
+    gap: androidx.compose.ui.unit.Dp,
+    tiles: List<@Composable () -> Unit>,
+) {
+    if (columns <= 1) {
+        for (tile in tiles) tile()
+        return
+    }
+    val buckets = distributeIntoColumns(tiles.size, columns)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalAlignment = Alignment.Top,
+    ) {
+        for (bucket in buckets) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                for (idx in bucket) tiles[idx]()
+            }
+        }
+    }
+}
+
+/**
+ * Splits [count] indices (0 until count) into [columns] buckets, dealing round-robin so the
+ * source order reads naturally top-to-bottom within each column and the columns stay balanced
+ * in length (the first columns get the extra tile when it doesn't divide evenly). Pure +
+ * unit-tested — no Compose, no view state — so the tile-to-column maths is locked down.
+ *
+ * Example: count = 5, columns = 2 -> [[0, 2, 4], [1, 3]].
+ */
+fun distributeIntoColumns(count: Int, columns: Int): List<List<Int>> {
+    if (columns <= 1) return listOf((0 until count).toList())
+    val buckets = List(columns) { mutableListOf<Int>() }
+    for (i in 0 until count) buckets[i % columns].add(i)
+    return buckets
 }
 
 @Composable
