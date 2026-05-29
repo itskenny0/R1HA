@@ -668,9 +668,11 @@ private fun StatisticPickerSheet(
                 }
                 if (query.isNotEmpty()) {
                     Spacer(Modifier.width(6.dp))
+                    // 48 dp tap surface meets Android's interactive-target guidance;
+                    // the visible ✕ stays glyph-sized via the inner Text.
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(48.dp)
                             .r1Pressable(onClick = { query = "" }),
                         contentAlignment = Alignment.Center,
                     ) {
