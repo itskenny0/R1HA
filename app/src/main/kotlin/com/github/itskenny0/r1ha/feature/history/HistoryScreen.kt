@@ -17,33 +17,47 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.EntityId
+import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import java.time.Duration
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -101,6 +115,11 @@ fun HistoryScreen(
     val scrollState = rememberScrollState()
     WheelScrollForScrollState(wheelInput = wheelInput, scrollState = scrollState, settings = settings)
     LaunchedEffect(entityId) { vm.refresh() }
+    // Overlay entity picker visibility. When set, a full-screen numeric
+    // entity picker sheet floats above the chart so the user can add
+    // another series.
+    var pickerOpen by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -146,6 +165,15 @@ fun HistoryScreen(
                 )
                 WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
                 HistoryChartPanel(ui)
+                OverlayLegend(
+                    ui = ui,
+                    onAdd = { pickerOpen = true },
+                    onRemove = { vm.removeEntity(it) },
+                )
+                // Per-series numeric summary + rewind only apply to the
+                // primary entity. When extra series are overlaid they're
+                // summarized in the legend instead, so the single-entity
+                // summary stays focused on the entity the user drilled into.
                 SummaryPanel(ui)
                 RewindPanel(ui)
                 // Surface refresh errors even when the chart still has stale points; the
@@ -170,6 +198,21 @@ fun HistoryScreen(
                 }
                 Spacer(Modifier.size(24.dp))
             }
+        }
+    }
+        // Numeric entity picker for adding overlay series. Floats above the
+        // whole screen; dismiss restores the chart untouched.
+        if (pickerOpen) {
+            val existing = remember(ui.series) { ui.series.map { it.entityId.value }.toSet() }
+            NumericEntityPickerSheet(
+                haRepository = haRepository,
+                excludeIds = existing,
+                onPick = { picked ->
+                    runCatching { EntityId(picked) }.getOrNull()?.let { vm.addEntity(it) }
+                    pickerOpen = false
+                },
+                onDismiss = { pickerOpen = false },
+            )
         }
     }
 }
@@ -204,6 +247,19 @@ private fun WindowChips(
     }
 }
 
+/** Series accent palette, indexed by Series.colorIndex. Distinct hues so
+ *  overlaid lines stay separable; capped at MAX_SERIES entries. */
+internal val SERIES_COLORS: List<Color> = listOf(
+    R1.AccentWarm,
+    R1.AccentCool,
+    R1.AccentGreen,
+    R1.StatusAmber,
+    R1.AccentNeutral,
+)
+
+internal fun seriesColor(colorIndex: Int): Color =
+    SERIES_COLORS.getOrElse(colorIndex) { R1.AccentNeutral }
+
 @Composable
 private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
     Column(
@@ -214,7 +270,8 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        if (ui.loading && ui.points.isEmpty()) {
+        val anyPoints = ui.series.any { it.points.isNotEmpty() }
+        if (ui.loading && !anyPoints) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 contentAlignment = Alignment.Center,
@@ -227,61 +284,30 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             }
             return@Column
         }
-        if (ui.points.size < 2) {
+        // Project every series onto a shared time axis. Each series
+        // normalizes to ITS OWN min/max (per-series vertical scale) so
+        // entities with different units / magnitudes overlay legibly on a
+        // single 0..1 axis; the absolute values live in the legend. The
+        // x-axis is shared: all series map onto the union [tStart, tEnd].
+        val multi = androidx.compose.runtime.remember(ui.series) {
+            buildMultiProjection(ui.series)
+        }
+        if (multi == null) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "NOT ENOUGH HISTORY YET",
+                    text = if (ui.isOverlay) "NO NUMERIC HISTORY YET" else "NOT ENOUGH HISTORY YET",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
             }
             return@Column
         }
-        // Hoist the numeric projection out of the per-frame draw lambda. Previously
-        // the Canvas block recomputed numeric / yMin / yMax / tStart / tSpan and
-        // allocated a fresh List<Offset> on every invalidation. With remember
-        // keyed on ui.points, projection runs once per data refresh and the
-        // draw phase becomes a tight loop over precomputed normalized x/y.
-        val proj = androidx.compose.runtime.remember(ui.points) {
-            val numeric = ui.points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
-            if (numeric.size < 2) return@remember null
-            val ys = numeric.map { it.second }
-            val yMin0 = ys.min()
-            val yMax0 = ys.max()
-            val yRange0 = (yMax0 - yMin0).takeIf { it > 1e-9 } ?: 1.0
-            val tStart0 = numeric.first().first
-            val tEnd0 = numeric.last().first
-            val tSpan0 = Duration.between(tStart0, tEnd0).toMillis().coerceAtLeast(1L)
-            val xs = FloatArray(numeric.size)
-            val ysn = FloatArray(numeric.size)
-            for (i in numeric.indices) {
-                val (ts, v) = numeric[i]
-                xs[i] = (Duration.between(tStart0, ts).toMillis().toFloat() / tSpan0)
-                ysn[i] = 1f - (((v - yMin0) / yRange0).toFloat())
-            }
-            ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0, numeric)
-        }
-        if (proj == null) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(180.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "HISTORY ISN'T NUMERIC",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
-            }
-            return@Column
-        }
-        val yMin = proj.yMin
-        val yMax = proj.yMax
-        val tStart = proj.tStart
-        val tEnd = proj.tEnd
-        val tSpan = proj.tSpan
+        val tStart = multi.tStart
+        val tEnd = multi.tEnd
+        val tSpan = multi.tSpan
         val zone = ZoneId.systemDefault()
         // Pick an axis-label format that scales with the window — for
         // sub-day windows we show HH:mm; for multi-day windows we drop
@@ -291,16 +317,15 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
         } else {
             DateTimeFormatter.ofPattern("d MMM").withZone(zone)
         }
-        // Tap-to-scrub state: nullable Int index into proj.xsNorm. Press-and-hold
-        // on the chart sets this to the nearest sample index; release clears it.
-        // Drawing a vertical guide + dot at the scrubbed sample plus a textual
-        // readout below the chart lets users read a precise value off the line
-        // without dropping into the table view.
-        val scrubIdx = androidx.compose.runtime.remember(proj) {
-            androidx.compose.runtime.mutableStateOf<Int?>(null)
+        // Tap-to-scrub: store the scrubbed x as a fraction [0..1] of the
+        // shared time axis. Per-series nearest-sample lookup happens at
+        // read time so each overlaid line reports its own value. Press-
+        // and-hold sets the fraction; release clears it.
+        val scrubX = androidx.compose.runtime.remember(multi) {
+            androidx.compose.runtime.mutableStateOf<Float?>(null)
         }
+        val single = multi.series.size == 1
         Row {
-            // Y-axis labels on the right edge — min/max with units.
             Column(modifier = Modifier.weight(1f)) {
                 Canvas(
                     modifier = Modifier
@@ -309,25 +334,13 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         .clip(RoundedCornerShape(2.dp))
                         .background(R1.Surface)
                         .padding(horizontal = 6.dp, vertical = 6.dp)
-                        .pointerInput(proj) {
+                        .pointerInput(multi) {
                             val canvasW = size.width.toFloat()
                             detectTapGestures(
                                 onPress = { pressOffset ->
-                                    // Linear scan over normalized xs; chart sample count
-                                    // is bounded by HistoryVM downsampling (~250).
-                                    val target = (pressOffset.x / canvasW).coerceIn(0f, 1f)
-                                    var bestI = 0
-                                    var bestD = Float.POSITIVE_INFINITY
-                                    for (i in proj.xsNorm.indices) {
-                                        val d = kotlin.math.abs(proj.xsNorm[i] - target)
-                                        if (d < bestD) {
-                                            bestD = d
-                                            bestI = i
-                                        }
-                                    }
-                                    scrubIdx.value = bestI
+                                    scrubX.value = (pressOffset.x / canvasW).coerceIn(0f, 1f)
                                     tryAwaitRelease()
-                                    scrubIdx.value = null
+                                    scrubX.value = null
                                 },
                             )
                         },
@@ -348,85 +361,89 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         end = Offset(w, h - 1f),
                         strokeWidth = 1f,
                     )
-                    // Pre-projected normalized points scale by canvas size each draw.
-                    // Zero allocation in the draw phase; segment count is bounded by
-                    // the History VM's downsample step (the lambda below was previously
-                    // building a List<Offset> of length n on every invalidation).
-                    val xs = proj.xsNorm
-                    val ysn = proj.ysNorm
-                    val n = xs.size
-                    for (i in 0 until n - 1) {
-                        drawLine(
-                            color = R1.AccentWarm,
-                            start = Offset(xs[i] * w, ysn[i] * h),
-                            end = Offset(xs[i + 1] * w, ysn[i + 1] * h),
-                            strokeWidth = 2f,
-                            cap = StrokeCap.Round,
-                        )
+                    // Draw each series with its accent. Pre-projected normalized
+                    // points scale by canvas size each draw; zero allocation in
+                    // the draw phase.
+                    for (s in multi.series) {
+                        val color = seriesColor(s.colorIndex)
+                        val xs = s.xsNorm
+                        val ysn = s.ysNorm
+                        val n = xs.size
+                        for (i in 0 until n - 1) {
+                            drawLine(
+                                color = color,
+                                start = Offset(xs[i] * w, ysn[i] * h),
+                                end = Offset(xs[i + 1] * w, ysn[i + 1] * h),
+                                strokeWidth = 2f,
+                                cap = StrokeCap.Round,
+                            )
+                        }
+                        if (n > 0) {
+                            drawCircle(color = color, radius = 3f, center = Offset(xs[0] * w, ysn[0] * h))
+                            drawCircle(color = color, radius = 3f, center = Offset(xs[n - 1] * w, ysn[n - 1] * h))
+                        }
                     }
-                    drawCircle(
-                        color = R1.AccentWarm,
-                        radius = 3f,
-                        center = Offset(xs[0] * w, ysn[0] * h),
-                    )
-                    drawCircle(
-                        color = R1.AccentWarm,
-                        radius = 3f,
-                        center = Offset(xs[n - 1] * w, ysn[n - 1] * h),
-                    )
-                    // Scrub guide + sample dot. Drawn on top of the line so it
-                    // remains visible against the warm accent stroke.
-                    val si = scrubIdx.value
-                    if (si != null && si in 0 until n) {
-                        val sx = xs[si] * w
-                        val sy = ysn[si] * h
+                    // Scrub guide + per-series sample dots. Drawn on top.
+                    val frac = scrubX.value
+                    if (frac != null) {
+                        val sx = frac * w
                         drawLine(
                             color = R1.InkSoft,
                             start = Offset(sx, 0f),
                             end = Offset(sx, h),
                             strokeWidth = 1f,
                         )
-                        drawCircle(
-                            color = R1.Ink,
-                            radius = 4f,
-                            center = Offset(sx, sy),
-                        )
+                        for (s in multi.series) {
+                            val idx = nearestIndex(s.xsNorm, frac)
+                            if (idx >= 0) {
+                                drawCircle(
+                                    color = seriesColor(s.colorIndex),
+                                    radius = 4f,
+                                    center = Offset(s.xsNorm[idx] * w, s.ysNorm[idx] * h),
+                                )
+                            }
+                        }
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                // X-axis labels collapse into a "press-to-read" readout while the
-                // user is scrubbing. Two derived references (the value at the
-                // scrub index, and the closest sample timestamp) make the chart
-                // readable without a full table jump.
-                val si = scrubIdx.value
-                if (si != null && si in proj.xsNorm.indices) {
-                    // Reuse the numeric samples already computed by the projection
-                    // instead of re-running mapNotNull over every point on each
-                    // scrub-driven recomposition.
-                    val sample = proj.samples.getOrNull(si)
-                    if (sample != null) {
+                // X-axis labels collapse into per-series "press-to-read"
+                // readouts while scrubbing. Each overlaid line reports the
+                // value of its nearest sample to the scrubbed time.
+                val frac = scrubX.value
+                if (frac != null) {
+                    val scrubTime = Instant.ofEpochMilli(
+                        tStart.toEpochMilli() + (frac.toDouble() * tSpan).toLong(),
+                    )
+                    Text(
+                        text = fmt.format(scrubTime),
+                        style = R1.labelMicro,
+                        color = R1.Ink,
+                    )
+                    for (s in multi.series) {
+                        val idx = nearestIndex(s.xsNorm, frac)
+                        val sample = if (idx >= 0) s.samples.getOrNull(idx) else null
                         Row {
+                            if (!single) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(end = 6.dp)
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(seriesColor(s.colorIndex)),
+                                )
+                            }
                             Text(
-                                text = fmt.format(sample.first),
-                                style = R1.labelMicro,
-                                color = R1.Ink,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                text = "${formatNum(sample.second)}${ui.unit?.let { " $it" } ?: ""}",
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                            )
-                        }
-                    } else {
-                        Row {
-                            Text(
-                                text = fmt.format(tStart),
+                                text = s.displayName,
                                 style = R1.labelMicro,
                                 color = R1.InkSoft,
                                 modifier = Modifier.weight(1f),
+                                maxLines = 1,
                             )
-                            Text(text = fmt.format(tEnd), style = R1.labelMicro, color = R1.InkSoft)
+                            Text(
+                                text = sample?.let { "${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}" } ?: "—",
+                                style = R1.labelMicro,
+                                color = seriesColor(s.colorIndex),
+                            )
                         }
                     }
                 } else {
@@ -441,25 +458,112 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                     }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            // Inline Y-axis labels — just min and max, anchored to
-            // top and bottom respectively. The mid-line we drew in
-            // the canvas reads as the midpoint without a label.
-            Column(modifier = Modifier.width(56.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    text = "${formatNum(yMax)}${ui.unit?.let { " $it" } ?: ""}",
-                    style = R1.labelMicro,
-                    color = R1.InkSoft,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "${formatNum(yMin)}${ui.unit?.let { " $it" } ?: ""}",
-                    style = R1.labelMicro,
-                    color = R1.InkSoft,
-                    maxLines = 1,
-                )
+            // Inline Y-axis labels only make sense for a single series — a
+            // shared 0..1 axis carrying multiple units can't have one
+            // numeric label. With overlays the per-series min/max moves to
+            // the legend instead.
+            if (single) {
+                val s = multi.series[0]
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.width(56.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        text = "${formatNum(s.yMax)}${s.unit?.let { " $it" } ?: ""}",
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = "${formatNum(s.yMin)}${s.unit?.let { " $it" } ?: ""}",
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        maxLines = 1,
+                    )
+                }
             }
+        }
+    }
+}
+
+/**
+ * Legend + overlay management. Lists every loaded series with its accent
+ * swatch, friendly name, and per-series min..max (the absolute scale the
+ * chart's shared 0..1 axis hides). The primary entity (index 0) can't be
+ * removed; extra series get an ✕ to drop them. An ADD ENTITY row opens the
+ * numeric picker, capped at [HistoryViewModel.MAX_SERIES].
+ */
+@Composable
+private fun OverlayLegend(
+    ui: HistoryViewModel.UiState,
+    onAdd: () -> Unit,
+    onRemove: (EntityId) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = "OVERLAY · ${ui.series.size}/${HistoryViewModel.MAX_SERIES}",
+            style = R1.labelMicro,
+            color = R1.InkSoft,
+        )
+        ui.series.forEachIndexed { index, s ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(seriesColor(s.colorIndex)),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = s.displayName,
+                        style = R1.body,
+                        color = R1.Ink,
+                        maxLines = 1,
+                    )
+                    val range = if (s.min != null && s.max != null) {
+                        "${formatNum(s.min)} – ${formatNum(s.max)}${s.unit?.let { " $it" } ?: ""}"
+                    } else {
+                        s.entityId.value
+                    }
+                    Text(text = range, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+                }
+                // Index 0 is the primary drill-in entity — keep it pinned.
+                if (index != 0) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .r1Pressable(onClick = { onRemove(s.entityId) }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                    }
+                }
+            }
+        }
+        // ADD affordance — disabled once the cap is reached, with copy
+        // explaining why.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(R1.ShapeS)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .then(if (ui.atCap) Modifier else Modifier.r1Pressable(onClick = onAdd))
+                .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (ui.atCap) "OVERLAY FULL (${HistoryViewModel.MAX_SERIES} MAX)" else "+ ADD ENTITY",
+                style = R1.labelMicro,
+                color = if (ui.atCap) R1.InkMuted else R1.AccentWarm,
+            )
         }
     }
 }
@@ -482,25 +586,32 @@ private fun SummaryPanel(ui: HistoryViewModel.UiState) {
         )
         // 4-cell summary grid: CURRENT / MIN / MAX / AVG. Each cell
         // shows the readout with the unit appended; non-numeric
-        // entities (text sensors) suppress the numeric rows.
+        // entities (text sensors) suppress the numeric rows. Bound to
+        // locals because ui.min/max/avg are computed getters (no smart
+        // cast). Summary tracks the primary entity only — overlaid
+        // series are summarized in the legend.
+        val unit = ui.unit
+        val pmin = ui.min
+        val pmax = ui.max
+        val pavg = ui.avg
         SummaryRow(
             label = "CURRENT",
-            value = ui.current?.let { "$it${ui.unit?.let { u -> " $u" } ?: ""}" } ?: "—",
+            value = ui.current?.let { "$it${unit?.let { u -> " $u" } ?: ""}" } ?: "—",
             accent = R1.Ink,
         )
-        if (ui.min != null) SummaryRow(
+        if (pmin != null) SummaryRow(
             label = "MIN",
-            value = "${formatNum(ui.min)}${ui.unit?.let { " $it" } ?: ""}",
+            value = "${formatNum(pmin)}${unit?.let { " $it" } ?: ""}",
             accent = R1.AccentCool,
         )
-        if (ui.max != null) SummaryRow(
+        if (pmax != null) SummaryRow(
             label = "MAX",
-            value = "${formatNum(ui.max)}${ui.unit?.let { " $it" } ?: ""}",
+            value = "${formatNum(pmax)}${unit?.let { " $it" } ?: ""}",
             accent = R1.AccentWarm,
         )
-        if (ui.avg != null) SummaryRow(
+        if (pavg != null) SummaryRow(
             label = "AVG",
-            value = "${formatNum(ui.avg)}${ui.unit?.let { " $it" } ?: ""}",
+            value = "${formatNum(pavg)}${unit?.let { " $it" } ?: ""}",
             accent = R1.AccentNeutral,
         )
         SummaryRow(
@@ -588,20 +699,280 @@ private fun formatNum(v: Double): String =
     else "%.2f".format(java.util.Locale.US, v)
 
 /**
- * Pre-projected chart data: x/y in [0..1] space so the per-frame Canvas draw
- * can scale by canvas size without re-running the full mapNotNull + min/max
- * + per-point projection pipeline on every invalidation. Stored as FloatArrays
- * (not List<Offset>) so iteration is allocation-free.
+ * One overlaid series, pre-projected into [0..1] space. x is normalized to the
+ * SHARED time axis [tStart, tEnd] across all series; y is normalized to this
+ * series' OWN [yMin, yMax] so differing units / magnitudes stay legible on one
+ * chart. Stored as FloatArrays so the per-frame Canvas draw is allocation-free.
  */
-private data class ChartProjection(
+internal data class SeriesProjection(
+    val colorIndex: Int,
+    val displayName: String,
+    val unit: String?,
     val xsNorm: FloatArray,
     val ysNorm: FloatArray,
     val yMin: Double,
     val yMax: Double,
-    val tStart: java.time.Instant,
-    val tEnd: java.time.Instant,
-    val tSpan: Long,
     /** (timestamp, value) for each numeric sample, in xsNorm/ysNorm order, so the
-     *  scrub readout can index a sample without re-deriving it from ui.points. */
-    val samples: List<Pair<java.time.Instant, Double>>,
+     *  scrub readout can index a sample without re-deriving it. */
+    val samples: List<Pair<Instant, Double>>,
 )
+
+/** All overlaid series sharing one time axis. tStart/tEnd/tSpan span the union
+ *  of every series so the lines line up in time even when their windows differ
+ *  slightly (e.g. a sensor that started reporting later). */
+internal data class MultiProjection(
+    val series: List<SeriesProjection>,
+    val tStart: Instant,
+    val tEnd: Instant,
+    val tSpan: Long,
+)
+
+/**
+ * Build the shared-axis projection for the given series. Returns null when no
+ * series has >= 2 numeric samples (nothing chartable). Series with fewer than 2
+ * numeric points are dropped from the overlay but don't block the others.
+ */
+internal fun buildMultiProjection(series: List<HistoryViewModel.Series>): MultiProjection? {
+    // Per-series numeric samples.
+    val perSeries = series.map { s ->
+        s to s.points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
+    }.filter { it.second.size >= 2 }
+    if (perSeries.isEmpty()) return null
+    // Shared time axis = union of all series' spans.
+    val tStart = perSeries.minOf { it.second.first().first }
+    val tEnd = perSeries.maxOf { it.second.last().first }
+    val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
+    val projected = perSeries.map { (s, numeric) ->
+        val ys = numeric.map { it.second }
+        val yMin0 = ys.min()
+        val yMax0 = ys.max()
+        val yRange0 = (yMax0 - yMin0).takeIf { it > 1e-9 } ?: 1.0
+        val xs = FloatArray(numeric.size)
+        val ysn = FloatArray(numeric.size)
+        for (i in numeric.indices) {
+            val (ts, v) = numeric[i]
+            xs[i] = Duration.between(tStart, ts).toMillis().toFloat() / tSpan
+            ysn[i] = 1f - (((v - yMin0) / yRange0).toFloat())
+        }
+        SeriesProjection(
+            colorIndex = s.colorIndex,
+            displayName = s.displayName,
+            unit = s.unit,
+            xsNorm = xs,
+            ysNorm = ysn,
+            yMin = yMin0,
+            yMax = yMax0,
+            samples = numeric,
+        )
+    }
+    return MultiProjection(projected, tStart, tEnd, tSpan)
+}
+
+/** Nearest sample index to a normalized x fraction, or -1 if empty. Linear
+ *  scan; sample counts are bounded by the History fetch's downsampling. */
+internal fun nearestIndex(xsNorm: FloatArray, frac: Float): Int {
+    if (xsNorm.isEmpty()) return -1
+    var bestI = 0
+    var bestD = Float.POSITIVE_INFINITY
+    for (i in xsNorm.indices) {
+        val d = kotlin.math.abs(xsNorm[i] - frac)
+        if (d < bestD) {
+            bestD = d
+            bestI = i
+        }
+    }
+    return bestI
+}
+
+/** True for entities worth overlaying on a numeric chart: sensors / numbers /
+ *  counters whose live state parses as a number. Toggles, scenes, and text
+ *  entities are filtered out — they'd have no line to draw. */
+internal fun EntityState.isNumericChartable(): Boolean {
+    val numericDomain = id.domain == com.github.itskenny0.r1ha.core.ha.Domain.SENSOR ||
+        id.domain == com.github.itskenny0.r1ha.core.ha.Domain.NUMBER ||
+        id.domain == com.github.itskenny0.r1ha.core.ha.Domain.INPUT_NUMBER ||
+        id.domain == com.github.itskenny0.r1ha.core.ha.Domain.COUNTER
+    val stateNumeric = rawState?.toDoubleOrNull()?.isFinite() == true
+    return numericDomain && (stateNumeric || unit != null)
+}
+
+/**
+ * Numeric entity picker for adding overlay series. Mirrors the Settings entity
+ * picker's layout (translucent backdrop, centred card, search + scrollable
+ * list) but filters to numeric-chartable entities and hides ones already on
+ * the chart. Kept local to feature/history so the overlay owns its own
+ * filtering without coupling to the Settings picker.
+ */
+@Composable
+private fun NumericEntityPickerSheet(
+    haRepository: HaRepository,
+    excludeIds: Set<String>,
+    onPick: (entityId: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    BackHandler(onBack = onDismiss)
+    val entities by produceState<List<EntityState>?>(null, excludeIds) {
+        value = haRepository.listAllEntities().getOrNull().orEmpty()
+            .filter { it.isNumericChartable() && it.id.value !in excludeIds }
+            .sortedBy { it.friendlyName.lowercase() }
+    }
+    var query by remember { mutableStateOf("") }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(80)
+        runCatching { focus.requestFocus() }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.92f))
+            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
+            .systemBarsPadding()
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .clip(R1.ShapeS)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(14.dp),
+        ) {
+            Text(text = "ADD TO CHART", style = R1.sectionHeader, color = R1.AccentWarm)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Numeric sensors only",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    R1TextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = "temperature, power…",
+                        monospace = false,
+                        focusRequester = focus,
+                    )
+                }
+                if (query.isNotEmpty()) {
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .r1Pressable(onClick = { query = "" }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            val all = entities
+            when {
+                all == null -> Box(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = R1.AccentWarm,
+                    )
+                }
+                all.isEmpty() -> Box(
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "No numeric sensors available to add.",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+                else -> {
+                    val filtered = remember(query, all) {
+                        val q = query.trim().lowercase()
+                        if (q.isBlank()) all
+                        else all.filter {
+                            it.friendlyName.lowercase().contains(q) ||
+                                it.id.value.lowercase().contains(q)
+                        }
+                    }
+                    if (filtered.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().height(120.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "No matches for '$query'.",
+                                style = R1.labelMicro,
+                                color = R1.InkMuted,
+                            )
+                        }
+                    } else {
+                        val listState = rememberLazyListState()
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(360.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            items(items = filtered, key = { it.id.value }) { entity ->
+                                NumericPickRow(entity = entity, onPick = { onPick(entity.id.value) })
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeS)
+                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                    .r1Pressable(onClick = onDismiss)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "CANCEL", style = R1.labelMicro, color = R1.InkSoft)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NumericPickRow(entity: EntityState, onPick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable(onClick = onPick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = entity.friendlyName, style = R1.body, color = R1.Ink, maxLines = 1)
+            Text(
+                text = entity.id.value,
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = entity.unit ?: entity.id.domain.prefix.uppercase().take(6),
+            style = R1.labelMicro,
+            color = R1.AccentNeutral,
+        )
+    }
+}
