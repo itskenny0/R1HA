@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -122,29 +123,42 @@ fun PersonsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
+                    // Each row is its own `items` entry keyed by entity_id so the
+                    // list lazily composes/recycles rows and a single person's
+                    // state change recomposes only that one row, not the whole
+                    // section. The section header is a plain header item above
+                    // its rows; ordering and visible content are unchanged.
                     if (ui.people.isNotEmpty()) {
-                        item("__sec_people") {
+                        item(key = "__sec_people", contentType = "header") {
                             R1Section(
                                 title = "People",
                                 count = ui.people.size,
                                 topSpace = R1.space.s,
-                            ) {
-                                for (e in ui.people) {
-                                    PersonRow(e, onTap = { onOpenHistory(e.entityId) })
-                                }
-                            }
+                                content = {},
+                            )
+                        }
+                        items(
+                            items = ui.people,
+                            key = { "person:${it.entityId}" },
+                            contentType = { "personRow" },
+                        ) { e ->
+                            PersonRow(e, onTap = { onOpenHistory(e.entityId) })
                         }
                     }
                     if (ui.devices.isNotEmpty()) {
-                        item("__sec_devices") {
+                        item(key = "__sec_devices", contentType = "header") {
                             R1Section(
                                 title = "Device trackers",
                                 count = ui.devices.size,
-                            ) {
-                                for (e in ui.devices) {
-                                    PersonRow(e, onTap = { onOpenHistory(e.entityId) })
-                                }
-                            }
+                                content = {},
+                            )
+                        }
+                        items(
+                            items = ui.devices,
+                            key = { "device:${it.entityId}" },
+                            contentType = { "personRow" },
+                        ) { e ->
+                            PersonRow(e, onTap = { onOpenHistory(e.entityId) })
                         }
                     }
                 }
@@ -154,8 +168,67 @@ fun PersonsScreen(
     }
 }
 
+/**
+ * Round avatar for a person/device row. Renders the HA entity_picture via the
+ * shared AsyncBitmap loader when one is set, otherwise a tinted initials chip
+ * derived from the display name. The initials also stand in while a picture
+ * has yet to decode or fails to load, so the slot is never an empty circle.
+ */
+@Composable
+private fun PersonAvatar(
+    entry: PersonsViewModel.Entry,
+    presenceColor: androidx.compose.ui.graphics.Color,
+) {
+    val size = 36.dp
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(presenceColor.copy(alpha = 0.18f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Initials sit underneath as the always-present fallback.
+        Text(
+            text = initialsFor(entry.name),
+            style = R1.labelMicro,
+            color = presenceColor,
+        )
+        if (entry.entityPicture != null) {
+            com.github.itskenny0.r1ha.ui.components.AsyncBitmap(
+                url = entry.entityPicture,
+                serverUrl = com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl.current,
+                bearerToken = com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken.current,
+                modifier = Modifier
+                    .size(size)
+                    .clip(androidx.compose.foundation.shape.CircleShape),
+                contentDescription = "${entry.name} picture",
+            )
+        }
+    }
+}
+
+/** Presence chip text paired with its R1 palette colour for a row. */
+private data class RowPresence(
+    val label: String,
+    val color: androidx.compose.ui.graphics.Color,
+)
+
+/** Map the pure [presenceLabel] derivation onto the R1 colour palette. Kept
+ *  here (not in the pure helper) so PersonPresence.kt stays Android-free. */
+private fun rowPresence(state: String): RowPresence {
+    val derived = presenceLabel(state)
+    val color = when (derived.kind) {
+        PresenceKind.HOME -> R1.AccentGreen
+        PresenceKind.AWAY -> R1.StatusAmber
+        PresenceKind.UNKNOWN -> R1.StatusRed
+        PresenceKind.ZONE -> R1.AccentCool
+    }
+    return RowPresence(derived.label, color)
+}
+
 @Composable
 private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
+    val presence = rowPresence(entry.state)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -167,15 +240,16 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // State chip — green when "home", neutral for a named zone, amber
-        // when "away" / "not_home", red when unavailable.
-        val (label, color) = when (entry.state.lowercase()) {
-            "home" -> "HOME" to R1.AccentGreen
-            "not_home", "away" -> "AWAY" to R1.StatusAmber
-            "unknown", "unavailable" -> "?" to R1.StatusRed
-            else -> entry.state.uppercase() to R1.AccentCool
-        }
-        Text(text = label, style = R1.labelMicro, color = color)
+        // Avatar — the person's entity_picture when HA provides one, with a
+        // tinted initials chip as the fallback (and for device_trackers, which
+        // rarely carry a picture). The presence colour tints the fallback so a
+        // pictureless row still reads home/away at a glance.
+        PersonAvatar(entry = entry, presenceColor = presence.color)
+        Spacer(Modifier.width(R1.space.m))
+        // Zone-presence chip — HOME (green), AWAY (amber), unknown (red), or
+        // the named HA zone (cool accent). Derivation lives in the pure
+        // presenceLabel() helper so it's unit-tested and Compose-free.
+        Text(text = presence.label, style = R1.labelMicro, color = presence.color)
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
