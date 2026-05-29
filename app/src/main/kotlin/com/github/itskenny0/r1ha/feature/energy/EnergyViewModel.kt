@@ -156,10 +156,17 @@ class EnergyViewModel(
 
     companion object {
         /** Sum positive-state device_class=power sensors. Excludes
-         *  unavailable / unknown / non-numeric. */
+         *  unavailable / unknown / non-numeric, and excludes the
+         *  production-heuristic entities (solar / pv / grid_export /
+         *  production): inverters that report production as a positive
+         *  power value would otherwise be counted as consumption here
+         *  AND as production in SUM_PRODUCTION, double-counting them.
+         *  The reject mirrors SUM_PRODUCTION's select so the two slices
+         *  stay disjoint. */
         private const val SUM_POWER_DRAW = "{{ states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            "| rejectattr('entity_id','search','solar|pv|grid_export|production') " +
             "| map(attribute='state') | map('float',0) " +
             "| select('>',0) | sum | round(0) }}"
 
