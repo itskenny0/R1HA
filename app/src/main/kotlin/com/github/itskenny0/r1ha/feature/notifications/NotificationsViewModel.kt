@@ -11,6 +11,10 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * Drives the HA Notifications (persistent_notification.*) surface.
@@ -34,6 +38,9 @@ class NotificationsViewModel(
         /** Set of notification IDs whose dismiss is in flight — drives
          *  per-row 'DISMISSING…' affordance and prevents double-tap. */
         val pendingDismiss: Set<String> = emptySet(),
+        /** True while a persistent_notification.create call is in flight,
+         *  so the create affordance can disable its button + show progress. */
+        val creating: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -129,7 +136,59 @@ class NotificationsViewModel(
         }
     }
 
+    /**
+     * Create a persistent notification via `persistent_notification.create`.
+     * Mirrors what an automation or the HA frontend's developer tools would
+     * do; handy for verifying the dismiss path end to end without waiting for
+     * a real integration to raise one. [title] is optional (HA defaults to
+     * "Notification"); [message] is required by the service. On success we
+     * refresh so the new row appears in the list.
+     */
+    fun create(title: String, message: String) {
+        if (_ui.value.creating) return
+        val payload = buildCreatePayload(title, message) ?: run {
+            Toaster.error("Message can't be empty")
+            return
+        }
+        _ui.value = _ui.value.copy(creating = true)
+        viewModelScope.launch {
+            haRepository.callRawService("persistent_notification", "create", payload).fold(
+                onSuccess = {
+                    R1Log.i("Notifications", "created notification")
+                    Toaster.show("Notification created")
+                    _ui.value = _ui.value.copy(creating = false)
+                    refresh()
+                },
+                onFailure = { t ->
+                    R1Log.w("Notifications", "create failed: ${t.message}")
+                    Toaster.error("Create failed: ${t.message ?: "unknown"}")
+                    _ui.value = _ui.value.copy(creating = false)
+                },
+            )
+        }
+    }
+
     companion object {
+        /**
+         * Build the `persistent_notification.create` service payload from a
+         * raw [title]/[message] pair. Pure + side-effect free so it can be
+         * unit-tested: trims both fields, drops a blank title (HA supplies a
+         * default), and returns null when the message is blank since the
+         * service rejects an empty body. Kept out of the instance method so
+         * the validation rules are testable without a repository.
+         */
+        fun buildCreatePayload(title: String, message: String): JsonObject? {
+            val trimmedMessage = message.trim()
+            if (trimmedMessage.isEmpty()) return null
+            val trimmedTitle = title.trim()
+            return buildJsonObject {
+                put("message", JsonPrimitive(trimmedMessage))
+                if (trimmedTitle.isNotEmpty()) {
+                    put("title", JsonPrimitive(trimmedTitle))
+                }
+            }
+        }
+
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { NotificationsViewModel(haRepository) }
         }
