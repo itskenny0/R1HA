@@ -1,5 +1,7 @@
 package com.github.itskenny0.r1ha.core.prefs
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Per-card client-side customization. Each field is nullable so the absence of an
  * override means "fall through to the global setting" — that way a brand new card picks
@@ -10,6 +12,7 @@ package com.github.itskenny0.r1ha.core.prefs
  * own map because that field shipped earlier and renaming it would force a migration of
  * users' existing renames; this struct adds the rest of the customizable surface.
  */
+@Immutable
 @kotlinx.serialization.Serializable
 data class EntityOverride(
     /**
@@ -252,6 +255,7 @@ data class EntityOverride(
  * [targetEntityId] overrides the card's own entity_id when the service
  * needs to act on a different entity (rare; usually the card's own entity).
  */
+@Immutable
 @kotlinx.serialization.Serializable
 data class CustomAction(
     val label: String,

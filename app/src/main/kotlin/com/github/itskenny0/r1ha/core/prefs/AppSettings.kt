@@ -1,6 +1,6 @@
 package com.github.itskenny0.r1ha.core.prefs
 
-import androidx.compose.runtime.Stable
+import androidx.compose.runtime.Immutable
 
 enum class ThemeId { MINIMAL_DARK, PRAGMATIC_HYBRID, COLORFUL_CARDS }
 
@@ -58,14 +58,14 @@ enum class ChromeButtonRef { BATTERY, ASSIST_MIC, EDIT, GEAR }
  * [enabled] decides whether the button renders at all. GEAR is forced-on by the
  * settings UI so the user can never lose their way back to Settings.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class ChromeButtonConfig(
     val ref: ChromeButtonRef,
     val enabled: Boolean = true,
 )
 
-@Stable
+@Immutable
 data class WheelSettings(
     val stepPercent: Int = 2,           // 1, 2, 5, or 10
     val acceleration: Boolean = true,
@@ -74,7 +74,7 @@ data class WheelSettings(
     val accelerationCurve: AccelerationCurve = AccelerationCurve.MEDIUM,
 )
 
-@Stable
+@Immutable
 data class UiOptions(
     val displayMode: DisplayMode = DisplayMode.PERCENT,
     val showOnOffPill: Boolean = true,
@@ -141,7 +141,7 @@ data class UiOptions(
     val showZeroPercentWhenOff: Boolean = false,
 )
 
-@Stable
+@Immutable
 data class Behavior(
     val haptics: Boolean = true,
     val keepScreenOn: Boolean = true,
@@ -290,7 +290,7 @@ data class Behavior(
  * down for less network churn (a wall-mounted weather display
  * doesn't need 60 s refresh — 5 min is fine).
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class DashboardSettings(
     /** Show / hide each section. */
@@ -372,7 +372,7 @@ enum class DashboardTile(val label: String) {
  * refactor — change them if you want quieter polling on a metered
  * connection or snappier updates on a fast LAN.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class IntegrationsSettings(
     val notificationsRefreshSec: Int = 30,
@@ -468,7 +468,7 @@ data class IntegrationsSettings(
  * screen. Treat unfamiliar fields as 'reserved for future use' rather than fully
  * exercised — the dev menu is for power users diagnosing live behaviour.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class AdvancedSettings(
     /** Trailing-edge debounce window for service calls. Lower = faster wire updates
@@ -636,7 +636,7 @@ data class AdvancedSettings(
     val mqttClientId: String = "",
 )
 
-@Stable
+@Immutable
 data class ServerConfig(
     val url: String,
     val haVersion: String? = null,
@@ -671,7 +671,7 @@ data class ServerConfig(
  * deliberately. Sub-toggles default off so an over-eager master flip doesn't
  * spray frames at a broker the user hasn't configured yet.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class IotCameraSettings(
     /** Master switch. Off → service stops, camera released, sinks torn down. */
@@ -770,7 +770,7 @@ data class IotCameraSettings(
  * the user's desired display order, identical in shape to the legacy single-
  * page [AppSettings.favorites] list it migrates from.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class FavoritePage(
     val id: String,
@@ -790,14 +790,14 @@ data class FavoritePage(
 )
 
 /**
- * @Stable: every field is `val` and the nested data classes are themselves
- * @Stable. Tells Compose to use equals() for recomposition skipping rather
+ * @Immutable: every field is `val` and the nested data classes are themselves
+ * @Immutable. Tells Compose to use equals() for recomposition skipping rather
  * than the conservative default that treats the Map fields as unstable.
  * Without this, every screen reading `appSettings by collectAsStateWithLifecycle`
  * was force-recomposing on every settings flow emission even when its slice
  * (e.g. just `appSettings.wheel.acceleration`) hadn't changed.
  */
-@Stable
+@Immutable
 data class AppSettings(
     val server: ServerConfig? = null,
     /**
@@ -918,7 +918,7 @@ data class AppSettings(
  * [AdvancedSettings.mqttHost] etc.) so the broker only has to be configured
  * once for both features.
  */
-@Stable
+@Immutable
 @kotlinx.serialization.Serializable
 data class IotSensorsSettings(
     val enabled: Boolean = false,
