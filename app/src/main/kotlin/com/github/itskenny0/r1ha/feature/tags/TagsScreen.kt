@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,6 +44,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -88,20 +90,12 @@ fun TagsScreen(
             title = "TAGS",
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "…" else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = if (ui.loading) "…" else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh tags",
+                )
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -117,13 +111,13 @@ fun TagsScreen(
                     )
                 }
                 ui.error != null && ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
                 }
                 ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -137,10 +131,10 @@ fun TagsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 8.dp,
+                        horizontal = R1.space.m,
+                        vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     item {
                         Text(
@@ -148,7 +142,7 @@ fun TagsScreen(
                                 "  ·  TAP to rename, HOLD to delete",
                             style = R1.labelMicro,
                             color = R1.InkSoft,
-                            modifier = Modifier.padding(vertical = 4.dp),
+                            modifier = Modifier.padding(vertical = R1.space.xs),
                         )
                     }
                     items(items = ui.tags, key = { it.id }) { tag ->
@@ -158,7 +152,7 @@ fun TagsScreen(
                             onLongPress = { deleting = tag },
                         )
                     }
-                    item { Spacer(Modifier.size(24.dp)) }
+                    item { Spacer(Modifier.size(R1.space.xl)) }
                 }
             }
         }
@@ -201,12 +195,13 @@ private fun TagRow(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = tag.name?.takeIf { it.isNotBlank() } ?: tag.id,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -222,7 +217,7 @@ private fun TagRow(
             }
         }
         if (tag.name != null && tag.name.isNotBlank()) {
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
                 style = R1.labelMicro.copy(
@@ -234,7 +229,7 @@ private fun TagRow(
             )
         }
         if (!tag.description.isNullOrBlank()) {
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = tag.description,
                 style = R1.labelMicro,
@@ -267,33 +262,33 @@ private fun RenameTagSheet(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onClick = {}, hapticOnClick = false)
-                .padding(16.dp),
+                .padding(R1.space.l),
         ) {
             Text(text = "RENAME TAG", style = R1.sectionHeader, color = R1.AccentWarm)
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
                 style = R1.body.copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkMuted,
                 maxLines = 1,
             )
-            Spacer(Modifier.size(12.dp))
+            Spacer(Modifier.size(R1.space.m))
             Text(text = "NAME", style = R1.labelMicro, color = R1.InkSoft)
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = name,
                 onValueChange = { name = it },
                 placeholder = "Friendly name (e.g. Coffee-table puck)",
                 monospace = false,
             )
-            Spacer(Modifier.size(10.dp))
+            Spacer(Modifier.size(R1.space.m))
             Text(text = "DESCRIPTION", style = R1.labelMicro, color = R1.InkSoft)
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = desc,
                 onValueChange = { desc = it },
@@ -302,11 +297,11 @@ private fun RenameTagSheet(
                 singleLine = false,
                 minLines = 2,
             )
-            Spacer(Modifier.size(16.dp))
+            Spacer(Modifier.size(R1.space.l))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 R1Button(text = "CANCEL", onClick = onDismiss, variant = R1ButtonVariant.Outlined)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 R1Button(text = "SAVE", onClick = { onSave(name.trim(), desc.trim()) })
             }
         }
@@ -333,39 +328,39 @@ private fun DeleteTagSheet(
             modifier = Modifier
                 .widthIn(max = 480.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
                 .r1Pressable(onClick = {}, hapticOnClick = false)
-                .padding(16.dp),
+                .padding(R1.space.l),
         ) {
             Text(text = "DELETE TAG", style = R1.sectionHeader, color = R1.StatusRed)
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.s))
             Text(
                 text = tag.name?.takeIf { it.isNotBlank() } ?: tag.id,
                 style = R1.body,
                 color = R1.Ink,
             )
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
                 style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkMuted,
                 maxLines = 1,
             )
-            Spacer(Modifier.size(10.dp))
+            Spacer(Modifier.size(R1.space.m))
             Text(
                 text = "The tag will be removed from HA's registry. The physical tag still " +
                     "broadcasts its id; a future scan re-registers it with a blank name.",
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.size(16.dp))
+            Spacer(Modifier.size(R1.space.l))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 R1Button(text = "CANCEL", onClick = onDismiss, variant = R1ButtonVariant.Outlined)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 R1Button(
                     text = "DELETE",
                     onClick = onConfirm,
