@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -30,6 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -174,9 +178,9 @@ fun DashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
                 if (ds.showGreeting) Greeting()
                 // Error banner — surfaces a failed refresh in StatusRed so
@@ -193,7 +197,7 @@ fun DashboardScreen(
                             .background(R1.StatusRed.copy(alpha = 0.18f))
                             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
                             .r1Pressable(onClick = { vm.refresh() })
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                     ) {
                         Column {
                             Text(
@@ -247,63 +251,65 @@ fun DashboardScreen(
                         }
                         com.github.itskenny0.r1ha.core.prefs.DashboardTile.TIMERS -> {
                             if (ds.showTimers && ui.timers.isNotEmpty()) {
-                                Text(text = "TIMERS", style = R1.labelMicro, color = R1.InkSoft)
-                                if (isTablet) {
-                                    ui.timers.chunked(2).forEach { pair ->
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            pair.forEach { t ->
-                                                Box(Modifier.weight(1f)) {
-                                                    TimerCard(
-                                                        t,
-                                                        onPause = { vm.timerService(t.entityId, "pause") },
-                                                        onResume = { vm.timerService(t.entityId, "start") },
-                                                        onCancel = { vm.timerService(t.entityId, "cancel") },
-                                                    )
+                                R1Section(title = "Timers", count = ui.timers.size, topSpace = R1.space.s) {
+                                    if (isTablet) {
+                                        ui.timers.chunked(2).forEach { pair ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                                            ) {
+                                                pair.forEach { t ->
+                                                    Box(Modifier.weight(1f)) {
+                                                        TimerCard(
+                                                            t,
+                                                            onPause = { vm.timerService(t.entityId, "pause") },
+                                                            onResume = { vm.timerService(t.entityId, "start") },
+                                                            onCancel = { vm.timerService(t.entityId, "cancel") },
+                                                        )
+                                                    }
                                                 }
+                                                if (pair.size == 1) Spacer(Modifier.weight(1f))
                                             }
-                                            if (pair.size == 1) Spacer(Modifier.weight(1f))
                                         }
-                                    }
-                                } else {
-                                    for (t in ui.timers) {
-                                        TimerCard(
-                                            t,
-                                            onPause = { vm.timerService(t.entityId, "pause") },
-                                            onResume = { vm.timerService(t.entityId, "start") },
-                                            onCancel = { vm.timerService(t.entityId, "cancel") },
-                                        )
+                                    } else {
+                                        for (t in ui.timers) {
+                                            TimerCard(
+                                                t,
+                                                onPause = { vm.timerService(t.entityId, "pause") },
+                                                onResume = { vm.timerService(t.entityId, "start") },
+                                                onCancel = { vm.timerService(t.entityId, "cancel") },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                         com.github.itskenny0.r1ha.core.prefs.DashboardTile.MEDIA -> {
                             if (ds.showMedia && ui.media.isNotEmpty()) {
-                                Text(text = "NOW PLAYING", style = R1.labelMicro, color = R1.InkSoft)
-                                for (m in ui.media) {
-                                    MediaCard(
-                                        media = m,
-                                        onPlayPause = {
-                                            vm.mediaTransport(
-                                                m.entityId,
-                                                com.github.itskenny0.r1ha.core.ha.MediaTransport.PLAY_PAUSE,
-                                            )
-                                        },
-                                        onNext = {
-                                            vm.mediaTransport(
-                                                m.entityId,
-                                                com.github.itskenny0.r1ha.core.ha.MediaTransport.NEXT,
-                                            )
-                                        },
-                                        onPrev = {
-                                            vm.mediaTransport(
-                                                m.entityId,
-                                                com.github.itskenny0.r1ha.core.ha.MediaTransport.PREVIOUS,
-                                            )
-                                        },
-                                    )
+                                R1Section(title = "Now playing", count = ui.media.size, topSpace = R1.space.s) {
+                                    for (m in ui.media) {
+                                        MediaCard(
+                                            media = m,
+                                            onPlayPause = {
+                                                vm.mediaTransport(
+                                                    m.entityId,
+                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.PLAY_PAUSE,
+                                                )
+                                            },
+                                            onNext = {
+                                                vm.mediaTransport(
+                                                    m.entityId,
+                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.NEXT,
+                                                )
+                                            },
+                                            onPrev = {
+                                                vm.mediaTransport(
+                                                    m.entityId,
+                                                    com.github.itskenny0.r1ha.core.ha.MediaTransport.PREVIOUS,
+                                                )
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -331,21 +337,22 @@ fun DashboardScreen(
                         }
                         com.github.itskenny0.r1ha.core.prefs.DashboardTile.INLINE_ALERTS -> {
                             if (ds.showInlineAlerts && ui.notifications.isNotEmpty() && ds.inlineAlertsCount > 0) {
-                                Spacer(Modifier.size(2.dp))
-                                Text(text = "RECENT ALERTS", style = R1.labelMicro, color = R1.InkSoft)
-                                for (notif in ui.notifications.take(ds.inlineAlertsCount)) {
-                                    NotificationPreview(
-                                        notif,
-                                        onClick = onOpenNotifications,
-                                        onDismiss = { vm.dismissNotification(notif.notificationId) },
-                                    )
+                                val shown = ui.notifications.take(ds.inlineAlertsCount)
+                                R1Section(title = "Recent alerts", count = shown.size, topSpace = R1.space.s) {
+                                    for (notif in shown) {
+                                        NotificationPreview(
+                                            notif,
+                                            onClick = onOpenNotifications,
+                                            onDismiss = { vm.dismissNotification(notif.notificationId) },
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 if (!anyVisible) {
-                    Spacer(Modifier.size(24.dp))
+                    Spacer(Modifier.size(R1.space.xl))
                     Text(
                         text = "Every dashboard tile is hidden.",
                         style = R1.body,
@@ -356,19 +363,14 @@ fun DashboardScreen(
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                     )
-                    Spacer(Modifier.size(12.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = onOpenSettings)
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                    ) {
-                        Text(text = "OPEN SETTINGS", style = R1.labelMicro, color = R1.AccentWarm)
-                    }
+                    Spacer(Modifier.size(R1.space.m))
+                    R1Chip(
+                        text = "OPEN SETTINGS",
+                        variant = R1ChipVariant.Action,
+                        onClick = onOpenSettings,
+                    )
                 }
-                Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.size(R1.space.xl))
             }
         }
         } // AdaptiveContent
@@ -387,7 +389,7 @@ private fun WeatherCard(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.l),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -395,7 +397,7 @@ private fun WeatherCard(
             style = R1.numeralXl,
             color = conditionAccent(w.condition),
         )
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(R1.space.l))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = w.name.uppercase(), style = R1.labelMicro, color = R1.InkSoft)
             Text(
@@ -425,8 +427,8 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Sun glyph state — above_horizon = ☀, below_horizon = ☾ +
@@ -437,7 +439,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                 style = R1.numeralXl,
                 color = if (isUp) R1.AccentWarm else R1.AccentCool,
             )
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(R1.space.m))
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "SUN", style = R1.labelMicro, color = R1.InkSoft)
                 Text(
@@ -461,7 +463,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RelativeTimeLabel(at = s.nextRising, color = R1.AccentWarm, style = R1.labelMicro)
                     s.nextRising?.let {
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
                             style = R1.labelMicro,
@@ -475,7 +477,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RelativeTimeLabel(at = s.nextSetting, color = R1.AccentCool, style = R1.labelMicro)
                     s.nextSetting?.let {
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
                             style = R1.labelMicro,
@@ -505,7 +507,8 @@ private fun DashboardTopBar(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+                .heightIn(min = R1.MinTarget)
+                .padding(start = R1.space.xs, end = R1.space.l, top = R1.space.xs, bottom = R1.space.xs),
         ) {
             // Chevron-back tile — only rendered when canGoBack is true.
             // On the kiosk 'Start on Dashboard' path the back stack is
@@ -514,9 +517,9 @@ private fun DashboardTopBar(
             // the obvious escape paths.
             if (canGoBack) {
                 com.github.itskenny0.r1ha.ui.components.ChevronBack(onClick = onBack)
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(R1.space.xs))
             } else {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.l))
             }
             // 'TODAY · MON' — abbreviated day-of-week alongside the
             // title so the screen identifies which day's snapshot the
@@ -540,7 +543,7 @@ private fun DashboardTopBar(
             // left-to-right past the title.
             if (showBatteryIndicator) {
                 com.github.itskenny0.r1ha.ui.components.BatteryIndicator(onClick = onOpenDevice)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
             // Assist — same affordance as on the card stack chrome, so the
             // action is consistent across surfaces. Sits before CARDS so it's
@@ -550,32 +553,28 @@ private fun DashboardTopBar(
             // doesn't switch to colour-emoji rendering mid-row.
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = onOpenAssist),
                 contentAlignment = Alignment.Center,
             ) {
                 com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 16.dp)
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(R1.space.xs))
             // CARDS — opens the card stack. Most-frequent action from the
             // dashboard for kiosk users who occasionally want to control
             // something rather than just glance.
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = onOpenCardStack)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(text = "CARDS", style = R1.labelMicro, color = R1.InkSoft)
-            }
-            Spacer(Modifier.width(6.dp))
+            R1Chip(
+                text = "CARDS",
+                variant = R1ChipVariant.Action,
+                onClick = onOpenCardStack,
+            )
+            Spacer(Modifier.width(R1.space.s))
             // SETTINGS gear — wireframe drawn glyph (same as the
             // card-stack chrome) for consistency. Tap opens Settings.
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = onOpenSettings),
                 contentAlignment = Alignment.Center,
@@ -607,8 +606,8 @@ private fun LowBatteryCard(
             .clip(R1.ShapeS)
             .background(R1.StatusAmber.copy(alpha = 0.12f))
             .border(1.dp, R1.StatusAmber.copy(alpha = 0.4f), R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
     ) {
         Text(
             text = "${entries.size} BATTERIES LOW",
@@ -624,7 +623,8 @@ private fun LowBatteryCard(
                     .fillMaxWidth()
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = { onOpenHistory(id) })
-                    .padding(vertical = 4.dp),
+                    .heightIn(min = R1.MinTarget)
+                    .padding(vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -634,7 +634,7 @@ private fun LowBatteryCard(
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "${pct}%",
                     style = R1.body,
@@ -669,8 +669,8 @@ private fun TimerCard(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val (label, color) = when (t.state) {
@@ -679,9 +679,9 @@ private fun TimerCard(
                 else -> t.state.uppercase() to R1.InkSoft
             }
             Text(text = label, style = R1.labelMicro, color = color)
-            Spacer(Modifier.width(10.dp))
-            Text(text = t.name, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.m))
+            Text(text = t.name, style = R1.bodyEmph, color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
+            Spacer(Modifier.width(R1.space.s))
             // Paused timers freeze finishes_at at the pause moment, so a
             // RelativeTimeLabel would tick into the past and show
             // 'finished 5 min ago' even though the timer hasn't fired.
@@ -695,7 +695,7 @@ private fun TimerCard(
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
             val isActive = t.state == "active"
             TimerPill(
@@ -727,7 +727,8 @@ private fun TimerPill(
             .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(vertical = 6.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = label, style = R1.labelMicro, color = accent)
@@ -778,7 +779,7 @@ private fun Greeting() {
             java.time.format.FormatStyle.SHORT,
         ).withLocale(locale),
     )
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xs, vertical = R1.space.xs)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(text = greeting, style = R1.sectionHeader, color = R1.AccentWarm, modifier = Modifier.weight(1f))
             Text(text = timeLine, style = R1.numeralM, color = R1.Ink)
@@ -801,26 +802,19 @@ private fun MediaCard(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (playing) R1.AccentGreen.copy(alpha = 0.22f) else R1.SurfaceMuted)
-                    .padding(horizontal = 6.dp, vertical = 1.dp),
-            ) {
-                Text(
-                    text = if (playing) "PLAYING" else media.state.uppercase(),
-                    style = R1.labelMicro,
-                    color = if (playing) R1.AccentGreen else R1.InkSoft,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
+            R1Chip(
+                text = if (playing) "PLAYING" else media.state.uppercase(),
+                variant = R1ChipVariant.Pill,
+                tone = if (playing) R1.AccentGreen else R1.InkSoft,
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = media.name,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -833,7 +827,7 @@ private fun MediaCard(
         // Transport row — prev / play-pause / next.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
             TransportButton(label = "◄◄", onClick = onPrev, modifier = Modifier.weight(1f))
             TransportButton(
@@ -860,7 +854,8 @@ private fun TransportButton(
             .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = label, style = R1.body, color = accent)
@@ -879,20 +874,20 @@ private fun PersonsCard(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "PEOPLE", style = R1.labelMicro, color = R1.InkSoft)
             Spacer(Modifier.weight(1f))
             Text(text = "${p.homeCount} HOME", style = R1.labelMicro, color = R1.AccentGreen)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(text = "${p.awayCount} AWAY", style = R1.labelMicro, color = R1.StatusAmber)
         }
         for ((name, state) in p.rows) {
             Row {
                 Text(text = name, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 val color = when (state.lowercase()) {
                     "home" -> R1.AccentGreen
                     "not_home", "away" -> R1.StatusAmber
@@ -924,34 +919,20 @@ private fun CalendarCard(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (c.happeningNow) {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentGreen.copy(alpha = 0.22f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "NOW", style = R1.labelMicro, color = R1.AccentGreen)
-                }
-                Spacer(Modifier.width(8.dp))
+                R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
+                Spacer(Modifier.width(R1.space.s))
             } else {
                 Text(text = "NEXT", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
             if (c.allDay) {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentCool.copy(alpha = 0.22f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "ALL-DAY", style = R1.labelMicro, color = R1.AccentCool)
-                }
-                Spacer(Modifier.width(8.dp))
+                R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
+                Spacer(Modifier.width(R1.space.s))
             }
             Text(
                 text = c.calendarName.uppercase(),
@@ -962,7 +943,7 @@ private fun CalendarCard(
             )
             RelativeTimeLabel(at = c.eventStart, color = R1.InkMuted, style = R1.labelMicro)
         }
-        Text(text = c.eventTitle, style = R1.body, color = R1.Ink, maxLines = 2)
+        Text(text = c.eventTitle, style = R1.bodyEmph, color = R1.Ink, maxLines = 2)
     }
 }
 
@@ -992,7 +973,7 @@ private fun MetricsRow(
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onClick = onPower)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -1017,7 +998,7 @@ private fun MetricsRow(
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         // Lights-on count from a server-side Jinja count() — much
         // lighter than fetching every light entity. -1 sentinel
@@ -1072,7 +1053,7 @@ private fun Metric(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .then(pressable)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
         Text(text = value, style = R1.numeralXl, color = accent)
@@ -1092,19 +1073,20 @@ private fun NotificationPreview(
             .background(R1.StatusRed.copy(alpha = 0.10f))
             .border(1.dp, R1.StatusRed.copy(alpha = 0.35f), R1.ShapeS)
             .r1Pressable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = n.title?.takeIf { it.isNotBlank() } ?: n.notificationId,
-                    style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                    style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 // 'Created at' relative timestamp — surfaces 'just now'
                 // / '2 m' so the user can tell a fresh alert from a
                 // long-standing one without leaving the dashboard.
@@ -1121,13 +1103,13 @@ private fun NotificationPreview(
                 maxLines = 2,
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         // ✕ dismiss tile — separate tap target from the row's onClick
         // so a dismiss doesn't accidentally navigate to the
         // Notifications surface (and vice versa).
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(R1.MinTarget)
                 .clip(R1.ShapeS)
                 .r1Pressable(onClick = onDismiss),
             contentAlignment = Alignment.Center,
@@ -1181,7 +1163,7 @@ private fun DashboardPair(
     if (isTablet && leftVisible && rightVisible) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
             verticalAlignment = Alignment.Top,
         ) {
             Box(modifier = Modifier.weight(1f)) { left() }
