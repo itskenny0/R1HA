@@ -32,4 +32,19 @@ data class LogbookEntry(
      *  state at a glance. Null when the event is stateless (e.g. an
      *  automation trigger). */
     val state: String?,
+    /** HA's `context_user_id`: the user account that initiated whatever caused
+     *  this event. Present when a person (not an automation) flipped the switch.
+     *  Opaque GUID; we surface it only as a last-resort attribution when no
+     *  human-readable [contextName] is available. */
+    val contextUserId: String? = null,
+    /** HA's `context_entity_id`: the entity that triggered this event (e.g. the
+     *  motion sensor whose state change ran an automation that turned on a
+     *  light). Carried as a raw String rather than an [EntityId] because context
+     *  sources are routinely from domains we don't model (`person.*`, `sun.sun`,
+     *  `device_tracker.*`) and would fail EntityId's domain validation. */
+    val contextEntityId: String? = null,
+    /** Human-readable label for the triggering context, when HA resolves one
+     *  (`context_entity_id_name` / `context_name`). Preferred over the raw id
+     *  for the "by …" / "via …" attribution suffix on the row. */
+    val contextName: String? = null,
 )

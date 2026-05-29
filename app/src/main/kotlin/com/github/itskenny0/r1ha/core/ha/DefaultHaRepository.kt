@@ -1822,6 +1822,13 @@ class DefaultHaRepository(
                         entityId = entityId,
                         domain = row.domain ?: row.entity_id?.substringBefore('.'),
                         state = row.state,
+                        contextUserId = row.context_user_id,
+                        contextEntityId = row.context_entity_id,
+                        // HA's frontend resolves a friendly label under
+                        // `context_entity_id_name`; some payloads use the
+                        // user-facing `context_name` instead. Prefer the
+                        // entity-scoped label, fall back to the generic one.
+                        contextName = row.context_entity_id_name ?: row.context_name,
                     )
                 }.sortedByDescending { it.timestamp } // newest first
             }.onFailure { t ->
@@ -1842,6 +1849,14 @@ class DefaultHaRepository(
         val entity_id: String? = null,
         val domain: String? = null,
         val state: String? = null,
+        // "Triggered by" context HA attaches to each row: the originating user
+        // account, the originating entity, and (when HA can resolve them) their
+        // human-readable labels. All optional — older HA versions and some event
+        // types omit the context block entirely.
+        val context_user_id: String? = null,
+        val context_entity_id: String? = null,
+        val context_entity_id_name: String? = null,
+        val context_name: String? = null,
     )
 
     /** Lenient JSON for /api/logbook — same shape as [listStatesJson]: ignore

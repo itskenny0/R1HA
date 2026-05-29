@@ -290,6 +290,137 @@ class DefaultHaRepositoryTest {
     }
 
     /**
+     * fetchLogbook parses HA's /api/logbook rows, including the "triggered by"
+     * context block. The endpoint is plain REST (no WS), so this test drives the
+     * repo's HTTP path directly: enqueue a two-row logbook body, call
+     * fetchLogbook, and assert the context fields land on [LogbookEntry]. One row
+     * carries a full context block (user id + triggering entity + resolved name),
+     * the other carries none so the defaults-to-null path is covered too.
+     */
+    @Test fun `fetchLogbook maps context fields and tolerates rows without them`() = runTest {
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl)) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val ws = HaWebSocketClient(http = http, scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        // refresher = null (default) so fetchLogbook skips token refresh and just GETs.
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+
+        // Row 1: full context block. Row 2: no context at all.
+        val bodyJson = """
+            [
+              {
+                "when":"2026-05-29T10:00:00+00:00",
+                "name":"Kitchen Light",
+                "entity_id":"light.kitchen",
+                "domain":"light",
+                "state":"on",
+                "message":"turned on",
+                "context_user_id":"abcdef0123456789",
+                "context_entity_id":"binary_sensor.front_door",
+                "context_entity_id_name":"Front Door Motion"
+              },
+              {
+                "when":"2026-05-29T09:59:00+00:00",
+                "name":"Hallway",
+                "entity_id":"light.hallway",
+                "domain":"light",
+                "state":"off",
+                "message":"turned off"
+              }
+            ]
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(bodyJson))
+
+        val result = repo.fetchLogbook(hours = 24)
+        assertThat(result.isSuccess).isTrue()
+        val rows = result.getOrThrow()
+        assertThat(rows).hasSize(2)
+
+        // Newest-first: the 10:00 row sorts ahead of the 09:59 row.
+        val withCtx = rows.first { it.entityId?.value == "light.kitchen" }
+        assertThat(withCtx.contextUserId).isEqualTo("abcdef0123456789")
+        assertThat(withCtx.contextEntityId).isEqualTo("binary_sensor.front_door")
+        assertThat(withCtx.contextName).isEqualTo("Front Door Motion")
+
+        val noCtx = rows.first { it.entityId?.value == "light.hallway" }
+        assertThat(noCtx.contextUserId).isNull()
+        assertThat(noCtx.contextEntityId).isNull()
+        assertThat(noCtx.contextName).isNull()
+
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
+     * The human label can arrive under `context_name` instead of
+     * `context_entity_id_name` (HA uses the former for user-initiated actions).
+     * The mapper prefers the entity-scoped label but must accept either; here
+     * only `context_name` is present and must populate [LogbookEntry.contextName].
+     */
+    @Test fun `fetchLogbook accepts context_name as the human label`() = runTest {
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl)) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val ws = HaWebSocketClient(http = http, scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+
+        val bodyJson = """
+            [
+              {
+                "when":"2026-05-29T10:00:00+00:00",
+                "name":"Kitchen Light",
+                "entity_id":"light.kitchen",
+                "domain":"light",
+                "state":"on",
+                "message":"turned on",
+                "context_user_id":"abcdef0123456789",
+                "context_name":"Alice"
+              }
+            ]
+        """.trimIndent()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(bodyJson))
+
+        val rows = repo.fetchLogbook(hours = 24).getOrThrow()
+        assertThat(rows).hasSize(1)
+        assertThat(rows.single().contextName).isEqualTo("Alice")
+
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
      * renameArea must emit a `config/area_registry/update` WS command carrying the
      * stable area_id plus the new name, and resolve to Result.success once HA replies
      * with a success result. Asserts the request shape on the wire and the return value.
