@@ -68,20 +68,18 @@ class AssistViewModel(
         sendJob = null
         _ui.value = _ui.value.copy(
             inFlight = false,
-            messages = _ui.value.messages + AssistMessage(
-                text = "(cancelled)",
-                fromUser = false,
-                responseType = "error",
+            messages = AssistTranscript.appendErrorTurn(
+                _ui.value.messages,
+                AssistTranscript.cancelledTurnText(),
             ),
         )
     }
 
     fun send() {
-        val text = _ui.value.draft.trim()
-        if (text.isEmpty() || _ui.value.inFlight) return
-        val userMsg = AssistMessage(text = text, fromUser = true)
+        if (!AssistTranscript.isSendable(_ui.value.draft, _ui.value.inFlight)) return
+        val text = AssistTranscript.normalizeDraft(_ui.value.draft)
         _ui.value = _ui.value.copy(
-            messages = _ui.value.messages + userMsg,
+            messages = AssistTranscript.appendUserTurn(_ui.value.messages, text),
             draft = "",
             inFlight = true,
         )
@@ -104,9 +102,9 @@ class AssistViewModel(
                     )
                     conversationId = response.conversationId ?: conversationId
                     _ui.value = _ui.value.copy(
-                        messages = _ui.value.messages + AssistMessage(
+                        messages = AssistTranscript.appendAssistTurn(
+                            _ui.value.messages,
                             text = response.speech,
-                            fromUser = false,
                             responseType = response.responseType,
                         ),
                         inFlight = false,
@@ -115,10 +113,9 @@ class AssistViewModel(
                 onFailure = { t ->
                     R1Log.w("Assist", "process failed: ${t.message}")
                     _ui.value = _ui.value.copy(
-                        messages = _ui.value.messages + AssistMessage(
-                            text = "(error: ${t.message ?: "unknown"})",
-                            fromUser = false,
-                            responseType = "error",
+                        messages = AssistTranscript.appendErrorTurn(
+                            _ui.value.messages,
+                            AssistTranscript.errorTurnText(t.message),
                         ),
                         inFlight = false,
                     )
@@ -145,11 +142,10 @@ class AssistViewModel(
         if (text.isEmpty()) return
         viewModelScope.launch {
             settings.update { s ->
-                val existing = s.behavior.assistMacros
-                if (text in existing) return@update s
-                // Cap at 12 entries — chip row gets unreadable past that on
-                // narrow screens. Drop oldest to make room.
-                val next = (existing + text).takeLast(12)
+                // De-dupes and caps at AssistTranscript.MAX_MACROS, dropping the
+                // oldest so the chip row stays readable on narrow screens.
+                val next = AssistTranscript.addMacro(s.behavior.assistMacros, text)
+                if (next === s.behavior.assistMacros) return@update s
                 s.copy(behavior = s.behavior.copy(assistMacros = next))
             }
             com.github.itskenny0.r1ha.core.util.Toaster.show("Macro saved")

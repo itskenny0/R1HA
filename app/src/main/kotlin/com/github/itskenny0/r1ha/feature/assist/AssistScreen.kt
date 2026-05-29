@@ -150,7 +150,7 @@ fun AssistScreen(
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
                     Text(
-                        text = "AGENT: ${current?.take(18) ?: "DEFAULT"}",
+                        text = AssistTranscript.agentLabel(current),
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                     )
@@ -188,7 +188,7 @@ fun AssistScreen(
                     agentScope.launch {
                         settings.update { s ->
                             s.copy(behavior = s.behavior.copy(
-                                assistAgentId = newId?.takeIf { it.isNotBlank() },
+                                assistAgentId = AssistTranscript.normalizeAgentId(newId),
                             ))
                         }
                     }
@@ -523,17 +523,15 @@ fun AssistScreen(
 
 @Composable
 private fun AssistBubble(msg: AssistMessage) {
-    val isUser = msg.fromUser
-    val isError = msg.responseType == "error"
-    val bg = when {
-        isError -> R1.StatusRed.copy(alpha = 0.18f)
-        isUser -> R1.AccentWarm.copy(alpha = 0.18f)
-        else -> R1.SurfaceMuted
+    val kind = AssistTranscript.kindOf(msg)
+    val isUser = kind == AssistTranscript.TurnKind.USER
+    val isError = kind == AssistTranscript.TurnKind.ERROR
+    val bg = when (kind) {
+        AssistTranscript.TurnKind.ERROR -> R1.StatusRed.copy(alpha = 0.18f)
+        AssistTranscript.TurnKind.USER -> R1.AccentWarm.copy(alpha = 0.18f)
+        AssistTranscript.TurnKind.REPLY -> R1.SurfaceMuted
     }
-    val textColor = when {
-        isError -> R1.StatusRed
-        else -> R1.Ink
-    }
+    val textColor = if (isError) R1.StatusRed else R1.Ink
     // Long-press copies the bubble text. Useful for: replaying a working prompt
     // ("turn off the kitchen light" → reuse with a tweak), grabbing HA's response
     // (a sensor reading, a state list) to paste into a notes app, and quoting an
