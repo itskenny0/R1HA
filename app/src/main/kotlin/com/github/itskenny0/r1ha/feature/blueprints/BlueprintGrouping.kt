@@ -42,7 +42,7 @@ object BlueprintGrouping {
         val scripts = scriptResult.getOrNull().orEmpty().sortedByName()
         val bothFailed = automationResult.isFailure && scriptResult.isFailure
         val error = if (bothFailed) {
-            firstErrorMessage(automationResult, scriptResult)
+            firstErrorMessage(listOf(automationResult, scriptResult))
         } else {
             null
         }
@@ -53,7 +53,7 @@ object BlueprintGrouping {
      * Extract a human message from the first failed result, falling back to a
      * generic label when an exception carries no message.
      */
-    fun firstErrorMessage(vararg results: Result<*>): String? =
+    fun firstErrorMessage(results: List<Result<*>>): String? =
         results.firstOrNull { it.isFailure }
             ?.exceptionOrNull()
             ?.let { it.message?.takeIf(String::isNotBlank) ?: "Unknown error" }

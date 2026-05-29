@@ -96,8 +96,10 @@ class BlueprintGroupingTest {
     @Test
     fun `firstErrorMessage falls back to a label for a blank exception message`() {
         val msg = BlueprintGrouping.firstErrorMessage(
-            Result.success(Unit),
-            Result.failure<Unit>(RuntimeException("")),
+            listOf(
+                Result.success(Unit),
+                Result.failure<Unit>(RuntimeException("")),
+            ),
         )
         assertThat(msg).isEqualTo("Unknown error")
     }
@@ -105,8 +107,10 @@ class BlueprintGroupingTest {
     @Test
     fun `firstErrorMessage is null when nothing failed`() {
         val msg = BlueprintGrouping.firstErrorMessage(
-            Result.success(Unit),
-            Result.success(1),
+            listOf(
+                Result.success(Unit),
+                Result.success(1),
+            ),
         )
         assertThat(msg).isNull()
     }
