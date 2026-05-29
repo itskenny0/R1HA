@@ -9,12 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -30,6 +30,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -87,7 +88,7 @@ fun PersonsScreen(
                 )
             }
             ui.error != null && ui.people.isEmpty() && ui.devices.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Distinct from "no person integrations" — the request
@@ -99,7 +100,7 @@ fun PersonsScreen(
                 )
             }
             ui.people.isEmpty() && ui.devices.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -117,35 +118,33 @@ fun PersonsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     if (ui.people.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "PEOPLE · ${ui.people.size}",
-                                style = R1.labelMicro,
-                                color = R1.InkSoft,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
-                            )
-                        }
-                        items(items = ui.people, key = { it.entityId }) { e ->
-                            PersonRow(e, onTap = { onOpenHistory(e.entityId) })
+                        item("__sec_people") {
+                            R1Section(
+                                title = "People",
+                                count = ui.people.size,
+                                topSpace = R1.space.s,
+                            ) {
+                                for (e in ui.people) {
+                                    PersonRow(e, onTap = { onOpenHistory(e.entityId) })
+                                }
+                            }
                         }
                     }
                     if (ui.devices.isNotEmpty()) {
-                        item {
-                            Spacer(Modifier.size(8.dp))
-                            Text(
-                                text = "DEVICE TRACKERS · ${ui.devices.size}",
-                                style = R1.labelMicro,
-                                color = R1.InkSoft,
-                                modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
-                            )
-                        }
-                        items(items = ui.devices, key = { it.entityId }) { e ->
-                            PersonRow(e, onTap = { onOpenHistory(e.entityId) })
+                        item("__sec_devices") {
+                            R1Section(
+                                title = "Device trackers",
+                                count = ui.devices.size,
+                            ) {
+                                for (e in ui.devices) {
+                                    PersonRow(e, onTap = { onOpenHistory(e.entityId) })
+                                }
+                            }
                         }
                     }
                 }
@@ -164,7 +163,8 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // State chip — green when "home", neutral for a named zone, amber
@@ -176,12 +176,12 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
             else -> entry.state.uppercase() to R1.AccentCool
         }
         Text(text = label, style = R1.labelMicro, color = color)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = entry.name,
-                    style = R1.body,
+                    style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
@@ -190,7 +190,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                 // 2h' so the user can see how long the person/device has
                 // been in their current state. Same ticker as the rest
                 // of the app, so live-updates without us touching it.
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel(
                     at = entry.since,
                     color = R1.InkMuted,
@@ -206,7 +206,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     modifier = Modifier.weight(1f),
                 )
                 if (entry.source != null) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Text(
                         text = entry.source.uppercase(),
                         style = R1.labelMicro,
@@ -214,7 +214,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     )
                 }
                 if (entry.batteryLevel != null) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     // Colour the battery digit by threshold so a low
                     // phone battery on a person tracker stands out at
                     // a glance — same red/amber/muted ramp the other
@@ -231,7 +231,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     )
                 }
                 if (entry.gpsAccuracy != null) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Text(
                         text = "±${entry.gpsAccuracy}m",
                         style = R1.labelMicro,
