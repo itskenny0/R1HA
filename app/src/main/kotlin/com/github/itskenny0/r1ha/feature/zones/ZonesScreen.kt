@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -84,11 +88,17 @@ fun ZonesScreen(
             action = {
                 Box(
                     modifier = Modifier
+                        .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
+                        .r1Pressable(
+                            onClick = { vm.refresh() },
+                            contentDescription =
+                                if (ui.loading) "Refreshing zones" else "Refresh zones",
+                        )
                         .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (ui.loading) "…" else "REFRESH",
@@ -105,7 +115,9 @@ fun ZonesScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .semantics { contentDescription = "Loading zones" },
                     strokeWidth = 2.dp,
                     color = R1.AccentWarm,
                 )
@@ -199,13 +211,22 @@ private fun ZoneMap(
     }
     val bounds = geoBounds(points) ?: return
     val metersPerLonDeg = metersPerLonDegree(bounds.midLat)
+    // The map is decorative geometry; give it a single merged spoken
+    // description and point the user at the zone list below (the real
+    // accessible path).
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(200.dp)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS),
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .semantics(mergeDescendants = true) {
+                contentDescription = ZoneA11y.mapDescription(
+                    zoneCount = zones.size,
+                    trackerCount = trackers.size,
+                )
+            },
     ) {
         Canvas(
             modifier = Modifier
@@ -292,6 +313,7 @@ private fun ZoneRow(zone: ResolvedZone) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(
@@ -299,6 +321,15 @@ private fun ZoneRow(zone: ResolvedZone) {
                 if (occupied) R1.AccentWarm.copy(alpha = 0.3f) else R1.Hairline,
                 R1.ShapeS,
             )
+            // Merge the icon / name / count / occupant chips into one spoken
+            // phrase; occupancy is read in words, not just by accent colour.
+            .semantics(mergeDescendants = true) {
+                contentDescription = ZoneA11y.zoneRowLabel(
+                    name = zone.name,
+                    occupants = zone.occupants,
+                    radiusMeters = zone.radiusMeters,
+                )
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -359,9 +390,13 @@ private fun OutsideRow(names: List<String>) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .semantics(mergeDescendants = true) {
+                contentDescription = ZoneA11y.outsideRowLabel(names)
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

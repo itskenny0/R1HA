@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.horizontalScroll
@@ -25,6 +26,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.util.Toaster
@@ -86,7 +92,12 @@ fun TemplateScreen(
             // for the bits HA cares about (states.* tree, state_attr(), etc.).
             ExampleChips(onPick = { vm.setTemplate(it); vm.render() })
             Spacer(Modifier.padding(top = 10.dp))
-            Text(text = "TEMPLATE (JINJA2)", style = R1.labelMicro, color = R1.InkSoft)
+            Text(
+                text = "TEMPLATE (JINJA2)",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.padding(top = 4.dp))
             // Multi-line monospace editor. heightIn keeps a sensible minimum
             // even when the field is empty so the tap target is generous.
@@ -97,7 +108,8 @@ fun TemplateScreen(
                 monospace = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 80.dp),
+                    .heightIn(min = 80.dp)
+                    .semantics { contentDescription = TemplateA11y.editorLabel() },
             )
             Spacer(Modifier.padding(top = 8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -116,6 +128,7 @@ fun TemplateScreen(
                     enabled = ui.auto,
                     accentOn = R1.AccentWarm,
                     accentOff = R1.AccentWarm,
+                    spokenLabel = TemplateA11y.autoToggleLabel(ui.auto),
                     onToggle = { vm.setAuto(!ui.auto) },
                 )
                 Spacer(Modifier.width(8.dp))
@@ -129,6 +142,7 @@ fun TemplateScreen(
                     enabled = ui.live,
                     accentOn = R1.AccentCool,
                     accentOff = R1.AccentWarm,
+                    spokenLabel = TemplateA11y.liveToggleLabel(ui.live),
                     onToggle = { vm.setLive(!ui.live) },
                 )
                 Spacer(Modifier.width(8.dp))
@@ -151,16 +165,25 @@ fun TemplateScreen(
                     text = "Rendering against live HA state…",
                     style = R1.body,
                     color = R1.InkSoft,
+                    // Live region so TalkBack announces the in-flight state.
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Rendering template against live Home Assistant state"
+                    },
                 )
                 ui.error != null -> ResultPanel(
                     heading = ui.errorKind?.let { TemplateLogic.headingFor(it) } ?: "ERROR",
                     body = ui.error!!,
                     accent = R1.StatusRed,
+                    // Errors are announced the moment they land so the user
+                    // hears the traceback without hunting for the panel.
+                    announce = true,
                 )
                 ui.rendered.isNotEmpty() -> ResultPanel(
                     heading = "RENDERED",
                     body = ui.rendered,
                     accent = R1.AccentWarm,
+                    announce = true,
                 )
                 else -> Text(
                     text = "Hit RENDER, or turn on AUTO to evaluate as you type.",
@@ -172,14 +195,24 @@ fun TemplateScreen(
             if (ui.recent.isNotEmpty()) {
                 Spacer(Modifier.padding(top = 16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "RECENT", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(
+                        text = "RECENT",
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Spacer(Modifier.weight(1f))
                     Box(
                         modifier = Modifier
+                            .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
-                            .r1Pressable(onClick = { vm.clearRecent() })
+                            .r1Pressable(
+                                onClick = { vm.clearRecent() },
+                                contentDescription = "Clear recent templates",
+                            )
                             .padding(horizontal = 8.dp, vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "CLEAR", style = R1.labelMicro, color = R1.InkSoft)
                     }
@@ -201,10 +234,15 @@ private fun RecentTemplateRow(template: String, onPick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .r1Pressable(onClick = onPick)
+            .r1Pressable(
+                onClick = onPick,
+                contentDescription = TemplateA11y.recentRowLabel(template),
+            )
             .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.CenterStart,
     ) {
         // Two-line preview is enough — most templates are short, and the
         // user can tap to reload the full text into the editor.
@@ -234,11 +272,16 @@ private fun ExampleChips(onPick: (String) -> Unit) {
         for (example in TemplateLogic.examples) {
             Box(
                 modifier = Modifier
+                    .heightIn(min = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { onPick(example.template) })
+                    .r1Pressable(
+                        onClick = { onPick(example.template) },
+                        contentDescription = TemplateA11y.exampleChipLabel(example.label),
+                    )
                     .padding(horizontal = 10.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(text = example.label, style = R1.labelMicro, color = R1.InkSoft)
             }
@@ -256,10 +299,12 @@ private fun ModeToggle(
     enabled: Boolean,
     accentOn: androidx.compose.ui.graphics.Color,
     accentOff: androidx.compose.ui.graphics.Color,
+    spokenLabel: String,
     onToggle: () -> Unit,
 ) {
     Box(
         modifier = Modifier
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(if (enabled) accentOn.copy(alpha = 0.18f) else R1.SurfaceMuted)
             .border(
@@ -267,8 +312,12 @@ private fun ModeToggle(
                 if (enabled) accentOn.copy(alpha = 0.6f) else R1.Hairline,
                 R1.ShapeS,
             )
-            .r1Pressable(onClick = onToggle)
+            .r1Pressable(
+                onClick = onToggle,
+                contentDescription = spokenLabel,
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = if (enabled) onLabel else offLabel,
@@ -279,24 +328,39 @@ private fun ModeToggle(
 }
 
 @Composable
-private fun ResultPanel(heading: String, body: String, accent: androidx.compose.ui.graphics.Color) {
+private fun ResultPanel(
+    heading: String,
+    body: String,
+    accent: androidx.compose.ui.graphics.Color,
+    announce: Boolean = false,
+) {
     val clipboard = LocalClipboardManager.current
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = heading, style = R1.labelMicro, color = accent)
+            Text(
+                text = heading,
+                style = R1.labelMicro,
+                color = accent,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.width(8.dp))
             // Tap-to-copy chip — convenient for piping a rendered value
             // into HA's automation YAML or a Discord/issue post.
             Box(
                 modifier = Modifier
+                    .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = {
-                        clipboard.setText(AnnotatedString(body))
-                        Toaster.show("Copied")
-                    })
+                    .r1Pressable(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(body))
+                            Toaster.show("Copied")
+                        },
+                        contentDescription = "Copy result to clipboard",
+                    )
                     .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
             }
@@ -308,6 +372,12 @@ private fun ResultPanel(heading: String, body: String, accent: androidx.compose.
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
+                // Merge heading + body into one spoken phrase, and announce it
+                // as a live region so a fresh render or error is read aloud.
+                .semantics(mergeDescendants = true) {
+                    contentDescription = TemplateA11y.resultLabel(heading, body)
+                    if (announce) liveRegion = LiveRegionMode.Polite
+                }
                 .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
             Text(text = body, style = R1.body, color = R1.Ink)

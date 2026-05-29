@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -30,6 +31,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -106,10 +109,18 @@ fun LabelsScreen(
             action = {
                 val nextSort = if (ui.sort == LabelsViewModel.Sort.ALPHA)
                     LabelsViewModel.Sort.COUNT else LabelsViewModel.Sort.ALPHA
+                val sortSpoken = if (ui.sort == LabelsViewModel.Sort.ALPHA) {
+                    "Sorted A to Z. Tap to sort by tagged count."
+                } else {
+                    "Sorted by tagged count. Tap to sort A to Z."
+                }
                 R1Chip(
                     text = if (ui.sort == LabelsViewModel.Sort.ALPHA) "A-Z" else "BY COUNT",
                     variant = R1ChipVariant.Action,
                     onClick = { vm.setSort(nextSort) },
+                    modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
+                        .semantics { contentDescription = sortSpoken },
                 )
             },
         )
@@ -209,10 +220,26 @@ private fun LabelRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onToggle)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // The header Row is the toggle target. Merge swatch / name / icon-slug /
+        // count / chevron into one spoken phrase (count in words, expand state
+        // announced) on the Row itself, so the expanded member rows below stay
+        // individually focusable as the accessible path into the label.
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = R1.MinTarget)
+                .r1Pressable(
+                    onClick = onToggle,
+                    contentDescription = LabelLogic.labelRowLabel(
+                        name = label.name,
+                        memberCount = label.memberCount,
+                        expanded = expanded,
+                    ),
+                ),
+        ) {
             // Color swatch is the consistent accent for the label.
             Box(
                 modifier = Modifier
@@ -300,9 +327,24 @@ private fun MemberGroup(
     ) {
         for (m in members) {
             val rowMod = if (onTap != null) {
-                Modifier.r1Pressable(onClick = { onTap(m) })
-            } else {
                 Modifier
+                    .heightIn(min = R1.MinTarget)
+                    .r1Pressable(
+                        onClick = { onTap(m) },
+                        contentDescription = LabelLogic.memberRowLabel(
+                            name = m.name,
+                            kind = m.kind,
+                            tappable = true,
+                        ),
+                    )
+            } else {
+                Modifier.semantics(mergeDescendants = true) {
+                    contentDescription = LabelLogic.memberRowLabel(
+                        name = m.name,
+                        kind = m.kind,
+                        tappable = false,
+                    )
+                }
             }
             Row(
                 modifier = Modifier

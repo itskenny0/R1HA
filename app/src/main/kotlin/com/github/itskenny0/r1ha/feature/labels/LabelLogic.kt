@@ -128,6 +128,34 @@ object LabelLogic {
     }
 
     /**
+     * Merged spoken label for one label row. Speaks the label name, how many
+     * things it tags (in words, not just a coloured badge), and whether the
+     * drill-in is currently open. Pure so it can be unit-tested.
+     */
+    fun labelRowLabel(name: String, memberCount: Int, expanded: Boolean): String {
+        val cleanName = name.trim().ifEmpty { "Unnamed label" }
+        val members = when (memberCount) {
+            0 -> "nothing tagged"
+            1 -> "1 tagged item"
+            else -> "$memberCount tagged items"
+        }
+        val action = if (expanded) "Expanded. Tap to collapse." else "Tap to expand."
+        return "Label $cleanName. $members. $action"
+    }
+
+    /** Spoken label for a tappable member row inside a label drill-in. */
+    fun memberRowLabel(name: String, kind: MemberKind, tappable: Boolean): String {
+        val cleanName = name.trim().ifEmpty { "Unnamed" }
+        val kindWord = when (kind) {
+            MemberKind.ENTITY -> "Entity"
+            MemberKind.DEVICE -> "Device"
+            MemberKind.AREA -> "Area"
+        }
+        val suffix = if (tappable) ". Tap to open history in Home Assistant." else ""
+        return "$kindWord $cleanName$suffix"
+    }
+
+    /**
      * HA's fixed palette of named label colors mapped to representative hex
      * values close to the Material tones HA uses. Keys are normalized to the
      * dash form HA emits ("deep-purple", "light-blue").
