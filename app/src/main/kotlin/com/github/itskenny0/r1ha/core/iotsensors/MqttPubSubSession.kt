@@ -55,6 +55,17 @@ class MqttPubSubSession(
     @Volatile private var pingThread: Thread? = null
     private val ioLock = Any()
     @Volatile private var ready: Boolean = false
+    /** nanoTime of the last reconnect attempt. Rate-limits the implicit
+     *  reconnect that publish() / subscribe() trigger when the session is
+     *  down: against a dead broker each call would otherwise pay the full
+     *  10s connect timeout, and with the periodic publisher plus the
+     *  battery / screen broadcast receivers all funnelling through here that
+     *  piles up 10s-blocked coroutines on the IO dispatcher. With the
+     *  cooldown a dead broker costs at most one connect attempt per window;
+     *  in between, calls return false fast. Self-heal is preserved: the
+     *  first call after the cooldown elapses retries, so recovery latency is
+     *  bounded by one window. nanoTime is wall-clock-jump immune. */
+    @Volatile private var lastConnectAttemptNanos: Long = 0L
     private val packetId = AtomicInteger(1)
     /** Topics we've successfully subscribed to. Replayed after a reconnect so
      *  the owning service doesn't have to track and re-issue them. */
@@ -64,10 +75,29 @@ class MqttPubSubSession(
 
     fun start(): Boolean {
         if (!started.compareAndSet(false, true)) return ready
+        // Seed the cooldown clock so a failed initial connect doesn't let the
+        // first publish / subscribe retry instantly.
+        lastConnectAttemptNanos = System.nanoTime()
         return runCatching { connect() }.getOrElse { t ->
             R1Log.w("IotSensors.mqtt", "initial connect failed: ${t.message}")
             false
         }
+    }
+
+    /** Attempt a reconnect, but no more than once per
+     *  [RECONNECT_COOLDOWN_NANOS]. Returns true when the session is ready
+     *  after the call. Cheap-fails (no connect) while inside the cooldown so
+     *  a dead broker can't pin callers on the 10s connect timeout. */
+    private fun reconnectIfDue(): Boolean {
+        if (ready) return true
+        val now = System.nanoTime()
+        if (lastConnectAttemptNanos != 0L &&
+            now - lastConnectAttemptNanos < RECONNECT_COOLDOWN_NANOS
+        ) {
+            return false
+        }
+        lastConnectAttemptNanos = now
+        return runCatching { connect() }.getOrDefault(false)
     }
 
     fun stop() {
@@ -92,7 +122,7 @@ class MqttPubSubSession(
 
     fun publish(topic: String, payload: ByteArray, retain: Boolean): Boolean {
         if (!started.get()) return false
-        if (!ready && !runCatching { connect() }.getOrDefault(false)) return false
+        if (!reconnectIfDue()) return false
         return synchronized(ioLock) {
             val o = out ?: return@synchronized false
             runCatching {
@@ -110,8 +140,11 @@ class MqttPubSubSession(
     /** SUBSCRIBE to [topic] at QoS 0. Idempotent — repeat calls are no-ops.
      *  Survives reconnects via [resubscribeAll]. */
     fun subscribe(topic: String): Boolean {
+        // Remember the topic regardless of connection state — resubscribeAll
+        // replays it once the session recovers, so a subscribe issued while
+        // the broker is down is not lost.
         subscriptions.add(topic)
-        if (!ready && !runCatching { connect() }.getOrDefault(false)) return false
+        if (!reconnectIfDue()) return false
         return synchronized(ioLock) {
             val o = out ?: return@synchronized false
             runCatching {
@@ -365,5 +398,13 @@ class MqttPubSubSession(
             multiplier *= 128
         }
         error("remaining-length overflow")
+    }
+
+    companion object {
+        /** Minimum spacing between reconnect attempts while the broker is
+         *  down. Bounds the cost of a dead broker to ~one 10s connect every
+         *  5s instead of one per publish / event, while keeping recovery
+         *  prompt once the broker returns. */
+        private val RECONNECT_COOLDOWN_NANOS = 5_000_000_000L
     }
 }
