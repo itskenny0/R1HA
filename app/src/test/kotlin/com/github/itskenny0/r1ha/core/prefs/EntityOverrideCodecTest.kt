@@ -295,4 +295,87 @@ class EntityOverrideCodecTest {
         assertThat(o.actionOnWheelPress).isEqualTo(TapAction.FIRE)
         assertThat(o.valueBarLocation).isNull()
     }
+
+    @Test fun `mid-slot tri-state booleans round-trip independently`() {
+        // Slots 8/9/10 (tapToToggle / wheelEnabled / hideWhenUnavailable) are
+        // three-state. Pin each combination so a future slot reshuffle that
+        // crossed two of them would fail loudly here rather than silently
+        // swapping a user's per-card toggles.
+        val map = mapOf(
+            "light.kitchen" to EntityOverride(
+                tapToToggle = true,
+                wheelEnabled = false,
+                hideWhenUnavailable = true,
+            ),
+        )
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val parts = encoded.substringAfter('=').split('|')
+        assertThat(parts.getOrNull(8)).isEqualTo("1")
+        assertThat(parts.getOrNull(9)).isEqualTo("0")
+        assertThat(parts.getOrNull(10)).isEqualTo("1")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        val o = decoded["light.kitchen"]
+        assertThat(o?.tapToToggle).isTrue()
+        assertThat(o?.wheelEnabled).isFalse()
+        assertThat(o?.hideWhenUnavailable).isTrue()
+    }
+
+    @Test fun `custom actions with awkward payload survive the pipe-separated row`() {
+        // The custom-action JSON (slot 11) is URL-encoded so its commas, quotes,
+        // braces and especially a literal pipe inside the user's service_data
+        // can't split the row. This is the slot most likely to corrupt the
+        // whole map if the encoding ever regressed, so assert both the absence
+        // of a raw pipe in the slot and a clean structural round-trip.
+        val map = mapOf(
+            "fan.bedroom" to EntityOverride(
+                customActions = listOf(
+                    CustomAction(
+                        label = "Natural|mode",
+                        service = "xiaomi_miio_fan.fan_set_natural_mode_on",
+                        dataJson = """{"speed":"high","note":"a|b=c"}""",
+                        targetEntityId = "fan.other",
+                    ),
+                    CustomAction(label = "Boil", service = "script.boil"),
+                ),
+            ),
+        )
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val slot = encoded.substringAfter('=').split('|').getOrNull(11)
+        assertThat(slot).isNotNull()
+        assertThat(slot).doesNotContain("=")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["fan.bedroom"]?.customActions).isEqualTo(map["fan.bedroom"]?.customActions)
+    }
+
+    @Test fun `lock pin gate and hash round-trip`() {
+        // Slots 12/13 — the per-card lock PIN gate flag and its hashed PIN.
+        // The hash is plain hex so it shares the row directly; verify it
+        // survives alongside the tri-state gate without disturbing neighbours.
+        val map = mapOf(
+            "lock.front_door" to EntityOverride(
+                requirePinToUnlock = true,
+                requirePinHash = "abc123def456",
+            ),
+        )
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val parts = encoded.substringAfter('=').split('|')
+        assertThat(parts.getOrNull(12)).isEqualTo("1")
+        assertThat(parts.getOrNull(13)).isEqualTo("abc123def456")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        val o = decoded["lock.front_door"]
+        assertThat(o?.requirePinToUnlock).isTrue()
+        assertThat(o?.requirePinHash).isEqualTo("abc123def456")
+    }
+
+    @Test fun `decoder ignores unknown tap and wheel-press action codes`() {
+        // Defensive: a future build that ships a new TapAction code (e.g. 'Z')
+        // in slots 16/17 must not crash older builds; an unrecognised code
+        // decodes as inherit (null) rather than throwing.
+        val encoded = "light.kitchen=?|?|?||?|?|?||?|?|?||?||?||Z|Q"
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        val o = decoded["light.kitchen"]
+        assertThat(o).isNotNull()
+        assertThat(o!!.actionOnTap).isNull()
+        assertThat(o.actionOnWheelPress).isNull()
+    }
 }
