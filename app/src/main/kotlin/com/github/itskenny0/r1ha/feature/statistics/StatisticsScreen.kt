@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -41,7 +42,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
@@ -51,6 +51,8 @@ import com.github.itskenny0.r1ha.core.ha.StatisticId
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
@@ -95,30 +97,22 @@ fun StatisticsScreen(
                 title = "STATISTICS",
                 onBack = onBack,
                 action = {
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                if (ui.selected != null) vm.refreshSeries() else vm.loadCatalogue()
-                            })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = if (ui.seriesLoading || ui.catalogueLoading) "…" else "REFRESH",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                        )
-                    }
+                    R1Chip(
+                        text = if (ui.seriesLoading || ui.catalogueLoading) "…" else "REFRESH",
+                        variant = R1ChipVariant.Action,
+                        onClick = {
+                            if (ui.selected != null) vm.refreshSeries() else vm.loadCatalogue()
+                        },
+                        contentDescription = "Refresh statistics",
+                    )
                 },
             )
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
                 StatisticPickerBar(ui = ui, onOpen = { vm.openPicker() })
                 if (ui.selected != null) {
@@ -139,7 +133,7 @@ fun StatisticsScreen(
                 if (ui.seriesError != null) {
                     ErrorPanel(message = ui.seriesError ?: "")
                 }
-                Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.size(R1.space.xl))
             }
         }
         if (ui.pickerOpen) {
@@ -164,17 +158,18 @@ private fun StatisticPickerBar(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onOpen)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .r1Pressable(onClick = onOpen, contentDescription = "Pick a statistic")
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Text(text = "STATISTIC", style = R1.labelMicro, color = R1.InkSoft)
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 if (selected != null) {
                     Text(
                         text = selected.name?.takeIf { it.isNotBlank() } ?: selected.statisticId,
-                        style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                        style = R1.bodyEmph,
                         color = R1.Ink,
                         maxLines = 1,
                     )
@@ -209,7 +204,7 @@ private fun StatisticPickerBar(
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = if (selected == null) "PICK" else "CHANGE",
                 style = R1.labelMicro,
@@ -226,25 +221,16 @@ private fun WindowChips(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Window.entries.forEach { w ->
-            val active = w == current
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(w) })
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = w.label,
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = w.label,
+                variant = R1ChipVariant.Filter,
+                selected = w == current,
+                onClick = { onSelect(w) },
+                contentDescription = "Window ${w.label}",
+            )
         }
     }
 }
@@ -257,37 +243,19 @@ private fun AggregationChips(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Aggregation.entries.forEach { agg ->
             val enabled = agg in supported
-            val active = agg == current && enabled
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(R1.ShapeS)
-                    .background(
-                        when {
-                            active -> R1.AccentWarm
-                            enabled -> R1.SurfaceMuted
-                            else -> R1.Surface
-                        },
-                    )
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { if (enabled) onSelect(agg) }, hapticOnClick = enabled)
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = agg.label,
-                    style = R1.labelMicro,
-                    color = when {
-                        active -> R1.Bg
-                        enabled -> R1.InkSoft
-                        else -> R1.InkMuted
-                    },
-                )
-            }
+            // Unsupported aggregations carry no tap target (onClick = null) so they read as
+            // inert; supported ones are the standard filter toggle.
+            R1Chip(
+                text = agg.label,
+                variant = R1ChipVariant.Filter,
+                selected = agg == current && enabled,
+                onClick = if (enabled) ({ onSelect(agg) }) else null,
+                contentDescription = "Aggregation ${agg.label}",
+            )
         }
     }
 }
@@ -302,7 +270,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         if (ui.seriesLoading && points.isEmpty()) {
             Box(
@@ -452,7 +420,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 val si = scrubIdx.value
                 if (si != null && si in points.indices) {
                     val sample = points[si]
@@ -481,7 +449,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     }
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Column(
                 modifier = Modifier.width(56.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
@@ -519,8 +487,8 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Text(
             text = "SUMMARY · ${ui.aggregation.label} · ${ui.window.label}",
@@ -565,7 +533,7 @@ private fun SummaryRow(
         Text(text = label, style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.width(80.dp))
         Text(
             text = value,
-            style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+            style = R1.bodyEmph,
             color = accent,
             modifier = Modifier.weight(1f),
             maxLines = 1,
@@ -581,11 +549,11 @@ private fun EmptyHero() {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 24.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "NO STATISTIC PICKED", style = R1.sectionHeader, color = R1.AccentWarm)
-        Spacer(Modifier.size(6.dp))
+        Spacer(Modifier.size(R1.space.s))
         Text(
             text = "Tap the STATISTIC card above to choose any sensor or " +
                 "meter the recorder is tracking.",
@@ -603,7 +571,7 @@ private fun ErrorPanel(message: String) {
             .clip(R1.ShapeS)
             .background(R1.StatusRed.copy(alpha = 0.12f))
             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Text(text = message, style = R1.labelMicro, color = R1.StatusRed)
     }
@@ -642,21 +610,21 @@ private fun StatisticPickerSheet(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onClick = {}, hapticOnClick = false)
-                .padding(14.dp),
+                .padding(R1.space.l),
         ) {
             Text(text = "PICK STATISTIC", style = R1.sectionHeader, color = R1.AccentWarm)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             Text(
                 text = "${rows.size} series from HA's recorder",
                 style = R1.labelMicro,
                 color = R1.InkSoft,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.m))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) {
                     R1TextField(
@@ -667,20 +635,20 @@ private fun StatisticPickerSheet(
                     )
                 }
                 if (query.isNotEmpty()) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     // 48 dp tap surface meets Android's interactive-target guidance;
                     // the visible ✕ stays glyph-sized via the inner Text.
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
-                            .r1Pressable(onClick = { query = "" }),
+                            .size(R1.MinTarget)
+                            .r1Pressable(onClick = { query = "" }, contentDescription = "Clear search"),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             val filtered = remember(query, rows) {
                 val q = query.trim().lowercase()
                 if (q.isBlank()) rows
@@ -710,21 +678,22 @@ private fun StatisticPickerSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(360.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = filtered, key = { it.statisticId }) { row ->
                         StatisticPickRow(row = row, onPick = { onPick(row) })
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(R1.ShapeS)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = onDismiss)
-                    .padding(vertical = 10.dp),
+                    .r1Pressable(onClick = onDismiss, contentDescription = "Cancel")
+                    .heightIn(min = R1.MinTarget)
+                    .padding(vertical = R1.space.m),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "CANCEL", style = R1.labelMicro, color = R1.InkSoft)
@@ -741,14 +710,15 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onPick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .r1Pressable(onClick = onPick, contentDescription = "Pick ${row.statisticId}")
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = row.name?.takeIf { it.isNotBlank() } ?: row.statisticId,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 maxLines = 1,
             )
@@ -768,23 +738,10 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
                 maxLines = 1,
             )
         }
-        Spacer(Modifier.width(6.dp))
-        if (row.hasMean) Badge(label = "MEAN", accent = R1.AccentCool)
-        if (row.hasMean && row.hasSum) Spacer(Modifier.width(4.dp))
-        if (row.hasSum) Badge(label = "SUM", accent = R1.AccentGreen)
-    }
-}
-
-@Composable
-private fun Badge(label: String, accent: androidx.compose.ui.graphics.Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(accent.copy(alpha = 0.18f))
-            .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeS)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = accent)
+        Spacer(Modifier.width(R1.space.s))
+        if (row.hasMean) R1Chip(text = "MEAN", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
+        if (row.hasMean && row.hasSum) Spacer(Modifier.width(R1.space.xs))
+        if (row.hasSum) R1Chip(text = "SUM", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
     }
 }
 
