@@ -65,6 +65,11 @@ fun ScenesScreen(
 ) {
     val vm: ScenesViewModel = viewModel(factory = ScenesViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    // entries is a getter that re-filters the full scene/script set on every read;
+    // it's read both for the empty-state check and the items() call, and recompose
+    // fires per search keystroke. Memoise against its inputs so the filter runs
+    // once per state change instead of twice per frame.
+    val entries = androidx.compose.runtime.remember(ui.all, ui.filter, ui.query) { ui.entries }
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
@@ -103,7 +108,7 @@ fun ScenesScreen(
                         color = R1.AccentWarm,
                     )
                 }
-                ui.entries.isEmpty() -> Box(
+                entries.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -134,7 +139,7 @@ fun ScenesScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        items(items = ui.entries, key = { it.id.value }) { entry ->
+                        items(items = entries, key = { it.id.value }) { entry ->
                             SceneRow(
                                 entry,
                                 onFire = { vm.fire(entry) },

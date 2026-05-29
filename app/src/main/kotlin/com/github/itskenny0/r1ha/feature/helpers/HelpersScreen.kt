@@ -85,6 +85,13 @@ fun HelpersScreen(
             ?.favorites?.toSet() ?: emptySet()
     }
     val ui by vm.ui.collectAsState()
+    // entries / counts are getters on UiState that re-filter + re-count the full
+    // helper set on every read. They're read in several spots per recomposition
+    // (chip counts, the empty-state branch, the items() call) and recompose fires
+    // on every search keystroke, so memoise both against their real inputs to run
+    // the filter once per state change rather than several times per frame.
+    val entries = androidx.compose.runtime.remember(ui.all, ui.bucket, ui.query) { ui.entries }
+    val counts = androidx.compose.runtime.remember(ui.all) { ui.counts }
     val listState = rememberLazyListState()
     // Entity id of the input_number row currently grabbing the wheel for value
     // stepping, or null when the wheel scrolls the list normally. Tap on the
@@ -135,7 +142,10 @@ fun HelpersScreen(
         }
         try {
             wheelInput.events.collect { event ->
-                val entry = vm.ui.value.entries.firstOrNull { it.id.value == targetId }
+                // Look up against the full set, not the filtered view: the wheel
+                // target is keyed by entity id and shouldn't be lost if a search
+                // filter hides the row, and scanning `all` skips the filter cost.
+                val entry = vm.ui.value.all.firstOrNull { it.id.value == targetId }
                     ?: return@collect
                 if (entry.kind != HelpersViewModel.Kind.NUMBER) return@collect
                 val value = entry.numericValue ?: return@collect
@@ -181,7 +191,7 @@ fun HelpersScreen(
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-        BucketChips(current = ui.bucket, counts = ui.counts, onSelect = { vm.setBucket(it) })
+        BucketChips(current = ui.bucket, counts = counts, onSelect = { vm.setBucket(it) })
         SearchBar(query = ui.query, onQueryChange = { vm.setQuery(it) })
         when {
             ui.loading && ui.all.isEmpty() -> Box(
@@ -215,7 +225,7 @@ fun HelpersScreen(
                     color = R1.InkMuted,
                 )
             }
-            ui.entries.isEmpty() -> Box(
+            entries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
@@ -239,7 +249,7 @@ fun HelpersScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        items(items = ui.entries, key = { it.id.value }) { entry ->
+                        items(items = entries, key = { it.id.value }) { entry ->
                             HelperRow(
                                 entry = entry,
                                 vm = vm,

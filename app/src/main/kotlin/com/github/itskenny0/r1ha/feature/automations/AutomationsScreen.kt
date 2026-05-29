@@ -90,6 +90,11 @@ fun AutomationsScreen(
             ?.favorites?.toSet() ?: emptySet()
     }
     val ui by vm.ui.collectAsState()
+    // entries is a getter that re-filters the full automation set on every read;
+    // it's read for the empty-state branch and the items() call, and recompose
+    // fires per search keystroke. Memoise against its inputs so the filter runs
+    // once per state change rather than twice per frame.
+    val entries = androidx.compose.runtime.remember(ui.all, ui.query) { ui.entries }
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
@@ -148,7 +153,7 @@ fun AutomationsScreen(
                     color = R1.InkMuted,
                 )
             }
-            ui.entries.isEmpty() -> Box(
+            entries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
@@ -171,7 +176,7 @@ fun AutomationsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        items(items = ui.entries, key = { it.id.value }) { entry ->
+                        items(items = entries, key = { it.id.value }) { entry ->
                             AutomationRow(
                                 entry = entry,
                                 isFavorite = entry.id.value in activeFavourites,

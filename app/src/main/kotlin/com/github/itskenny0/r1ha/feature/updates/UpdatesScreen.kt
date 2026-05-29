@@ -70,6 +70,10 @@ fun UpdatesScreen(
 ) {
     val vm: UpdatesViewModel = viewModel(factory = UpdatesViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    // ordered is a getter that re-sorts the full update set on every read. Memoise
+    // against the source list so the multi-key sort only runs when the loaded set
+    // changes, not on every unrelated recomposition.
+    val ordered = remember(ui.all) { ui.ordered }
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
@@ -160,7 +164,7 @@ fun UpdatesScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(items = ui.ordered, key = { it.id.value }) { entry ->
+                        items(items = ordered, key = { it.id.value }) { entry ->
                             UpdateRow(
                                 entry = entry,
                                 onOpen = { detailFor = entry },

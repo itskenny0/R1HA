@@ -67,6 +67,13 @@ fun ServicesScreen(
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
     var expandedDomain by remember { mutableStateOf<String?>(null) }
+    // Filtering rebuilds the per-domain list (with d.copy() allocations) over the
+    // whole HA service registry, which is large (50+ domains, hundreds of
+    // services). UiState.domains is a getter that re-runs on every read; it's read
+    // both for the empty check and the list loop, so without memoising it the
+    // filter ran twice per recomposition and once per keystroke. Pin it to the
+    // inputs so it only recomputes when the query or loaded set actually changes.
+    val filteredDomains = remember(ui.all, ui.query) { ui.domains }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -88,7 +95,7 @@ fun ServicesScreen(
                     color = R1.AccentWarm,
                 )
             }
-            ui.error != null && ui.domains.isEmpty() -> Box(
+            ui.error != null && filteredDomains.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(22.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -101,7 +108,7 @@ fun ServicesScreen(
                     color = R1.StatusRed,
                 )
             }
-            ui.domains.isEmpty() -> Box(
+            filteredDomains.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(22.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -125,7 +132,7 @@ fun ServicesScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    for (domain in ui.domains) {
+                    for (domain in filteredDomains) {
                         item(key = domain.domain) {
                             DomainRow(
                                 domain = domain.domain,
