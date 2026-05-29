@@ -18,24 +18,18 @@ import kotlinx.serialization.json.JsonPrimitive
  * HA's weather domain reports — condition (raw state, e.g.
  * "partlycloudy"), temperature, humidity, wind speed, pressure.
  *
- * No forecast handling yet: HA emits forecast via a dedicated
- * `weather.get_forecasts` service in 2024+ rather than the legacy
- * `forecast` attribute. We could call the service and render the
- * forecast as a horizontal strip; left as a follow-up since the
- * current readout is the right zeroth-iteration.
+ * Forecast handling reads the legacy `forecast` attribute and splits it
+ * into hourly + daily buckets (an integration usually exposes one or the
+ * other; some expose both across a refresh). Parsing + classification +
+ * label formatting live in WeatherForecast.kt as pure helpers so they're
+ * unit tested directly. Newer HA installs that dropped the legacy
+ * attribute in favour of the `weather.get_forecasts` service-with-
+ * response need a repository method that forwards `?return_response`;
+ * see the agent report.
  */
 class WeatherViewModel(
     private val haRepository: HaRepository,
 ) : ViewModel() {
-
-    @androidx.compose.runtime.Stable
-    data class ForecastDay(
-        val whenIso: String,
-        val condition: String,
-        val tempHigh: Double?,
-        val tempLow: Double?,
-        val precipitation: Double?,
-    )
 
     @androidx.compose.runtime.Stable
     data class Weather(
@@ -54,13 +48,16 @@ class WeatherViewModel(
         val windBearingText: String?,
         val pressure: Double?,
         val pressureUnit: String?,
-        /** Legacy `forecast` attribute — daily forecast entries. Empty
-         *  on 2024+ HA installs since the legacy attribute was removed
-         *  in favour of the weather.get_forecasts service-with-response.
-         *  When non-empty, surfaces as a horizontal strip on each
-         *  weather card. */
-        val forecast: List<ForecastDay>,
-    )
+        /** Hourly forecast entries parsed from the legacy `forecast`
+         *  attribute when the integration reports it at hourly cadence. */
+        val hourly: List<ForecastEntry>,
+        /** Daily forecast entries parsed from the legacy `forecast`
+         *  attribute when the integration reports it at daily cadence. */
+        val daily: List<ForecastEntry>,
+    ) {
+        /** True when both cadences are present, so the UI shows a toggle. */
+        val hasBothForecasts: Boolean get() = hourly.isNotEmpty() && daily.isNotEmpty()
+    }
 
     @androidx.compose.runtime.Stable
     data class UiState(
@@ -80,18 +77,22 @@ class WeatherViewModel(
                     val list = rows.map { row ->
                         val attrs = row.attributes
                         val forecastArr = attrs["forecast"] as? kotlinx.serialization.json.JsonArray
-                        val forecast = forecastArr?.mapNotNull { el ->
-                            val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
-                            val whenIso = (obj["datetime"] as? JsonPrimitive)?.content
-                                ?: return@mapNotNull null
-                            ForecastDay(
-                                whenIso = whenIso,
-                                condition = (obj["condition"] as? JsonPrimitive)?.content ?: "",
-                                tempHigh = (obj["temperature"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                                tempLow = (obj["templow"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                                precipitation = (obj["precipitation"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                            )
-                        }.orEmpty().take(7)
+                        val entries = parseForecastEntries(forecastArr)
+                        // The legacy attribute carries a single cadence; bucket
+                        // it so the UI can offer a toggle if a future refresh
+                        // (or merged entity) ever surfaces both.
+                        val hourly: List<ForecastEntry>
+                        val daily: List<ForecastEntry>
+                        when (classifyForecastKind(entries)) {
+                            ForecastKind.Hourly -> {
+                                hourly = entries.take(MAX_HOURLY)
+                                daily = emptyList()
+                            }
+                            ForecastKind.Daily -> {
+                                hourly = emptyList()
+                                daily = entries.take(MAX_DAILY)
+                            }
+                        }
                         Weather(
                             entityId = row.entityId,
                             name = row.friendlyName,
@@ -107,7 +108,8 @@ class WeatherViewModel(
                                 ?.takeIf { it.toDoubleOrNull() == null },
                             pressure = (attrs["pressure"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
                             pressureUnit = (attrs["pressure_unit"] as? JsonPrimitive)?.content,
-                            forecast = forecast,
+                            hourly = hourly,
+                            daily = daily,
                         )
                     }.sortedBy { it.name.lowercase() }
                     R1Log.i("Weather", "loaded ${list.size}")
@@ -123,6 +125,10 @@ class WeatherViewModel(
     }
 
     companion object {
+        /** Cap rendered rows so a long forecast doesn't blow out the strip. */
+        private const val MAX_HOURLY = 24
+        private const val MAX_DAILY = 7
+
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { WeatherViewModel(haRepository) }
         }

@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -133,6 +134,13 @@ fun WeatherScreen(
 
 @Composable
 private fun WeatherRow(w: WeatherViewModel.Weather) {
+    // Which forecast cadence the strip shows. Defaults to whichever the
+    // entity reports; when both are present the toggle flips between them.
+    var mode by androidx.compose.runtime.remember(w.entityId) {
+        androidx.compose.runtime.mutableStateOf(
+            if (w.hourly.isNotEmpty()) ForecastKind.Hourly else ForecastKind.Daily,
+        )
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -192,20 +200,41 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 color = R1.InkSoft,
             )
         }
-        // Daily forecast strip — only when HA's integration still exposes
-        // the legacy `forecast` attribute. 2024+ HA installs need
-        // weather.get_forecasts (service-with-response) which we don't
-        // dispatch yet; that's a follow-up.
-        if (w.forecast.isNotEmpty()) {
+        // Forecast strip from the legacy `forecast` attribute. Newer HA
+        // installs that dropped the attribute for the
+        // weather.get_forecasts service-with-response need a repository
+        // method that forwards `?return_response`; see the agent report.
+        val entries = if (mode == ForecastKind.Hourly) w.hourly else w.daily
+        if (w.hourly.isNotEmpty() || w.daily.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.s))
+            if (w.hasBothForecasts) {
+                Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+                    com.github.itskenny0.r1ha.ui.components.R1Chip(
+                        text = "HOURLY",
+                        variant = com.github.itskenny0.r1ha.ui.components.R1ChipVariant.Filter,
+                        selected = mode == ForecastKind.Hourly,
+                        onClick = { mode = ForecastKind.Hourly },
+                        contentDescription = "Show hourly forecast",
+                    )
+                    com.github.itskenny0.r1ha.ui.components.R1Chip(
+                        text = "DAILY",
+                        variant = com.github.itskenny0.r1ha.ui.components.R1ChipVariant.Filter,
+                        selected = mode == ForecastKind.Daily,
+                        onClick = { mode = ForecastKind.Daily },
+                        contentDescription = "Show daily forecast",
+                    )
+                }
+                Spacer(Modifier.size(R1.space.xs))
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
-                for (day in w.forecast) {
-                    ForecastTile(day, w.temperatureUnit)
+                val kind = if (mode == ForecastKind.Hourly) ForecastKind.Hourly else ForecastKind.Daily
+                for (entry in entries) {
+                    ForecastTile(entry, kind, w.temperatureUnit, w.windUnit)
                 }
             }
         }
@@ -213,7 +242,12 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
 }
 
 @Composable
-private fun ForecastTile(day: WeatherViewModel.ForecastDay, tempUnit: String?) {
+private fun ForecastTile(
+    entry: ForecastEntry,
+    kind: ForecastKind,
+    tempUnit: String?,
+    windUnit: String?,
+) {
     Column(
         modifier = Modifier
             .clip(R1.ShapeS)
@@ -222,44 +256,53 @@ private fun ForecastTile(day: WeatherViewModel.ForecastDay, tempUnit: String?) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = formatForecastDate(day.whenIso),
+            text = formatForecastLabel(entry.whenIso, kind),
             style = R1.labelMicro,
             color = R1.InkMuted,
         )
         Text(
-            text = conditionGlyph(day.condition),
+            text = conditionGlyph(entry.condition),
             style = R1.body,
-            color = conditionAccent(day.condition),
+            color = conditionAccent(entry.condition),
         )
         val tempLine = buildString {
-            if (day.tempHigh != null) append("${"%.0f".format(day.tempHigh)}${tempUnit ?: "°"}")
-            if (day.tempLow != null) {
+            if (entry.temperature != null) {
+                append("${"%.0f".format(java.util.Locale.US, entry.temperature)}${tempUnit ?: "°"}")
+            }
+            if (entry.tempLow != null) {
                 if (isNotEmpty()) append(" / ")
-                append("${"%.0f".format(day.tempLow)}${tempUnit ?: "°"}")
+                append("${"%.0f".format(java.util.Locale.US, entry.tempLow)}${tempUnit ?: "°"}")
             }
         }
         if (tempLine.isNotBlank()) {
             Text(text = tempLine, style = R1.labelMicro, color = R1.Ink)
         }
-        if (day.precipitation != null && day.precipitation > 0.0) {
+        // Precipitation probability reads as the primary "will it rain"
+        // signal; fall back to the amount when only that is reported.
+        if (entry.precipitationProbability != null) {
             Text(
-                text = "${"%.1f".format(java.util.Locale.US, day.precipitation)}mm",
+                text = "${entry.precipitationProbability}%",
+                style = R1.labelMicro,
+                color = R1.AccentCool,
+            )
+        } else if (entry.precipitation != null && entry.precipitation > 0.0) {
+            Text(
+                text = "${"%.1f".format(java.util.Locale.US, entry.precipitation)}mm",
                 style = R1.labelMicro,
                 color = R1.AccentCool,
             )
         }
+        if (entry.windSpeed != null) {
+            val bearing = entry.windBearingText
+                ?: entry.windBearingDeg?.let { degreesToCompass(it) }
+            val windStr = "${formatNumber(entry.windSpeed)} ${windUnit ?: ""}".trim()
+            Text(
+                text = if (bearing != null) "$windStr $bearing" else windStr,
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+            )
+        }
     }
-}
-
-/** Render an ISO instant as a short day-of-week + day-of-month label.
- *  Falls back to the raw substring if parsing fails. */
-private fun formatForecastDate(iso: String): String {
-    return runCatching {
-        val instant = java.time.Instant.parse(iso)
-        val zdt = instant.atZone(java.time.ZoneId.systemDefault())
-        val day = zdt.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault())
-        "${day} ${zdt.dayOfMonth}"
-    }.getOrElse { iso.take(5) }
 }
 
 private fun formatTemp(t: Double, unit: String?): String =
@@ -295,14 +338,3 @@ private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Col
         "unavailable", "unknown" -> R1.InkMuted
         else -> R1.InkSoft
     }
-
-/**
- * Convert HA's `wind_bearing` (degrees, 0 = north) into the 8-point compass
- * label most weather UIs use ("N", "NE", "E", …). Doubles-out to 16-point
- * granularity would be marginally more precise but reads as cluttered.
- */
-private fun degreesToCompass(deg: Double): String {
-    val normalised = ((deg % 360) + 360) % 360
-    val sector = ((normalised + 22.5) / 45.0).toInt() % 8
-    return arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[sector]
-}
