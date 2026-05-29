@@ -14,12 +14,16 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -87,6 +91,13 @@ class SettingsRepository private constructor(
      * each apply their delta to it, and the second write would clobber the first.
      */
     private val updateMutex = Mutex()
+
+    /**
+     * Long-lived scope hosting the shared [settings] flow. SupervisorJob so one
+     * failed downstream collector can't tear the sharing coroutine down for the
+     * rest. Lives for the process lifetime alongside the repository singleton.
+     */
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /** Production constructor: uses the singleton DataStore delegate and a stable shadow file. */
     constructor(context: Context) : this(
@@ -215,7 +226,16 @@ class SettingsRepository private constructor(
         val entityOverrides = stringPreferencesKey("entity_overrides")
     }
 
-    val settings: Flow<AppSettings> = combine(
+    /**
+     * Private, unshared, cold decode pipeline. Every collection re-runs the full
+     * DataStore read + ~10 JSON decodes, so this must NOT be collected directly by
+     * external observers (that is what the public [settings] below is for). The
+     * read-after-write path inside [update] reads THIS source via [currentBlocking]
+     * so a read immediately after a write observes the just-written value: a shared
+     * / replayed flow could hand back a stale conflated snapshot and break the
+     * invariant the [updateMutex] critical section protects.
+     */
+    private val settingsCold: Flow<AppSettings> = combine(
         store.data
             .catch { t ->
                 R1Log.e("SettingsRepo", "store.data threw, emitting emptyPreferences()", t)
@@ -378,6 +398,21 @@ class SettingsRepository private constructor(
         // the finished AppSettings. flowOn affects only the upstream operators, so each
         // collector still receives emissions on its own dispatcher.
         .flowOn(Dispatchers.Default)
+
+    /**
+     * Public, shared settings stream. All EXTERNAL collectors (App, MainActivity,
+     * screens, ViewModels) subscribe here so the cold decode pipeline above runs
+     * ONCE per upstream emission and fans the result out to every subscriber,
+     * instead of each collector independently re-running the full DataStore read +
+     * JSON decode. WhileSubscribed(5_000) keeps the single upstream collection alive
+     * across short subscriber gaps (config changes, navigation) and tears it down
+     * 5 s after the last collector leaves; replay = 1 hands the latest value to a
+     * fresh subscriber immediately. Type stays [Flow] so all call sites are
+     * unchanged; the read-after-write path deliberately does NOT read this shared
+     * flow (see [settingsCold]).
+     */
+    val settings: Flow<AppSettings> =
+        settingsCold.shareIn(repoScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     suspend fun update(transform: (AppSettings) -> AppSettings): Unit = updateMutex.withLock {
         val current = currentBlocking()
@@ -767,7 +802,11 @@ class SettingsRepository private constructor(
         shadowChanges.tryEmit(Unit)
     }
 
-    private suspend fun currentBlocking(): AppSettings = settings.first()
+    // Reads the PRIVATE cold pipeline, not the shared [settings] flow: inside the
+    // [updateMutex] critical section a read immediately after a write must observe
+    // the just-written value, and the shared flow's WhileSubscribed replay could
+    // otherwise hand back a stale conflated snapshot.
+    private suspend fun currentBlocking(): AppSettings = settingsCold.first()
 }
 
 /**

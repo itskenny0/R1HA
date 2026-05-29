@@ -27,6 +27,33 @@ class SettingsRepositoryTest {
         }
     }
 
+    /**
+     * Read-after-write invariant: an [SettingsRepository.update] that reads the
+     * current value at the top of its transform must observe the value written by
+     * the immediately-preceding update, even with NO external subscriber holding the
+     * shared `settings` flow alive. Regression guard for the sharing refactor: the
+     * read-after-write path reads the private cold pipeline, not the shared flow
+     * whose WhileSubscribed replay could otherwise hand back a stale snapshot.
+     */
+    @Test fun readAfterWriteSeesLatestWithNoExternalSubscriber() = runTest {
+        val repo = newRepo()
+        // First write, with nobody collecting repo.settings.
+        repo.update { it.copy(wheel = it.wheel.copy(stepPercent = 7)) }
+        // Second update's transform reads the current value: it MUST see 7, then
+        // bumps to 9. If the read were served stale (default 2) the assertion below
+        // would fail.
+        var observedAtTransform = -1
+        repo.update { current ->
+            observedAtTransform = current.wheel.stepPercent
+            current.copy(wheel = current.wheel.copy(stepPercent = current.wheel.stepPercent + 2))
+        }
+        assertThat(observedAtTransform).isEqualTo(7)
+        repo.settings.test {
+            assertThat(awaitItem().wheel.stepPercent).isEqualTo(9)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     @Test fun setThenReadFavourites() = runTest {
         val repo = newRepo()
         repo.update { it.copy(favorites = listOf("light.kitchen", "fan.bedroom")) }
