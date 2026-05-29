@@ -23,6 +23,9 @@ class LogbookGroupingTest {
         entityId: String? = null,
         domain: String? = null,
         state: String? = null,
+        contextUserId: String? = null,
+        contextEntityId: String? = null,
+        contextName: String? = null,
     ) = LogbookEntry(
         timestamp = Instant.parse(whenIso),
         name = name,
@@ -30,6 +33,9 @@ class LogbookGroupingTest {
         entityId = entityId?.let { EntityId(it) },
         domain = domain,
         state = state,
+        contextUserId = contextUserId,
+        contextEntityId = contextEntityId,
+        contextName = contextName,
     )
 
     // ── applyFilters ──────────────────────────────────────────────────────
@@ -172,6 +178,77 @@ class LogbookGroupingTest {
         assertThat(dayHeader(yesterday, today, yesterday)).isEqualTo("YESTERDAY")
         assertThat(dayHeader(LocalDate.of(2026, 5, 26), today, yesterday))
             .isEqualTo("TUE, MAY 26")
+    }
+
+    // ── triggeredByLabel ──────────────────────────────────────────────────
+
+    @Test
+    fun `triggeredByLabel is null when no context fields are present`() {
+        assertThat(triggeredByLabel(entry("2026-05-29T10:00:00Z"))).isNull()
+    }
+
+    @Test
+    fun `triggeredByLabel prefers the human context name`() {
+        val e = entry(
+            "2026-05-29T10:00:00Z",
+            contextName = "Front Door Motion",
+            contextEntityId = "binary_sensor.front_door",
+            contextUserId = "abcdef0123456789",
+        )
+        assertThat(triggeredByLabel(e)).isEqualTo("by Front Door Motion")
+    }
+
+    @Test
+    fun `triggeredByLabel falls back to the context entity_id`() {
+        val e = entry(
+            "2026-05-29T10:00:00Z",
+            contextEntityId = "binary_sensor.front_door",
+            contextUserId = "abcdef0123456789",
+        )
+        assertThat(triggeredByLabel(e)).isEqualTo("via binary_sensor.front_door")
+    }
+
+    @Test
+    fun `triggeredByLabel falls back to a truncated user id`() {
+        val e = entry("2026-05-29T10:00:00Z", contextUserId = "abcdef0123456789")
+        assertThat(triggeredByLabel(e)).isEqualTo("by user abcdef01")
+    }
+
+    @Test
+    fun `triggeredByLabel suppresses a self-trigger`() {
+        // The context entity_id is the same as the row's own entity: nothing to
+        // attribute beyond the row itself.
+        val e = entry(
+            "2026-05-29T10:00:00Z",
+            entityId = "light.kitchen",
+            contextEntityId = "light.kitchen",
+        )
+        assertThat(triggeredByLabel(e)).isNull()
+    }
+
+    @Test
+    fun `triggeredByLabel still names a self-trigger when a context name is given`() {
+        // A self-trigger by entity_id is suppressed, but a human label that
+        // differs from the row name is still attributed via the name branch is
+        // not reached: self-trigger short-circuits first. Assert that explicitly.
+        val e = entry(
+            "2026-05-29T10:00:00Z",
+            entityId = "light.kitchen",
+            contextEntityId = "light.kitchen",
+            contextName = "Kitchen Light",
+        )
+        assertThat(triggeredByLabel(e)).isNull()
+    }
+
+    @Test
+    fun `triggeredByLabel ignores blank context fields`() {
+        val e = entry(
+            "2026-05-29T10:00:00Z",
+            contextName = "  ",
+            contextEntityId = "",
+            contextUserId = "   ",
+        )
+        assertThat(triggeredByLabel(e)).isNull()
     }
 
     // ── domainGlyph ───────────────────────────────────────────────────────

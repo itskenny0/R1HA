@@ -92,6 +92,35 @@ fun applyFilters(
     }
 }
 
+/**
+ * "Triggered by" attribution line for a row, built from HA's context block, or
+ * null when there's nothing useful to show.
+ *
+ * HA tells us what caused an event via three optional context fields. We surface
+ * the most human-readable one available:
+ *  - a resolved label ("by Front Door Motion") from [LogbookEntry.contextName],
+ *  - else the raw triggering entity_id ("via binary_sensor.front_door"),
+ *  - else the opaque originating user id ("by user a1b2…", truncated).
+ *
+ * Self-triggers are suppressed: when the context entity_id is the same entity as
+ * the row itself, the attribution would just echo the row and adds only noise.
+ */
+fun triggeredByLabel(entry: LogbookEntry): String? {
+    val ownId = entry.entityId?.value
+    val ctxEntity = entry.contextEntityId?.takeIf { it.isNotBlank() }
+    // A context that points back at this same entity is a self-trigger; nothing
+    // to attribute beyond what the row already says.
+    if (ctxEntity != null && ownId != null && ctxEntity == ownId) return null
+    val name = entry.contextName?.takeIf { it.isNotBlank() }
+    if (name != null) return "by $name"
+    if (ctxEntity != null) return "via $ctxEntity"
+    val user = entry.contextUserId?.takeIf { it.isNotBlank() }
+    // The user id is an opaque 32-char hex GUID; show a short prefix so the row
+    // hints "a person did this" without spending the whole width on the id.
+    if (user != null) return "by user ${user.take(8)}"
+    return null
+}
+
 /** A run of logbook rows sharing a relative-day header. */
 data class LogbookDayGroup(
     val header: String,

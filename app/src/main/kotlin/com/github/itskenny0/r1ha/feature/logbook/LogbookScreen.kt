@@ -284,6 +284,13 @@ fun LogbookScreen(
                     pickerOpen = false
                 },
                 onDismiss = { pickerOpen = false },
+                // The logbook can filter by any entity that produces events, not
+                // just the toggleable set the default picker shows. Broaden the
+                // scope to the observable / sensing domains plus the common
+                // controllables so the user can scope the feed to a sensor,
+                // person, or weather entity, none of which are pickable for a
+                // Quick Settings tile.
+                domains = LOGBOOK_FILTER_DOMAINS,
             )
         }
     }
@@ -440,6 +447,19 @@ private fun LogbookRow(
                 color = R1.InkSoft,
                 maxLines = 2,
             )
+            // "Triggered by" attribution — HA tells us what caused the event via
+            // its context block. Prefer the human label ("by Front Door Motion"),
+            // fall back to the raw triggering entity_id ("via binary_sensor.x"),
+            // then the opaque user id. Suppressed when the context just points
+            // back at this same row's own entity (self-trigger noise).
+            triggeredByLabel(entry)?.let { label ->
+                Text(
+                    text = label,
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                )
+            }
         }
         Spacer(Modifier.width(R1.space.s))
         // Relative timestamp — "2m", "47s", "1h" — produced by the same
@@ -489,6 +509,33 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
         }
     }
 }
+
+/**
+ * Domain prefixes the logbook entity-filter picker offers. Unlike the default
+ * Quick Settings picker (toggleable + action only), the logbook can scope to any
+ * entity that emits events, so this set leans toward observable / sensing
+ * domains (sensor, person, weather, device_tracker) alongside the common
+ * controllables. Passed to [EntityPickerSheet]'s `domains` override; entities
+ * from domains the registry doesn't surface simply won't appear.
+ */
+private val LOGBOOK_FILTER_DOMAINS = setOf(
+    "sensor",
+    "binary_sensor",
+    "person",
+    "device_tracker",
+    "weather",
+    "light",
+    "switch",
+    "input_boolean",
+    "fan",
+    "cover",
+    "lock",
+    "climate",
+    "media_player",
+    "automation",
+    "script",
+    "scene",
+)
 
 /** Map HA's domain prefix string to one of the design-token accent
  *  colours. Kept deliberately small — anything not enumerated falls
