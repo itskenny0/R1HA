@@ -192,12 +192,12 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { if (it.ui.showAreaLabel) "ON" else "OFF" },
     ),
     SettingEntry(
-        id = "ui.showPositionDots",
+        id = "ui.positionDotLocation",
         category = SettingCategory.CARD_UI,
-        label = "Show position pip",
-        description = "Bar in the chrome that shows current card position",
-        isDefault = { it.ui.showPositionDots == defaults.ui.showPositionDots },
-        currentDisplay = { if (it.ui.showPositionDots) "ON" else "OFF" },
+        label = "Position pip location",
+        description = "Where the 'you are here' card-stack indicator sits",
+        isDefault = { it.ui.positionDotLocation == defaults.ui.positionDotLocation },
+        currentDisplay = { positionDotLocationLabel(it.ui.positionDotLocation) },
     ),
     SettingEntry(
         id = "ui.hideCardTailAbove",
@@ -524,6 +524,25 @@ fun modifiedSettings(current: AppSettings): List<SettingEntry> =
  * surface in one shot, which is closer to the 'tiered menu' navigation
  * shape than a strict per-entry text match.
  */
+/**
+ * Compact human label for a [PositionDotLocation] value. Used by the
+ * Settings → Appearance row that exposes the global position pip slot,
+ * the per-card customize panel's inherit-chip cluster, and the
+ * registry's `currentDisplay` so the diff screen shows the same words
+ * the user picked in the picker.
+ */
+fun positionDotLocationLabel(loc: PositionDotLocation): String = when (loc) {
+    PositionDotLocation.TOP_LEFT -> "TOP LEFT"
+    PositionDotLocation.TOP_CENTER -> "TOP"
+    PositionDotLocation.TOP_RIGHT -> "TOP RIGHT"
+    PositionDotLocation.LEFT_CENTER -> "LEFT"
+    PositionDotLocation.RIGHT_CENTER -> "RIGHT"
+    PositionDotLocation.BOTTOM_LEFT -> "BOTTOM LEFT"
+    PositionDotLocation.BOTTOM_CENTER -> "BOTTOM"
+    PositionDotLocation.BOTTOM_RIGHT -> "BOTTOM RIGHT"
+    PositionDotLocation.HIDDEN -> "HIDDEN"
+}
+
 fun searchSettings(query: String): List<SettingEntry> {
     if (query.isBlank()) return emptyList()
     val q = query.trim().lowercase()

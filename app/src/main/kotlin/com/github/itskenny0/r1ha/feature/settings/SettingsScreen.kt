@@ -854,12 +854,12 @@ fun SettingsScreen(
                 )
             }
             item {
-                SwitchRow(
-                    label = "Show position pip",
-                    subtitle = "Bar in the chrome that shows current card position",
-                    checked = s.ui.showPositionDots,
-                    onCheckedChange = { vm.setShowPositionDots(it) },
-                )
+                LabeledControl(label = "Position pip location") {
+                    PositionDotLocationPicker(
+                        selected = s.ui.positionDotLocation,
+                        onSelect = { vm.setPositionDotLocation(it) },
+                    )
+                }
             }
             item {
                 SwitchRow(
@@ -2852,6 +2852,87 @@ private fun <T> Segmented(
                 )
             }
         }
+    }
+}
+
+/**
+ * 3x3 grid picker for the global position-pip slot. The grid maps directly
+ * to the nine [com.github.itskenny0.r1ha.core.prefs.PositionDotLocation]
+ * values (top row, middle row with centred LEFT / HIDDEN / RIGHT chips, and
+ * bottom row), so the user's spatial intuition matches what they see on
+ * the deck. HIDDEN sits in the middle of the middle row because that's the
+ * "no anchor" position; the centre top/bottom positions still get explicit
+ * cells so users can pick "top centre" or "bottom centre" without thinking
+ * about HIDDEN as the centre slot.
+ *
+ * Selected cell paints accent; the rest stay neutral with a hairline border.
+ * Cells are uniformly sized so the picker reads as a true grid rather than a
+ * row of chips of varying width.
+ */
+@Composable
+private fun PositionDotLocationPicker(
+    selected: com.github.itskenny0.r1ha.core.prefs.PositionDotLocation,
+    onSelect: (com.github.itskenny0.r1ha.core.prefs.PositionDotLocation) -> Unit,
+) {
+    // Row order: top / middle / bottom. The middle row uses LEFT / HIDDEN /
+    // RIGHT because the centre-middle is conceptually "no anchor" and HIDDEN
+    // gets the slot that would otherwise overlap with TOP_CENTER's mental
+    // model. Top / bottom centres get their own explicit cells.
+    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.PositionDotLocation>>> = listOf(
+        listOf(
+            "↖" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_LEFT,
+            "↑" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
+            "↗" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_RIGHT,
+        ),
+        listOf(
+            "←" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.LEFT_CENTER,
+            "·" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.HIDDEN,
+            "→" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.RIGHT_CENTER,
+        ),
+        listOf(
+            "↙" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_LEFT,
+            "↓" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_CENTER,
+            "↘" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_RIGHT,
+        ),
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        rows.forEachIndexed { rowIdx, row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                row.forEachIndexed { colIdx, (glyph, loc) ->
+                    val isSelected = loc == selected
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .padding(2.dp)
+                            .clip(R1.ShapeS)
+                            .background(if (isSelected) R1.AccentWarm else R1.SurfaceMuted)
+                            .border(
+                                1.dp,
+                                if (isSelected) R1.AccentWarm else R1.Hairline,
+                                R1.ShapeS,
+                            )
+                            .r1Pressable(onClick = { onSelect(loc) }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = glyph,
+                            style = R1.bodyEmph,
+                            color = if (isSelected) R1.Bg else R1.InkSoft,
+                        )
+                    }
+                    @Suppress("UNUSED_EXPRESSION") colIdx
+                }
+            }
+            @Suppress("UNUSED_EXPRESSION") rowIdx
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = com.github.itskenny0.r1ha.core.prefs.positionDotLocationLabel(selected),
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(horizontal = 22.dp),
+        )
     }
 }
 

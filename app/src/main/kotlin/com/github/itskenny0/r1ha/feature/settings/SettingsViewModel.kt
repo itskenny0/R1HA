@@ -80,7 +80,8 @@ class SettingsViewModel(
     fun setDisplayMode(mode: DisplayMode) = update { it.copy(ui = it.ui.copy(displayMode = mode)) }
     fun setShowOnOffPill(show: Boolean) = update { it.copy(ui = it.ui.copy(showOnOffPill = show)) }
     fun setShowAreaLabel(show: Boolean) = update { it.copy(ui = it.ui.copy(showAreaLabel = show)) }
-    fun setShowPositionDots(show: Boolean) = update { it.copy(ui = it.ui.copy(showPositionDots = show)) }
+    fun setPositionDotLocation(loc: com.github.itskenny0.r1ha.core.prefs.PositionDotLocation) =
+        update { it.copy(ui = it.ui.copy(positionDotLocation = loc)) }
     fun setHideCardTailAbove(hide: Boolean) = update { it.copy(ui = it.ui.copy(hideCardTailAbove = hide)) }
     fun setMaxDecimalPlaces(n: Int) = update { it.copy(ui = it.ui.copy(maxDecimalPlaces = n)) }
     fun setTempUnit(u: com.github.itskenny0.r1ha.core.prefs.TemperatureUnit) =

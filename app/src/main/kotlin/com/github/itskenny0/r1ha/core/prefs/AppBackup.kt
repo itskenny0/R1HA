@@ -56,7 +56,15 @@ data class AppBackup(
     val uiDisplayMode: DisplayMode = DisplayMode.PERCENT,
     val uiShowOnOffPill: Boolean = true,
     val uiShowAreaLabel: Boolean = true,
+    /** Legacy boolean kept for back-compat reads of older backup files. New
+     *  writes round-trip via [uiPositionDotLocation] below; this field is
+     *  materialised on backup as `location != HIDDEN` so an older build can
+     *  still tell whether the user wanted the pip visible at all. */
     val uiShowPositionDots: Boolean = true,
+    /** Where the position pip sits — wins over [uiShowPositionDots] on
+     *  restore. Older backup files without this field decode as TOP_CENTER
+     *  / HIDDEN based on the legacy boolean above. */
+    val uiPositionDotLocation: PositionDotLocation = PositionDotLocation.TOP_CENTER,
     val uiTextHistoryLength: Int = 20,
     val uiHideCardTailAbove: Boolean = true,
     val uiMaxDecimalPlaces: Int = 2,
@@ -124,7 +132,8 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiDisplayMode = ui.displayMode,
     uiShowOnOffPill = ui.showOnOffPill,
     uiShowAreaLabel = ui.showAreaLabel,
-    uiShowPositionDots = ui.showPositionDots,
+    uiShowPositionDots = ui.positionDotLocation != PositionDotLocation.HIDDEN,
+    uiPositionDotLocation = ui.positionDotLocation,
     uiTextHistoryLength = ui.textHistoryLength,
     uiHideCardTailAbove = ui.hideCardTailAbove,
     uiMaxDecimalPlaces = ui.maxDecimalPlaces,
@@ -181,7 +190,13 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             displayMode = uiDisplayMode,
             showOnOffPill = uiShowOnOffPill,
             showAreaLabel = uiShowAreaLabel,
-            showPositionDots = uiShowPositionDots,
+            // Prefer the explicit enum slot when present; fall back to the
+            // legacy boolean for backups produced before the enum landed
+            // (true → TOP_CENTER, false → HIDDEN).
+            positionDotLocation = uiPositionDotLocation
+                .takeIf { it != PositionDotLocation.TOP_CENTER || uiShowPositionDots }
+                ?: if (uiShowPositionDots) PositionDotLocation.TOP_CENTER
+                   else PositionDotLocation.HIDDEN,
             textHistoryLength = uiTextHistoryLength,
             hideCardTailAbove = uiHideCardTailAbove,
             maxDecimalPlaces = uiMaxDecimalPlaces,
