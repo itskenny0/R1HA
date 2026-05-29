@@ -18,28 +18,48 @@ import java.time.Instant
  * Drives the long-term statistics chart screen. Pulls the
  * `recorder/list_statistic_ids` catalogue once to populate the entity
  * picker, then re-fetches `recorder/statistics_during_period` whenever
- * the user changes statistic / window / aggregation.
+ * the user changes statistic / window / period / aggregation.
  *
  * Aggregation is a UI-only knob: we always ask the recorder for every
  * column it has (mean / min / max / sum / state / change) and slice the
  * series client-side. Re-fetching on every chip flip would feel laggy
  * over a 30-day window where HA's reply can run into hundreds of
  * buckets.
+ *
+ * Two orthogonal selectors drive the fetch: [Window] picks how far back
+ * to look, [Period] picks the recorder bucket resolution
+ * (hour / day / week / month). Decoupling them mirrors HA's own
+ * developer-tools statistics view, where you can ask for a month of data
+ * bucketed by day, or a week bucketed by hour.
  */
 class StatisticsViewModel(
     private val haRepository: HaRepository,
 ) : ViewModel() {
 
-    /** Time-window selector; each chip picks both a span and a bucket
-     *  resolution. The defaults follow HA's own statistics card: short
-     *  windows zoom into 5-minute buckets, week+ windows aggregate so
-     *  the chart stays readable. */
-    enum class Window(val label: String, val hours: Long, val period: String) {
-        H1("1H", 1L, "5minute"),
-        H24("24H", 24L, "hour"),
-        D7("7D", 7L * 24L, "hour"),
-        D30("30D", 30L * 24L, "day"),
+    /** Time-window selector: how far back from "now" to fetch. */
+    enum class Window(val label: String, val hours: Long) {
+        H24("24H", 24L),
+        D7("7D", 7L * 24L),
+        D30("30D", 30L * 24L),
+        D90("90D", 90L * 24L),
     }
+
+    /** Recorder bucket resolution. These are the period strings HA's
+     *  `statistics_during_period` accepts; coarser periods keep long
+     *  windows readable, finer periods zoom into a recent window. */
+    enum class Period(val label: String, val wire: String, val approxSeconds: Long) {
+        HOUR("HOUR", "hour", 3600L),
+        DAY("DAY", "day", 86_400L),
+        WEEK("WEEK", "week", 7L * 86_400L),
+        MONTH("MONTH", "month", 30L * 86_400L),
+    }
+
+    /** How HA's recorder collects a statistic, which decides the natural
+     *  series and summary. MEASUREMENT statistics (temperature, humidity)
+     *  carry a mean with a min/max envelope. METERED statistics (energy,
+     *  water, gas) carry a cumulative sum from which per-bucket change is
+     *  derived; their natural reading is consumption over the window. */
+    enum class StatKind { MEASUREMENT, METERED, NONE }
 
     /** Aggregation chips; only the ones the picked statistic actually
      *  supports are enabled. CHANGE is the per-bucket delta of SUM, useful
@@ -64,6 +84,7 @@ class StatisticsViewModel(
         /** True while the picker overlay is open. */
         val pickerOpen: Boolean = false,
         val window: Window = Window.H24,
+        val period: Period = Period.HOUR,
         val aggregation: Aggregation = Aggregation.MEAN,
         /** Series load state; independent of catalogueLoading so flipping
          *  windows doesn't blank the picker. */
@@ -79,16 +100,7 @@ class StatisticsViewModel(
      *  buckets the recorder didn't fill in (HA omits the field per
      *  statistic-class so a temperature sensor's `sum` is always null). */
     fun seriesPoints(state: UiState = _ui.value): List<TimedValue> =
-        state.buckets.mapNotNull { b ->
-            val v = when (state.aggregation) {
-                Aggregation.MEAN -> b.mean
-                Aggregation.MIN -> b.min
-                Aggregation.MAX -> b.max
-                Aggregation.SUM -> b.sum
-                Aggregation.CHANGE -> b.change
-            }?.takeIf { it.isFinite() } ?: return@mapNotNull null
-            TimedValue(b.start, v)
-        }
+        seriesPoints(state.buckets, state.aggregation)
 
     /** True once a statistic is picked that the recorder tracks with
      *  neither a mean nor a sum, so no aggregation chip can ever plot it.
@@ -96,28 +108,22 @@ class StatisticsViewModel(
      *  was reconfigured, or an integration that registered the id before
      *  populating any column). The chart would otherwise sit on a bare
      *  "NO STATISTICS" with no hint why every chip is inert. */
-    fun hasNoPlottableAggregation(state: UiState = _ui.value): Boolean {
-        val s = state.selected ?: return false
-        return !s.hasMean && !s.hasSum
-    }
+    fun hasNoPlottableAggregation(state: UiState = _ui.value): Boolean =
+        classify(state.selected) == StatKind.NONE
 
     /** Which aggregation chips should be enabled for the current
      *  statistic. Falls back to "everything on" while nothing is selected
      *  so the chip row never collapses to a single chip. */
     fun supportedAggregations(state: UiState = _ui.value): Set<Aggregation> {
         val s = state.selected ?: return Aggregation.entries.toSet()
-        val out = mutableSetOf<Aggregation>()
-        if (s.hasMean) {
-            out += Aggregation.MEAN
-            out += Aggregation.MIN
-            out += Aggregation.MAX
-        }
-        if (s.hasSum) {
-            out += Aggregation.SUM
-            out += Aggregation.CHANGE
-        }
-        return out
+        return supportedAggregations(s)
     }
+
+    /** Min/max envelope points for a MEASUREMENT statistic. Empty for
+     *  metered statistics (no per-bucket spread) or when the recorder
+     *  didn't fill min/max. Plotted as a faint band behind the mean line. */
+    fun bandPoints(state: UiState = _ui.value): List<TimedBand> =
+        if (classify(state.selected) == StatKind.MEASUREMENT) bandPoints(state.buckets) else emptyList()
 
     fun loadCatalogue() {
         viewModelScope.launch {
@@ -151,19 +157,7 @@ class StatisticsViewModel(
     }
 
     fun selectStatistic(id: StatisticId) {
-        val supported = run {
-            val out = mutableSetOf<Aggregation>()
-            if (id.hasMean) {
-                out += Aggregation.MEAN
-                out += Aggregation.MIN
-                out += Aggregation.MAX
-            }
-            if (id.hasSum) {
-                out += Aggregation.SUM
-                out += Aggregation.CHANGE
-            }
-            out
-        }
+        val supported = supportedAggregations(id)
         // Snap the aggregation chip to a supported one if the current pick
         // isn't valid for the new statistic. Flipping from a kWh meter
         // (sum-only) to a temperature sensor (mean-only) shouldn't leave
@@ -171,7 +165,7 @@ class StatisticsViewModel(
         val aggro = if (_ui.value.aggregation in supported) {
             _ui.value.aggregation
         } else {
-            supported.firstOrNull() ?: Aggregation.MEAN
+            defaultAggregation(id) ?: supported.firstOrNull() ?: Aggregation.MEAN
         }
         _ui.value = _ui.value.copy(
             selected = id,
@@ -189,6 +183,12 @@ class StatisticsViewModel(
         refreshSeries()
     }
 
+    fun setPeriod(period: Period) {
+        if (_ui.value.period == period) return
+        _ui.value = _ui.value.copy(period = period)
+        refreshSeries()
+    }
+
     fun setAggregation(aggregation: Aggregation) {
         if (_ui.value.aggregation == aggregation) return
         _ui.value = _ui.value.copy(aggregation = aggregation)
@@ -197,6 +197,7 @@ class StatisticsViewModel(
     fun refreshSeries() {
         val selected = _ui.value.selected ?: return
         val window = _ui.value.window
+        val period = _ui.value.period
         viewModelScope.launch {
             _ui.value = _ui.value.copy(seriesLoading = true, seriesError = null)
             val end = Instant.now()
@@ -205,13 +206,13 @@ class StatisticsViewModel(
                 statisticIds = listOf(selected.statisticId),
                 start = start,
                 end = end,
-                period = window.period,
+                period = period.wire,
             ).fold(
                 onSuccess = { byId ->
                     val buckets = byId[selected.statisticId].orEmpty()
                     R1Log.i(
                         "Statistics",
-                        "${selected.statisticId} window=${window.label} period=${window.period} " +
+                        "${selected.statisticId} window=${window.label} period=${period.wire} " +
                             "buckets=${buckets.size}",
                     )
                     _ui.value = _ui.value.copy(
@@ -236,9 +237,147 @@ class StatisticsViewModel(
      *  aggregation chip selects a series column. */
     data class TimedValue(val timestamp: Instant, val value: Double)
 
+    /** Min/max envelope sample for a measurement statistic's band. */
+    data class TimedBand(val timestamp: Instant, val min: Double, val max: Double)
+
+    /** Type-aware window summary. For METERED statistics the headline is
+     *  the window total (sum of per-bucket change); for MEASUREMENT
+     *  statistics the headline is the window average alongside min/max of
+     *  the selected series. [count] is the number of plotted points. */
+    data class WindowSummary(
+        val kind: StatKind,
+        val current: Double?,
+        val min: Double?,
+        val max: Double?,
+        val avg: Double?,
+        /** Window total (metered consumption); null for measurements. */
+        val total: Double?,
+        val count: Int,
+    )
+
+    fun windowSummary(state: UiState = _ui.value): WindowSummary =
+        windowSummary(
+            kind = classify(state.selected),
+            buckets = state.buckets,
+            points = seriesPoints(state),
+        )
+
     companion object {
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { StatisticsViewModel(haRepository) }
         }
     }
 }
+
+/**
+ * Pure helpers backing the statistics screen. Kept top-level (no
+ * ViewModel / coroutine state) so they unit-test as plain functions.
+ */
+
+/** Classify a statistic by which recorder columns it carries. A series
+ *  with a mean is a measurement (temperature, humidity, power reading);
+ *  one with only a sum is metered (energy, water, gas). A series with
+ *  both (rare) is treated as measurement since its mean is the more
+ *  natural default to chart. Neither column means nothing is plottable. */
+fun classify(id: StatisticId?): StatisticsViewModel.StatKind = when {
+    id == null -> StatisticsViewModel.StatKind.NONE
+    id.hasMean -> StatisticsViewModel.StatKind.MEASUREMENT
+    id.hasSum -> StatisticsViewModel.StatKind.METERED
+    else -> StatisticsViewModel.StatKind.NONE
+}
+
+/** Which aggregation chips a statistic supports, derived from its
+ *  recorder columns. */
+fun supportedAggregations(id: StatisticId): Set<StatisticsViewModel.Aggregation> {
+    val out = mutableSetOf<StatisticsViewModel.Aggregation>()
+    if (id.hasMean) {
+        out += StatisticsViewModel.Aggregation.MEAN
+        out += StatisticsViewModel.Aggregation.MIN
+        out += StatisticsViewModel.Aggregation.MAX
+    }
+    if (id.hasSum) {
+        out += StatisticsViewModel.Aggregation.SUM
+        out += StatisticsViewModel.Aggregation.CHANGE
+    }
+    return out
+}
+
+/** The aggregation to land on when a statistic is first picked: MEAN for
+ *  measurements, CHANGE for metered (per-bucket consumption is the useful
+ *  default rather than the ever-growing cumulative sum). Null when the
+ *  statistic plots nothing. */
+fun defaultAggregation(id: StatisticId): StatisticsViewModel.Aggregation? = when (classify(id)) {
+    StatisticsViewModel.StatKind.MEASUREMENT -> StatisticsViewModel.Aggregation.MEAN
+    StatisticsViewModel.StatKind.METERED -> StatisticsViewModel.Aggregation.CHANGE
+    StatisticsViewModel.StatKind.NONE -> null
+}
+
+/** Project buckets onto the selected aggregation column, dropping buckets
+ *  the recorder left empty or non-finite. */
+fun seriesPoints(
+    buckets: List<StatisticsBucket>,
+    aggregation: StatisticsViewModel.Aggregation,
+): List<StatisticsViewModel.TimedValue> = buckets.mapNotNull { b ->
+    val v = when (aggregation) {
+        StatisticsViewModel.Aggregation.MEAN -> b.mean
+        StatisticsViewModel.Aggregation.MIN -> b.min
+        StatisticsViewModel.Aggregation.MAX -> b.max
+        StatisticsViewModel.Aggregation.SUM -> b.sum
+        StatisticsViewModel.Aggregation.CHANGE -> b.change
+    }?.takeIf { it.isFinite() } ?: return@mapNotNull null
+    StatisticsViewModel.TimedValue(b.start, v)
+}
+
+/** Min/max envelope for the measurement band: keeps only buckets that
+ *  carry both finite min and max, ordered by bucket start. */
+fun bandPoints(buckets: List<StatisticsBucket>): List<StatisticsViewModel.TimedBand> =
+    buckets.mapNotNull { b ->
+        val lo = b.min?.takeIf { it.isFinite() } ?: return@mapNotNull null
+        val hi = b.max?.takeIf { it.isFinite() } ?: return@mapNotNull null
+        // Guard against a recorder hiccup that swaps the pair.
+        StatisticsViewModel.TimedBand(b.start, minOf(lo, hi), maxOf(lo, hi))
+    }
+
+/** Sum of finite per-bucket `change` values: the consumption over the
+ *  window for a metered statistic. Null when no bucket carries a change. */
+fun windowTotal(buckets: List<StatisticsBucket>): Double? {
+    var sum = 0.0
+    var any = false
+    for (b in buckets) {
+        val c = b.change ?: continue
+        if (!c.isFinite()) continue
+        sum += c
+        any = true
+    }
+    return if (any) sum else null
+}
+
+/** Build the type-aware window summary. Metered statistics headline the
+ *  window total (consumption); measurement statistics headline avg with
+ *  min/max of the plotted series. */
+fun windowSummary(
+    kind: StatisticsViewModel.StatKind,
+    buckets: List<StatisticsBucket>,
+    points: List<StatisticsViewModel.TimedValue>,
+): StatisticsViewModel.WindowSummary {
+    val values = points.map { it.value }
+    val total = if (kind == StatisticsViewModel.StatKind.METERED) windowTotal(buckets) else null
+    return StatisticsViewModel.WindowSummary(
+        kind = kind,
+        current = values.lastOrNull(),
+        min = values.minOrNull(),
+        max = values.maxOrNull(),
+        avg = if (values.isNotEmpty()) values.sum() / values.size else null,
+        total = total,
+        count = points.size,
+    )
+}
+
+/** Drop unhelpful trailing decimals: 23.0 -> "23", 23.45 -> "23.45".
+ *  Mirrors HistoryScreen's formatter so the surfaces print identically. */
+fun formatStatNum(v: Double): String =
+    if (kotlin.math.abs(v - v.toLong()) < 1e-9) {
+        "${v.toLong()}"
+    } else {
+        java.lang.String.format(java.util.Locale.US, "%.2f", v)
+    }

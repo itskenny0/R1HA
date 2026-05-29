@@ -123,6 +123,7 @@ fun StatisticsScreen(
                         NoPlottablePanel()
                     } else {
                         WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
+                        PeriodChips(current = ui.period, onSelect = { vm.setPeriod(it) })
                         AggregationChips(
                             current = ui.aggregation,
                             supported = vm.supportedAggregations(ui),
@@ -243,6 +244,27 @@ private fun WindowChips(
 }
 
 @Composable
+private fun PeriodChips(
+    current: StatisticsViewModel.Period,
+    onSelect: (StatisticsViewModel.Period) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+    ) {
+        StatisticsViewModel.Period.entries.forEach { p ->
+            R1Chip(
+                text = p.label,
+                variant = R1ChipVariant.Filter,
+                selected = p == current,
+                onClick = { onSelect(p) },
+                contentDescription = "Period ${p.label}",
+            )
+        }
+    }
+}
+
+@Composable
 private fun AggregationChips(
     current: StatisticsViewModel.Aggregation,
     supported: Set<StatisticsViewModel.Aggregation>,
@@ -274,6 +296,12 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
     // remember(points) chart projection below actually hits its cache instead of
     // reprojecting on every Canvas invalidation / scrub-state change.
     val points = remember(ui.buckets, ui.aggregation) { vm.seriesPoints(ui) }
+    // Min/max envelope, only non-empty for measurement statistics with the
+    // MEAN series selected (a temperature sensor's hourly spread). Folds the
+    // band into the same vertical scale as the mean line below.
+    val band = remember(ui.buckets, ui.selected, ui.aggregation) {
+        if (ui.aggregation == StatisticsViewModel.Aggregation.MEAN) vm.bandPoints(ui) else emptyList()
+    }
     val unit = ui.selected?.unitOfMeasurement?.takeIf { it.isNotBlank() }
     Column(
         modifier = Modifier
@@ -322,10 +350,16 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
         // HistoryChartPanel uses. Keyed on the underlying timed-value list so
         // re-projection only runs when the buckets / aggregation actually
         // change, not on every Canvas invalidation.
-        val proj = remember(points) {
-            val ys = points.map { it.value }
-            val yMin0 = ys.min()
-            val yMax0 = ys.max()
+        val proj = remember(points, band) {
+            // Vertical scale spans both the line and the min/max envelope so
+            // the band never spills past the chart edges. Time axis is keyed to
+            // the line's span (the band shares the same buckets).
+            var yMin0 = points.minOf { it.value }
+            var yMax0 = points.maxOf { it.value }
+            for (b in band) {
+                if (b.min < yMin0) yMin0 = b.min
+                if (b.max > yMax0) yMax0 = b.max
+            }
             val yRange0 = (yMax0 - yMin0).takeIf { it > 1e-9 } ?: 1.0
             val tStart0 = points.first().timestamp
             val tEnd0 = points.last().timestamp
@@ -334,10 +368,19 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             val ysn = FloatArray(points.size)
             for (i in points.indices) {
                 val p = points[i]
-                xs[i] = (Duration.between(tStart0, p.timestamp).toMillis().toFloat() / tSpan0)
+                xs[i] = Duration.between(tStart0, p.timestamp).toMillis().toFloat() / tSpan0
                 ysn[i] = 1f - (((p.value - yMin0) / yRange0).toFloat())
             }
-            ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0)
+            val bandXs = FloatArray(band.size)
+            val bandLo = FloatArray(band.size)
+            val bandHi = FloatArray(band.size)
+            for (i in band.indices) {
+                val b = band[i]
+                bandXs[i] = Duration.between(tStart0, b.timestamp).toMillis().toFloat() / tSpan0
+                bandHi[i] = 1f - (((b.max - yMin0) / yRange0).toFloat())
+                bandLo[i] = 1f - (((b.min - yMin0) / yRange0).toFloat())
+            }
+            ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0, bandXs, bandLo, bandHi)
         }
         val yMin = proj.yMin
         val yMax = proj.yMax
@@ -401,6 +444,20 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                         end = Offset(w, h - 1f),
                         strokeWidth = 1f,
                     )
+                    // Faint min/max envelope behind the mean line, mirroring
+                    // HistoryChartPanel's band. Drawn as a filled polygon: down
+                    // the max edge, back along the min edge.
+                    val bx = proj.bandXsNorm
+                    if (bx.size >= 2) {
+                        val hi = proj.bandHiNorm
+                        val lo = proj.bandLoNorm
+                        val path = androidx.compose.ui.graphics.Path()
+                        path.moveTo(bx[0] * w, hi[0] * h)
+                        for (i in 1 until bx.size) path.lineTo(bx[i] * w, hi[i] * h)
+                        for (i in bx.size - 1 downTo 0) path.lineTo(bx[i] * w, lo[i] * h)
+                        path.close()
+                        drawPath(path = path, color = R1.AccentWarm.copy(alpha = 0.14f))
+                    }
                     val xs = proj.xsNorm
                     val ysn = proj.ysNorm
                     val n = xs.size
@@ -494,22 +551,12 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
 
 @Composable
 private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiState) {
-    val points = remember(ui.buckets, ui.aggregation) { vm.seriesPoints(ui) }
     val unit = ui.selected?.unitOfMeasurement?.takeIf { it.isNotBlank() }
-    val summary = remember(points) {
-        val values = points.map { it.value }
-        SummaryStats(
-            current = values.lastOrNull(),
-            min = values.minOrNull(),
-            max = values.maxOrNull(),
-            avg = if (values.isNotEmpty()) values.sum() / values.size else null,
-            count = points.size,
-        )
-    }
-    val current = summary.current
-    val min = summary.min
-    val max = summary.max
-    val avg = summary.avg
+    // Type-aware summary: metered statistics headline the window total
+    // (consumption), measurement statistics headline avg with min/max.
+    val summary = remember(ui.buckets, ui.aggregation, ui.selected) { vm.windowSummary(ui) }
+    fun withUnit(v: Double): String = "${formatNum(v)}${unit?.let { " $it" } ?: ""}"
+    val metered = summary.kind == StatisticsViewModel.StatKind.METERED
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -520,30 +567,50 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
         verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Text(
-            text = "SUMMARY · ${ui.aggregation.label} · ${ui.window.label}",
+            text = "SUMMARY · ${ui.aggregation.label} · ${ui.window.label} · ${ui.period.label}",
             style = R1.labelMicro,
             color = R1.InkSoft,
         )
-        SummaryRow(
-            label = "CURRENT",
-            value = current?.let { "${formatNum(it)}${unit?.let { u -> " $u" } ?: ""}" } ?: "--",
-            accent = R1.Ink,
-        )
-        SummaryRow(
-            label = "MIN",
-            value = min?.let { "${formatNum(it)}${unit?.let { u -> " $u" } ?: ""}" } ?: "--",
-            accent = R1.AccentCool,
-        )
-        SummaryRow(
-            label = "MAX",
-            value = max?.let { "${formatNum(it)}${unit?.let { u -> " $u" } ?: ""}" } ?: "--",
-            accent = R1.AccentWarm,
-        )
-        SummaryRow(
-            label = "AVG",
-            value = avg?.let { "${formatNum(it)}${unit?.let { u -> " $u" } ?: ""}" } ?: "--",
-            accent = R1.AccentNeutral,
-        )
+        if (metered) {
+            // Headline a metered series by how much it counted over the window;
+            // the cumulative sum is rarely what the user wants to compare.
+            SummaryRow(
+                label = "TOTAL",
+                value = summary.total?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentGreen,
+            )
+            SummaryRow(
+                label = "PER BUCKET",
+                value = summary.avg?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentNeutral,
+            )
+            SummaryRow(
+                label = "PEAK",
+                value = summary.max?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentWarm,
+            )
+        } else {
+            SummaryRow(
+                label = "CURRENT",
+                value = summary.current?.let { withUnit(it) } ?: "--",
+                accent = R1.Ink,
+            )
+            SummaryRow(
+                label = "MIN",
+                value = summary.min?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentCool,
+            )
+            SummaryRow(
+                label = "MAX",
+                value = summary.max?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentWarm,
+            )
+            SummaryRow(
+                label = "AVG",
+                value = summary.avg?.let { withUnit(it) } ?: "--",
+                accent = R1.AccentNeutral,
+            )
+        }
         SummaryRow(
             label = "BUCKETS",
             value = "${summary.count}",
@@ -551,16 +618,6 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
         )
     }
 }
-
-/** Pre-computed summary aggregates so the SUMMARY panel doesn't re-scan the
- *  projected series on every recomposition. */
-private data class SummaryStats(
-    val current: Double?,
-    val min: Double?,
-    val max: Double?,
-    val avg: Double?,
-    val count: Int,
-)
 
 @Composable
 private fun SummaryRow(
@@ -811,11 +868,10 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
     }
 }
 
-/** Drop unhelpful trailing decimals: 23.0 → "23", 23.45 → "23.45". Mirrors
- *  HistoryScreen's formatter so the two surfaces print numbers identically. */
-private fun formatNum(v: Double): String =
-    if (kotlin.math.abs(v - v.toLong()) < 1e-9) "${v.toLong()}"
-    else "%.2f".format(v)
+/** Drop unhelpful trailing decimals: 23.0 -> "23", 23.45 -> "23.45".
+ *  Delegates to the shared formatter so the chart and summary print the
+ *  same way and stay covered by the formatting unit test. */
+private fun formatNum(v: Double): String = formatStatNum(v)
 
 /**
  * Pre-projected chart data: same shape HistoryChartPanel uses, kept
@@ -831,4 +887,8 @@ private data class ChartProjection(
     val tStart: java.time.Instant,
     val tEnd: java.time.Instant,
     val tSpan: Long,
+    /** Min/max envelope, empty for non-measurement series. */
+    val bandXsNorm: FloatArray = FloatArray(0),
+    val bandLoNorm: FloatArray = FloatArray(0),
+    val bandHiNorm: FloatArray = FloatArray(0),
 )
