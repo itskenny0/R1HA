@@ -82,6 +82,8 @@ class SettingsViewModel(
     fun setShowAreaLabel(show: Boolean) = update { it.copy(ui = it.ui.copy(showAreaLabel = show)) }
     fun setPositionDotLocation(loc: com.github.itskenny0.r1ha.core.prefs.PositionDotLocation) =
         update { it.copy(ui = it.ui.copy(positionDotLocation = loc)) }
+    fun setValueBarLocation(loc: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation) =
+        update { it.copy(ui = it.ui.copy(valueBarLocation = loc)) }
     fun setHideCardTailAbove(hide: Boolean) = update { it.copy(ui = it.ui.copy(hideCardTailAbove = hide)) }
     fun setMaxDecimalPlaces(n: Int) = update { it.copy(ui = it.ui.copy(maxDecimalPlaces = n)) }
     fun setTempUnit(u: com.github.itskenny0.r1ha.core.prefs.TemperatureUnit) =

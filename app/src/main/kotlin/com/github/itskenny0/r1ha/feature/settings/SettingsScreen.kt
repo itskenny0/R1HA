@@ -862,6 +862,14 @@ fun SettingsScreen(
                 }
             }
             item {
+                LabeledControl(label = "Value bar location") {
+                    ValueBarLocationPicker(
+                        selected = s.ui.valueBarLocation,
+                        onSelect = { vm.setValueBarLocation(it) },
+                    )
+                }
+            }
+            item {
                 SwitchRow(
                     label = "Hide card hint above current",
                     subtitle = "Solid chrome backdrop covers the previous card's tail",
@@ -2929,6 +2937,73 @@ private fun PositionDotLocationPicker(
         Spacer(Modifier.height(4.dp))
         Text(
             text = com.github.itskenny0.r1ha.core.prefs.positionDotLocationLabel(selected),
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(horizontal = 22.dp),
+        )
+    }
+}
+
+/**
+ * Five-way picker for the global value-bar location. Laid out as a cross so the
+ * spatial intent reads at a glance: TOP on the top row, LEFT / HIDDEN / RIGHT on
+ * the middle row, BOTTOM on the bottom row. The centre cell is HIDDEN ("no bar")
+ * which mirrors how the position-pip picker uses its centre cell. Same chrome
+ * (44 dp tiles, accent fill on selection, hairline border) as
+ * [PositionDotLocationPicker].
+ */
+@Composable
+private fun ValueBarLocationPicker(
+    selected: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation,
+    onSelect: (com.github.itskenny0.r1ha.core.prefs.ValueBarLocation) -> Unit,
+) {
+    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.ValueBarLocation>?>> = listOf(
+        listOf(null, "↑" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP, null),
+        listOf(
+            "←" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT,
+            "·" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN,
+            "→" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT,
+        ),
+        listOf(null, "↓" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM, null),
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        rows.forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                row.forEach { cell ->
+                    if (cell == null) {
+                        // Empty corner cell — keeps the cross shape aligned.
+                        Spacer(Modifier.weight(1f).height(44.dp).padding(2.dp))
+                    } else {
+                        val (glyph, loc) = cell
+                        val isSelected = loc == selected
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .padding(2.dp)
+                                .clip(R1.ShapeS)
+                                .background(if (isSelected) R1.AccentWarm else R1.SurfaceMuted)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) R1.AccentWarm else R1.Hairline,
+                                    R1.ShapeS,
+                                )
+                                .r1Pressable(onClick = { onSelect(loc) }),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = glyph,
+                                style = R1.bodyEmph,
+                                color = if (isSelected) R1.Bg else R1.InkSoft,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = com.github.itskenny0.r1ha.core.prefs.valueBarLocationLabel(selected),
             style = R1.labelMicro,
             color = R1.InkMuted,
             modifier = Modifier.padding(horizontal = 22.dp),
