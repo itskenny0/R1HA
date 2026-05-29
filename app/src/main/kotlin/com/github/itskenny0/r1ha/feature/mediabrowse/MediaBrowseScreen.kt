@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -19,16 +20,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -43,12 +46,14 @@ import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -58,24 +63,27 @@ private class MediaBrowseViewModel(
     private val haRepository: HaRepository,
 ) : ViewModel() {
 
-    data class Crumb(val title: String, val mediaContentId: String?, val mediaContentType: String?)
     data class UiState(
         val loading: Boolean = false,
         val entityId: String? = null,
         val children: List<MediaBrowseEntry> = emptyList(),
-        val crumbs: List<Crumb> = emptyList(),
+        val crumbs: List<MediaBrowseNav.Crumb> = emptyList(),
         val error: String? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    /** True when a hardware-back press should pop a browse level rather than
+     *  leave the screen entirely. */
+    fun canPopLevel(): Boolean = MediaBrowseNav.canPopLevel(_ui.value.crumbs)
+
     fun openRoot(entityId: String) {
         _ui.value = UiState(entityId = entityId, loading = true)
-        browse(Crumb("ROOT", null, null), reset = true)
+        browse(MediaBrowseNav.Crumb("ROOT", null, null), reset = true)
     }
 
-    fun navigate(crumb: Crumb) {
+    fun navigate(crumb: MediaBrowseNav.Crumb) {
         val current = _ui.value
         if (current.entityId == null) return
         _ui.value = current.copy(loading = true)
@@ -84,19 +92,30 @@ private class MediaBrowseViewModel(
 
     fun back() {
         val current = _ui.value
-        if (current.crumbs.size <= 1) return
-        val target = current.crumbs[current.crumbs.size - 2]
-        // Drop everything from the target back so we don't lose history on a forward
-        // navigation by accident.
-        val truncated = current.crumbs.dropLast(2)
+        val target = MediaBrowseNav.parentCrumb(current.crumbs) ?: return
+        // Drop the current + parent crumbs; re-browsing the parent re-appends
+        // one so the path lands exactly one level shorter.
         _ui.value = current.copy(
             loading = true,
-            crumbs = truncated,
+            crumbs = MediaBrowseNav.crumbsForBack(current.crumbs),
         )
         browse(target, reset = false)
     }
 
-    private fun browse(crumb: Crumb, reset: Boolean) {
+    /** Re-browse the folder currently on screen (pull-to-refresh). Re-fetches
+     *  the deepest crumb without changing the path depth. */
+    fun refresh() {
+        val current = _ui.value
+        if (current.entityId == null) return
+        val here = current.crumbs.lastOrNull() ?: return
+        _ui.value = current.copy(
+            loading = true,
+            crumbs = current.crumbs.dropLast(1),
+        )
+        browse(here, reset = false)
+    }
+
+    private fun browse(crumb: MediaBrowseNav.Crumb, reset: Boolean) {
         val entity = _ui.value.entityId ?: return
         viewModelScope.launch {
             haRepository.browseMedia(
@@ -105,15 +124,11 @@ private class MediaBrowseViewModel(
                 mediaContentType = crumb.mediaContentType,
             ).fold(
                 onSuccess = { result ->
-                    val newCrumbs = if (reset) listOf(Crumb(result.current.title, null, null))
-                    else _ui.value.crumbs + Crumb(
-                        title = result.current.title,
-                        mediaContentId = result.current.mediaContentId,
-                        mediaContentType = result.current.mediaContentType,
-                    )
+                    val newCrumbs = if (reset) MediaBrowseNav.rootCrumbs(result)
+                    else MediaBrowseNav.pushCrumb(_ui.value.crumbs, result)
                     _ui.value = _ui.value.copy(
                         loading = false,
-                        children = result.children,
+                        children = MediaBrowseNav.sortChildren(result.children),
                         crumbs = newCrumbs,
                         error = null,
                     )
@@ -165,6 +180,21 @@ fun MediaBrowseScreen(
     val vm: MediaBrowseViewModel = viewModel(factory = MediaBrowseViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     var entityInput by remember { mutableStateOf("") }
+
+    // Server URL + bearer token drive the AsyncBitmap thumbnails. browse_media
+    // returns proxied / relative thumbnail paths that need the configured HA
+    // host prepended and the token attached. Sourced from the process graph so
+    // the screen's nav-graph call site doesn't need new parameters.
+    val app = LocalContext.current.applicationContext as com.github.itskenny0.r1ha.App
+    val serverUrl by produceState<String?>(null, app) {
+        value = app.graph.settings.settings.first().server?.url
+    }
+    val token by produceState<String?>(null, app) { value = app.graph.tokens.load()?.accessToken }
+
+    // Hardware Back pops one browse level if we're below the root; otherwise it
+    // leaves the screen. Enabled only while there is a level to pop so the OS
+    // default (leave screen) handles the root case.
+    androidx.activity.compose.BackHandler(enabled = vm.canPopLevel()) { vm.back() }
 
     Column(
         modifier = Modifier
@@ -240,15 +270,19 @@ fun MediaBrowseScreen(
                         Spacer(Modifier.size(8.dp))
                     }
                 }
-                // Body
+                // Body. The full-screen spinner only covers the first load of a
+                // level (no children yet); a pull-to-refresh over an already-
+                // populated list keeps the list visible with the refresh
+                // indicator instead of flashing the whole screen blank.
                 when {
-                    ui.loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            strokeWidth = 2.dp,
-                            color = R1.AccentWarm,
-                        )
-                    }
+                    ui.loading && ui.children.isEmpty() ->
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                                color = R1.AccentWarm,
+                            )
+                        }
                     ui.error != null -> Text(
                         text = ui.error ?: "",
                         style = R1.body,
@@ -259,33 +293,53 @@ fun MediaBrowseScreen(
                         style = R1.body,
                         color = R1.InkMuted,
                     )
-                    ui.children.isEmpty() -> Text(
-                        text = "(Empty)",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                    )
-                    else -> LazyColumn(
+                    ui.children.isEmpty() -> PullToRefreshBox(
+                        isRefreshing = ui.loading,
+                        onRefresh = { vm.refresh() },
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        items(ui.children, key = { it.mediaContentId + "|" + it.mediaContentType }) { entry ->
-                            EntryRow(
-                                entry = entry,
-                                onTap = {
-                                    when {
-                                        entry.canExpand -> vm.navigate(
-                                            MediaBrowseViewModel.Crumb(
-                                                title = entry.title,
-                                                mediaContentId = entry.mediaContentId,
-                                                mediaContentType = entry.mediaContentType,
-                                            ),
-                                        )
-                                        entry.canPlay -> vm.play(entry)
-                                        else -> Toaster.show("Item isn't playable or expandable")
-                                    }
-                                },
-                                onPlay = { vm.play(entry) },
-                            )
+                        // Keep an empty folder pull-to-refreshable so a since-
+                        // populated playlist can be re-fetched without leaving.
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                            item {
+                                Text(
+                                    text = "(Empty)",
+                                    style = R1.body,
+                                    color = R1.InkMuted,
+                                )
+                            }
+                        }
+                    }
+                    else -> PullToRefreshBox(
+                        isRefreshing = ui.loading,
+                        onRefresh = { vm.refresh() },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            items(ui.children, key = { it.mediaContentId + "|" + it.mediaContentType }) { entry ->
+                                EntryRow(
+                                    entry = entry,
+                                    serverUrl = serverUrl,
+                                    bearerToken = token,
+                                    onTap = {
+                                        when {
+                                            entry.canExpand -> vm.navigate(
+                                                MediaBrowseNav.Crumb(
+                                                    title = entry.title,
+                                                    mediaContentId = entry.mediaContentId,
+                                                    mediaContentType = entry.mediaContentType,
+                                                ),
+                                            )
+                                            entry.canPlay -> vm.play(entry)
+                                            else -> Toaster.show("Item isn't playable or expandable")
+                                        }
+                                    },
+                                    onPlay = { vm.play(entry) },
+                                )
+                            }
                         }
                     }
                 }
@@ -297,6 +351,8 @@ fun MediaBrowseScreen(
 @Composable
 private fun EntryRow(
     entry: MediaBrowseEntry,
+    serverUrl: String?,
+    bearerToken: String?,
     onTap: () -> Unit,
     onPlay: () -> Unit,
 ) {
@@ -310,13 +366,30 @@ private fun EntryRow(
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val glyph = when {
-            entry.canExpand && entry.canPlay -> "▸"
-            entry.canExpand -> "›"
-            entry.canPlay -> "▷"
-            else -> "·"
+        // Thumbnail where the entry carries one; otherwise a type glyph in the
+        // same footprint so titles stay aligned across rows with and without
+        // art.
+        if (!entry.thumbnail.isNullOrBlank()) {
+            AsyncBitmap(
+                url = entry.thumbnail,
+                serverUrl = serverUrl,
+                bearerToken = bearerToken,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(R1.ShapeS),
+                contentDescription = null,
+            )
+        } else {
+            val glyph = when {
+                entry.canExpand && entry.canPlay -> "▸"
+                entry.canExpand -> "›"
+                entry.canPlay -> "▷"
+                else -> "·"
+            }
+            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                Text(text = glyph, style = R1.bodyEmph, color = R1.AccentWarm)
+            }
         }
-        Text(text = glyph, style = R1.bodyEmph, color = R1.AccentWarm)
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = entry.title, style = R1.body, color = R1.Ink, maxLines = 1)
