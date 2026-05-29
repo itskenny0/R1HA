@@ -193,6 +193,17 @@ class AppGraph(context: Context) {
     }
 
     /**
+     * Local-only Lovelace overrides store. Backs the native dashboards
+     * editor: reorder / replace / delete / append operations land in a
+     * separate DataStore file so the main settings preferences blob
+     * stays untouched. Lazy because fresh installs that never open the
+     * Lovelace dashboards screen don't need to allocate it.
+     */
+    val lovelaceOverrideStore: com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore by lazy {
+        com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore(appContext)
+    }
+
+    /**
      * Multi-device settings sync. Mirrors the user's preferences to/from
      * HA's per-user JSON storage; idle (no WS traffic) until the user opts
      * in via Settings → Integrations → "Sync with Home Assistant". Started

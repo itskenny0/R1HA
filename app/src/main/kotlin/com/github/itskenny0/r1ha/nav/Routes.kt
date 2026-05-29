@@ -116,10 +116,25 @@ object Routes {
      *  `blueprint/import` and commits via `blueprint/save`. */
     const val BLUEPRINTS = "blueprints"
 
-    /** Long-term statistics chart: pick any series HA's recorder is
-     *  collecting (sensor.*, energy meters, integration-provided
-     *  trackers) and render its mean/min/max/sum/change over a chosen
-     *  window. Companion surface to HISTORY (which plots the raw
-     *  state-change stream over a short window). */
+    /** Long-term statistics chart. */
     const val STATISTICS = "statistics"
+
+    /** Native dashboards list. Imports HA's Lovelace YAML and renders the
+     *  views natively in Compose. Hidden on R1's small-screen tier; the
+     *  entry row lives under Settings, Appearance. */
+    const val DASHBOARDS = "dashboards"
+
+    /**
+     * Full-screen single-view renderer. Dashboard URL path is the first
+     * path segment (`_default_` sentinel for the default dashboard so
+     * the StringType nav arg never carries null); view path is the
+     * second. Both segments are unescaped because Compose Navigation
+     * StringType accepts `.` and `_` raw.
+     */
+    const val DASHBOARDS_VIEW = "dashboards/{dashboard}/{viewPath}"
+
+    /** Build a concrete dashboards-view route. Null [dashboardUrlPath]
+     *  is encoded as `_default_`. */
+    fun dashboardsViewRoute(dashboardUrlPath: String?, viewPath: String): String =
+        "dashboards/${dashboardUrlPath ?: "_default_"}/$viewPath"
 }

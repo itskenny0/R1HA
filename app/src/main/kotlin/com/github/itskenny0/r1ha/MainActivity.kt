@@ -254,6 +254,7 @@ class MainActivity : ComponentActivity() {
                                 settings = graph.settings,
                                 tokens = graph.tokens,
                                 wheelInput = graph.wheelInput,
+                                overrideStore = graph.lovelaceOverrideStore,
                             )
                         }
                         // Route non-wheel key actions (OPEN_SETTINGS, OPEN_ASSIST,

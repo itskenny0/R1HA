@@ -23,6 +23,15 @@ fun AppNavGraph(
     settings: SettingsRepository,
     tokens: TokenStore,
     wheelInput: WheelInput,
+    /**
+     * Lovelace-overrides DataStore for the native dashboards feature.
+     * Defaulted so external entry points (tests, alternative hosts) can
+     * skip the dashboards screens entirely without having to wire up a
+     * fresh store. The Settings entry row only shows on non-R1 width
+     * tiers, so callers that don't construct one will never reach the
+     * route that needs it.
+     */
+    overrideStore: com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore? = null,
 ) {
     // App-shortcut deep-link consumer — MainActivity emits a route on
     // ShortcutBus whenever a launcher long-press shortcut delivers an
@@ -616,6 +625,56 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.DASHBOARDS) {
+            // Defaulted overrideStore is non-null in the production
+            // wiring (MainActivity → AppGraph.lovelaceOverrideStore);
+            // a missing store falls back to an in-memory throwaway so
+            // tests / alternative hosts still render the list.
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val store = overrideStore ?: androidx.compose.runtime.remember(ctx) {
+                // Best-effort fallback for callers that didn't wire an
+                // overrideStore in via the AppNavGraph arg. The store
+                // backs onto the same DataStore file as the production
+                // wiring (preferencesDataStore is a singleton per name),
+                // so edits actually do persist; this branch just spares
+                // us a hard crash when the host forgot to pass one.
+                com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore(ctx)
+            }
+            com.github.itskenny0.r1ha.feature.dashboards.DashboardsListScreen(
+                haRepository = haRepository,
+                overrideStore = store,
+                onOpenView = { dashboardUrlPath, viewPath ->
+                    navController.navigate(Routes.dashboardsViewRoute(dashboardUrlPath, viewPath)) {
+                        launchSingleTop = true
+                    }
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.DASHBOARDS_VIEW,
+            arguments = listOf(
+                androidx.navigation.navArgument("dashboard") { type = androidx.navigation.NavType.StringType },
+                androidx.navigation.navArgument("viewPath") { type = androidx.navigation.NavType.StringType },
+            ),
+        ) { backStackEntry ->
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val store = overrideStore ?: androidx.compose.runtime.remember(ctx) {
+                com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore(ctx)
+            }
+            val dashRaw = backStackEntry.arguments?.getString("dashboard").orEmpty()
+            val viewPath = backStackEntry.arguments?.getString("viewPath").orEmpty()
+            // Decode the "_default_" sentinel back into null so the
+            // repository call hits HA's default-dashboard path.
+            val dashboardUrlPath = dashRaw.takeUnless { it == "_default_" }
+            com.github.itskenny0.r1ha.feature.dashboards.DashboardViewScreen(
+                haRepository = haRepository,
+                overrideStore = store,
+                dashboardUrlPath = dashboardUrlPath,
+                viewPath = viewPath,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.DASHBOARD) { backStackEntry ->
             // canGoBack — true when Dashboard was reached via nav, false
             // when it's the start destination. previousBackStackEntry is
@@ -752,6 +811,7 @@ private fun SettingsRouteContent(
         onOpenTags = { navController.navigate(Routes.TAGS) { launchSingleTop = true } },
         onOpenBlueprints = { navController.navigate(Routes.BLUEPRINTS) { launchSingleTop = true } },
         onOpenStatistics = { navController.navigate(Routes.STATISTICS) { launchSingleTop = true } },
+        onOpenDashboards = { navController.navigate(Routes.DASHBOARDS) { launchSingleTop = true } },
         onSignedOut = {
             navController.navigate(Routes.ONBOARDING) {
                 popUpTo(0) { inclusive = true }

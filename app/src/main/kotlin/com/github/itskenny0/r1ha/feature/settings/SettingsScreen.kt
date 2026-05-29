@@ -188,6 +188,9 @@ fun SettingsScreen(
     /** Native long-term statistics chart: picks any recorder series and
      *  plots mean/min/max/sum/change over a chosen window. */
     onOpenStatistics: () -> Unit = {},
+    /** Native Lovelace dashboards browser + editor. Hidden on R1
+     *  small-screen tier via the entry row's width-tier gate. */
+    onOpenDashboards: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1638,6 +1641,21 @@ fun SettingsScreen(
                             onDismiss = { hoursDialog.value = false },
                         )
                     }
+                }
+            }
+            // Native dashboards entry. Gated to non-R1 widths because
+            // the dashboards renderer is full-screen with a card-grid
+            // layout: meaningful on phones / tablets but visually
+            // cramped on the R1's small portrait display. The check
+            // runs inside the `item` so a tier change (rotation,
+            // foldable hinge) flips visibility live.
+            item {
+                if (com.github.itskenny0.r1ha.ui.layout.currentWidthTier() != com.github.itskenny0.r1ha.ui.layout.WidthTier.R1) {
+                    NavRow(
+                        label = "Dashboards",
+                        value = "Native Lovelace renderer",
+                        onClick = onOpenDashboards,
+                    )
                 }
             }
 
