@@ -828,6 +828,24 @@ private fun LazyListScope.appearanceCards(
         )
     }
     item {
+        LabeledControl(label = "Peek deck") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.CardPeekMode.entries,
+                selected = s.ui.cardPeekMode,
+                label = { com.github.itskenny0.r1ha.core.prefs.cardPeekModeLabel(it) },
+                onSelect = { vm.setCardPeekMode(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Half-height cards with the previous and next card peeking. " +
+                    "Auto: phone-portrait only. Always: every device (turn on for R1 " +
+                    "or small phones). Never: full-screen cards.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
         LabeledControl(label = "Sensor decimals") {
             SegmentedIntPicker(
                 options = listOf(0, 1, 2, 3, 4),
