@@ -286,12 +286,21 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             return@Column
         }
         if (points.size < 2) {
+            // One bucket can't draw a trend line, and zero means the recorder
+            // had nothing for this aggregation/window. Distinguish the two so a
+            // user staring at a flat panel knows whether to widen the window or
+            // pick a different aggregation.
             Box(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "NO STATISTICS IN WINDOW",
+                    text = if (points.size == 1) {
+                        "ONLY ONE BUCKET IN WINDOW · ${formatNum(points.first().value)}" +
+                            (unit?.let { " $it" } ?: "")
+                    } else {
+                        "NO STATISTICS IN WINDOW"
+                    },
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
