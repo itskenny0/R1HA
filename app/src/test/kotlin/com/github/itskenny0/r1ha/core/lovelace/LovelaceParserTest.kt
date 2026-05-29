@@ -532,4 +532,120 @@ class LovelaceParserTest {
         assertEquals("lights", list[0].urlPath)
         assertEquals("No url", list[1].title)
     }
+
+    // ----------------------------------------------------------------
+    // Conditional card: full conditions schema + fail-closed
+    // ----------------------------------------------------------------
+    private fun conditions(conditionsJson: String): List<LovelaceCondition> {
+        val json = """
+            {"type":"conditional","conditions":$conditionsJson,
+             "card":{"type":"markdown","content":"x"}}
+        """.trimIndent()
+        return (LovelaceParser.parseCard(Json.parseToJsonElement(json)) as LovelaceCard.Conditional).conditions
+    }
+
+    @Test
+    fun `parses state condition with a list of accepted states`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"state","entity":"s.mode","state":["home","away"]}]""")
+        val s = parsed.single() as LovelaceCondition.StateEquals
+        assertThat(s.entityId).isEqualTo("s.mode")
+        assertThat(s.states).containsExactly("home", "away")
+        assertThat(s.negate).isFalse()
+    }
+
+    @Test
+    fun `parses state_not condition`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"state_not","entity":"s.mode","state_not":"off"}]""")
+        val s = parsed.single() as LovelaceCondition.StateEquals
+        assertThat(s.states).containsExactly("off")
+        assertThat(s.negate).isTrue()
+    }
+
+    @Test
+    fun `parses legacy entity-state shorthand`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"entity":"light.k","state":"on"}]""")
+        val s = parsed.single() as LovelaceCondition.StateEquals
+        assertThat(s.entityId).isEqualTo("light.k")
+        assertThat(s.states).containsExactly("on")
+    }
+
+    @Test
+    fun `state condition without an entity fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"state","state":"on"}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    @Test
+    fun `state condition with no accepted values fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"state","entity":"light.k"}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    @Test
+    fun `parses numeric_state with both bounds`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"numeric_state","entity":"s.t","above":10,"below":20.5}]""")
+        val n = parsed.single() as LovelaceCondition.NumericState
+        assertThat(n.above).isEqualTo(10.0)
+        assertThat(n.below).isEqualTo(20.5)
+    }
+
+    @Test
+    fun `parses numeric_state with only above`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"numeric_state","entity":"s.t","above":5}]""")
+        val n = parsed.single() as LovelaceCondition.NumericState
+        assertThat(n.above).isEqualTo(5.0)
+        assertThat(n.below).isNull()
+    }
+
+    @Test
+    fun `numeric_state with no bound fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"numeric_state","entity":"s.t"}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    @Test
+    fun `numeric_state with a non-numeric bound never resolves so it fails closed`() {
+        // The reported bug: `above: never` on a timestamp helper used to parse to an
+        // unbounded NumericState that matched every value and leaked the card.
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"numeric_state","entity":"s.timer","above":"never"}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    @Test
+    fun `numeric_state accepts numeric strings as bounds`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"numeric_state","entity":"s.t","below":"30.0"}]""")
+        val n = parsed.single() as LovelaceCondition.NumericState
+        assertThat(n.below).isEqualTo(30.0)
+    }
+
+    @Test
+    fun `screen condition fails open as AlwaysTrue`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"screen","media_query":"(min-width: 600px)"}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.AlwaysTrue)
+    }
+
+    @Test
+    fun `user condition fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"user","users":["abc"]}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    @Test
+    fun `unknown condition type fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"and","conditions":[]}]""")
+        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
 }
