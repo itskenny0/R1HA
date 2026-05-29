@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -63,13 +62,15 @@ object MinimalDarkTheme : R1Theme {
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
             ?: themeAccent
-        Row(
-            modifier = modifier
+        CardValueBarScaffold(
+            model = model,
+            accent = accent,
+            outer = modifier
                 .fillMaxSize()
                 .background(Color.Black)
                 .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
         ) {
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 // Header — monochrome tag instead of the accent dash.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
@@ -248,17 +249,6 @@ object MinimalDarkTheme : R1Theme {
                     )
                 }
             }
-            Spacer(Modifier.width(20.dp))
-            // Shared meter — gives this theme the same touch-drag + clickable-tick
-            // affordances as the default. Tick labels stay readable on black via R1.
-            // InkMuted; rainbow mode renders correctly for light HUE.
-            VerticalTapeMeter(
-                entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText),
-                percent = model.percent,
-                accent = accent,
-                tickLabels = model.meterLabels,
-                rainbow = model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE,
-            )
         }
     }
 }

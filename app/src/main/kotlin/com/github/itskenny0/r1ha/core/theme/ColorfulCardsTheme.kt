@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -76,13 +75,19 @@ object ColorfulCardsTheme : R1Theme {
             ?: LocalThemeAccentOverride.current
             ?: Color.White
 
-        Row(
-            modifier = modifier
+        CardValueBarScaffold(
+            model = model,
+            accent = accent,
+            outer = modifier
                 .fillMaxSize()
                 .background(Brush.linearGradient(pal))
                 .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
+            // Default tick colour (R1.InkMuted) is invisible against the
+            // colourful gradient; force a soft-white that reads on every
+            // palette in the theme.
+            tickLabelColor = Color.White.copy(alpha = 0.78f),
         ) {
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
@@ -255,22 +260,6 @@ object ColorfulCardsTheme : R1Theme {
                     }
                 }
             }
-            Spacer(Modifier.width(20.dp))
-            // Shared meter — touch-drag + clickable ticks. The accent passed here is
-            // white, which reads cleanly against the gradient backdrop. Climate /
-            // number cards still show their domain-native range via meterLabels; light
-            // HUE mode still renders the rainbow track.
-            VerticalTapeMeter(
-                entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText),
-                percent = model.percent,
-                accent = accent,
-                tickLabels = model.meterLabels,
-                rainbow = model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE,
-                // Default tick colour (R1.InkMuted) is invisible against the
-                // colourful gradient; force a soft-white that reads on every
-                // palette in the theme.
-                tickLabelColor = Color.White.copy(alpha = 0.78f),
-            )
         }
     }
 }

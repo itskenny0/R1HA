@@ -359,6 +359,11 @@ fun EntityCard(
                     mediaSupportedFeatures = state.mediaSupportedFeatures,
                     lastChangedAt = state.lastChanged,
                     entityState = state,
+                    // Effective value-bar slot: per-card override wins over
+                    // the global setting, falling back to RIGHT (the
+                    // historical layout) when neither is set.
+                    valueBarLocation = perCardOverride.valueBarLocation
+                        ?: baseUi.valueBarLocation,
                 ),
                 modifier = Modifier
                     .fillMaxSize()
