@@ -53,7 +53,13 @@ fun SystemHealthScreen(
      *  preview). Production wires it to [Routes.LOGS]. */
     onOpenFullLog: () -> Unit = {},
 ) {
-    val vm: SystemHealthViewModel = viewModel(factory = SystemHealthViewModel.factory(haRepository))
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val wsClient = androidx.compose.runtime.remember {
+        (context.applicationContext as com.github.itskenny0.r1ha.App).graph.wsClient
+    }
+    val vm: SystemHealthViewModel = viewModel(
+        factory = SystemHealthViewModel.factory(haRepository, wsClient),
+    )
     val ui by vm.ui.collectAsState()
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(Unit) { vm.refresh() }
@@ -118,6 +124,31 @@ fun SystemHealthScreen(
                     ConfigPanel(cfg)
                 } else if (ui.configError != null) {
                     ErrorPanel(ui.configError!!)
+                }
+                Spacer(Modifier.size(16.dp))
+                // System Health: HA's `system_health/info` report grouped by
+                // integration domain. Each section lists the key/value detail
+                // rows that integration registered, with a clear OK / checking /
+                // failed indicator wherever HA marks a reachability check.
+                Text(text = "INTEGRATIONS", style = R1.labelMicro, color = R1.InkSoft)
+                Spacer(Modifier.size(4.dp))
+                when {
+                    ui.healthSections.isNotEmpty() ->
+                        ui.healthSections.forEach { section ->
+                            HealthSectionPanel(section)
+                            Spacer(Modifier.size(8.dp))
+                        }
+                    ui.healthError != null -> ErrorPanel(ui.healthError!!)
+                    ui.loading -> Text(
+                        text = "Loading system health…",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                    else -> Text(
+                        text = "No integration reported system-health details.",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
                 }
                 Spacer(Modifier.size(12.dp))
                 // Inline ping chip: measures round-trip time to /api/config so users
@@ -214,6 +245,77 @@ private fun ConfigPanel(cfg: com.github.itskenny0.r1ha.core.ha.HaConfig) {
             ).render(multiline = true)
         }
     }
+}
+
+/**
+ * One integration domain's system-health detail block: a titled card whose
+ * header carries the domain name plus a status dot (red when any reachability
+ * check failed, amber while one is still resolving, green otherwise), followed
+ * by the key/value rows.
+ */
+@Composable
+private fun HealthSectionPanel(section: HealthSection) {
+    val headerStatus = when {
+        section.hasFailure -> HealthStatus.FAILED
+        section.hasPending -> HealthStatus.PENDING
+        else -> HealthStatus.OK
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(headerStatus)
+            Spacer(Modifier.size(6.dp))
+            Text(
+                text = section.title.uppercase(),
+                style = R1.labelMicro,
+                color = R1.Ink,
+            )
+        }
+        section.rows.forEach { HealthRowView(it) }
+    }
+}
+
+@Composable
+private fun HealthRowView(row: HealthRow) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = row.label.uppercase(), style = R1.labelMicro, color = R1.InkMuted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (row.value.status != HealthStatus.NEUTRAL) {
+                StatusDot(row.value.status)
+                Spacer(Modifier.size(6.dp))
+            }
+            Text(
+                text = row.value.display,
+                style = R1.body,
+                color = statusColor(row.value.status),
+                maxLines = Int.MAX_VALUE,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusDot(status: HealthStatus) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(statusColor(status)),
+    )
+}
+
+private fun statusColor(status: HealthStatus): androidx.compose.ui.graphics.Color = when (status) {
+    HealthStatus.OK -> R1.AccentGreen
+    HealthStatus.PENDING -> R1.StatusAmber
+    HealthStatus.FAILED -> R1.StatusRed
+    HealthStatus.NEUTRAL -> R1.Ink
 }
 
 @Composable
