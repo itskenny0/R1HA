@@ -55,9 +55,27 @@ class MqttStreamSession(
     /** True when CONNECT has completed and the socket is usable. False on
      *  fresh start, after a disconnect, or after a publish failed. */
     @Volatile private var ready: Boolean = false
+    /** Monotonic timestamp (SystemClock.elapsedRealtime-equivalent via
+     *  System.nanoTime) of the last reconnect attempt. The frame collector
+     *  publishes at 10+ Hz; against a dead broker each publish would call
+     *  connect() with a 10s socket timeout under [ioLock], so without a
+     *  cooldown the collector is pinned 10s at a time and the frame
+     *  SharedFlow's DROP_OLDEST silently swallows every frame in between.
+     *  We rate-limit reconnect attempts: at most one connect() per
+     *  [reconnectCooldownMs]. Between attempts publish() returns false fast
+     *  so the collector keeps draining frames (and the MJPEG sink stays
+     *  live). Self-heal is preserved: the very next publish after the
+     *  cooldown elapses retries, so a broker that comes back is picked up
+     *  within one cooldown window. nanoTime is used because it is immune to
+     *  wall-clock jumps (NTP / user changing the clock). */
+    @Volatile private var lastConnectAttemptNanos: Long = 0L
 
     fun start(): Boolean {
         if (!started.compareAndSet(false, true)) return ready
+        // Seed the cooldown clock so a failed initial connect doesn't let
+        // the first frame publish retry instantly; reconnect attempts are
+        // rate-limited from the very first failure onward.
+        lastConnectAttemptNanos = System.nanoTime()
         return runCatching { connect() }.getOrElse { t ->
             R1Log.w("IotCamera.mqtt", "initial connect failed: ${t.message}")
             false
@@ -84,7 +102,19 @@ class MqttStreamSession(
      *  attempt to reconnect. */
     fun publish(topic: String, payload: ByteArray, retain: Boolean): Boolean {
         if (!started.get()) return false
-        if (!ready && !runCatching { connect() }.getOrDefault(false)) return false
+        if (!ready) {
+            // Reconnect cooldown: a dead broker would otherwise make every
+            // frame publish pay the full 10s connect timeout, pinning the
+            // frame collector. Bail fast until the cooldown elapses; the
+            // caller treats false as "frame dropped, keep streaming".
+            val now = System.nanoTime()
+            val sinceLast = now - lastConnectAttemptNanos
+            if (lastConnectAttemptNanos != 0L && sinceLast < RECONNECT_COOLDOWN_NANOS) {
+                return false
+            }
+            lastConnectAttemptNanos = now
+            if (!runCatching { connect() }.getOrDefault(false)) return false
+        }
         return synchronized(ioLock) {
             val o = out ?: return@synchronized false
             runCatching {
@@ -248,5 +278,16 @@ class MqttStreamSession(
             multiplier *= 128
         }
         error("remaining-length overflow")
+    }
+
+    companion object {
+        /** Minimum spacing between reconnect attempts when the broker is
+         *  down. Long enough that a dead broker can't pin the 10+ Hz frame
+         *  collector (each blocked attempt costs up to one 10s connect
+         *  timeout), short enough that recovery after the broker returns is
+         *  prompt. 5s means worst-case recovery latency is one cooldown plus
+         *  one connect, and a permanently dead broker costs ~1 connect
+         *  attempt every 5s instead of one per frame. */
+        private val RECONNECT_COOLDOWN_NANOS = 5_000_000_000L
     }
 }

@@ -115,7 +115,17 @@ class MjpegServer(
     private suspend fun serve(client: Socket) {
         val remote = client.inetAddress?.hostAddress ?: "?"
         try {
-            client.soTimeout = 0 // long-lived stream; let the kernel notice peer death
+            // Header phase: bound how long a connected-but-silent client can
+            // hold the socket. Without this, a client that opens the TCP
+            // connection and never sends a request line parks this coroutine
+            // (and its socket / FD) forever, since the reads below block with
+            // no timeout. A hostile or buggy client could open many such
+            // connections and slowly exhaust FDs / the IO dispatcher. The
+            // timeout only covers reading the request line + headers; once
+            // we've parsed them and commit to a long-lived /stream response
+            // we clear it back to 0 (see serveStream) so the kernel — not a
+            // read timeout — governs the streaming connection's lifetime.
+            client.soTimeout = HEADER_READ_TIMEOUT_MS
             val reader = BufferedReader(InputStreamReader(client.getInputStream(), Charsets.UTF_8))
             val statusLine = reader.readLine() ?: return
             val parts = statusLine.split(' ')
@@ -184,6 +194,13 @@ class MjpegServer(
     }
 
     private suspend fun Socket.serveStream() {
+        // We've parsed the request and are committing to a never-terminating
+        // multipart response. Clear the header-phase read timeout: this is a
+        // write-only long-lived connection, and a read timeout here is
+        // meaningless (we never read again) while a non-zero SO_TIMEOUT could
+        // surface spurious SocketTimeoutException on some stacks. 0 = let the
+        // kernel notice peer death, matching the original behaviour.
+        runCatching { soTimeout = 0 }
         val out = getOutputStream()
         // Headers — keep-alive isn't needed because the response itself never
         // terminates; the connection only closes when peer disconnects or we
@@ -269,5 +286,13 @@ class MjpegServer(
          *  HTTP parsers split on; matches the convention used by IP Webcam
          *  / motion / mjpg-streamer so HA's existing test matrices pass. */
         const val BOUNDARY = "r1ha_mjpeg_boundary"
+
+        /** Max time a connected client may take to send its request line and
+         *  headers before we drop the socket. Generous enough for any real
+         *  HTTP client (HA, browsers send headers in one packet immediately),
+         *  tight enough that a silent / slow-loris client can't hold a socket
+         *  and FD indefinitely. Applies only to the header phase; cleared for
+         *  the long-lived /stream response. */
+        private const val HEADER_READ_TIMEOUT_MS = 10_000
     }
 }
