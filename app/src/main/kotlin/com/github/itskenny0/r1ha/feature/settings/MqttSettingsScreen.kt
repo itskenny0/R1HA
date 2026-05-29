@@ -2,7 +2,6 @@ package com.github.itskenny0.r1ha.feature.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +31,10 @@ import com.github.itskenny0.r1ha.core.mqtt.MqttPublisher
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -88,7 +91,7 @@ fun MqttSettingsScreen(
                         "Dev menu's publish tool talks to the same broker.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.m),
                 )
             }
 
@@ -105,115 +108,117 @@ fun MqttSettingsScreen(
             }
 
             // ── Broker config ─────────────────────────────────────────
-            item { SubHeader("BROKER") }
             item {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp)) {
-                    Text("Host", style = R1.labelMicro, color = R1.InkSoft)
-                    R1TextField(
-                        value = advanced.mqttHost,
-                        onValueChange = { v ->
-                            vm.updateAdvanced { it.copy(mqttHost = v.trim()) }
-                        },
-                        placeholder = "192.168.1.10 or broker.example.com",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Port", style = R1.labelMicro, color = R1.InkSoft)
-                    R1TextField(
-                        value = advanced.mqttPort.toString(),
-                        onValueChange = { v ->
-                            val p = v.toIntOrNull() ?: return@R1TextField
-                            vm.updateAdvanced { it.copy(mqttPort = p.coerceIn(1, 65535)) }
-                        },
-                        placeholder = "1883 (plain) or 8883 (TLS)",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Username (optional)", style = R1.labelMicro, color = R1.InkSoft)
-                    R1TextField(
-                        value = advanced.mqttUsername,
-                        onValueChange = { v ->
-                            vm.updateAdvanced { it.copy(mqttUsername = v) }
-                        },
-                        placeholder = "anonymous if blank",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text("Password (optional)", style = R1.labelMicro, color = R1.InkSoft)
-                    R1TextField(
-                        value = advanced.mqttPassword,
-                        onValueChange = { v ->
-                            vm.updateAdvanced { it.copy(mqttPassword = v) }
-                        },
-                        placeholder = "broker password",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Use TLS", style = R1.bodyEmph, color = R1.Ink)
-                            Text(
-                                "Wrap the socket with TLS (typically port 8883).",
-                                style = R1.body,
-                                color = R1.InkMuted,
+                R1Section(title = "Broker") {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl)) {
+                        Text("Host", style = R1.labelMicro, color = R1.InkSoft)
+                        R1TextField(
+                            value = advanced.mqttHost,
+                            onValueChange = { v ->
+                                vm.updateAdvanced { it.copy(mqttHost = v.trim()) }
+                            },
+                            placeholder = "192.168.1.10 or broker.example.com",
+                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
+                        )
+                        Spacer(Modifier.height(R1.space.s))
+                        Text("Port", style = R1.labelMicro, color = R1.InkSoft)
+                        R1TextField(
+                            value = advanced.mqttPort.toString(),
+                            onValueChange = { v ->
+                                val p = v.toIntOrNull() ?: return@R1TextField
+                                vm.updateAdvanced { it.copy(mqttPort = p.coerceIn(1, 65535)) }
+                            },
+                            placeholder = "1883 (plain) or 8883 (TLS)",
+                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
+                        )
+                        Spacer(Modifier.height(R1.space.s))
+                        Text("Username (optional)", style = R1.labelMicro, color = R1.InkSoft)
+                        R1TextField(
+                            value = advanced.mqttUsername,
+                            onValueChange = { v ->
+                                vm.updateAdvanced { it.copy(mqttUsername = v) }
+                            },
+                            placeholder = "anonymous if blank",
+                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
+                        )
+                        Spacer(Modifier.height(R1.space.s))
+                        Text("Password (optional)", style = R1.labelMicro, color = R1.InkSoft)
+                        R1TextField(
+                            value = advanced.mqttPassword,
+                            onValueChange = { v ->
+                                vm.updateAdvanced { it.copy(mqttPassword = v) }
+                            },
+                            placeholder = "broker password",
+                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
+                        )
+                        Spacer(Modifier.height(R1.space.m))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Use TLS", style = R1.bodyEmph, color = R1.Ink)
+                                Text(
+                                    "Wrap the socket with TLS (typically port 8883).",
+                                    style = R1.body,
+                                    color = R1.InkMuted,
+                                )
+                            }
+                            R1Switch(
+                                checked = advanced.mqttUseTls,
+                                onCheckedChange = { v ->
+                                    vm.updateAdvanced { it.copy(mqttUseTls = v) }
+                                },
                             )
                         }
-                        R1Switch(
-                            checked = advanced.mqttUseTls,
-                            onCheckedChange = { v ->
-                                vm.updateAdvanced { it.copy(mqttUseTls = v) }
+                        Spacer(Modifier.height(R1.space.s))
+                        Text("Client id (optional)", style = R1.labelMicro, color = R1.InkSoft)
+                        R1TextField(
+                            value = advanced.mqttClientId,
+                            onValueChange = { v ->
+                                vm.updateAdvanced { it.copy(mqttClientId = v.trim()) }
                             },
+                            placeholder = "auto-generated per publish if blank",
+                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Client id (optional)", style = R1.labelMicro, color = R1.InkSoft)
-                    R1TextField(
-                        value = advanced.mqttClientId,
-                        onValueChange = { v ->
-                            vm.updateAdvanced { it.copy(mqttClientId = v.trim()) }
-                        },
-                        placeholder = "auto-generated per publish if blank",
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
                 }
             }
 
             // ── Test connection ───────────────────────────────────────
-            item { SubHeader("TEST") }
             item {
-                TestConnectionBlock(
-                    enabled = advanced.mqttHost.isNotBlank(),
-                    state = testState,
-                    onRun = {
-                        testState = TestState.Running
-                        scope.launch {
-                            val ts = System.currentTimeMillis()
-                            val result = MqttPublisher.publish(
-                                host = advanced.mqttHost,
-                                port = advanced.mqttPort,
-                                topic = "r1ha/diagnostic/test",
-                                payload = "r1ha test ping @ $ts".toByteArray(Charsets.UTF_8),
-                                username = advanced.mqttUsername.ifBlank { null },
-                                password = advanced.mqttPassword.ifBlank { null },
-                                useTls = advanced.mqttUseTls,
-                            )
-                            testState = result.fold(
-                                onSuccess = {
-                                    TestState.Success(
-                                        topic = "r1ha/diagnostic/test",
-                                        atMillis = System.currentTimeMillis(),
-                                    )
-                                },
-                                onFailure = { t ->
-                                    TestState.Failure(
-                                        reason = t.message ?: t::class.java.simpleName,
-                                        atMillis = System.currentTimeMillis(),
-                                    )
-                                },
-                            )
-                        }
-                    },
-                )
+                R1Section(title = "Test") {
+                    TestConnectionBlock(
+                        enabled = advanced.mqttHost.isNotBlank(),
+                        state = testState,
+                        onRun = {
+                            testState = TestState.Running
+                            scope.launch {
+                                val ts = System.currentTimeMillis()
+                                val result = MqttPublisher.publish(
+                                    host = advanced.mqttHost,
+                                    port = advanced.mqttPort,
+                                    topic = "r1ha/diagnostic/test",
+                                    payload = "r1ha test ping @ $ts".toByteArray(Charsets.UTF_8),
+                                    username = advanced.mqttUsername.ifBlank { null },
+                                    password = advanced.mqttPassword.ifBlank { null },
+                                    useTls = advanced.mqttUseTls,
+                                )
+                                testState = result.fold(
+                                    onSuccess = {
+                                        TestState.Success(
+                                            topic = "r1ha/diagnostic/test",
+                                            atMillis = System.currentTimeMillis(),
+                                        )
+                                    },
+                                    onFailure = { t ->
+                                        TestState.Failure(
+                                            reason = t.message ?: t::class.java.simpleName,
+                                            atMillis = System.currentTimeMillis(),
+                                        )
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             }
 
             // ── Per-feature MQTT enablement ───────────────────────────
@@ -221,37 +226,39 @@ fun MqttSettingsScreen(
             // are the features that USE that connection. Each is a quick
             // toggle / link so the user can see at a glance what's
             // currently writing to this broker.
-            item { SubHeader("USED BY") }
             item {
-                FeatureRow(
-                    title = "IoT Camera Mode",
-                    on = s.iotCamera.enabled && s.iotCamera.mqttEnabled,
-                    detail = if (s.iotCamera.mqttEnabled) {
-                        "MQTT sink on; publishes discovery and JPEG frames"
-                    } else {
-                        "Camera mode's MQTT sink is off (configure in IoT Camera Mode)"
-                    },
-                )
+                R1Section(title = "Used by") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl),
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(R1.space.xs),
+                    ) {
+                        FeatureRow(
+                            title = "IoT Camera Mode",
+                            on = s.iotCamera.enabled && s.iotCamera.mqttEnabled,
+                            detail = if (s.iotCamera.mqttEnabled) {
+                                "MQTT sink on; publishes discovery and JPEG frames"
+                            } else {
+                                "Camera mode's MQTT sink is off (configure in IoT Camera Mode)"
+                            },
+                        )
+                        FeatureRow(
+                            title = "IoT Sensors Mode",
+                            on = s.iotSensors.enabled,
+                            detail = if (s.iotSensors.enabled) {
+                                "Publishing sensors and subscribed to control topics"
+                            } else {
+                                "Off (configure in IoT Sensors Mode)"
+                            },
+                        )
+                        FeatureRow(
+                            title = "Dev menu publish tool",
+                            on = false,
+                            detail = "One-shot manual publish for testing topics",
+                        )
+                    }
+                }
             }
-            item {
-                FeatureRow(
-                    title = "IoT Sensors Mode",
-                    on = s.iotSensors.enabled,
-                    detail = if (s.iotSensors.enabled) {
-                        "Publishing sensors and subscribed to control topics"
-                    } else {
-                        "Off (configure in IoT Sensors Mode)"
-                    },
-                )
-            }
-            item {
-                FeatureRow(
-                    title = "Dev menu publish tool",
-                    on = false,
-                    detail = "One-shot manual publish for testing topics",
-                )
-            }
-            item { Spacer(Modifier.height(48.dp)) }
+            item { Spacer(Modifier.height(R1.MinTarget)) }
         }
     }
 }
@@ -289,24 +296,24 @@ private fun ConnectionStateCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, borderTint, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StatePill(label = pill.label, tint = pill.tint)
+            R1Chip(text = pill.label, variant = R1ChipVariant.Pill, tone = pill.tint)
             Spacer(Modifier.weight(1f))
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         if (configured) {
             Text(
                 text = "$host:$port",
                 style = R1.body.copy(fontFamily = FontFamily.Monospace),
                 color = R1.Ink,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = buildString {
                     append(if (tls) "TLS" else "PLAIN")
@@ -325,7 +332,7 @@ private fun ConnectionStateCard(
         }
         when (val ts = testState) {
             is TestState.Failure -> {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 Text(
                     text = "LAST ERROR",
                     style = R1.labelMicro,
@@ -335,7 +342,7 @@ private fun ConnectionStateCard(
                     text = ts.reason,
                     style = R1.body,
                     color = R1.StatusRed,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             else -> Unit
@@ -346,26 +353,13 @@ private fun ConnectionStateCard(
 private data class Pill(val label: String, val tint: Color)
 
 @Composable
-private fun StatePill(label: String, tint: Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeRound)
-            .background(tint.copy(alpha = 0.16f))
-            .border(1.dp, tint.copy(alpha = 0.55f), R1.ShapeRound)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = tint)
-    }
-}
-
-@Composable
 private fun TestConnectionBlock(
     enabled: Boolean,
     state: TestState,
     onRun: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl),
     ) {
         val running = state is TestState.Running
         val tint = when {
@@ -378,7 +372,7 @@ private fun TestConnectionBlock(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(R1.MinTarget)
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -396,7 +390,7 @@ private fun TestConnectionBlock(
                 color = tint,
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         when (state) {
             TestState.Idle -> {
                 Text(
@@ -426,7 +420,7 @@ private fun TestConnectionBlock(
                         ". Broker accepted the CONNECT + PUBLISH cycle.",
                     style = R1.body,
                     color = R1.InkSoft,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             is TestState.Failure -> {
@@ -439,7 +433,7 @@ private fun TestConnectionBlock(
                     text = state.reason,
                     style = R1.body,
                     color = R1.StatusRed,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
         }
@@ -448,37 +442,18 @@ private fun TestConnectionBlock(
 
 @Composable
 private fun FeatureRow(title: String, on: Boolean, detail: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
-            .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(R1.ShapeRound)
-                .background(if (on) R1.AccentGreen else R1.InkMuted),
-        )
-        Spacer(Modifier.size(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = R1.bodyEmph, color = R1.Ink)
-            Text(detail, style = R1.labelMicro, color = R1.InkMuted)
-        }
-    }
-}
-
-@Composable
-private fun SubHeader(text: String) {
-    Text(
-        text = text,
-        style = R1.sectionHeader,
-        color = R1.AccentWarm,
-        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp),
+    R1Row(
+        label = title,
+        description = detail,
+        boxed = true,
+        leadingContent = {
+            Box(
+                modifier = Modifier
+                    .size(R1.space.s)
+                    .clip(R1.ShapeRound)
+                    .background(if (on) R1.AccentGreen else R1.InkMuted),
+            )
+        },
     )
 }
 
