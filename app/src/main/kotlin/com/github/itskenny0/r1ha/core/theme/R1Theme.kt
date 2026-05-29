@@ -118,6 +118,17 @@ data class CardRenderModel(
      * (e.g. theme picker samples) where there's no real entity backing.
      */
     val entityState: com.github.itskenny0.r1ha.core.ha.EntityState? = null,
+    /**
+     * Where the main value bar (brightness / volume / cover-position /
+     * setpoint slider) sits on this card. Resolved at the call site that
+     * builds the model: the per-card [EntityOverride.valueBarLocation]
+     * wins over the global [UiOptions.valueBarLocation], so themes just
+     * read this single effective value. Default RIGHT matches the
+     * historical flush-right layout. HIDDEN drops the bar entirely (the
+     * wheel and tap-to-toggle still drive the card).
+     */
+    val valueBarLocation: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation =
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT,
 ) {
     enum class Glyph {
         LIGHT, FAN, COVER, MEDIA_PLAYER,

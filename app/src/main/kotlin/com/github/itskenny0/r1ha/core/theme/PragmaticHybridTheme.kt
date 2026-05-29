@@ -89,14 +89,16 @@ object PragmaticHybridTheme : R1Theme {
             ?: accentColor(model.accent)
         val ui = LocalUiOptions.current
 
-        Row(
-            modifier = modifier
+        CardValueBarScaffold(
+            model = model,
+            accent = accent,
+            outer = modifier
                 .fillMaxSize()
                 .background(R1.Bg)
                 .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
         ) {
             // ── Main content column ─────────────────────────────────────────────────
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 DomainHeader(
                     domainLabel = domainLabel(model.domainGlyph),
                     area = model.area,
@@ -310,24 +312,102 @@ object PragmaticHybridTheme : R1Theme {
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) OnOffPill(isOn = model.isOn, accent = accent)
             }
-
-            // ── Vertical tape meter — inset from the right edge, ~200 dp tall ───────
-            Spacer(Modifier.width(20.dp))
-            VerticalTapeMeter(
-                entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText),
-                percent = model.percent,
-                accent = accent,
-                tickLabels = model.meterLabels,
-                // Rainbow fill when the wheel is in HUE mode — the bar then doubles as
-                // a colour reference so the user can see what the wheel is selecting
-                // (top: red, scrolling through to violet/red again at the bottom).
-                rainbow = model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE,
-            )
         }
     }
 }
 
 // ── Building blocks ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Shared card scaffold that places the main value bar on the edge the effective
+ * [com.github.itskenny0.r1ha.core.prefs.ValueBarLocation] picks, with the supplied
+ * [content] (the card's body column) filling the remaining space. Centralises the
+ * five-way layout switch so every theme reads the same logic rather than copy-pasting
+ * the `when` branch three times.
+ *
+ * LEFT / RIGHT lay out a [Row] with a full-height [VerticalTapeMeter] on that edge.
+ * TOP / BOTTOM lay out a [Column] with a full-width [HorizontalTapeMeter] on that edge.
+ * HIDDEN drops the bar entirely; [content] fills the whole card (the wheel and
+ * tap-to-toggle still drive the card).
+ *
+ * [outer] is the theme's already-padded root modifier (background + padding); the
+ * scaffold applies it to the outer Row/Column so each theme keeps its own backdrop.
+ */
+@Composable
+internal fun CardValueBarScaffold(
+    model: CardRenderModel,
+    accent: Color,
+    outer: Modifier,
+    tickLabelColor: Color = R1.InkMuted,
+    content: @Composable () -> Unit,
+) {
+    val entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText)
+    val rainbow = model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE
+    when (model.valueBarLocation) {
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT -> {
+            Row(modifier = outer) {
+                VerticalTapeMeter(
+                    entityId = entityId,
+                    percent = model.percent,
+                    accent = accent,
+                    tickLabels = model.meterLabels,
+                    rainbow = rainbow,
+                    tickLabelColor = tickLabelColor,
+                )
+                Spacer(Modifier.width(20.dp))
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
+            }
+        }
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT -> {
+            Row(modifier = outer) {
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
+                Spacer(Modifier.width(20.dp))
+                VerticalTapeMeter(
+                    entityId = entityId,
+                    percent = model.percent,
+                    accent = accent,
+                    tickLabels = model.meterLabels,
+                    rainbow = rainbow,
+                    tickLabelColor = tickLabelColor,
+                )
+            }
+        }
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP -> {
+            Column(modifier = outer) {
+                HorizontalTapeMeter(
+                    entityId = entityId,
+                    percent = model.percent,
+                    accent = accent,
+                    tickLabels = model.meterLabels,
+                    rainbow = rainbow,
+                    tickLabelColor = tickLabelColor,
+                )
+                Spacer(Modifier.height(14.dp))
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+            }
+        }
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM -> {
+            Column(modifier = outer) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+                Spacer(Modifier.height(14.dp))
+                HorizontalTapeMeter(
+                    entityId = entityId,
+                    percent = model.percent,
+                    accent = accent,
+                    tickLabels = model.meterLabels,
+                    rainbow = rainbow,
+                    tickLabelColor = tickLabelColor,
+                )
+            }
+        }
+        com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN -> {
+            Box(modifier = outer) {
+                Box(modifier = Modifier.fillMaxSize()) { content() }
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun DomainHeader(
@@ -599,6 +679,160 @@ internal fun VerticalTapeMeter(
                 borderInRainbow = rainbow,
             )
         }
+    }
+}
+
+/**
+ * Horizontal sibling of [VerticalTapeMeter]: identical behaviour (touch-drag to
+ * scrub, clickable tick labels, HUE rainbow track mode, accent fill, spring) but
+ * along the X axis. The fill grows left→right, drag reads the X position, and the
+ * tick labels are distributed horizontally (left = 0, right = 100). Used when the
+ * effective [ValueBarLocation] is TOP or BOTTOM so the bar runs along the card's
+ * full width rather than its height.
+ */
+@Composable
+internal fun HorizontalTapeMeter(
+    entityId: com.github.itskenny0.r1ha.core.ha.EntityId,
+    percent: Int,
+    accent: Color,
+    /** Left→right tick labels. Null = the default 0..100 percent labels. The
+     *  list is reversed relative to [VerticalTapeMeter] (which is top→bottom)
+     *  so callers can pass the same top-to-bottom range and get a sensible
+     *  low-to-high left-to-right reading. */
+    tickLabels: List<String>? = null,
+    rainbow: Boolean = false,
+    tickLabelColor: Color = R1.InkMuted,
+) {
+    val fraction = rememberSliderFraction(percent).coerceIn(0f, 1f)
+    // VerticalTapeMeter's labels list is top→bottom (high→low). Reverse it so the
+    // horizontal bar reads low→high left→right, which is the natural orientation
+    // for a left-grows fill.
+    val labels = (tickLabels ?: listOf("100", "75", "50", "25", "0")).reversed()
+    val onSetPercent = com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent.current
+    val interactive = onSetPercent != null
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Track + fill + thumb. The track is touch-draggable: press at any X to
+        // jump there, drag to scrub. fraction = X / trackWidth because pointer X
+        // is in pixels-from-the-left and the fill grows from the left.
+        val trackWidthPx = androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+        val trackInteractionMod = if (interactive) {
+            Modifier
+                .onSizeChanged { trackWidthPx.floatValue = it.width.coerceAtLeast(1).toFloat() }
+                .pointerInput(entityId) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val initial = (down.position.x / trackWidthPx.floatValue)
+                            .coerceIn(0f, 1f)
+                        onSetPercent?.invoke(entityId, (initial * 100f).toInt().coerceIn(0, 100))
+                        down.consume()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change == null || !change.pressed) break
+                            if (change.position != change.previousPosition) {
+                                val frac = (change.position.x / trackWidthPx.floatValue)
+                                    .coerceIn(0f, 1f)
+                                onSetPercent?.invoke(entityId, (frac * 100f).toInt().coerceIn(0, 100))
+                            }
+                            change.consume()
+                        }
+                    }
+                }
+        } else Modifier
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .then(trackInteractionMod),
+        ) {
+            if (rainbow) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(rainbowStops())),
+                )
+            } else {
+                // Hairline track.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .align(Alignment.Center)
+                        .background(R1.SurfaceMuted),
+                )
+                // Fill — grows from the left to `fraction` of available width.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction)
+                        .height(4.dp)
+                        .align(Alignment.CenterStart)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accent),
+                )
+            }
+            HorizontalThumbCapsule(
+                fraction = fraction,
+                accent = if (rainbow) R1.Ink else accent,
+                borderInRainbow = rainbow,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        // Tick labels — left→right, each clickable to jump to that value.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            labels.forEachIndexed { idx, tick ->
+                // Left label = 0, right = 100; evenly spaced.
+                val targetPct = if (labels.size <= 1) 100
+                    else (100f * idx / (labels.size - 1)).toInt()
+                val labelMod = if (interactive) {
+                    Modifier
+                        .clip(R1.ShapeS)
+                        .r1Pressable(onClick = { onSetPercent?.invoke(entityId, targetPct) })
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                } else Modifier
+                Text(
+                    text = tick,
+                    style = R1.numeralS,
+                    color = tickLabelColor,
+                    modifier = labelMod,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HorizontalThumbCapsule(fraction: Float, accent: Color, borderInRainbow: Boolean = false) {
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val trackW = maxWidth
+        val thumbW = 6.dp
+        val travel = trackW - thumbW
+        // fraction = 0.0 → thumb at the left; fraction = 1.0 → thumb at the right.
+        // `offset` (not `padding`) because the slider's spring overshoots past 1.0.
+        val offsetFromStart = travel * fraction
+        Box(
+            modifier = Modifier
+                .offset(x = offsetFromStart)
+                .height(14.dp)
+                .width(thumbW + if (borderInRainbow) 2.dp else 0.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(accent)
+                .let { m ->
+                    if (borderInRainbow) m.border(1.dp, R1.Bg, RoundedCornerShape(3.dp)) else m
+                },
+        )
     }
 }
 
