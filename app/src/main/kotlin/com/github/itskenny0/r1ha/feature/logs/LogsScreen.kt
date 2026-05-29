@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -251,7 +252,12 @@ private fun LogBody(
             )
         }
         else -> {
-            val visible = vm.filteredLines(ui)
+            // Re-derive the filtered view only when the underlying lines or the
+            // level/query filters change, not on every recomposition. The body can
+            // be up to 512 KB of lines; recomputing the substring/level filter on
+            // each AutoRefresh tick, keystroke, and scroll-driven recomposition was
+            // scanning the whole list redundantly.
+            val visible = remember(ui.lines, ui.level, ui.query) { vm.filteredLines(ui) }
             if (visible.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -271,6 +277,14 @@ private fun LogBody(
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS),
                 ) {
+                    // The monospace line style is constant; build it once rather than
+                    // allocating a fresh TextStyle.copy per line per recomposition.
+                    val lineStyle = remember {
+                        R1.body.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = TextUnit(11f, TextUnitType.Sp),
+                        )
+                    }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -280,7 +294,7 @@ private fun LogBody(
                         ),
                     ) {
                         items(items = visible, key = { it.index }) { line ->
-                            LogLineRow(line)
+                            LogLineRow(line, lineStyle)
                         }
                     }
                 }
@@ -290,7 +304,7 @@ private fun LogBody(
 }
 
 @Composable
-private fun LogLineRow(line: LogsViewModel.Line) {
+private fun LogLineRow(line: LogsViewModel.Line, style: androidx.compose.ui.text.TextStyle) {
     val accent = when (line.level) {
         LogsViewModel.Level.ERROR -> R1.StatusRed
         LogsViewModel.Level.WARN -> R1.StatusAmber
@@ -300,10 +314,7 @@ private fun LogLineRow(line: LogsViewModel.Line) {
     }
     Text(
         text = line.text.ifBlank { " " },
-        style = R1.body.copy(
-            fontFamily = FontFamily.Monospace,
-            fontSize = TextUnit(11f, TextUnitType.Sp),
-        ),
+        style = style,
         color = accent,
         modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
     )

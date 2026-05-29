@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -114,7 +115,11 @@ fun IntegrationsScreen(
                         onRefresh = { vm.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        val sections = ui.sections
+                        // Group + sort only when the entry set or active filter
+                        // changes, not on every recomposition (e.g. each per-row
+                        // reload spinner flip, which mutates reloadingIds and
+                        // re-emits UiState).
+                        val sections = remember(ui.all, ui.filter) { ui.sections }
                         if (sections.isEmpty()) {
                             EmptyState(
                                 message = when (ui.filter) {

@@ -269,7 +269,11 @@ private fun AggregationChips(
 
 @Composable
 private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiState) {
-    val points = vm.seriesPoints(ui)
+    // seriesPoints allocates a fresh list each call; deriving it only when the
+    // buckets or aggregation change keeps its identity stable so the
+    // remember(points) chart projection below actually hits its cache instead of
+    // reprojecting on every Canvas invalidation / scrub-state change.
+    val points = remember(ui.buckets, ui.aggregation) { vm.seriesPoints(ui) }
     val unit = ui.selected?.unitOfMeasurement?.takeIf { it.isNotBlank() }
     Column(
         modifier = Modifier
@@ -490,13 +494,22 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
 
 @Composable
 private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiState) {
-    val points = vm.seriesPoints(ui)
+    val points = remember(ui.buckets, ui.aggregation) { vm.seriesPoints(ui) }
     val unit = ui.selected?.unitOfMeasurement?.takeIf { it.isNotBlank() }
-    val values = points.map { it.value }
-    val current = values.lastOrNull()
-    val min = values.minOrNull()
-    val max = values.maxOrNull()
-    val avg = if (values.isNotEmpty()) values.sum() / values.size else null
+    val summary = remember(points) {
+        val values = points.map { it.value }
+        SummaryStats(
+            current = values.lastOrNull(),
+            min = values.minOrNull(),
+            max = values.maxOrNull(),
+            avg = if (values.isNotEmpty()) values.sum() / values.size else null,
+            count = points.size,
+        )
+    }
+    val current = summary.current
+    val min = summary.min
+    val max = summary.max
+    val avg = summary.avg
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -533,11 +546,21 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
         )
         SummaryRow(
             label = "BUCKETS",
-            value = "${points.size}",
+            value = "${summary.count}",
             accent = R1.InkSoft,
         )
     }
 }
+
+/** Pre-computed summary aggregates so the SUMMARY panel doesn't re-scan the
+ *  projected series on every recomposition. */
+private data class SummaryStats(
+    val current: Double?,
+    val min: Double?,
+    val max: Double?,
+    val avg: Double?,
+    val count: Int,
+)
 
 @Composable
 private fun SummaryRow(

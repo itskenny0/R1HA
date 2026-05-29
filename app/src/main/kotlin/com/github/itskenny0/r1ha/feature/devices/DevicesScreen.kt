@@ -117,7 +117,27 @@ fun DevicesScreen(
                         onRefresh = { vm.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        val sections = ui.sections
+                        // Derive the grouped/sorted sections and the device->count
+                        // lookups once per data/filter/grouping change rather than on
+                        // every recomposition (scroll, expand toggle, refresh-spinner
+                        // flip). With 1000+ devices/entities the getters on UiState are
+                        // O(devices x entities); recomputing them per frame, and the
+                        // per-row areaName/entitiesFor lookups inside the loop, was the
+                        // dominant render cost on this screen.
+                        val sections = remember(ui.devices, ui.areas, ui.query, ui.grouping) {
+                            ui.sections
+                        }
+                        val filteredCount = remember(ui.devices, ui.areas, ui.query) {
+                            ui.filteredDevices.size
+                        }
+                        val areaName = remember(ui.areas) { ui.areaName }
+                        // Group the full entity registry by device once so each row is an
+                        // O(1) map lookup instead of an O(entities) filter+sort.
+                        val entitiesByDevice = remember(ui.entities) {
+                            ui.entities
+                                .groupBy { it.deviceId }
+                                .mapValues { (_, list) -> list.sortedBy { it.displayName.lowercase() } }
+                        }
                         if (sections.isEmpty()) {
                             EmptyState(message = "No matches for '${ui.query}'.")
                         } else {
@@ -131,8 +151,8 @@ fun DevicesScreen(
                             ) {
                                 item {
                                     Text(
-                                        text = "${ui.filteredDevices.size} DEVICE" +
-                                            if (ui.filteredDevices.size == 1) "" else "S",
+                                        text = "$filteredCount DEVICE" +
+                                            if (filteredCount == 1) "" else "S",
                                         style = R1.labelMicro,
                                         color = R1.AccentCool,
                                         modifier = Modifier.padding(vertical = 4.dp),
@@ -144,13 +164,14 @@ fun DevicesScreen(
                                     }
                                     for (device in devices) {
                                         item(key = "device/${device.id}") {
+                                            val deviceEntities = entitiesByDevice[device.id].orEmpty()
                                             DeviceRow(
                                                 device = device,
-                                                areaName = device.areaId?.let { ui.areaName[it] },
+                                                areaName = device.areaId?.let { areaName[it] },
                                                 expanded = openedDeviceId == device.id,
-                                                entityCount = ui.entitiesFor(device.id).size,
+                                                entityCount = deviceEntities.size,
                                                 entities = if (openedDeviceId == device.id)
-                                                    ui.entitiesFor(device.id) else emptyList(),
+                                                    deviceEntities else emptyList(),
                                                 onToggle = {
                                                     openedDeviceId = if (openedDeviceId == device.id)
                                                         null else device.id
