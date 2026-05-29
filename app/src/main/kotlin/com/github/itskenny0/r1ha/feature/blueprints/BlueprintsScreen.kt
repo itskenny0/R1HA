@@ -536,5 +536,24 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 maxLines = 6,
             )
         }
+        // Spell out why INSTALL is greyed out when HA returned no installable
+        // payload. validationErrors already render as their own red banner in
+        // the dialog, so only cover the structural cases here.
+        val blockReason = when {
+            preview.validationErrors.isNullOrBlank() && preview.rawYaml.isNullOrBlank() ->
+                "This Home Assistant version didn't return the blueprint contents, so it " +
+                    "can't be installed from here. Update HA Core, or add it from HA's web UI."
+            preview.validationErrors.isNullOrBlank() && preview.path.isBlank() ->
+                "HA didn't suggest a filename for this blueprint, so it can't be saved from here."
+            else -> null
+        }
+        if (blockReason != null) {
+            Text(
+                text = blockReason,
+                style = R1.labelMicro,
+                color = R1.StatusAmber,
+                maxLines = 4,
+            )
+        }
     }
 }
