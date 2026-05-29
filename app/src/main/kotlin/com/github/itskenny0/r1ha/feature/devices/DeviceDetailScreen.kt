@@ -21,6 +21,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
 import com.github.itskenny0.r1ha.core.ha.EntityState
@@ -160,7 +164,15 @@ private fun DomainHeader(group: DeviceEntityGroup) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs)
+            // Domain group title is a TalkBack heading so users can jump between
+            // the entity groups; the count pill is folded into the spoken label.
+            .semantics(mergeDescendants = true) {
+                heading()
+                val noun = if (group.entities.size == 1) "entity" else "entities"
+                contentDescription =
+                    "${group.domain.replace('_', ' ')}, ${group.entities.size} $noun"
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -184,12 +196,28 @@ private fun DomainHeader(group: DeviceEntityGroup) {
 private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
     val registryDisabled = entity.disabledBy != null || entity.hiddenBy != null
     val muted = registryDisabled || live?.isAvailable == false
+    // Spoken state mirrors the visible pill: the live readout when HA reports
+    // one, or "no live state" when it doesn't. Tags (platform, disabled, hidden)
+    // are folded into the merged label so they are announced, not just shown.
+    val stateSpoken = if (live == null) "no live state" else liveStateLabel(live)
+    val rowTags = buildList {
+        entity.platform?.takeIf { it.isNotBlank() }?.let { add(it) }
+        if (entity.disabledBy != null) add("disabled")
+        if (entity.hiddenBy != null) add("hidden")
+    }
+    val rowDescription = DevicesA11y.entityRowDescription(
+        name = entity.displayName,
+        entityId = entity.entityId,
+        stateSpoken = stateSpoken,
+        tags = rowTags,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .clearAndSetSemantics { contentDescription = rowDescription }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

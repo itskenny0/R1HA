@@ -50,6 +50,10 @@ import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
+import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -181,7 +185,9 @@ fun LogbookScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .semantics { contentDescription = "Loading recent activity" },
                     strokeWidth = 2.dp,
                     color = R1.AccentWarm,
                 )
@@ -235,11 +241,16 @@ fun LogbookScreen(
                     // the app. Each group's count rides in the section pill.
                     for (group in groups) {
                         item(key = "hdr|${group.header}") {
-                            R1Section(
-                                title = group.header,
-                                count = group.entries.size,
-                                topSpace = R1.space.s,
-                            ) {}
+                            // Promote the day header to a TalkBack heading so a
+                            // screen-reader user can jump between TODAY /
+                            // YESTERDAY / dated buckets.
+                            Box(modifier = Modifier.semantics { heading() }) {
+                                R1Section(
+                                    title = group.header,
+                                    count = group.entries.size,
+                                    topSpace = R1.space.s,
+                                ) {}
+                            }
                         }
                         items(
                             items = group.entries,
@@ -397,6 +408,18 @@ private fun LogbookRow(
     onTap: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    // Fold domain, name, message, resulting state, attribution, and relative
+    // time into one spoken phrase so TalkBack reads the row as a single unit
+    // rather than reading the glyph, name, message, and timestamp separately.
+    val relative = rememberRelativeTime(entry.timestamp)
+    val rowDescription = LogbookA11y.rowDescription(
+        domain = entry.domain,
+        name = entry.name,
+        message = entry.message,
+        state = entry.state,
+        triggeredBy = triggeredByLabel(entry),
+        relativeTime = relative,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -409,8 +432,16 @@ private fun LogbookRow(
             // system events). Long-press = open the entity's /history view in
             // HA's web UI via the system browser, for users who want the full
             // HA-native graph view alongside this app.
-            .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
+            .r1RowPressable(
+                onTap = onTap,
+                onLongPress = onLongPress,
+                contentDescription = LogbookA11y.rowActionLabel(entry.name),
+            )
             .heightIn(min = R1.MinTarget)
+            // mergeDescendants (not clearAndSet) keeps the row's click action for
+            // TalkBack's double-tap while replacing the child fragments with one
+            // spoken phrase.
+            .semantics(mergeDescendants = true) { contentDescription = rowDescription }
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {

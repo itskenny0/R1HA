@@ -30,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.DeviceInfo
@@ -122,7 +125,9 @@ fun DevicesScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = "Loading devices" },
                             strokeWidth = 2.dp,
                             color = R1.AccentWarm,
                         )
@@ -233,8 +238,8 @@ private fun SearchAndGroupBar(
                 Spacer(Modifier.width(6.dp))
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
-                        .r1Pressable({ onQueryChange("") }),
+                        .size(R1.MinTarget)
+                        .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = "X", style = R1.labelMicro, color = R1.InkSoft)
@@ -274,7 +279,14 @@ private fun SectionHeader(label: String, count: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs)
+            // Promote the section to a TalkBack heading so users can jump
+            // between area / manufacturer groups, and merge the label + count
+            // pill into one spoken phrase ("Kitchen, 3 devices").
+            .semantics(mergeDescendants = true) {
+                heading()
+                contentDescription = DevicesA11y.sectionHeaderDescription(label, count)
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -302,13 +314,27 @@ private fun DeviceRow(
     onOpen: () -> Unit,
 ) {
     val disabled = device.disabledBy != null
+    // Fold the name, entity count, area, maker/model, and disabled-state into
+    // one spoken phrase so TalkBack reads the row as a unit and the "disabled"
+    // status is announced in words rather than implied by the dimmed fill.
+    val rowDescription = DevicesA11y.deviceRowDescription(
+        name = device.displayName,
+        entityCount = entityCount,
+        areaName = areaName,
+        manufacturer = device.manufacturer,
+        model = device.model,
+        disabled = disabled,
+    )
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(if (disabled) R1.Bg else R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onOpen)
+            .r1Pressable(onClick = onOpen, contentDescription = "Open ${device.displayName}")
+            // mergeDescendants keeps the row's click action for TalkBack's
+            // double-tap while replacing the child text with one spoken phrase.
+            .semantics(mergeDescendants = true) { contentDescription = rowDescription }
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
