@@ -233,6 +233,47 @@ class AreasViewModel(
         _drill.value?.area?.let { openArea(it) }
     }
 
+    /**
+     * Rename the currently drilled-in area via HA's area registry. The drill-in
+     * carries the stable [Area.areaId] HA keys on. On success we patch the open
+     * drill's name (so the top bar updates immediately), refresh the underlying
+     * area list (so the rename shows when the user backs out), and re-resolve the
+     * drill so the new name flows through. On failure we surface a toast and leave
+     * the existing name untouched.
+     */
+    fun renameArea(newName: String) {
+        val current = _drill.value?.area ?: return
+        val areaId = current.areaId
+        val trimmed = newName.trim()
+        if (areaId.isNullOrBlank()) {
+            Toaster.error("This area has no stable id to rename")
+            return
+        }
+        if (trimmed.isEmpty() || trimmed == current.name) return
+        viewModelScope.launch {
+            haRepository.renameArea(areaId, trimmed).fold(
+                onSuccess = {
+                    R1Log.i("Areas", "renamed '$areaId' to '$trimmed'")
+                    Toaster.show("Renamed to '$trimmed'")
+                    // Patch the open drill so the top bar reflects the new name
+                    // without waiting for the list refresh to round-trip.
+                    _drill.value?.let { d ->
+                        if (d.area.areaId == areaId) {
+                            _drill.value = d.copy(area = d.area.copy(name = trimmed))
+                        }
+                    }
+                    // Refresh the backing list so the new name is in place when
+                    // the user returns to it.
+                    refresh()
+                },
+                onFailure = { t ->
+                    R1Log.w("Areas", "rename '$areaId' failed: ${t.message}")
+                    Toaster.error("Rename failed: ${t.message ?: "unknown"}")
+                },
+            )
+        }
+    }
+
     /** Close the drill-in and return to the area list. */
     fun closeArea() {
         _drill.value = null

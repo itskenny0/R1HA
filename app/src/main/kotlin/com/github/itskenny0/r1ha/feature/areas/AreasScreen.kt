@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -30,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.Domain
@@ -40,6 +43,9 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1Button
+import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -87,6 +93,7 @@ fun AreasScreen(
             onBack = { vm.closeArea() },
             onRefresh = { vm.refreshDrill() },
             onTapEntity = { vm.activate(it) },
+            onRename = { vm.renameArea(it) },
         )
         return
     }
@@ -298,8 +305,13 @@ private fun AreaDrillScreen(
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onTapEntity: (EntityState) -> Unit,
+    onRename: (String) -> Unit,
 ) {
     val matchedCount = drill.groups.sumOf { it.entities.size }
+    // The rename affordance only makes sense when HA gave us a stable area_id
+    // to key the update on; areas surfaced without one stay refresh-only.
+    val canRename = !drill.area.areaId.isNullOrBlank()
+    var renaming by remember(drill.area.areaId) { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -310,18 +322,44 @@ private fun AreaDrillScreen(
             title = drill.area.name.uppercase(),
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = onRefresh)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = "REFRESH", style = R1.labelMicro, color = R1.InkSoft)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (canRename) {
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.SurfaceMuted)
+                                .border(1.dp, R1.Hairline, R1.ShapeS)
+                                .r1Pressable(onClick = { renaming = true })
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                        ) {
+                            Text(text = "RENAME", style = R1.labelMicro, color = R1.InkSoft)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.Hairline, R1.ShapeS)
+                            .r1Pressable(onClick = onRefresh)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(text = "REFRESH", style = R1.labelMicro, color = R1.InkSoft)
+                    }
                 }
             },
         )
+        if (renaming) {
+            RenameAreaSheet(
+                areaId = drill.area.areaId.orEmpty(),
+                currentName = drill.area.name,
+                onDismiss = { renaming = false },
+                onSave = { name ->
+                    renaming = false
+                    onRename(name)
+                },
+            )
+        }
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 drill.loading && drill.groups.isEmpty() -> Box(
@@ -455,5 +493,68 @@ private fun AreaEntityRow(
             style = R1.labelMicro,
             color = if (isToggle && entity.isOn) R1.AccentWarm else R1.InkSoft,
         )
+    }
+}
+
+/**
+ * Modal sheet for renaming the drilled-in area. Prefilled with the current
+ * name; SAVE fires the area_registry update through the view model, which
+ * refreshes the list and patches the open drill on success. Mirrors the tag
+ * rename sheet idiom so the two read identically.
+ */
+@Composable
+private fun RenameAreaSheet(
+    areaId: String,
+    currentName: String,
+    onDismiss: () -> Unit,
+    onSave: (name: String) -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    var name by remember(areaId) { mutableStateOf(currentName) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.92f))
+            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
+            .systemBarsPadding()
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
+                .clip(R1.ShapeS)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(R1.space.l),
+        ) {
+            Text(text = "RENAME AREA", style = R1.sectionHeader, color = R1.AccentWarm)
+            Spacer(Modifier.size(R1.space.xxs))
+            Text(
+                text = areaId,
+                style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                color = R1.InkMuted,
+                maxLines = 1,
+            )
+            Spacer(Modifier.size(R1.space.m))
+            Text(text = "NAME", style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.size(R1.space.xs))
+            R1TextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "Friendly name (e.g. Kitchen)",
+                monospace = false,
+            )
+            Spacer(Modifier.size(R1.space.l))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                R1Button(text = "CANCEL", onClick = onDismiss, variant = R1ButtonVariant.Outlined)
+                Spacer(Modifier.width(R1.space.s))
+                R1Button(text = "SAVE", onClick = { onSave(name.trim()) })
+            }
+        }
     }
 }
