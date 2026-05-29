@@ -37,6 +37,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -95,6 +96,18 @@ fun IntegrationsScreen(
                     loadedCount = ui.loadedCount,
                     failedCount = ui.failedCount,
                 )
+                if (ui.all.isNotEmpty()) {
+                    R1TextField(
+                        value = ui.query,
+                        onValueChange = { vm.setQuery(it) },
+                        placeholder = "Filter by domain or title",
+                        monospace = false,
+                        modifier = Modifier.padding(
+                            horizontal = R1.space.m,
+                            vertical = R1.space.xs,
+                        ),
+                    )
+                }
                 when {
                     ui.loading && ui.all.isEmpty() -> Box(
                         modifier = Modifier.fillMaxSize(),
@@ -119,13 +132,14 @@ fun IntegrationsScreen(
                         // changes, not on every recomposition (e.g. each per-row
                         // reload spinner flip, which mutates reloadingIds and
                         // re-emits UiState).
-                        val sections = remember(ui.all, ui.filter) { ui.sections }
+                        val sections = remember(ui.all, ui.filter, ui.query) { ui.sections }
                         if (sections.isEmpty()) {
                             EmptyState(
-                                message = when (ui.filter) {
-                                    IntegrationsViewModel.Filter.LOADED -> "No loaded integrations."
-                                    IntegrationsViewModel.Filter.FAILED -> "No failed integrations. Nice."
-                                    IntegrationsViewModel.Filter.ALL -> "No matching integrations."
+                                message = when {
+                                    ui.query.isNotBlank() -> "No integrations match \"${ui.query.trim()}\"."
+                                    ui.filter == IntegrationsViewModel.Filter.LOADED -> "No loaded integrations."
+                                    ui.filter == IntegrationsViewModel.Filter.FAILED -> "No failed integrations. Nice."
+                                    else -> "No matching integrations."
                                 },
                             )
                         } else {
@@ -139,7 +153,11 @@ fun IntegrationsScreen(
                             ) {
                                 for ((domain, entries) in sections) {
                                     item(key = "domain/$domain") {
-                                        DomainHeader(domain = domain, count = entries.size)
+                                        DomainHeader(
+                                            domain = domain,
+                                            count = entries.size,
+                                            counts = ui.countsByDomain[domain.lowercase(java.util.Locale.US)],
+                                        )
                                     }
                                     for (entry in entries) {
                                         item(key = "entry/${entry.entryId}") {
@@ -207,10 +225,16 @@ private fun FilterBar(
 }
 
 @Composable
-private fun DomainHeader(domain: String, count: Int) {
+private fun DomainHeader(
+    domain: String,
+    count: Int,
+    counts: IntegrationsViewModel.DomainCounts?,
+) {
     // Canonical group-header treatment (matches R1Section's title line): uppercase
     // section-header type in the accent colour, a hairline rule filling the gap, and a
-    // count rendered as an R1Chip Pill at the right edge.
+    // count rendered as an R1Chip Pill at the right edge. When the registries have
+    // resolved counts for this domain, a compact "Nd / Ne" tally precedes the entry
+    // count so the user can gauge how much the integration brings in.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -229,6 +253,14 @@ private fun DomainHeader(domain: String, count: Int) {
                 .weight(1f)
                 .background(R1.Hairline),
         )
+        if (counts != null && (counts.devices > 0 || counts.entities > 0)) {
+            Spacer(Modifier.width(R1.space.s))
+            Text(
+                text = "${counts.devices}d / ${counts.entities}e",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
         Spacer(Modifier.width(R1.space.s))
         R1Chip(text = "$count", variant = R1ChipVariant.Pill, tone = R1.InkSoft)
     }
@@ -267,7 +299,7 @@ private fun EntryRow(
             )
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
-                text = entry.state.uppercase(),
+                text = IntegrationsViewModel.stateLabel(entry.state),
                 variant = R1ChipVariant.Pill,
                 tone = stateTone,
             )
