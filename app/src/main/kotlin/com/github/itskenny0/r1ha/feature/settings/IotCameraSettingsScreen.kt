@@ -56,6 +56,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -145,7 +147,7 @@ fun IotCameraSettingsScreen(
                         "never synced.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.m),
                 )
             }
 
@@ -304,7 +306,7 @@ fun IotCameraSettingsScreen(
             // ── Advanced ───────────────────────────────────────────────────
             item {
                 SectionHeaderToggle(
-                    text = "ADVANCED",
+                    text = "Advanced",
                     expanded = advancedExpanded,
                     onToggle = { advancedExpanded = !advancedExpanded },
                 )
@@ -330,7 +332,7 @@ fun IotCameraSettingsScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(48.dp)) }
+            item { Spacer(Modifier.height(R1.MinTarget)) }
         }
     }
 }
@@ -339,12 +341,24 @@ fun IotCameraSettingsScreen(
 
 @Composable
 private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = R1.labelMicro,
-        color = R1.InkSoft,
-        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp),
-    )
+    // Canonical group-header treatment (matches R1Section's title line):
+    // uppercase section-header type in the accent colour with a hairline rule
+    // filling the remaining width.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = R1.space.l, end = R1.space.l, top = R1.space.xl, bottom = R1.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text.uppercase(), style = R1.sectionHeader, color = R1.AccentWarm)
+        Spacer(Modifier.width(R1.space.m))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
+        )
+    }
 }
 
 @Composable
@@ -356,21 +370,26 @@ private fun SectionHeaderToggle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 4.dp)
+            .padding(start = R1.space.l, end = R1.space.l, top = R1.space.xl, bottom = R1.space.s)
             .r1Pressable(onToggle)
-            .defaultMinSize(minHeight = 32.dp),
+            .defaultMinSize(minHeight = R1.MinTarget),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = text,
-            style = R1.labelMicro,
-            color = R1.InkSoft,
-            modifier = Modifier.weight(1f),
+        Text(text.uppercase(), style = R1.sectionHeader, color = R1.AccentWarm)
+        Spacer(Modifier.width(R1.space.m))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
         )
-        Text(
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(
             text = if (expanded) "HIDE" else "SHOW",
-            style = R1.labelMicro,
-            color = R1.AccentWarm,
+            variant = R1ChipVariant.Action,
+            tone = R1.AccentWarm,
+            selected = true,
+            onClick = onToggle,
         )
     }
 }
@@ -386,17 +405,23 @@ private fun PermissionBanner(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, accent, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text(text = title, style = R1.labelMicro, color = accent)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(text = body, style = R1.body, color = R1.InkSoft)
-        Spacer(Modifier.height(10.dp))
-        ChipButton(text = cta, accent = accent, onClick = onClick)
+        Spacer(Modifier.height(R1.space.m))
+        R1Chip(
+            text = cta,
+            variant = R1ChipVariant.Action,
+            tone = accent,
+            selected = true,
+            onClick = onClick,
+        )
     }
 }
 
@@ -405,14 +430,14 @@ private fun InfoCallout(label: String, body: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(text = body, style = R1.body, color = R1.InkMuted)
     }
 }
@@ -432,7 +457,7 @@ private fun MasterToggleRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(
@@ -440,7 +465,7 @@ private fun MasterToggleRow(
                 if (cam.enabled) R1.AccentWarm else R1.Hairline,
                 R1.ShapeS,
             )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
@@ -452,7 +477,7 @@ private fun MasterToggleRow(
                     },
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             R1Switch(
@@ -469,14 +494,14 @@ private fun MasterToggleRow(
             )
         }
         if (armed) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.m))
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(R1.ShapeS)
                     .background(R1.Bg)
                     .border(1.dp, R1.StatusAmber, R1.ShapeS)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.m),
             ) {
                 Text(
                     text = "$subscriberCount " +
@@ -485,17 +510,19 @@ private fun MasterToggleRow(
                     style = R1.labelMicro,
                     color = R1.StatusAmber,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(
                     text = "Disabling stops every active stream. Tap again to confirm.",
                     style = R1.body,
                     color = R1.InkSoft,
                 )
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChipButton(
+                Spacer(Modifier.height(R1.space.s))
+                Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                    R1Chip(
                         text = "CONFIRM DISABLE",
-                        accent = R1.StatusAmber,
+                        variant = R1ChipVariant.Action,
+                        tone = R1.StatusAmber,
+                        selected = true,
                         onClick = onCommit,
                     )
                 }
@@ -515,12 +542,12 @@ private fun StatusCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         StatusRow(
             label = "DEVICE IP",
@@ -616,7 +643,7 @@ private fun LensPickerBlock(
     onPick: (String) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s),
     ) {
         Text("Lens", style = R1.bodyEmph, color = R1.Ink)
         if (cameras.isEmpty()) {
@@ -624,7 +651,7 @@ private fun LensPickerBlock(
                 "No cameras detected on this device.",
                 style = R1.body,
                 color = R1.StatusAmber,
-                modifier = Modifier.padding(top = 4.dp),
+                modifier = Modifier.padding(top = R1.space.xs),
             )
             return@Column
         }
@@ -632,14 +659,14 @@ private fun LensPickerBlock(
             text = "Pick the lens HA should see.",
             style = R1.body,
             color = R1.InkMuted,
-            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+            modifier = Modifier.padding(top = R1.space.xxs, bottom = R1.space.s),
         )
         cameras.forEach { c ->
             val isPicked = (pickedCameraId == c.id)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 3.dp)
+                    .padding(vertical = R1.space.xxs)
                     .clip(R1.ShapeS)
                     .background(if (isPicked) R1.Bg else R1.SurfaceMuted)
                     .border(
@@ -648,8 +675,8 @@ private fun LensPickerBlock(
                         R1.ShapeS,
                     )
                     .r1Pressable({ onPick(c.id) })
-                    .defaultMinSize(minHeight = 48.dp)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .defaultMinSize(minHeight = R1.MinTarget)
+                    .padding(horizontal = R1.space.l, vertical = R1.space.m),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -662,11 +689,11 @@ private fun LensPickerBlock(
                         c.description,
                         style = R1.numeralS,
                         color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp),
+                        modifier = Modifier.padding(top = R1.space.xxs),
                     )
                 }
                 if (isPicked) {
-                    Text("ACTIVE", style = R1.labelMicro, color = R1.AccentWarm)
+                    R1Chip(text = "ACTIVE", variant = R1ChipVariant.Pill, tone = R1.AccentWarm)
                 }
             }
         }
@@ -683,14 +710,14 @@ private fun ResolutionBlock(
     onPick: (Int, Int) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s),
     ) {
         Text("Resolution", style = R1.bodyEmph, color = R1.Ink)
         Text(
             "Larger means sharper but more bandwidth.",
             style = R1.body,
             color = R1.InkMuted,
-            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+            modifier = Modifier.padding(top = R1.space.xxs, bottom = R1.space.s),
         )
         if (supportedSizes.isEmpty()) {
             Text("Pick a lens first.", style = R1.body, color = R1.InkMuted)
@@ -705,7 +732,7 @@ private fun ResolutionBlock(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp)
+                    .padding(vertical = R1.space.xxs)
                     .clip(R1.ShapeS)
                     .background(if (isPicked) R1.Bg else R1.SurfaceMuted)
                     .border(
@@ -714,8 +741,8 @@ private fun ResolutionBlock(
                         R1.ShapeS,
                     )
                     .r1Pressable({ onPick(sz.width, sz.height) })
-                    .defaultMinSize(minHeight = 48.dp)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .defaultMinSize(minHeight = R1.MinTarget)
+                    .padding(horizontal = R1.space.l, vertical = R1.space.m),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -740,7 +767,7 @@ private fun ResolutionBlock(
 
 @Composable
 private fun FrameRateBlock(fps: Int, onDec: () -> Unit, onInc: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Frame rate", style = R1.bodyEmph, color = R1.Ink)
@@ -748,7 +775,7 @@ private fun FrameRateBlock(fps: Int, onDec: () -> Unit, onInc: () -> Unit) {
                     "Higher is smoother; costs CPU and bandwidth.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             StepperButtons(
@@ -762,7 +789,7 @@ private fun FrameRateBlock(fps: Int, onDec: () -> Unit, onInc: () -> Unit) {
 
 @Composable
 private fun QualityBlock(quality: Int, onDec: () -> Unit, onInc: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("JPEG quality", style = R1.bodyEmph, color = R1.Ink)
@@ -770,7 +797,7 @@ private fun QualityBlock(quality: Int, onDec: () -> Unit, onInc: () -> Unit) {
                     "10 to 100. About 70 is fine for surveillance use.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             StepperButtons(
@@ -784,17 +811,17 @@ private fun QualityBlock(quality: Int, onDec: () -> Unit, onInc: () -> Unit) {
 
 @Composable
 private fun RotationBlock(rotation: Int, onLeft: () -> Unit, onRight: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 6.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
         Text("Rotation", style = R1.bodyEmph, color = R1.Ink)
         Text(
             "Burns rotation into every frame before fan-out.",
             style = R1.body,
             color = R1.InkMuted,
-            modifier = Modifier.padding(top = 1.dp, bottom = 6.dp),
+            modifier = Modifier.padding(top = R1.space.xxs, bottom = R1.space.s),
         )
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             GlyphButton(glyph = "↺", onClick = onLeft, description = "rotate counter-clockwise")
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "${rotation}°",
                 style = R1.numeralM.copy(color = R1.AccentWarm),
@@ -810,16 +837,16 @@ private fun RotationBlock(rotation: Int, onLeft: () -> Unit, onRight: () -> Unit
 private fun StepperButtons(valueLabel: String, onDec: () -> Unit, onInc: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         GlyphButton(glyph = "−", onClick = onDec, description = "decrement")
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = valueLabel,
             style = R1.numeralM.copy(color = R1.AccentWarm),
             color = R1.AccentWarm,
             modifier = Modifier
                 .defaultMinSize(minWidth = 72.dp)
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = R1.space.s),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         GlyphButton(glyph = "+", onClick = onInc, description = "increment")
     }
 }
@@ -832,30 +859,10 @@ private fun GlyphButton(glyph: String, onClick: () -> Unit, description: String)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onClick, contentDescription = description)
-            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp),
+            .defaultMinSize(minWidth = R1.MinTarget, minHeight = R1.MinTarget),
         contentAlignment = Alignment.Center,
     ) {
         Text(glyph, style = R1.bodyEmph, color = R1.InkSoft)
-    }
-}
-
-@Composable
-private fun ChipButton(
-    text: String,
-    accent: Color,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(R1.Bg)
-            .border(1.dp, accent, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .defaultMinSize(minHeight = 48.dp)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = R1.labelMicro, color = accent)
     }
 }
 
@@ -871,7 +878,7 @@ private fun SinkToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(
@@ -880,12 +887,12 @@ private fun SinkToggleRow(
                 R1.ShapeS,
             )
             .r1Pressable(onClick = onToggle)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = R1.bodyEmph, color = if (checked) R1.AccentWarm else R1.Ink)
-            Text(subtitle, style = R1.body, color = R1.InkMuted, modifier = Modifier.padding(top = 1.dp))
+            Text(subtitle, style = R1.body, color = R1.InkMuted, modifier = Modifier.padding(top = R1.space.xxs))
         }
         R1Switch(checked = checked, onCheckedChange = { onToggle() })
     }
@@ -901,11 +908,11 @@ private fun BrokerSummaryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -914,10 +921,16 @@ private fun BrokerSummaryRow(
                 text = "$host:$port" + if (tls) " · TLS" else "",
                 style = R1.numeralS,
                 color = R1.Ink,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
-        ChipButton(text = "EDIT", accent = R1.AccentWarm, onClick = onEdit)
+        R1Chip(
+            text = "EDIT",
+            variant = R1ChipVariant.Action,
+            tone = R1.AccentWarm,
+            selected = true,
+            onClick = onEdit,
+        )
     }
 }
 
@@ -931,11 +944,11 @@ private fun MjpegConfigBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text("PORT", style = R1.labelMicro, color = R1.InkSoft)
         R1TextField(
@@ -945,9 +958,9 @@ private fun MjpegConfigBlock(
                 onUpdate { it.copy(mjpegPort = p.coerceIn(1024, 65535)) }
             },
             placeholder = "8181",
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Require auth", style = R1.bodyEmph, color = R1.Ink)
@@ -959,7 +972,7 @@ private fun MjpegConfigBlock(
                     },
                     style = R1.body,
                     color = if (cam.mjpegAuthEnabled) R1.InkMuted else R1.StatusAmber,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             R1Switch(
@@ -968,36 +981,40 @@ private fun MjpegConfigBlock(
             )
         }
         if (cam.mjpegAuthEnabled) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.m))
             Text("USERNAME", style = R1.labelMicro, color = R1.InkSoft)
             R1TextField(
                 value = cam.mjpegUsername,
                 onValueChange = { v -> onUpdate { it.copy(mjpegUsername = v) } },
                 placeholder = "r1ha",
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             Text("PASSWORD", style = R1.labelMicro, color = R1.InkSoft)
             R1TextField(
                 value = cam.mjpegPassword,
                 onValueChange = { v -> onUpdate { it.copy(mjpegPassword = v) } },
                 placeholder = "auto-generated on first enable",
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
             )
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ChipButton(
+            Spacer(Modifier.height(R1.space.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                R1Chip(
                     text = "REGENERATE",
-                    accent = R1.AccentWarm,
+                    variant = R1ChipVariant.Action,
+                    tone = R1.AccentWarm,
+                    selected = true,
                     onClick = {
                         val pw = randomPassword()
                         onUpdate { it.copy(mjpegPassword = pw) }
                         Toaster.show("New MJPEG password set")
                     },
                 )
-                ChipButton(
+                R1Chip(
                     text = "COPY URL",
-                    accent = R1.AccentWarm,
+                    variant = R1ChipVariant.Action,
+                    tone = R1.AccentWarm,
+                    selected = true,
                     onClick = {
                         val url = "http://${cam.mjpegUsername}:" +
                             "${cam.mjpegPassword.ifBlank { "<password>" }}@${lanIp ?: "<device-ip>"}:" +
@@ -1008,10 +1025,12 @@ private fun MjpegConfigBlock(
                 )
             }
         } else {
-            Spacer(Modifier.height(10.dp))
-            ChipButton(
+            Spacer(Modifier.height(R1.space.m))
+            R1Chip(
                 text = "COPY URL",
-                accent = R1.AccentWarm,
+                variant = R1ChipVariant.Action,
+                tone = R1.AccentWarm,
+                selected = true,
                 onClick = {
                     val url = "http://${lanIp ?: "<device-ip>"}:${cam.mjpegPort}/stream"
                     clipboard.setText(AnnotatedString(url))
@@ -1030,34 +1049,34 @@ private fun MqttConfigBlock(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
         Text("DISCOVERY PREFIX", style = R1.labelMicro, color = R1.InkSoft)
         R1TextField(
             value = cam.mqttDiscoveryPrefix,
             onValueChange = { v -> onUpdate { it.copy(mqttDiscoveryPrefix = v) } },
             placeholder = "homeassistant",
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text("NODE ID", style = R1.labelMicro, color = R1.InkSoft)
         R1TextField(
             value = cam.mqttNodeId,
             onValueChange = { v -> onUpdate { it.copy(mqttNodeId = v) } },
             placeholder = "auto-generated on first enable",
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
         )
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text("ENTITY NAME", style = R1.labelMicro, color = R1.InkSoft)
         R1TextField(
             value = cam.entityName,
             onValueChange = { v -> onUpdate { it.copy(entityName = v) } },
             placeholder = "R1HA Camera",
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
         )
     }
 }
@@ -1071,7 +1090,7 @@ private fun HowToAddInHa(
     clipboard: ClipboardManager,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 4.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.xs)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1079,8 +1098,8 @@ private fun HowToAddInHa(
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable({ expanded = !expanded })
-                .defaultMinSize(minHeight = 48.dp)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .defaultMinSize(minHeight = R1.MinTarget)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -1089,18 +1108,18 @@ private fun HowToAddInHa(
                     text = "Step-by-step for each enabled sink.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
-            Text(
+            R1Chip(
                 text = if (expanded) "HIDE" else "SHOW",
-                style = R1.labelMicro,
-                color = R1.AccentWarm,
+                variant = R1ChipVariant.Pill,
+                tone = R1.AccentWarm,
             )
         }
         if (!expanded) return@Column
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         if (!cam.mjpegEnabled && !cam.mqttEnabled) {
             InfoCallout(
                 label = "NO SINKS ENABLED",
@@ -1123,7 +1142,7 @@ private fun HowToAddInHa(
             )
         }
         if (cam.mjpegEnabled) {
-            if (cam.mqttEnabled) Spacer(Modifier.height(10.dp))
+            if (cam.mqttEnabled) Spacer(Modifier.height(R1.space.m))
             HaPathCard(
                 heading = "MJPEG (Generic Camera)",
                 steps = listOf(
@@ -1135,14 +1154,14 @@ private fun HowToAddInHa(
                         url = mjpegUrlFor(cam, lanIp, path = "snapshot"),
                         clipboard = clipboard,
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(R1.space.xs))
                     Text("Stream source URL:", style = R1.body, color = R1.Ink)
                     CopyableUrl(
                         url = mjpegUrlFor(cam, lanIp, path = "stream"),
                         clipboard = clipboard,
                     )
                     if (cam.mjpegAuthEnabled) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(R1.space.s))
                         Text(
                             text = "Username: ${cam.mjpegUsername}. Password: " +
                                 if (cam.mjpegPassword.isBlank()) "(not set)" else "the password above.",
@@ -1151,7 +1170,7 @@ private fun HowToAddInHa(
                         )
                     }
                     if (lanIp == null) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(R1.space.s))
                         Text(
                             text = "Connect to Wi-Fi or Ethernet first; no LAN IP yet.",
                             style = R1.body,
@@ -1178,8 +1197,8 @@ private fun HaPathCard(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Text(text = heading, style = R1.labelMicro, color = R1.AccentGreen)
         steps.forEachIndexed { i, step ->
@@ -1188,7 +1207,7 @@ private fun HaPathCard(
                     text = "${i + 1}.",
                     style = R1.numeralS,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(end = 6.dp),
+                    modifier = Modifier.padding(end = R1.space.s),
                 )
                 Text(text = step, style = R1.body, color = R1.Ink)
             }
@@ -1212,8 +1231,8 @@ private fun CopyableUrl(url: String, clipboard: ClipboardManager) {
                 clipboard.setText(AnnotatedString(url))
                 Toaster.show("Copied")
             })
-            .defaultMinSize(minHeight = 48.dp)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .defaultMinSize(minHeight = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1303,7 +1322,7 @@ private fun LivePreviewTile(enabled: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
@@ -1317,12 +1336,12 @@ private fun LivePreviewTile(enabled: Boolean) {
                     ),
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(top = 1.dp),
+                    modifier = Modifier.padding(top = R1.space.xxs),
                 )
             }
             R1Switch(checked = previewOn, onCheckedChange = { previewOn = it })
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1361,7 +1380,7 @@ private fun PreviewSkeleton() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
+            .padding(R1.space.l),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -1370,13 +1389,13 @@ private fun PreviewSkeleton() {
                 .fillMaxWidth(fraction = 0.6f)
                 .height(14.dp),
         )
-        Spacer(Modifier.size(8.dp))
+        Spacer(Modifier.size(R1.space.s))
         SkeletonBlock(
             modifier = Modifier
                 .fillMaxWidth(fraction = 0.4f)
                 .height(10.dp),
         )
-        Spacer(Modifier.size(12.dp))
+        Spacer(Modifier.size(R1.space.m))
         Text("WARMING UP CAMERA", style = R1.labelMicro, color = R1.InkSoft)
     }
 }
