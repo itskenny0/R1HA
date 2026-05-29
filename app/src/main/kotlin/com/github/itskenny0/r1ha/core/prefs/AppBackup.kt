@@ -173,8 +173,16 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
  */
 fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
     val newServer = serverUrl?.let { url -> ServerConfig(url = url, haVersion = haVersion) }
-    val activeId = pages.firstOrNull { it.id == activePageId }?.id
-        ?: pages.firstOrNull()?.id
+    // Pre-tabs backups (and hand-edited files) carry favourites only in the
+    // legacy flat [favorites] list with an empty [pages]. Materialise the same
+    // single 'HOME' page the live migration creates so the restore doesn't
+    // silently drop the user's favourites — mirrors the id/name convention in
+    // SettingsRepository's pages migration so a later edit reuses the slot.
+    val effectivePages = pages.ifEmpty {
+        if (favorites.isNotEmpty()) listOf(FavoritePage("home", "HOME", favorites)) else emptyList()
+    }
+    val activeId = effectivePages.firstOrNull { it.id == activePageId }?.id
+        ?: effectivePages.firstOrNull()?.id
         ?: ""
     return prev.copy(
         server = newServer ?: prev.server,
@@ -221,9 +229,9 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         advanced = advanced,
         dashboard = dashboard,
         integrations = integrations,
-        pages = pages,
+        pages = effectivePages,
         activePageId = activeId,
-        favorites = pages.flatMap { it.favorites }.distinct(),
+        favorites = effectivePages.flatMap { it.favorites }.distinct(),
         nameOverrides = nameOverrides,
         entityOverrides = entityOverrides,
     )
