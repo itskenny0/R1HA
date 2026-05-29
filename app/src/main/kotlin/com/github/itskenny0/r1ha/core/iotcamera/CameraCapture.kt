@@ -412,16 +412,27 @@ class CameraCapture(
         }
     }.getOrElse { jpeg }
 
+    /** Reusable NV21 scratch buffer for [encodeYuvToJpeg]. The plane sizes are
+     *  constant for a given session (fixed [width]×[height]), so after the
+     *  first frame this is reused for every subsequent frame instead of
+     *  allocating ~1.5 MB (640×480) / ~2.7 MB (720p) per frame. At 10-30 fps
+     *  that eliminates tens of MB/sec of YoungGen churn and the GC pauses it
+     *  drives. Touched only on [cameraHandler] (every Camera2 callback and the
+     *  ImageReader listener are dispatched there), so a plain field needs no
+     *  synchronisation. */
+    private var nv21Scratch: ByteArray = ByteArray(0)
+
     /**
      * Repack an Image's three YUV_420_888 planes into a contiguous NV21 byte
      * array — the input shape [YuvImage] requires — then JPEG-encode at
      * [jpegQuality]. Returns null on rare malformed frames so the publish
      * loop never crashes the service.
      *
-     * Performance: the per-frame allocation is ~1.5 MB (640×480 NV21) which
-     * the YoungGen GC handles without ceremony at 10-30 fps. A streaming
-     * encoder (libjpeg-turbo via JNI) would skip the intermediate but adds a
-     * native dependency + ABI sweep we don't want for the V1.
+     * Performance: the NV21 repack buffer is reused across frames (see
+     * [nv21Scratch]); YuvImage reads it synchronously inside compressToJpeg
+     * and never retains a reference past this call, so reuse is safe. A
+     * streaming encoder (libjpeg-turbo via JNI) would skip the intermediate
+     * entirely but adds a native dependency + ABI sweep we don't want for V1.
      */
     private fun encodeYuvToJpeg(image: Image): ByteArray? {
         return runCatching {
@@ -433,7 +444,13 @@ class CameraCapture(
             val ySize = y.remaining()
             val uSize = u.remaining()
             val vSize = v.remaining()
-            val nv21 = ByteArray(ySize + uSize + vSize)
+            val needed = ySize + uSize + vSize
+            // Grow the scratch buffer only when a frame needs more than we
+            // currently hold (first frame, or a HAL that varies plane padding).
+            // We pass `needed` as the YuvImage length below so a larger-than-
+            // needed buffer from a previous frame is still encoded correctly.
+            if (nv21Scratch.size < needed) nv21Scratch = ByteArray(needed)
+            val nv21 = nv21Scratch
             y.get(nv21, 0, ySize)
             // YuvImage expects NV21 (Y then interleaved VU); the second
             // chroma plane in YUV_420_888 is already V on most devices so

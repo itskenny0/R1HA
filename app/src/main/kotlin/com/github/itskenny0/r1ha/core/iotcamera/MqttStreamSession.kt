@@ -240,16 +240,36 @@ class MqttStreamSession(
         o.write(payload)
     }
 
+    /** Topic-bytes cache keyed by the last topic string. The frame collector
+     *  publishes the same image topic on every frame; encoding it to UTF-8
+     *  once and reusing the array saves a per-frame String→ByteArray
+     *  allocation at 10-30 fps. Touched only under [ioLock] (publish is the
+     *  sole writer), so a plain field is enough. */
+    private var cachedTopic: String? = null
+    private var cachedTopicBytes: ByteArray = ByteArray(0)
+
     private fun writePublish(o: DataOutputStream, topic: String, payload: ByteArray, retain: Boolean) {
-        val body = ByteArrayOutputStream()
-        val v = DataOutputStream(body)
-        writeUtf(v, topic)
-        v.write(payload)
-        val frame = body.toByteArray()
+        // Stream the PUBLISH directly to the socket output instead of building
+        // it in an intermediate ByteArrayOutputStream first. The old path
+        // copied the entire JPEG (50-200 KB) into a second buffer per frame
+        // via body.toByteArray(); writing the topic header and payload straight
+        // through skips that copy and the throwaway buffer on the streaming hot
+        // path. The PUBLISH variable header for QoS-0 is just the topic (2-byte
+        // length + UTF-8 bytes); the payload follows with no packet id.
+        val topicBytes = if (topic == cachedTopic) {
+            cachedTopicBytes
+        } else {
+            topic.toByteArray(Charsets.UTF_8).also {
+                cachedTopic = topic
+                cachedTopicBytes = it
+            }
+        }
         val header = 0x30 or (if (retain) 0x01 else 0x00)
         o.writeByte(header)
-        writeRemainingLength(o, frame.size)
-        o.write(frame)
+        writeRemainingLength(o, 2 + topicBytes.size + payload.size)
+        o.writeShort(topicBytes.size)
+        o.write(topicBytes)
+        o.write(payload)
     }
 
     private fun writeUtf(o: DataOutputStream, s: String) {

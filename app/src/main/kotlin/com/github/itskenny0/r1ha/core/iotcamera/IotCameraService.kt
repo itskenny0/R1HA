@@ -283,9 +283,13 @@ class IotCameraService : Service() {
                 status.setMqtt(IotCameraStatus.SinkState.ACTIVE)
                 publishMqttDiscovery(cfg)
             }
+            // Topic is constant for the session — compute it once instead of
+            // re-interpolating the string on every frame in the collect loop
+            // (at 10-30 fps that's 10-30 throwaway String allocations/sec).
+            val imageTopic = mqttImageTopic(cfg)
             mqttJob = serviceScope.launch {
                 bus.frames.collect { jpeg ->
-                    val ok = mqtt?.publish(mqttImageTopic(cfg), jpeg, retain = false) ?: false
+                    val ok = mqtt?.publish(imageTopic, jpeg, retain = false) ?: false
                     if (ok) status.addBytesUploaded(jpeg.size.toLong())
                 }
             }

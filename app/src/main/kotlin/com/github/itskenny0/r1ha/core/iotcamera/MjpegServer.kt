@@ -201,7 +201,15 @@ class MjpegServer(
         // surface spurious SocketTimeoutException on some stacks. 0 = let the
         // kernel notice peer death, matching the original behaviour.
         runCatching { soTimeout = 0 }
-        val out = getOutputStream()
+        // Wrap the raw socket stream so the per-frame part-header, JPEG body
+        // and trailer coalesce into a single flushed write rather than three
+        // separate socket writes (each a potential syscall) per frame. We
+        // still flush once per frame inside writePart, so latency is unchanged
+        // — this only collapses the syscall count, which matters at 30 fps ×
+        // multiple clients. BufferedOutputStream passes writes larger than its
+        // buffer straight through, so the JPEG body is never copied into the
+        // 8 KB buffer.
+        val out = java.io.BufferedOutputStream(getOutputStream())
         // Headers — keep-alive isn't needed because the response itself never
         // terminates; the connection only closes when peer disconnects or we
         // tear down. `Cache-Control: no-store` keeps HA + browsers from
@@ -231,6 +239,11 @@ class MjpegServer(
     }
 
     private fun writePart(out: OutputStream, jpeg: ByteArray) {
+        // Only the Content-Length value varies per frame; the boundary prefix
+        // and the field names are constant, so building just the small header
+        // string is cheap. The JPEG body and the 2-byte trailer are written
+        // straight through. With a BufferedOutputStream wrapper these three
+        // writes coalesce into a single flushed socket write per frame.
         val partHeader = (
             "--$BOUNDARY\r\n" +
                 "Content-Type: image/jpeg\r\n" +
@@ -238,10 +251,9 @@ class MjpegServer(
         ).toByteArray(Charsets.UTF_8)
         out.write(partHeader)
         out.write(jpeg)
-        val trailer = "\r\n".toByteArray(Charsets.UTF_8)
-        out.write(trailer)
+        out.write(PART_TRAILER)
         out.flush()
-        onBytesEgressed((partHeader.size + jpeg.size + trailer.size).toLong())
+        onBytesEgressed((partHeader.size + jpeg.size + PART_TRAILER.size).toLong())
     }
 
     private fun Socket.respond(
@@ -286,6 +298,11 @@ class MjpegServer(
          *  HTTP parsers split on; matches the convention used by IP Webcam
          *  / motion / mjpg-streamer so HA's existing test matrices pass. */
         const val BOUNDARY = "r1ha_mjpeg_boundary"
+
+        /** Constant CRLF that separates one multipart part body from the next
+         *  boundary. Hoisted so the streaming loop doesn't re-encode a 2-byte
+         *  array on every frame. */
+        private val PART_TRAILER = "\r\n".toByteArray(Charsets.UTF_8)
 
         /** Max time a connected client may take to send its request line and
          *  headers before we drop the socket. Generous enough for any real
