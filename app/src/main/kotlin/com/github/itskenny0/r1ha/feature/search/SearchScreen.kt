@@ -306,7 +306,15 @@ fun SearchScreen(
                             modifier = Modifier.padding(start = R1.space.xs, bottom = R1.space.xs),
                         )
                     }
-                    items(items = results, key = { it.id.value }) { entity ->
+                    // contentType keyed on domain lets Compose recycle a row's layout
+                    // tree across items of the same kind instead of rebuilding it on
+                    // every scroll step. Domain is the right granularity because the
+                    // row's shape (action-label, accent) is a pure function of domain.
+                    items(
+                        items = results,
+                        key = { it.id.value },
+                        contentType = { it.id.domain },
+                    ) { entity ->
                         SearchResultRow(
                             entity,
                             isFavorite = entity.id.value in activeFavourites,
@@ -464,6 +472,18 @@ private fun SearchResultRow(
     onFavorite: () -> Unit,
     onHistory: () -> Unit,
 ) {
+    val domain = entity.id.domain
+    // Domain-derived display values are pure functions of the domain, so remember
+    // them keyed on it. Avoids re-running the uppercase()/take()/when-mapping work on
+    // every recomposition (scroll, favourite-toggle) and across the whole visible
+    // window when only one row's state changed.
+    val domainLabel = remember(domain) {
+        // Wider truncation (10 chars vs. previous 6) so "AUTOMATION" no longer reads
+        // "AUTOMA"; longer HA domains like INPUT_NUMBER still need ellipsis but the
+        // common ones now fit unbroken.
+        domain.prefix.uppercase().let { p -> if (p.length <= 10) p else p.take(9) + "…" }
+    }
+    val domainAccent = remember(domain) { accentFor(domain) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -478,22 +498,19 @@ private fun SearchResultRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            // Wider truncation (10 chars vs. previous 6) so "AUTOMATION" no
-            // longer reads "AUTOMA"; longer HA domains like INPUT_NUMBER still
-            // need ellipsis but the common ones now fit unbroken.
-            text = entity.id.domain.prefix.uppercase().let { p ->
-                if (p.length <= 10) p else p.take(9) + "…"
-            },
+            text = domainLabel,
             style = R1.labelMicro,
-            color = accentFor(entity.id.domain),
+            color = domainAccent,
         )
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = entity.friendlyName, style = R1.bodyEmph, color = R1.Ink, maxLines = 1)
-            val stateLine = buildString {
-                append(entity.id.value)
-                entity.rawState?.let { append("  ·  ").append(it) }
-                entity.area?.let { append("  ·  ").append(it) }
+            val stateLine = remember(entity.id.value, entity.rawState, entity.area) {
+                buildString {
+                    append(entity.id.value)
+                    entity.rawState?.let { append("  ·  ").append(it) }
+                    entity.area?.let { append("  ·  ").append(it) }
+                }
             }
             Text(text = stateLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         }
@@ -535,18 +552,29 @@ private fun SearchResultRow(
             )
         }
         Spacer(Modifier.width(R1.space.xs))
-        // Action affordance hint — what tap will do.
-        val actionLabel = when (entity.id.domain) {
-            Domain.SCENE, Domain.SCRIPT -> "FIRE"
-            Domain.BUTTON, Domain.INPUT_BUTTON -> "PRESS"
-            Domain.LIGHT, Domain.SWITCH, Domain.FAN, Domain.COVER, Domain.LOCK,
-            Domain.MEDIA_PLAYER, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
-            Domain.HUMIDIFIER, Domain.CLIMATE, Domain.WATER_HEATER, Domain.VACUUM,
-            Domain.LAWN_MOWER, Domain.VALVE -> if (entity.isOn) "OFF" else "ON"
-            else -> "INFO"
-        }
+        // Action affordance hint — what tap will do. Pure function of (domain, isOn),
+        // so remember it keyed on those rather than re-evaluating the when on every
+        // recomposition.
+        val actionLabel = remember(domain, entity.isOn) { actionLabelFor(domain, entity.isOn) }
         Text(text = actionLabel, style = R1.labelMicro, color = R1.AccentWarm)
     }
+}
+
+/**
+ * Tap-affordance label for a result row: what tapping the row will do. Pure
+ * function of the entity's domain and current on/off state, extracted so it can be
+ * unit-tested independently of the composable. "FIRE" for scenes/scripts, "PRESS"
+ * for buttons, "ON"/"OFF" for toggleable entities (reflecting the post-tap target),
+ * "INFO" for everything read-only.
+ */
+internal fun actionLabelFor(domain: Domain, isOn: Boolean): String = when (domain) {
+    Domain.SCENE, Domain.SCRIPT -> "FIRE"
+    Domain.BUTTON, Domain.INPUT_BUTTON -> "PRESS"
+    Domain.LIGHT, Domain.SWITCH, Domain.FAN, Domain.COVER, Domain.LOCK,
+    Domain.MEDIA_PLAYER, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
+    Domain.HUMIDIFIER, Domain.CLIMATE, Domain.WATER_HEATER, Domain.VACUUM,
+    Domain.LAWN_MOWER, Domain.VALVE -> if (isOn) "OFF" else "ON"
+    else -> "INFO"
 }
 
 private fun accentFor(domain: Domain): androidx.compose.ui.graphics.Color = when (domain) {
