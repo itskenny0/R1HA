@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -52,6 +54,12 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 
 /**
@@ -203,6 +211,20 @@ fun AssistScreen(
         // help?" prompt mirroring HA's own Assist greeting so the screen
         // doesn't look broken before the first send.
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            // Single polite live region for the transcript: announces "Sending
+            // your message, waiting for a reply" while in flight and "Reply
+            // received" once a turn settles, so a screen-reader user follows the
+            // conversation without re-focusing the list. Empty transcript stays
+            // silent.
+            Box(
+                modifier = Modifier.clearAndSetSemantics {
+                    contentDescription = AssistA11y.transcriptAnnounce(
+                        inFlight = ui.inFlight,
+                        hasMessages = ui.messages.isNotEmpty(),
+                    )
+                    liveRegion = LiveRegionMode.Polite
+                },
+            )
             if (ui.messages.isEmpty()) {
                 // Empty-state anchors near the top of the transcript area (not
                 // vertically centred) — when the IME opens and shrinks the
@@ -224,7 +246,12 @@ fun AssistScreen(
                     verticalArrangement = Arrangement.Top,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(text = "HA ASSIST", style = R1.sectionHeader, color = R1.AccentWarm)
+                    Text(
+                        text = "HA ASSIST",
+                        style = R1.sectionHeader,
+                        color = R1.AccentWarm,
+                        modifier = Modifier.semantics { heading() },
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(
                         text = "Type below or tap one of these prompts to start.",
@@ -253,11 +280,16 @@ fun AssistScreen(
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
+                                            .heightIn(min = R1.MinTarget)
                                             .clip(R1.ShapeS)
                                             .background(R1.SurfaceMuted)
                                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                                            .r1Pressable(onClick = { vm.setDraft(example); vm.send() })
+                                            .r1Pressable(
+                                                onClick = { vm.setDraft(example); vm.send() },
+                                                contentDescription = AssistA11y.examplePromptLabel(example),
+                                            )
                                             .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.CenterStart,
                                     ) {
                                         Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
                                     }
@@ -272,14 +304,19 @@ fun AssistScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 3.dp)
+                                    .heightIn(min = R1.MinTarget)
                                     .clip(R1.ShapeS)
                                     .background(R1.SurfaceMuted)
                                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable(onClick = {
-                                        vm.setDraft(example)
-                                        vm.send()
-                                    })
+                                    .r1Pressable(
+                                        onClick = {
+                                            vm.setDraft(example)
+                                            vm.send()
+                                        },
+                                        contentDescription = AssistA11y.examplePromptLabel(example),
+                                    )
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.CenterStart,
                             ) {
                                 Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
                             }
@@ -311,7 +348,16 @@ fun AssistScreen(
                     if (ui.inFlight) {
                         item("__inflight") {
                             Box(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    // The animated dots read as "working" visually;
+                                    // a screen reader can't see them, so give the pip
+                                    // a static spoken label. The polite announcement
+                                    // is driven by the transcript-level live region
+                                    // below (single source so it doesn't double-speak).
+                                    .clearAndSetSemantics {
+                                        contentDescription = AssistA11y.inFlightAnnounce()
+                                    },
                                 contentAlignment = Alignment.CenterStart,
                             ) {
                                 Box(
@@ -375,6 +421,7 @@ fun AssistScreen(
                                         "Macro removed",
                                     )
                                 },
+                                contentDescription = AssistA11y.macroChipLabel(macro),
                             )
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     ) {
@@ -420,10 +467,14 @@ fun AssistScreen(
         ) {
             Box(
                 modifier = Modifier
+                    .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { vm.reset() })
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .r1Pressable(
+                        onClick = { vm.reset() },
+                        contentDescription = AssistA11y.resetControlLabel(),
+                    ),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(text = "↺", style = R1.labelMicro, color = R1.InkSoft)
             }
@@ -448,7 +499,7 @@ fun AssistScreen(
                     )
                     .r1Pressable(
                         onClick = { if (saveActive) vm.saveCurrentDraftAsMacro() },
-                        contentDescription = "Save draft as macro",
+                        contentDescription = AssistA11y.saveMacroControlLabel(saveActive),
                     )
                     .padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
@@ -464,10 +515,14 @@ fun AssistScreen(
             // second prompt over the first. Same hand-drawn AssistMicGlyph as
             // the chrome-row mic so the two surfaces agree on the iconography.
             Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = {
+                    .r1Pressable(
+                        contentDescription = AssistA11y.micControlLabel(),
+                        onClick = {
                         if (ui.inFlight) return@r1Pressable
                         val intent = android.content.Intent(
                             android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH,
@@ -513,6 +568,7 @@ fun AssistScreen(
                 text = if (ui.inFlight) "STOP" else "SEND",
                 onClick = { if (ui.inFlight) vm.cancel() else vm.send() },
                 enabled = ui.inFlight || ui.draft.isNotBlank(),
+                contentDescription = AssistA11y.sendControlLabel(ui.inFlight),
                 modifier = Modifier.widthIn(min = 64.dp),
             )
         }
@@ -526,6 +582,11 @@ private fun AssistBubble(msg: AssistMessage) {
     val kind = AssistTranscript.kindOf(msg)
     val isUser = kind == AssistTranscript.TurnKind.USER
     val isError = kind == AssistTranscript.TurnKind.ERROR
+    // Speaker is conveyed visually only by bubble side + accent colour, neither
+    // of which a screen reader perceives. Prefix the spoken text with who said
+    // it ("You said" / "Assistant" / "Assistant error") and append the copy hint.
+    val bubbleDescription =
+        AssistA11y.bubbleDescription(kind, msg.text) + ". " + AssistA11y.bubbleActionLabel()
     val bg = when (kind) {
         AssistTranscript.TurnKind.ERROR -> R1.StatusRed.copy(alpha = 0.18f)
         AssistTranscript.TurnKind.USER -> R1.AccentWarm.copy(alpha = 0.18f)
@@ -561,6 +622,7 @@ private fun AssistBubble(msg: AssistMessage) {
                         clipboard.setText(androidx.compose.ui.text.AnnotatedString(msg.text))
                         com.github.itskenny0.r1ha.core.util.Toaster.show("Copied")
                     },
+                    contentDescription = bubbleDescription,
                 )
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
