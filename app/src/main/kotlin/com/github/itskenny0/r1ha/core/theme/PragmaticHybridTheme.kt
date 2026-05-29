@@ -1048,6 +1048,7 @@ internal fun MediaControlsRow(
             accent = accent,
             modifier = Modifier.weight(1f),
             dimmed = !advertisesPrev,
+            contentDescription = "Previous track",
         ) {
             Text(text = "⏮", style = R1.numeralM, color = accent)
         }
@@ -1058,6 +1059,7 @@ internal fun MediaControlsRow(
             emphasis = true,
             modifier = Modifier.weight(1f),
             dimmed = !advertisesPlayPause,
+            contentDescription = if (isPlaying) "Pause" else "Play",
         ) {
             Text(text = if (isPlaying) "⏸" else "▶", style = R1.numeralM, color = R1.Bg)
         }
@@ -1067,6 +1069,7 @@ internal fun MediaControlsRow(
             accent = accent,
             modifier = Modifier.weight(1f),
             dimmed = !advertisesNext,
+            contentDescription = "Next track",
         ) {
             Text(text = "⏭", style = R1.numeralM, color = accent)
         }
@@ -1081,6 +1084,7 @@ internal fun MediaControlsRow(
             emphasis = isMuted,
             modifier = Modifier.weight(1f),
             dimmed = !advertisesMute,
+            contentDescription = if (isMuted) "Unmute" else "Mute",
         ) {
             com.github.itskenny0.r1ha.ui.components.SpeakerGlyph(
                 isMuted = isMuted,
@@ -1115,6 +1119,10 @@ private fun MediaButton(
     modifier: Modifier = Modifier,
     emphasis: Boolean = false,
     dimmed: Boolean = false,
+    /** TalkBack label for the glyph-only button — the transport glyphs (⏮ ⏯ ⏭) and the
+     *  Canvas-drawn speaker carry no readable text child, so without this each button
+     *  announces only "Button". Null falls back to the merged-descendant default. */
+    contentDescription: String? = null,
     content: @Composable () -> Unit,
 ) {
     Box(
@@ -1122,7 +1130,7 @@ private fun MediaButton(
             .alpha(if (dimmed) 0.38f else 1f)
             .clip(R1.ShapeS)
             .background(if (emphasis) accent else R1.SurfaceMuted)
-            .r1Pressable(onClick = onClick)
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
