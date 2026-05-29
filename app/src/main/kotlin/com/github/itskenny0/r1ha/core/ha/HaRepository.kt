@@ -479,6 +479,46 @@ interface HaRepository {
      *  the physical tag still broadcasts its value; a future scan re-registers
      *  it with a blank name. */
     suspend fun deleteTag(tagId: String): Result<Unit>
+
+    /**
+     * List installed blueprints for [domain] via HA's
+     * `blueprint/list/<domain>` WS command. HA returns a map of path →
+     * `{metadata: {...}}`; the decoder flattens that into a [BlueprintInfo]
+     * per entry. [domain] is "automation" or "script"; any other value is
+     * a programmer error (HA only ships those two blueprint kinds today).
+     *
+     * Powers the native Blueprints browser. Read side of the surface:
+     * pair with [importBlueprint] / [saveBlueprint] for the import flow.
+     */
+    suspend fun listBlueprints(domain: String): Result<List<BlueprintInfo>>
+
+    /**
+     * Import a blueprint from [url] via HA's `blueprint/import` WS command.
+     * HA fetches + parses the YAML (raw URLs, GitHub permalinks, gist
+     * shortlinks) and returns the metadata, the suggested install path,
+     * the raw YAML body, and any validation errors. Returns a
+     * [BlueprintInfo] with [BlueprintInfo.rawYaml] populated so the
+     * preview sheet can render and the subsequent [saveBlueprint] can
+     * write the same YAML HA validated.
+     */
+    suspend fun importBlueprint(url: String): Result<BlueprintInfo>
+
+    /**
+     * Install a previously-imported blueprint by writing its YAML to disk
+     * via HA's `blueprint/save` WS command. [domain] selects which
+     * `blueprints/<domain>/` directory HA writes under; [path] is the
+     * relative filename (typically HA's `suggested_filename` from the
+     * import preview, but the caller is free to override). [yaml] is the
+     * verbatim body HA returned during import; [sourceUrl] is the URL the
+     * user pasted, persisted so a future "where did this come from?"
+     * surface can show it without parsing the YAML.
+     */
+    suspend fun saveBlueprint(
+        domain: String,
+        path: String,
+        yaml: String,
+        sourceUrl: String,
+    ): Result<Unit>
 }
 
 /**

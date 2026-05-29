@@ -3205,6 +3205,139 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun listBlueprints(domain: String): Result<List<BlueprintInfo>> =
+        withContext(Dispatchers.IO) {
+            // HA exposes a separate `blueprint/list/<domain>` command per
+            // blueprint kind. We only support the two HA Core ships today
+            // (automation, script). Validate up front so a typo here turns
+            // into a clear failure rather than a vague "unknown_command"
+            // reply from the server.
+            require(domain == "automation" || domain == "script") {
+                "Unsupported blueprint domain '$domain'"
+            }
+            callWsExpectingPayload("blueprint/list/$domain").mapCatching { payload ->
+                val root = payload as? kotlinx.serialization.json.JsonObject
+                    ?: return@mapCatching emptyList()
+                // HA's reply shape: { "<path>": { metadata: {...}, ... }, ... }.
+                // Older HA's wrapped it under "blueprints"; accept both
+                // defensively because some integration tests still mock the
+                // older shape.
+                val map = (root["blueprints"] as? kotlinx.serialization.json.JsonObject) ?: root
+                map.entries.mapNotNull { (path, value) ->
+                    val obj = value as? kotlinx.serialization.json.JsonObject
+                        ?: return@mapNotNull null
+                    decodeBlueprint(domain = domain, path = path, obj = obj, rawYaml = null)
+                }.sortedBy { it.name.lowercase() }
+            }.onFailure { t ->
+                R1Log.w("HaRepo.blueprints", "list $domain failed: ${t.message}")
+            }
+        }
+
+    override suspend fun importBlueprint(url: String): Result<BlueprintInfo> =
+        withContext(Dispatchers.IO) {
+            val extras = kotlinx.serialization.json.buildJsonObject {
+                put("url", JsonPrimitive(url))
+            }
+            callWsExpectingPayload("blueprint/import", extras).mapCatching { payload ->
+                val root = payload as? kotlinx.serialization.json.JsonObject
+                    ?: error("import returned a non-object payload")
+                val blueprintObj = root["blueprint"] as? kotlinx.serialization.json.JsonObject
+                    ?: error("import reply missing 'blueprint' object")
+                val suggested = (root["suggested_filename"] as? JsonPrimitive)?.content.orEmpty()
+                // HA returns the verbatim YAML in `raw_data` so the user's
+                // `blueprint/save` writes exactly what the validator just
+                // approved. Missing on very old HA installs; we fall back to
+                // an empty string and the save path errors out with a clear
+                // message rather than silently writing nothing.
+                val rawYaml = (root["raw_data"] as? JsonPrimitive)?.content
+                // HA infers the domain from the blueprint body itself; copy
+                // it out of the metadata so the row carries the right tag.
+                val metadata = blueprintObj["metadata"] as? kotlinx.serialization.json.JsonObject
+                val resolvedDomain = (metadata?.get("domain") as? JsonPrimitive)?.content
+                    ?: "automation"
+                // validation_errors is an array (or null). Join into a
+                // single human line for the preview sheet's red banner;
+                // null means HA was happy with the blueprint.
+                val errs = root["validation_errors"] as? kotlinx.serialization.json.JsonArray
+                val errText = errs?.takeIf { it.isNotEmpty() }?.joinToString("; ") {
+                    (it as? JsonPrimitive)?.content ?: it.toString()
+                }
+                val base = decodeBlueprint(
+                    domain = resolvedDomain,
+                    path = suggested,
+                    obj = blueprintObj,
+                    rawYaml = rawYaml,
+                ) ?: error("import reply blueprint object had no metadata")
+                base.copy(
+                    sourceUrl = base.sourceUrl ?: url,
+                    validationErrors = errText,
+                )
+            }.onFailure { t ->
+                R1Log.w("HaRepo.blueprints", "import '$url' failed: ${t.message}")
+            }
+        }
+
+    override suspend fun saveBlueprint(
+        domain: String,
+        path: String,
+        yaml: String,
+        sourceUrl: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        require(domain == "automation" || domain == "script") {
+            "Unsupported blueprint domain '$domain'"
+        }
+        require(path.isNotBlank()) { "blueprint path cannot be blank" }
+        require(yaml.isNotBlank()) { "blueprint YAML cannot be blank" }
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("domain", JsonPrimitive(domain))
+            put("path", JsonPrimitive(path))
+            put("yaml", JsonPrimitive(yaml))
+            // HA stamps `source_url` into the on-disk header so a later
+            // `blueprint/list` reply carries the URL back to us — that's how
+            // the row's source link survives a server restart.
+            put("source_url", JsonPrimitive(sourceUrl))
+        }
+        callWsExpectingPayload("blueprint/save", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.blueprints", "save $domain/$path failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Decode one blueprint object (either the value-side of `blueprint/list`
+     * or the `blueprint` field of `blueprint/import`) into a [BlueprintInfo].
+     * Returns null when the metadata block is absent; HA shouldn't ship
+     * blueprints without it but old YAML from third-party repos sometimes
+     * does and we'd rather skip a single row than fail the whole list.
+     */
+    private fun decodeBlueprint(
+        domain: String,
+        path: String,
+        obj: kotlinx.serialization.json.JsonObject,
+        rawYaml: String?,
+    ): BlueprintInfo? {
+        val metadata = obj["metadata"] as? kotlinx.serialization.json.JsonObject
+            ?: return null
+        fun str(key: String): String? = (metadata[key] as? JsonPrimitive)?.content
+        val name = str("name") ?: path.substringAfterLast('/').removeSuffix(".yaml")
+        val description = str("description").orEmpty()
+        val sourceUrl = str("source_url")
+        // `input` is a map of slot-name → schema; count its keys to surface
+        // 'this blueprint wants 3 things' to the user. Absent / non-object
+        // payload reads as zero.
+        val inputCount = (obj["input"] as? kotlinx.serialization.json.JsonObject)?.size
+            ?: (metadata["input"] as? kotlinx.serialization.json.JsonObject)?.size
+            ?: 0
+        return BlueprintInfo(
+            domain = domain,
+            path = path,
+            name = name,
+            description = description,
+            sourceUrl = sourceUrl,
+            inputCount = inputCount,
+            rawYaml = rawYaml,
+        )
+    }
+
     /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last

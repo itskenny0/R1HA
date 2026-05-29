@@ -110,4 +110,9 @@ object Routes {
      *  individual rows. Creation isn't included; tags self-register on
      *  first scan. */
     const val TAGS = "tags"
+
+    /** Native browser for HA's installed automation + script blueprints,
+     *  with a two-stage IMPORT FROM URL flow that previews via
+     *  `blueprint/import` and commits via `blueprint/save`. */
+    const val BLUEPRINTS = "blueprints"
 }

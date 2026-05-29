@@ -181,6 +181,10 @@ fun SettingsScreen(
     onOpenLogs: () -> Unit = {},
     onOpenUsers: () -> Unit = {},
     onOpenTags: () -> Unit = {},
+    /** Native blueprint browser + URL importer (HA `blueprint/list` +
+     *  `blueprint/import` + `blueprint/save`). Defaulted so older callers
+     *  still compile. */
+    onOpenBlueprints: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1815,6 +1819,16 @@ fun SettingsScreen(
                     label = "Integrations",
                     value = "Configured integrations + reload",
                     onClick = onOpenIntegrations,
+                )
+            }
+            // Blueprint browser: lists HA's installed automation + script
+            // blueprints and imports new ones from a URL via the
+            // `blueprint/import` + `blueprint/save` WS pair.
+            item {
+                NavRow(
+                    label = "Blueprints",
+                    value = "Installed automations + scripts, import from URL",
+                    onClick = onOpenBlueprints,
                 )
             }
             // Native replacements for WebView-only HA panels.
