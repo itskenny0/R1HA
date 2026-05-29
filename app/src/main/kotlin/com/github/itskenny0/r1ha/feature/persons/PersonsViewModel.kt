@@ -44,6 +44,10 @@ class PersonsViewModel(
          *  on device_trackers backed by a phone integration. Null when
          *  not reported. */
         val batteryLevel: Int?,
+        /** HA `entity_picture` attribute — a relative `/api/...` path or an
+         *  absolute URL pointing at the person's avatar. Rendered via
+         *  AsyncBitmap with an initials fallback. Null when not set. */
+        val entityPicture: String?,
     )
 
     @androidx.compose.runtime.Stable
@@ -86,6 +90,8 @@ class PersonsViewModel(
                     since = row.lastChanged,
                     batteryLevel = (row.attributes["battery_level"] as? JsonPrimitive)?.content
                         ?.toDoubleOrNull()?.toInt(),
+                    entityPicture = (row.attributes["entity_picture"] as? JsonPrimitive)?.content
+                        ?.takeIf { it.isNotBlank() },
                 )
             }.sortedBy { it.name.lowercase() }
             val devices = deviceResult.getOrNull().orEmpty().map { row ->
@@ -100,6 +106,8 @@ class PersonsViewModel(
                     since = row.lastChanged,
                     batteryLevel = (row.attributes["battery_level"] as? JsonPrimitive)?.content
                         ?.toDoubleOrNull()?.toInt(),
+                    entityPicture = (row.attributes["entity_picture"] as? JsonPrimitive)?.content
+                        ?.takeIf { it.isNotBlank() },
                 )
             }.sortedBy { it.name.lowercase() }
             R1Log.i("Persons", "loaded people=${people.size} devices=${devices.size}")
