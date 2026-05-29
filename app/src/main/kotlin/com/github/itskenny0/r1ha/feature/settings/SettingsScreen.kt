@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
@@ -53,17 +55,14 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
 /**
- * Settings tree depth — which top-level category the screen is currently
- * displaying. Settings opens at [ROOT], a short list of group cards
- * (Connection / Appearance / Behaviour / Integrations / Advanced / About /
- * Browse). Tapping a card navigates to one of the other category routes,
- * which re-renders this same composable scoped to that category's sections.
- *
- * One composable drives every route because the existing section state
- * (collapsible expansion, search results, modified-count badges, the
- * SettingsViewModel) is densely shared. Splitting into one-screen-per-
- * category would re-instantiate the vm on each subpage and either drop the
- * search box or duplicate it across every screen.
+ * Legacy top-level category enum kept for source compatibility with the app's
+ * nav graph, which still registers a route per value and passes one in as
+ * `currentCategory`. The Settings surface no longer drives its drill-in through
+ * these (it owns an internal [SettingsBackStack] of [SettingsNode]s instead),
+ * but a non-ROOT value seeds the back-stack at the matching node so any lingering
+ * external entry point still lands the user on the right subpage. The standalone
+ * feature screens (Sync, IoT Camera / Sensors, MQTT) remain their own nav routes
+ * and are still reached via [onOpenCategory].
  */
 enum class SettingsCategory {
     ROOT,
@@ -71,71 +70,43 @@ enum class SettingsCategory {
     APPEARANCE,
     BEHAVIOUR,
     INTEGRATIONS,
-    /** Multi-device settings sync to/from Home Assistant. Has its own
-     *  top-level GroupCard rather than being tucked under INTEGRATIONS
-     *  because it's a discoverable feature with cross-device implications,
-     *  not a per-surface knob. */
     SYNC,
-    /** IoT Camera Mode — opt-in surface that turns this device into an HA
-     *  camera entity via MJPEG and/or MQTT auto-discovery. Top-level slot
-     *  because it's a discoverable, distinct feature with security
-     *  implications (opens a port, holds the camera) — burying it under
-     *  Integrations would be a UX regression. */
     IOT_CAMERA,
-    /** IoT Sensors Mode — sibling of [IOT_CAMERA]: opt-in foreground
-     *  service that publishes device sensors (battery, light, vibration,
-     *  screen) and accepts commands (flashlight, brightness, volume,
-     *  lock) over MQTT auto-discovery. Same broker as the camera. */
     IOT_SENSORS,
-    /** MQTT broker config — host / port / auth / TLS. Top-level rather
-     *  than buried under Advanced because the IoT Camera Mode feature
-     *  requires it and needs somewhere obvious to link to. */
     MQTT,
     ADVANCED,
     BROWSE,
 }
 
-/** Map each existing section header to its parent category. Used to gate
- *  section rendering per category in the LazyColumn body. */
-private val SECTION_CATEGORY: Map<String, SettingsCategory> = mapOf(
-    "SERVER" to SettingsCategory.CONNECTION,
-    "BACKUP & RESTORE" to SettingsCategory.CONNECTION,
-    "SECURITY" to SettingsCategory.CONNECTION,
-    "APPEARANCE" to SettingsCategory.APPEARANCE,
-    "CARD UI" to SettingsCategory.APPEARANCE,
-    "DASHBOARD" to SettingsCategory.APPEARANCE,
-    "SCROLL WHEEL" to SettingsCategory.BEHAVIOUR,
-    "BEHAVIOUR" to SettingsCategory.BEHAVIOUR,
-    "INTEGRATIONS" to SettingsCategory.INTEGRATIONS,
-    "TODAY" to SettingsCategory.BROWSE,
-    "TALK & FIRE" to SettingsCategory.BROWSE,
-    "STATUS VIEWS" to SettingsCategory.BROWSE,
-    "POWER TOOLS" to SettingsCategory.BROWSE,
-)
+/** Seed the internal back-stack from the legacy [SettingsCategory] the nav graph
+ *  hands in. Config categories map onto their [SettingsNode]; the standalone
+ *  feature screens (SYNC / IOT_* / MQTT) have no in-tree node and fall back to
+ *  ROOT (they're reached as their own nav routes, never rendered inline). */
+private fun seedNodeFor(category: SettingsCategory): SettingsNode = when (category) {
+    SettingsCategory.ROOT -> SettingsNode.ROOT
+    SettingsCategory.CONNECTION -> SettingsNode.CONNECTION
+    SettingsCategory.APPEARANCE -> SettingsNode.APPEARANCE
+    SettingsCategory.BEHAVIOUR -> SettingsNode.BEHAVIOUR
+    SettingsCategory.INTEGRATIONS -> SettingsNode.INTEGRATIONS
+    SettingsCategory.ADVANCED -> SettingsNode.ADVANCED
+    SettingsCategory.BROWSE -> SettingsNode.BROWSE
+    SettingsCategory.SYNC,
+    SettingsCategory.IOT_CAMERA,
+    SettingsCategory.IOT_SENSORS,
+    SettingsCategory.MQTT,
+    -> SettingsNode.ROOT
+}
 
-/** Every collapsible section header in registry order. Hoisted to a file-level
- *  constant so it isn't re-allocated on each SettingsScreen recomposition (the
- *  screen recomposes on every settings emit because it reads the whole settings
- *  state at the top). Used to seed the all-expanded default and to drive the
- *  COLLAPSE ALL / EXPAND ALL bulk toggles. */
-private val ALL_SECTION_NAMES: List<String> = listOf(
-    "SERVER", "SCROLL WHEEL", "CARD UI", "BEHAVIOUR",
-    "BACKUP & RESTORE", "SECURITY", "DASHBOARD", "INTEGRATIONS", "APPEARANCE",
-    "TODAY", "TALK & FIRE", "STATUS VIEWS", "POWER TOOLS",
-)
-
-private fun categoryTitle(category: SettingsCategory): String = when (category) {
-    SettingsCategory.ROOT -> "SETTINGS"
-    SettingsCategory.CONNECTION -> "CONNECTION"
-    SettingsCategory.APPEARANCE -> "APPEARANCE"
-    SettingsCategory.BEHAVIOUR -> "BEHAVIOUR"
-    SettingsCategory.INTEGRATIONS -> "INTEGRATIONS"
-    SettingsCategory.SYNC -> "SYNC"
-    SettingsCategory.IOT_CAMERA -> "IOT CAMERA MODE"
-    SettingsCategory.IOT_SENSORS -> "IOT SENSORS MODE"
-    SettingsCategory.MQTT -> "MQTT BROKER"
-    SettingsCategory.ADVANCED -> "ADVANCED"
-    SettingsCategory.BROWSE -> "BROWSE"
+/** Build the back-stack path from ROOT down to [node] so a deep seed restores a
+ *  sane parent trail (a single Back lands on the parent, not all the way out). */
+private fun pathTo(node: SettingsNode): List<SettingsNode> {
+    val chain = ArrayDeque<SettingsNode>()
+    var n: SettingsNode? = node
+    while (n != null) {
+        chain.addFirst(n)
+        n = n.parent
+    }
+    return chain.toList()
 }
 
 @Composable
@@ -144,13 +115,12 @@ fun SettingsScreen(
     tokens: TokenStore,
     haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
     wheelInput: WheelInput,
-    /** Which category subpage to display. [SettingsCategory.ROOT] shows the
-     *  group-cards landing page; other values scope rendering to only the
-     *  sections belonging to that category. */
+    /** Legacy seed from the nav graph. ROOT opens the top-level category list;
+     *  a non-ROOT value seeds the internal back-stack at that subpage. */
     currentCategory: SettingsCategory = SettingsCategory.ROOT,
-    /** Callback the ROOT view fires when the user taps a group card.
-     *  AppNavGraph wires this to `navController.navigate(Routes.SETTINGS_X)`
-     *  so each category gets its own back-stack entry. */
+    /** Used now only to reach the standalone feature screens that are their own
+     *  nav routes: SYNC, IOT_CAMERA, IOT_SENSORS, MQTT. Config-category drill-in
+     *  is handled internally and never calls this for those. */
     onOpenCategory: (SettingsCategory) -> Unit = {},
     onOpenThemePicker: () -> Unit,
     onOpenAbout: () -> Unit,
@@ -187,24 +157,13 @@ fun SettingsScreen(
     onOpenDevice: () -> Unit,
     onOpenModifiedSettings: () -> Unit,
     onOpenKeyBindings: () -> Unit = {},
-    /** Native device-registry browser (sectioned by area / manufacturer,
-     *  drill-in shows the device's entities). Defaulted so older callers
-     *  still compile. */
     onOpenDevices: () -> Unit = {},
-    /** Native config_entries browser with per-row reload. */
     onOpenIntegrations: () -> Unit = {},
     onOpenLogs: () -> Unit = {},
     onOpenUsers: () -> Unit = {},
     onOpenTags: () -> Unit = {},
-    /** Native blueprint browser + URL importer (HA `blueprint/list` +
-     *  `blueprint/import` + `blueprint/save`). Defaulted so older callers
-     *  still compile. */
     onOpenBlueprints: () -> Unit = {},
-    /** Native long-term statistics chart: picks any recorder series and
-     *  plots mean/min/max/sum/change over a chosen window. */
     onOpenStatistics: () -> Unit = {},
-    /** Native Lovelace dashboards browser + editor. Hidden on R1
-     *  small-screen tier via the entry row's width-tier gate. */
     onOpenDashboards: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
@@ -213,108 +172,86 @@ fun SettingsScreen(
         factory = SettingsViewModel.factory(settings = settings, tokens = tokens),
     )
     val s by vm.state.collectAsStateWithLifecycle()
-    val listState = rememberLazyListState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Internal drill-in back-stack. Seeded from the legacy nav-graph category so
+    // an external deep link still lands on the right subpage; ordinarily the nav
+    // graph passes ROOT and every deeper level is pushed in-process.
+    var backStack by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(
+            SettingsBackStack(pathTo(seedNodeFor(currentCategory))),
+        )
+    }
+    val node = backStack.current
+    val push: (SettingsNode) -> Unit = { backStack = backStack.push(it) }
+
+    // Settings search against the registry. Non-blank query swaps the current
+    // page body for a flat matched-entries list grouped by category; tapping a
+    // result jumps the back-stack to that setting's home node. Lives at screen
+    // scope so it survives node changes for as long as Settings is open.
+    var settingsQuery by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+
+    // One Back press: clear an in-progress search first, then pop one level; a
+    // pop at ROOT exits Settings. Mirrors the on-screen chevron exactly.
+    val popOne: () -> Unit = {
+        if (settingsQuery.isNotBlank()) {
+            settingsQuery = ""
+        } else {
+            when (val r = backStack.pop()) {
+                is PopResult.Popped -> backStack = r.stack
+                PopResult.Exit -> onBack()
+            }
+        }
+    }
+    BackHandler(onBack = popOne)
+
+    // One LazyList state shared across nodes; reset to the top whenever the node
+    // changes so each freshly-entered subpage reads top-down and the wheel scrolls
+    // the page the user is actually looking at.
+    val listState = rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(node) {
+        runCatching { listState.scrollToItem(0) }
+    }
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
 
-    // Search query against the SETTINGS_REGISTRY. Live-filters the visible
-    // sections when non-blank: the regular sections collapse and a flat
-    // matched-entries list takes their place. Empty query restores the
-    // section view. Lives at screen scope so the query survives scroll
-    // recomposition without resetting.
-    var settingsQuery by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf("")
-    }
     val matchedEntries = androidx.compose.runtime.remember(settingsQuery) {
         com.github.itskenny0.r1ha.core.prefs.searchSettings(settingsQuery)
     }
     val modifiedCount = androidx.compose.runtime.remember(s) {
         com.github.itskenny0.r1ha.core.prefs.modifiedSettings(s).size
     }
-    // Per-section modified count — used as a small badge on each Section
-    // header so the user can spot 'where did I change things?' even in
-    // collapsed/tiered view. Categories without a 1:1 section mapping
-    // (TODAY / TALK & FIRE / STATUS VIEWS / POWER TOOLS) won't appear in
-    // this map; their headers stay badge-less.
+    // Per-section modified count, keyed by the legacy section name, used to badge
+    // the top-level category rows so the user can see where they've changed
+    // things without drilling in.
     val sectionModifiedCount: Map<String, Int> =
         androidx.compose.runtime.remember(s) {
             com.github.itskenny0.r1ha.core.prefs.modifiedSettings(s)
                 .groupingBy { sectionNameForCategory(it.category) }
                 .eachCount()
         }
+    fun groupBadge(vararg names: String): Int = names.sumOf { sectionModifiedCount[it] ?: 0 }
 
-    // Expand/collapse state for each section header. Defaults to all expanded
-    // (no behaviour change for existing installs); the user can tap a header
-    // to collapse the section, or use COLLAPSE ALL / EXPAND ALL chips in the
-    // settings header. Persisted only for the current screen lifetime — sections
-    // re-expand on screen re-entry, which keeps the discoverability of the full
-    // settings tree as the entry point.
-    val allSectionNames = ALL_SECTION_NAMES
-    var expandedSections by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(allSectionNames.toSet())
-    }
-    val toggleSection: (String) -> Unit = { name ->
-        expandedSections = if (name in expandedSections) {
-            expandedSections - name
-        } else {
-            expandedSections + name
-        }
-    }
-
-    // Drain a pending focus request from ModifiedSettingsScreen on this
-    // composition. Read-and-clear so a later unrelated re-entry into Settings
-    // doesn't silently re-expand the same section. Collapses every other
-    // section so the target dominates the viewport, clears any in-progress
-    // search query (otherwise the section grid would be hidden by the search
-    // results), and scrolls the LazyColumn back to the top so the section
-    // ladder reads top-down.
+    // Drain a pending deep-link focus request from ModifiedSettingsScreen. Jump
+    // the back-stack to the requested setting's home node (restoring its parent
+    // trail) and clear any in-progress search so the target body is visible.
     androidx.compose.runtime.LaunchedEffect(Unit) {
         val pending = com.github.itskenny0.r1ha.core.util.SettingsFocusBus.consume()
-        if (pending != null && pending in allSectionNames) {
-            expandedSections = setOf(pending)
-            settingsQuery = ""
-            // Route to the matching subpage if we're not already there;
-            // sections only render in their parent category after the
-            // restructure, so staying on ROOT would leave the user on a
-            // blank scroll position.
-            val target = SECTION_CATEGORY[pending]
-            if (target != null && target != currentCategory) {
-                onOpenCategory(target)
-            } else {
-                runCatching { listState.animateScrollToItem(0) }
+        if (pending != null) {
+            val path = focusPathForSection(pending)
+            if (path.size > 1) {
+                backStack = SettingsBackStack(path)
+                settingsQuery = ""
             }
         }
     }
 
-    // Overlay flag for the Quick Settings tile entity-picker. Lives at
-    // screen scope so the picker can render above the LazyColumn body.
-    // Driven by the PICK chip on the Quick Settings tile row.
-    val tilePickerOpen = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(false)
-    }
+    // Quick-Settings-tile entity picker overlay flag. Lives at screen scope so
+    // the picker renders above the page body.
+    val tilePickerOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-    // Confirmation prompt shown when the native dashboards renderer is opened
-    // on an R1-sized display, where the full-screen card grid is tight. Lives
-    // at screen scope so the row's onClick (in the LazyColumn) can raise it and
-    // the dialog can render above the body.
-    val dashboardsSmallScreenPrompt = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf(false)
-    }
-
-    // SAF launchers for backup export / import. Using CreateDocument / OpenDocument
-    // routes through the Android system file picker, so the user can save to the
-    // R1's local storage, a USB stick, or any cloud-storage app they have wired
-    // up (Drive, Nextcloud, etc.) without us shipping permissions for direct FS
-    // access. CreateDocument keeps the chosen MIME type as the file's display
-    // type so a downstream viewer can open it; we use application/json so
-    // editors recognise the format on a desktop too.
-    val context = androidx.compose.ui.platform.LocalContext.current
-    // Holds the JSON blob produced by exportBackupBlob until the user picks
-    // the destination file via SAF. The launcher reads this when its
-    // ActivityResult lands and writes to the picked URI.
-    val pendingBackupBlob = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
-    }
+    // SAF launchers for backup export / import (Connection > Backup & restore).
+    val pendingBackupBlob = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val exportLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
     ) { uri: android.net.Uri? ->
@@ -327,9 +264,7 @@ fun SettingsScreen(
             } ?: error("couldn't open output stream")
             com.github.itskenny0.r1ha.core.util.Toaster.show("Backup saved")
         }.onFailure { t ->
-            com.github.itskenny0.r1ha.core.util.R1Log.w(
-                "Settings.exportBackup", "write failed: ${t.message}",
-            )
+            com.github.itskenny0.r1ha.core.util.R1Log.w("Settings.exportBackup", "write failed: ${t.message}")
             com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
                 shortText = "Backup save failed",
                 fullText = "Couldn't write the backup file.\n\n${t.message ?: t.toString()}",
@@ -347,9 +282,7 @@ fun SettingsScreen(
         }.fold(
             onSuccess = { raw -> vm.importBackupBlob(raw) },
             onFailure = { t ->
-                com.github.itskenny0.r1ha.core.util.R1Log.w(
-                    "Settings.importBackup", "read failed: ${t.message}",
-                )
+                com.github.itskenny0.r1ha.core.util.R1Log.w("Settings.importBackup", "read failed: ${t.message}")
                 com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
                     shortText = "Backup read failed",
                     fullText = "Couldn't read the backup file.\n\n${t.message ?: t.toString()}",
@@ -363,1638 +296,166 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding()
-            // imePadding keeps the LazyColumn above the keyboard when the user
-            // focuses one of the text fields here (Settings search at the top,
-            // Quick Settings tile entity binding, Long-Lived Token URL, etc.).
-            // Without it the bottom of the section grid extends behind the IME
-            // and Compose's BringIntoView only scrolls the focused field into
-            // view — surrounding controls stay obscured.
             .imePadding(),
     ) {
-        R1TopBar(title = categoryTitle(currentCategory), onBack = onBack)
+        // Per-level top bar. The chevron / hardware Back both pop one level via
+        // [popOne]; at ROOT that means leaving Settings.
+        R1TopBar(title = node.title, onBack = popOne)
 
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-        LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
 
-            // ── Search bar + modified-settings entry ──────────────────────────
-            // Sticky-feeling header at the top of the LazyColumn. The search
-            // field live-filters against the SETTINGS_REGISTRY; the
-            // 'N modified' chip jumps to the dedicated subscreen. Only shown
-            // on the ROOT landing page so subpages don't double-decorate
-            // their content with the global search affordance.
-            if (currentCategory == SettingsCategory.ROOT) {
-                item {
-                    SettingsHeader(
+                // Search bar sits at the top of every level so the user can jump
+                // to any leaf from wherever they are.
+                item("__search") {
+                    SettingsSearchBar(
                         query = settingsQuery,
                         onQueryChange = { settingsQuery = it },
+                    )
+                }
+
+                if (settingsQuery.isNotBlank()) {
+                    settingsSearchResults(
+                        query = settingsQuery,
+                        matched = matchedEntries,
+                        current = s,
+                        onJump = { entry ->
+                            val path = focusPathForSection(sectionNameForCategory(entry.category))
+                            settingsQuery = ""
+                            if (path.size > 1) backStack = SettingsBackStack(path)
+                        },
+                    )
+                    return@LazyColumn
+                }
+
+                when (node) {
+                    SettingsNode.ROOT -> rootCategories(
+                        s = s,
+                        groupBadge = ::groupBadge,
+                        push = push,
+                        onOpenCategory = onOpenCategory,
+                        onOpenAbout = onOpenAbout,
+                    )
+
+                    // ── Connection & server ───────────────────────────────
+                    SettingsNode.CONNECTION -> connectionRoot(
+                        s = s,
+                        haRepository = haRepository,
+                        push = push,
+                        groupBadge = ::groupBadge,
+                    )
+                    SettingsNode.CONNECTION_ACCOUNT -> connectionAccount(
+                        s = s,
+                        vm = vm,
+                        haRepository = haRepository,
+                        context = context,
+                        onOpenLongLivedToken = onOpenLongLivedToken,
+                        onSignedOut = onSignedOut,
+                    )
+                    SettingsNode.CONNECTION_BACKUP -> connectionBackup(
+                        vm = vm,
+                        pendingBackupBlob = pendingBackupBlob,
+                        exportLauncher = exportLauncher,
+                        importLauncher = importLauncher,
+                    )
+                    SettingsNode.CONNECTION_SECURITY -> item { SecuritySection() }
+
+                    // ── Appearance ────────────────────────────────────────
+                    SettingsNode.APPEARANCE -> appearanceRoot(
+                        s = s,
+                        push = push,
+                        groupBadge = ::groupBadge,
+                    )
+                    SettingsNode.APPEARANCE_THEME -> appearanceTheme(s = s, vm = vm, onOpenThemePicker = onOpenThemePicker)
+                    SettingsNode.APPEARANCE_CARDS -> appearanceCards(s = s, vm = vm, push = push)
+                    SettingsNode.APPEARANCE_CARDS_VALUEBAR -> appearanceValueBar(s = s, vm = vm)
+                    SettingsNode.APPEARANCE_CARDS_CHROME -> appearanceChrome(s = s, vm = vm)
+
+                    // ── Input ─────────────────────────────────────────────
+                    SettingsNode.INPUT -> inputRoot(s = s, push = push, onOpenKeyBindings = onOpenKeyBindings)
+                    SettingsNode.INPUT_WHEEL -> inputWheel(s = s, vm = vm)
+
+                    // ── Behaviour ─────────────────────────────────────────
+                    SettingsNode.BEHAVIOUR -> behaviourRoot(s = s, vm = vm, push = push)
+                    SettingsNode.BEHAVIOUR_QUICKTILES -> behaviourQuickTiles(
+                        s = s,
+                        vm = vm,
+                        onPick = { tilePickerOpen.value = true },
+                    )
+
+                    // ── Today / Dashboard ─────────────────────────────────
+                    SettingsNode.DASHBOARD -> dashboardRoot(
+                        s = s,
+                        push = push,
+                        onOpenDashboard = onOpenDashboard,
+                        onOpenSearch = onOpenSearch,
+                        onOpenDashboards = onOpenDashboards,
+                    )
+                    SettingsNode.DASHBOARD_CARDS -> dashboardCards(s = s, vm = vm)
+                    SettingsNode.DASHBOARD_THRESHOLDS -> dashboardThresholds(s = s, vm = vm)
+                    SettingsNode.DASHBOARD_ORDER -> dashboardOrder(s = s, vm = vm)
+
+                    // ── Integrations ──────────────────────────────────────
+                    SettingsNode.INTEGRATIONS -> integrationsRoot(
+                        s = s,
+                        vm = vm,
+                        push = push,
+                        groupBadge = ::groupBadge,
+                        onOpenCategory = onOpenCategory,
+                    )
+                    SettingsNode.INTEGRATIONS_REFRESH -> integrationsRefresh(s = s, vm = vm)
+                    SettingsNode.INTEGRATIONS_CAMERAS -> integrationsCameras(s = s, vm = vm)
+                    SettingsNode.INTEGRATIONS_DEFAULTS -> integrationsDefaults(s = s, vm = vm)
+
+                    // ── Advanced ──────────────────────────────────────────
+                    SettingsNode.ADVANCED -> advancedRoot(
+                        s = s,
+                        vm = vm,
                         modifiedCount = modifiedCount,
-                        onOpenModified = onOpenModifiedSettings,
-                        anyExpanded = expandedSections.isNotEmpty(),
-                        onCollapseAll = { expandedSections = emptySet() },
-                        onExpandAll = { expandedSections = allSectionNames.toSet() },
+                        onOpenDevMenu = onOpenDevMenu,
+                        onOpenModifiedSettings = onOpenModifiedSettings,
+                        onOpenSystemHealth = onOpenSystemHealth,
+                    )
+
+                    // ── Browse ────────────────────────────────────────────
+                    SettingsNode.BROWSE -> browseRoot(push = push)
+                    SettingsNode.BROWSE_TODAY -> browseToday(onOpenDashboard, onOpenSearch)
+                    SettingsNode.BROWSE_TALK -> browseTalk(
+                        onOpenAssist, onOpenScenes, onOpenAutomations, onOpenHelpers, onOpenTodo,
+                    )
+                    SettingsNode.BROWSE_STATUS -> browseStatus(
+                        onOpenCameras, onOpenWeather, onOpenPersons, onOpenCalendars, onOpenLogbook,
+                        onOpenNotifications, onOpenAreas, onOpenLabels, onOpenFloors, onOpenZones,
+                        onOpenEnergy, onOpenDevice,
+                    )
+                    SettingsNode.BROWSE_POWER -> browsePower(
+                        haRepository = haRepository,
+                        coroutineScope = coroutineScope,
+                        onOpenUpdates = onOpenUpdates,
+                        onOpenRepairs = onOpenRepairs,
+                        onOpenMediaBrowse = onOpenMediaBrowse,
+                        onOpenBackups = onOpenBackups,
+                        onOpenZhaPairing = onOpenZhaPairing,
+                        onOpenTemplate = onOpenTemplate,
+                        onOpenServiceCaller = onOpenServiceCaller,
+                        onOpenServices = onOpenServices,
+                        onOpenSystemHealth = onOpenSystemHealth,
+                        onOpenLovelace = onOpenLovelace,
+                        onOpenDevices = onOpenDevices,
+                        onOpenIntegrations = onOpenIntegrations,
+                        onOpenBlueprints = onOpenBlueprints,
+                        onOpenLogs = onOpenLogs,
+                        onOpenUsers = onOpenUsers,
+                        onOpenTags = onOpenTags,
+                        onOpenStatistics = onOpenStatistics,
                     )
                 }
-            }
 
-            if (settingsQuery.isNotBlank()) {
-                // Search view — replaces the section grid with a flat matched
-                // list. Each row shows the category tag, label, description and
-                // current value so the user can find the setting and know what
-                // section to scroll to.
-                if (matchedEntries.isEmpty()) {
-                    item {
-                        Text(
-                            text = "No settings match \"$settingsQuery\".",
-                            style = R1.body,
-                            color = R1.InkMuted,
-                            modifier = Modifier.padding(22.dp),
-                        )
-                    }
-                } else {
-                    // Group matched entries by category, in registry order, so
-                    // search results read with the same shape as the diff panel
-                    // and the section grid: SERVER → INPUT → CARD_UI →
-                    // BEHAVIOUR → APPEARANCE, with each group prefixed by a
-                    // small accent header.
-                    val grouped = matchedEntries
-                        .groupBy { it.category }
-                        .toList()
-                        .sortedBy { (cat, _) ->
-                            com.github.itskenny0.r1ha.core.prefs.SettingCategory.entries.indexOf(cat)
-                        }
-                    grouped.forEach { (category, entries) ->
-                        item("__search_cat_${category.name}") {
-                            Text(
-                                text = category.label.uppercase(),
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 2.dp),
-                            )
-                        }
-                        itemsIndexed(entries, key = { _, it -> it.id }) { _, entry ->
-                            SearchResultRow(
-                                entry = entry,
-                                current = s,
-                                onClick = {
-                                    // Drill into the right subpage rather than
-                                    // expanding the section in place — sections
-                                    // only render in their parent category's
-                                    // subpage now, so the old in-place expansion
-                                    // would land on an empty body. Set the
-                                    // section as the only expanded one before
-                                    // navigating so the user sees the relevant
-                                    // block as the first thing on the subpage.
-                                    val sectionName = sectionNameForCategory(entry.category)
-                                    expandedSections = setOf(sectionName)
-                                    settingsQuery = ""
-                                    val target = SECTION_CATEGORY[sectionName]
-                                    if (target != null && target != currentCategory) {
-                                        onOpenCategory(target)
-                                    } else {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(0)
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
-                }
-                return@LazyColumn // Skip the normal sections while searching.
+                item("__tail_spacer") { Spacer(Modifier.height(48.dp)) }
             }
-
-            // ── ROOT landing page — group cards ──────────────────────────────────
-            // Android-Settings-style top-level grouping. Each card opens its
-            // own subpage via the [onOpenCategory] callback (wired by
-            // AppNavGraph to a settings/<category> route). Browse is a special
-            // case that wraps the navigation rows (TODAY / TALK & FIRE /
-            // STATUS VIEWS / POWER TOOLS) so they stay reachable from
-            // Settings without polluting the config-only group list.
-            if (currentCategory == SettingsCategory.ROOT) {
-                // Sum each group's modified-badge so the user can tell at a
-                // glance which category they've tweaked.
-                fun groupBadge(vararg names: String): Int =
-                    names.sumOf { sectionModifiedCount[it] ?: 0 }
-                item {
-                    GroupCard(
-                        title = "Connection",
-                        subtitle = "Server, security, backup & restore",
-                        modifiedCount = groupBadge("SERVER", "BACKUP & RESTORE", "SECURITY"),
-                        onClick = { onOpenCategory(SettingsCategory.CONNECTION) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Appearance",
-                        subtitle = "Theme, card UI, dashboard",
-                        modifiedCount = groupBadge("APPEARANCE", "CARD UI", "DASHBOARD"),
-                        onClick = { onOpenCategory(SettingsCategory.APPEARANCE) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Behaviour",
-                        subtitle = "Wheel, touch, haptics, quick tiles",
-                        modifiedCount = groupBadge("SCROLL WHEEL", "BEHAVIOUR"),
-                        onClick = { onOpenCategory(SettingsCategory.BEHAVIOUR) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Integrations",
-                        subtitle = "HA refresh tuning, cameras, defaults",
-                        modifiedCount = groupBadge("INTEGRATIONS"),
-                        onClick = { onOpenCategory(SettingsCategory.INTEGRATIONS) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Sync",
-                        subtitle = if (s.integrations.haSyncEnabled) {
-                            "ON · ${s.integrations.haSyncIntervalSec}s interval"
-                        } else {
-                            "Mirror settings across devices via Home Assistant"
-                        },
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.SYNC) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "IoT Camera Mode",
-                        subtitle = if (s.iotCamera.enabled) {
-                            val sinks = buildList {
-                                if (s.iotCamera.mjpegEnabled) add("MJPEG")
-                                if (s.iotCamera.mqttEnabled) add("MQTT")
-                            }
-                            "ON · ${if (sinks.isEmpty()) "no sinks" else sinks.joinToString(" + ")}"
-                        } else {
-                            "Stream the device camera to Home Assistant"
-                        },
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "IoT Sensors Mode",
-                        subtitle = if (s.iotSensors.enabled) {
-                            val on = buildList {
-                                if (s.iotSensors.publishBattery) add("battery")
-                                if (s.iotSensors.publishLightSensor) add("light")
-                                if (s.iotSensors.publishVibration) add("vibration")
-                                if (s.iotSensors.controlFlashlight) add("flashlight")
-                                if (s.iotSensors.controlBrightness) add("brightness")
-                                if (s.iotSensors.controlVolume) add("volume")
-                                if (s.iotSensors.controlLockScreen) add("lock")
-                            }
-                            "ON · ${if (on.isEmpty()) "no entities" else on.take(4).joinToString(", ")}" +
-                                if (on.size > 4) " +${on.size - 4}" else ""
-                        } else {
-                            "Expose device sensors + controls to Home Assistant"
-                        },
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "MQTT broker",
-                        subtitle = if (s.advanced.mqttHost.isNotBlank()) {
-                            "${s.advanced.mqttHost}:${s.advanced.mqttPort}" +
-                                (if (s.advanced.mqttUseTls) " · TLS" else "")
-                        } else {
-                            "Not configured · required by IoT Camera Mode"
-                        },
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.MQTT) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Advanced",
-                        subtitle = "Dev menu, modified settings, reset",
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.ADVANCED) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "Browse",
-                        subtitle = "Open Dashboard, Assist, Scenes, etc.",
-                        modifiedCount = 0,
-                        onClick = { onOpenCategory(SettingsCategory.BROWSE) },
-                    )
-                }
-                item {
-                    GroupCard(
-                        title = "About",
-                        subtitle = "Version, source, file a bug",
-                        modifiedCount = 0,
-                        onClick = onOpenAbout,
-                    )
-                }
-                item { Spacer(Modifier.height(48.dp)) }
-                return@LazyColumn
-            }
-
-            // Subpage rendering: only the sections matching [currentCategory]
-            // render. Each Section block below is wrapped with a guard;
-            // SECTION_CATEGORY maps "SERVER" → CONNECTION, etc.
-            fun shouldShow(name: String): Boolean =
-                SECTION_CATEGORY[name] == currentCategory
-
-            // ADVANCED subpage doesn't have a 1:1 mapping to an existing
-            // section: it's a curated list of power-user entry points. Render
-            // it inline before the section loop so the section guards below
-            // can stay simple. Dev menu lives in AboutScreen too, but
-            // surfacing it here makes Settings → Advanced feel like the
-            // canonical landing for power users.
-            if (currentCategory == SettingsCategory.ADVANCED) {
-                item {
-                    NavRow(
-                        label = "Dev menu",
-                        value = "Live logs, fire-event, integrations panel",
-                        onClick = onOpenDevMenu,
-                    )
-                }
-                item {
-                    NavRow(
-                        label = "Modified settings",
-                        value = if (modifiedCount > 0) "$modifiedCount changed" else "All at defaults",
-                        onClick = onOpenModifiedSettings,
-                    )
-                }
-                item {
-                    NavRow(
-                        label = "System health",
-                        value = "Server config, ping, error log",
-                        onClick = onOpenSystemHealth,
-                    )
-                }
-                item { SectionDivider() }
-            }
-
-            // ── Server ─────────────────────────────────────────────────────────────
-            if (shouldShow("SERVER")) {
-            item { Section("SERVER", expanded = "SERVER" in expandedSections, onToggle = { toggleSection("SERVER") }, modifiedCount = sectionModifiedCount["SERVER"] ?: 0) }
-            if ("SERVER" in expandedSections) {
-            item {
-                InfoRow(
-                    label = "URL",
-                    value = s.server?.url ?: "(not connected)",
-                    mono = true,
-                )
-            }
-            item {
-                s.server?.haVersion?.let { InfoRow(label = "HA version", value = it, mono = true) }
-            }
-            // Live connection state — collected from HaRepository.connection
-            // and rendered as a small human label so the user can spot a
-            // connection issue from the Settings screen without flipping back
-            // to the main deck to read the chrome dot. Refreshes live as the
-            // state machine moves.
-            item {
-                val conn by haRepository.connection.collectAsStateWithLifecycle()
-                val label = when (val c = conn) {
-                    is com.github.itskenny0.r1ha.core.ha.ConnectionState.Connected -> "Connected"
-                    com.github.itskenny0.r1ha.core.ha.ConnectionState.Idle -> "Idle"
-                    com.github.itskenny0.r1ha.core.ha.ConnectionState.Connecting -> "Connecting…"
-                    com.github.itskenny0.r1ha.core.ha.ConnectionState.Authenticating -> "Authenticating…"
-                    is com.github.itskenny0.r1ha.core.ha.ConnectionState.Disconnected ->
-                        "Disconnected (attempt ${c.attempt})"
-                    is com.github.itskenny0.r1ha.core.ha.ConnectionState.AuthLost ->
-                        "Auth lost · sign in again"
-                }
-                InfoRow(label = "Status", value = label)
-            }
-            // App version line — pulls from BuildConfig so it always matches
-            // the running APK. Pairs the marketing version + integer
-            // versionCode so the user can tell which exact build this is
-            // when filing an issue.
-            item {
-                InfoRow(
-                    label = "App version",
-                    value = "${com.github.itskenny0.r1ha.BuildConfig.VERSION_NAME} (${com.github.itskenny0.r1ha.BuildConfig.VERSION_CODE})",
-                    mono = true,
-                )
-            }
-            // Long-lived token entry — alternative to the OAuth flow for
-            // kiosk-style setups or users who prefer pasting a token from
-            // HA's profile page. Lives in the SERVER section so users
-            // looking to change auth find it co-located with sign-out.
-            item {
-                NavRow(
-                    label = "Use long-lived token",
-                    value = "Paste instead of OAuth",
-                    onClick = onOpenLongLivedToken,
-                )
-            }
-            // RECONNECT NOW — force-flush the WS + re-fetch fresh state without
-            // touching tokens. Useful when the connection has gone stale (HA
-            // restarted, Wi-Fi dropped briefly, etc.) and the user wants live
-            // updates back without going through the full sign-out cycle.
-            // Outlined variant so it visually pairs with the destructive
-            // SIGN-OUT below but doesn't compete for primary attention.
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
-                ) {
-                    com.github.itskenny0.r1ha.ui.components.R1Button(
-                        text = "RECONNECT NOW",
-                        onClick = {
-                            haRepository.reconnectNow()
-                            com.github.itskenny0.r1ha.core.util.Toaster.show("Reconnecting…")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
-                    )
-                }
-            }
-            // 'Open HA web UI' — fires an ACTION_VIEW intent with the
-            // configured server URL. Useful when the user wants to drop
-            // into the full HA web frontend for things this app doesn't
-            // cover (long-form automation editor, area/device configs,
-            // backups). No-op when server isn't configured.
-            item {
-                val url = s.server?.url
-                if (url != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
-                    ) {
-                        com.github.itskenny0.r1ha.ui.components.R1Button(
-                            text = "OPEN HA WEB UI",
-                            onClick = {
-                                runCatching {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(url),
-                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
-                                }.onFailure {
-                                    com.github.itskenny0.r1ha.core.util.Toaster.error(
-                                        "No browser to open $url",
-                                    )
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
-                        )
-                    }
-                }
-            }
-            item {
-                // Two-stage armed/commit — first tap arms (label changes
-                // to CONFIRM …), second tap fires within 3 s; auto-reset
-                // afterwards. Stops a thumb-fumble from accidentally
-                // dropping tokens + landing the user back on the
-                // onboarding URL form. Same pattern as the card-stack
-                // Quick Actions TURN ALL OFF.
-                val armed = androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(false)
-                }
-                androidx.compose.runtime.LaunchedEffect(armed.value) {
-                    if (armed.value) {
-                        kotlinx.coroutines.delay(3_000)
-                        armed.value = false
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = R1.space.xl, vertical = R1.space.m),
-                ) {
-                    DangerButton(
-                        text = if (armed.value) "CONFIRM · SIGN OUT" else "SIGN OUT & RECONNECT",
-                        onClick = {
-                            if (armed.value) vm.signOut(onSignedOut) else armed.value = true
-                        },
-                    )
-                }
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("SCROLL WHEEL")) {
-            // ── Scroll wheel ───────────────────────────────────────────────────────
-            item { Section("SCROLL WHEEL", expanded = "SCROLL WHEEL" in expandedSections, onToggle = { toggleSection("SCROLL WHEEL") }, modifiedCount = sectionModifiedCount["SCROLL WHEEL"] ?: 0, onReset = { vm.resetCategory(com.github.itskenny0.r1ha.core.prefs.SettingCategory.INPUT) }) }
-            if ("SCROLL WHEEL" in expandedSections) {
-            item {
-                LabeledControl(label = "Step size") {
-                    SegmentedIntPicker(
-                        options = listOf(1, 2, 5, 10),
-                        selected = s.wheel.stepPercent,
-                        label = { "$it%" },
-                        onSelect = { vm.setWheelStep(it) },
-                    )
-                }
-            }
-            item {
-                SwitchRow(
-                    label = "Acceleration",
-                    subtitle = "Spin faster to jump further",
-                    checked = s.wheel.acceleration,
-                    onCheckedChange = { vm.setWheelAcceleration(it) },
-                )
-            }
-            if (s.wheel.acceleration) {
-                item {
-                    LabeledControl(label = "Acceleration curve") {
-                        SegmentedEnumPicker(
-                            options = com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.entries,
-                            selected = s.wheel.accelerationCurve,
-                            label = {
-                                when (it) {
-                                    com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.SUBTLE -> "SUBTLE"
-                                    com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.MEDIUM -> "MEDIUM"
-                                    com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.AGGRESSIVE -> "AGGRESSIVE"
-                                }
-                            },
-                            onSelect = { vm.setAccelerationCurve(it) },
-                        )
-                    }
-                }
-            }
-            item {
-                SwitchRow(
-                    label = "Invert direction",
-                    checked = s.wheel.invertDirection,
-                    onCheckedChange = { vm.setWheelInvert(it) },
-                )
-            }
-            // "Key source" picker was superseded by the configurable per-action
-            // key bindings — see Behaviour → Key bindings — which lets users
-            // assign multiple physical keys (DPAD, volume, others) to each
-            // logical action explicitly, instead of toggling a single global
-            // accept-D-pad-vs-volume switch.
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("CARD UI")) {
-            // ── Card UI ────────────────────────────────────────────────────────────
-            item { Section("CARD UI", expanded = "CARD UI" in expandedSections, onToggle = { toggleSection("CARD UI") }, modifiedCount = sectionModifiedCount["CARD UI"] ?: 0, onReset = { vm.resetCategory(com.github.itskenny0.r1ha.core.prefs.SettingCategory.CARD_UI) }) }
-            if ("CARD UI" in expandedSections) {
-            item {
-                LabeledControl(label = "Display mode") {
-                    SegmentedEnumPicker(
-                        options = DisplayMode.entries,
-                        selected = s.ui.displayMode,
-                        label = {
-                            when (it) {
-                                DisplayMode.PERCENT -> "PERCENT"
-                                DisplayMode.RAW -> "RAW"
-                            }
-                        },
-                        onSelect = { vm.setDisplayMode(it) },
-                    )
-                }
-            }
-            item {
-                SwitchRow(
-                    label = "Show on/off pill",
-                    checked = s.ui.showOnOffPill,
-                    onCheckedChange = { vm.setShowOnOffPill(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Show area label",
-                    checked = s.ui.showAreaLabel,
-                    onCheckedChange = { vm.setShowAreaLabel(it) },
-                )
-            }
-            item {
-                LabeledControl(label = "Position pip location") {
-                    PositionDotLocationPicker(
-                        selected = s.ui.positionDotLocation,
-                        onSelect = { vm.setPositionDotLocation(it) },
-                    )
-                }
-            }
-            item {
-                LabeledControl(label = "Value bar location") {
-                    ValueBarLocationPicker(
-                        selected = s.ui.valueBarLocation,
-                        onSelect = { vm.setValueBarLocation(it) },
-                    )
-                }
-            }
-            item {
-                SwitchRow(
-                    label = "Hide card hint above current",
-                    subtitle = "Solid chrome backdrop covers the previous card's tail",
-                    checked = s.ui.hideCardTailAbove,
-                    onCheckedChange = { vm.setHideCardTailAbove(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Infinite scroll",
-                    subtitle = "Wheel past the last card wraps to the first",
-                    checked = s.ui.infiniteScroll,
-                    onCheckedChange = { vm.setInfiniteScroll(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Show 0% arc when entity is off",
-                    subtitle = "Off (default): arc shows whatever brightness HA reported, " +
-                        "even if the entity is currently off. On: arc is always blank (0%) " +
-                        "for off entities. Useful for bulbs that store pre-off brightness " +
-                        "in HA so a dark bulb doesn't show 75% on its card.",
-                    checked = s.ui.showZeroPercentWhenOff,
-                    onCheckedChange = { vm.setShowZeroPercentWhenOff(it) },
-                )
-            }
-            item {
-                LabeledControl(label = "Sensor decimals") {
-                    SegmentedIntPicker(
-                        options = listOf(0, 1, 2, 3, 4),
-                        selected = s.ui.maxDecimalPlaces,
-                        label = { if (it == 0) "INT" else "$it" },
-                        onSelect = { vm.setMaxDecimalPlaces(it) },
-                    )
-                }
-            }
-            item {
-                LabeledControl(label = "Temperature unit") {
-                    SegmentedEnumPicker(
-                        options = com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.entries,
-                        selected = s.ui.tempUnit,
-                        label = {
-                            when (it) {
-                                com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.AUTO -> "AUTO"
-                                com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.CELSIUS -> "°C"
-                                com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.FAHRENHEIT -> "°F"
-                            }
-                        },
-                        onSelect = { vm.setTempUnit(it) },
-                    )
-                }
-            }
-
-            // ── Chrome row layout ───────────────────────────────────────────────
-            // Right-cluster button order + visibility. Renders as a small stack
-            // because the list is fixed-size (currently 4 items: BATTERY,
-            // ASSIST_MIC, EDIT, GEAR) and a DragReorderColumn inside a LazyColumn
-            // doesn't compose cleanly. ↑ / ↓ chips swap with neighbour; a small
-            // SWITCH toggles visibility per row (forced-on for GEAR — without it
-            // the user can't reach Settings).
-            item {
-                Text(
-                    text = "Chrome buttons",
-                    style = R1.bodyEmph,
-                    color = R1.Ink,
-                    modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 10.dp),
-                )
-                Text(
-                    text = "Reorder with ↑ / ↓ chips and toggle visibility per button. " +
-                        "Right cluster of the card-stack chrome.",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = R1.space.xl),
-                )
-                // Live preview of the rendered cluster — mirrors what the chrome row
-                // will actually look like in card-stack order. Hidden buttons render
-                // dimmed with a slash overlay so the user can see at a glance which
-                // slots will fire and which are off.
-                ChromeButtonsPreview(buttons = s.ui.chromeButtons)
-            }
-            itemsIndexed(s.ui.chromeButtons, key = { _, c -> c.ref.name }) { idx, cfg ->
-                ChromeButtonRow(
-                    position = idx + 1,
-                    config = cfg,
-                    isFirst = idx == 0,
-                    isLast = idx == s.ui.chromeButtons.lastIndex,
-                    onMoveUp = { vm.moveChromeButton(idx, idx - 1) },
-                    onMoveDown = { vm.moveChromeButton(idx, idx + 1) },
-                    onToggle = { vm.setChromeButtonEnabled(cfg.ref, it) },
-                )
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("BEHAVIOUR")) {
-            // ── Behaviour ──────────────────────────────────────────────────────────
-            item { Section("BEHAVIOUR", expanded = "BEHAVIOUR" in expandedSections, onToggle = { toggleSection("BEHAVIOUR") }, modifiedCount = sectionModifiedCount["BEHAVIOUR"] ?: 0, onReset = { vm.resetCategory(com.github.itskenny0.r1ha.core.prefs.SettingCategory.BEHAVIOUR) }) }
-            if ("BEHAVIOUR" in expandedSections) {
-            item {
-                SwitchRow(
-                    label = "Haptic feedback",
-                    checked = s.behavior.haptics,
-                    onCheckedChange = { vm.setHaptics(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Keep screen on",
-                    checked = s.behavior.keepScreenOn,
-                    onCheckedChange = { vm.setKeepScreenOn(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Tap to toggle",
-                    subtitle = "Off (default): the whole-card tap is inert so a miss " +
-                        "while aiming for the chrome buttons doesn't accidentally turn " +
-                        "the entity on. On: tap anywhere on the card to flip it.",
-                    checked = s.behavior.tapToToggle,
-                    onCheckedChange = { vm.setTapToToggle(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Hide status bar",
-                    subtitle = "Swipe down to peek the bar; auto-hides after release",
-                    checked = s.behavior.hideStatusBar,
-                    onCheckedChange = { vm.setHideStatusBar(it) },
-                )
-            }
-            // Battery indicator sub-toggle — only meaningful when the status bar
-            // is hidden (otherwise the system bar already shows battery). Indent
-            // visually via a leading symbol so it reads as nested without needing
-            // a fancy sub-section component.
-            if (s.behavior.hideStatusBar) {
-                item {
-                    SwitchRow(
-                        label = "↳ Show battery indicator",
-                        subtitle = "Tiny percent pill on the right of the chrome row " +
-                            "(polled every 30 s). Useful so a low R1 battery doesn't catch you off-guard.",
-                        checked = s.behavior.showBatteryWhenStatusBarHidden,
-                        onCheckedChange = { vm.setShowBatteryWhenStatusBarHidden(it) },
-                    )
-                }
-            }
-            item {
-                SwitchRow(
-                    label = "Start on Dashboard",
-                    subtitle = "Open the app on the TODAY dashboard instead of the card stack. " +
-                        "Useful for wall-mounted / kiosk R1s. Takes effect on next app launch.",
-                    checked = s.behavior.startOnDashboard,
-                    onCheckedChange = { vm.setStartOnDashboard(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Wheel toggles switches",
-                    subtitle = "On (default): wheel-up turns locks, covers, vacuums, plain " +
-                        "switches on; wheel-down turns them off. Off: wheel does nothing on " +
-                        "those cards; useful if a casual brush is accidentally relocking your door.",
-                    checked = s.behavior.wheelTogglesSwitches,
-                    onCheckedChange = { vm.setWheelTogglesSwitches(it) },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Assist · open keyboard on entry",
-                    subtitle = "Off (default): tapping into Assist shows the screen but " +
-                        "leaves the keyboard closed; useful on phones where the IME " +
-                        "popping up otherwise re-centers the empty state jarringly. " +
-                        "On: opening Assist focuses the input field immediately. " +
-                        "Voice input (🎤) works regardless of this setting.",
-                    checked = s.behavior.assistAutoOpenKeyboard,
-                    onCheckedChange = { vm.setAssistAutoOpenKeyboard(it) },
-                )
-            }
-            item { ToastLogLevelRow(current = s.behavior.toastLogLevel, onSelect = { vm.setToastLogLevel(it) }) }
-            item { OrientationModeRow(current = s.behavior.orientationMode, onSelect = { vm.setOrientationMode(it) }) }
-            // Key bindings — drilled into its own subpage so the press-to-bind
-            // overlay can live inside the activity's window (Compose Dialog
-            // opens a sub-window that doesn't route through MainActivity's
-            // dispatchKeyEvent, so the capture callback would never see the
-            // press).
-            item {
-                // Count how many actions diverge from their built-in defaults so the
-                // NavRow badge can read "3 custom" rather than just "default mapping".
-                val customCount = s.keyBindings.count { (name, list) ->
-                    val action = runCatching {
-                        com.github.itskenny0.r1ha.core.input.KeyAction.valueOf(name)
-                    }.getOrNull()
-                    val default = com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS[action].orEmpty()
-                    list != default
-                }
-                NavRow(
-                    label = "Key bindings",
-                    value = if (customCount == 0) "Default mapping" else "$customCount custom",
-                    onClick = onOpenKeyBindings,
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Guest mode (read-only)",
-                    subtitle = "When on, the app refuses every outbound service call. " +
-                        "Lights, locks, scripts: everything is blocked until you turn this off. " +
-                        "Hand the device to a guest without worrying they'll toggle something.",
-                    checked = s.guestModeEnabled,
-                    onCheckedChange = { vm.setGuestModeEnabled(it) },
-                )
-            }
-
-            // ── Quick Settings tile ─────────────────────────────────
-            // Bind one HA entity_id to the system Quick Settings panel
-            // (notification-shade tile). Empty = unbound; the tile
-            // shows a 'tap to set up' placeholder and opens the app on
-            // tap. Typing `light.kitchen` here makes that entity
-            // toggleable from anywhere on the phone without opening
-            // our app first.
-            item {
-                LabeledControl(label = "Quick Settings tile") {
-                    // entity_id text input + PICK button so the user
-                    // can either type a known id or browse the live
-                    // registry. The HaQuickTileService picks up the
-                    // bound entity on its next listen window.
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            R1TextField(
-                                value = s.behavior.quickTileEntityId ?: "",
-                                onValueChange = { vm.setQuickTileEntityId(it) },
-                                placeholder = "light.kitchen",
-                                monospace = true,
-                            )
-                        }
-                        Spacer(Modifier.width(R1.space.s))
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable(onClick = { tilePickerOpen.value = true })
-                                .padding(horizontal = R1.space.m, vertical = R1.space.s),
-                        ) {
-                            Text(text = "PICK", style = R1.labelMicro, color = R1.AccentWarm)
-                        }
-                    }
-                    Spacer(Modifier.height(R1.space.s))
-                    // Discovery hint — without this, users bind an
-                    // entity and then wonder why nothing happens.
-                    // Android's tile-add flow lives a few menus deep,
-                    // so we tell them explicitly. The wording is
-                    // copy-pasted from the standard 'Edit tiles' UI
-                    // on stock Android so it matches what the user
-                    // will see.
-                    Text(
-                        text = "After binding, pull down the notification shade twice → " +
-                            "tap the pencil-edit icon → drag the 'HA Toggle' tile from " +
-                            "the bottom row up to your active set.",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
-                }
-            }
-            // Extra Quick-Settings tile slots B/C/D. Same picker UX but each
-            // binds a separate manifest-declared TileService so the user
-            // can drag up to four HA-bound tiles into their shade.
-            item {
-                LabeledControl(label = "Quick Settings tile · slot B (HA Toggle 2)") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            R1TextField(
-                                value = s.behavior.quickTileEntityIdB ?: "",
-                                onValueChange = { vm.setQuickTileEntityIdB(it) },
-                                placeholder = "switch.coffee_machine",
-                                monospace = true,
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                LabeledControl(label = "Quick Settings tile · slot C (HA Toggle 3)") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            R1TextField(
-                                value = s.behavior.quickTileEntityIdC ?: "",
-                                onValueChange = { vm.setQuickTileEntityIdC(it) },
-                                placeholder = "script.goodnight",
-                                monospace = true,
-                            )
-                        }
-                    }
-                }
-            }
-            item {
-                LabeledControl(label = "Quick Settings tile · slot D (HA Toggle 4)") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            R1TextField(
-                                value = s.behavior.quickTileEntityIdD ?: "",
-                                onValueChange = { vm.setQuickTileEntityIdD(it) },
-                                placeholder = "scene.away",
-                                monospace = true,
-                            )
-                        }
-                    }
-                }
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("BACKUP & RESTORE")) {
-            // ── Backup & restore ───────────────────────────────────────────────────
-            item { Section("BACKUP & RESTORE", expanded = "BACKUP & RESTORE" in expandedSections, onToggle = { toggleSection("BACKUP & RESTORE") }, modifiedCount = sectionModifiedCount["BACKUP & RESTORE"] ?: 0) }
-            if ("BACKUP & RESTORE" in expandedSections) {
-            item {
-                InfoRow(
-                    label = "What's included",
-                    value = "Server URL · pages · favourites · all settings (no tokens)",
-                )
-            }
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = R1.space.xl, vertical = R1.space.m),
-                    horizontalArrangement = Arrangement.spacedBy(R1.space.s),
-                ) {
-                    com.github.itskenny0.r1ha.ui.components.R1Button(
-                        text = "EXPORT",
-                        onClick = {
-                            vm.exportBackupBlob { blob ->
-                                pendingBackupBlob.value = blob
-                                val stamp = java.text.SimpleDateFormat(
-                                    "yyyyMMdd-HHmm",
-                                    java.util.Locale.US,
-                                ).format(java.util.Date())
-                                exportLauncher.launch("r1ha-backup-$stamp.json")
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    com.github.itskenny0.r1ha.ui.components.R1Button(
-                        text = "IMPORT",
-                        onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
-                        modifier = Modifier.weight(1f),
-                        variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
-                    )
-                }
-            }
-
-            // RESET TO DEFAULTS — wipes every user-tunable setting back to its
-            // post-onboarding state. Preserves the server account (URL +
-            // tokens), favourites, and pages so the user doesn't have to
-            // re-onboard. Two-stage confirm: first tap arms the button
-            // (label flips + warning text appears), second tap commits.
-            // Auto-disarms after 3 s so a stray arm doesn't sit hot.
-            item {
-                val armed = androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(false)
-                }
-                androidx.compose.runtime.LaunchedEffect(armed.value) {
-                    if (armed.value) {
-                        kotlinx.coroutines.delay(3_000)
-                        armed.value = false
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
-                ) {
-                    com.github.itskenny0.r1ha.ui.components.R1Button(
-                        text = if (armed.value) "CONFIRM RESET · TAP AGAIN" else "RESET TO DEFAULTS",
-                        onClick = {
-                            if (armed.value) {
-                                vm.resetToDefaults()
-                                armed.value = false
-                            } else {
-                                armed.value = true
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        accent = R1.StatusAmber,
-                    )
-                    if (armed.value) {
-                        Spacer(Modifier.height(R1.space.xs))
-                        Text(
-                            text = "Drops every override, theme, wheel + UI + behaviour preference. Keeps your account, favourites, and pages.",
-                            style = R1.labelMicro,
-                            color = R1.InkMuted,
-                        )
-                    }
-                }
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            // ── Security ──────────────────────────────────────────────────────────
-            // TLS certificate pinning. SharedPreferences-backed instead of
-            // routed through SettingsRepository because the OkHttpClient
-            // builds at process start and reads the pin list sync. Changes
-            // here take effect on the next app launch; the subtitle on each
-            // affected row spells that out.
-            if (shouldShow("SECURITY")) {
-            item { Section("SECURITY", expanded = "SECURITY" in expandedSections, onToggle = { toggleSection("SECURITY") }, modifiedCount = sectionModifiedCount["SECURITY"] ?: 0) }
-            if ("SECURITY" in expandedSections) {
-                item { SecuritySection() }
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("DASHBOARD")) {
-            // ── Dashboard layout — per-section visibility + thresholds ─────────
-            item { Section("DASHBOARD", expanded = "DASHBOARD" in expandedSections, onToggle = { toggleSection("DASHBOARD") }, modifiedCount = sectionModifiedCount["DASHBOARD"] ?: 0) }
-            if ("DASHBOARD" in expandedSections) {
-            item { SubGroupLabel("VISIBLE CARDS") }
-            item {
-                SwitchRow(
-                    label = "Greeting",
-                    subtitle = "GOOD MORNING / AFTERNOON / EVENING / NIGHT row",
-                    checked = s.dashboard.showGreeting,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showGreeting = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Weather card",
-                    subtitle = "Current condition + temperature from your first weather.* entity",
-                    checked = s.dashboard.showWeather,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showWeather = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Sun card",
-                    subtitle = "Above/below horizon, elevation, next rise/set",
-                    checked = s.dashboard.showSun,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showSun = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Timers",
-                    subtitle = "Active timer.* entities with remaining time",
-                    checked = s.dashboard.showTimers,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showTimers = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Now Playing",
-                    subtitle = "Currently-playing media_player entities with prev / play / next",
-                    checked = s.dashboard.showMedia,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showMedia = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "People",
-                    subtitle = "Home/away count + per-person state",
-                    checked = s.dashboard.showPersons,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showPersons = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Next event",
-                    subtitle = "Earliest upcoming calendar event with NOW pill",
-                    checked = s.dashboard.showNextEvent,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showNextEvent = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "DRAW (power)",
-                    subtitle = "Sum of device_class=power sensors in watts",
-                    checked = s.dashboard.showPower,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showPower = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Metrics row",
-                    subtitle = "LIGHTS ON / CAMERAS / ALERTS tiles",
-                    checked = s.dashboard.showMetrics,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showMetrics = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Low-battery alerts",
-                    subtitle = "Surface battery sensors under the threshold",
-                    checked = s.dashboard.showLowBattery,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showLowBattery = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Inline alert previews",
-                    subtitle = "Preview the first N HA persistent alerts on the dashboard",
-                    checked = s.dashboard.showInlineAlerts,
-                    onCheckedChange = { v -> vm.updateDashboard { it.copy(showInlineAlerts = v) } },
-                )
-            }
-            item { SubGroupLabel("THRESHOLDS & INTERVALS") }
-            item {
-                NumberStepperRow(
-                    label = "Dashboard refresh",
-                    subtitle = "Auto-refresh cadence (0 = pull-down only · long-press −/+ for ×10)",
-                    value = s.dashboard.refreshIntervalSec,
-                    min = 0, max = 600, step = 15, suffix = " s",
-                    onChange = { v -> vm.updateDashboard { it.copy(refreshIntervalSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Low-battery threshold",
-                    subtitle = "Surface batteries below this percentage",
-                    value = s.dashboard.lowBatteryThresholdPct,
-                    min = 1, max = 100, step = 5, suffix = " %",
-                    onChange = { v -> vm.updateDashboard { it.copy(lowBatteryThresholdPct = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "DRAW amber above",
-                    subtitle = "Power threshold where the DRAW tile turns amber",
-                    value = s.dashboard.powerAmberThresholdW,
-                    min = 50, max = 10_000, step = 50, suffix = " W",
-                    onChange = { v -> vm.updateDashboard { it.copy(powerAmberThresholdW = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "DRAW red above",
-                    subtitle = "Power threshold where the DRAW tile turns red",
-                    value = s.dashboard.powerRedThresholdW,
-                    min = 200, max = 30_000, step = 100, suffix = " W",
-                    onChange = { v -> vm.updateDashboard { it.copy(powerRedThresholdW = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Inline alerts shown",
-                    subtitle = "Max HA persistent-alert previews under METRICS",
-                    value = s.dashboard.inlineAlertsCount,
-                    min = 0, max = 10, step = 1,
-                    onChange = { v -> vm.updateDashboard { it.copy(inlineAlertsCount = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Media rows shown",
-                    subtitle = "Max simultaneous media-player cards on the dashboard",
-                    value = s.dashboard.mediaSummaryCount,
-                    min = 1, max = 10, step = 1,
-                    onChange = { v -> vm.updateDashboard { it.copy(mediaSummaryCount = v) } },
-                )
-            }
-            item { SubGroupLabel("TILE ORDER") }
-            item {
-                Text(
-                    text = "Drag-style reorder isn't on the R1's small screen yet. Use the arrows to nudge each tile up or down.",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
-                )
-            }
-            item {
-                TileOrderEditor(
-                    order = s.dashboard.tileOrder,
-                    onMove = { from, to ->
-                        vm.updateDashboard {
-                            val list = it.tileOrder.toMutableList()
-                            if (from in list.indices && to in list.indices) {
-                                val item = list.removeAt(from)
-                                list.add(to, item)
-                            }
-                            it.copy(tileOrder = list)
-                        }
-                    },
-                    onReset = {
-                        vm.updateDashboard {
-                            it.copy(tileOrder = com.github.itskenny0.r1ha.core.prefs.DashboardSettings.DEFAULT_TILE_ORDER)
-                        }
-                    },
-                )
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("INTEGRATIONS")) {
-            // ── Integrations — per-surface refresh intervals + tuning ──────────
-            item { Section("INTEGRATIONS", expanded = "INTEGRATIONS" in expandedSections, onToggle = { toggleSection("INTEGRATIONS") }, modifiedCount = sectionModifiedCount["INTEGRATIONS"] ?: 0, onReset = { vm.resetCategory(com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS) }) }
-            if ("INTEGRATIONS" in expandedSections) {
-            item { SubGroupLabel("AUTO-REFRESH INTERVALS") }
-            item {
-                NumberStepperRow(
-                    label = "Notifications refresh",
-                    subtitle = "Auto-refresh the Notifications surface every…",
-                    value = s.integrations.notificationsRefreshSec,
-                    min = 0, max = 600, step = 15, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(notificationsRefreshSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Logbook refresh",
-                    subtitle = "Auto-refresh the Recent Activity feed every…",
-                    value = s.integrations.logbookRefreshSec,
-                    min = 0, max = 900, step = 30, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(logbookRefreshSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Who's-home refresh",
-                    subtitle = "Auto-refresh the Persons surface every…",
-                    value = s.integrations.personsRefreshSec,
-                    min = 0, max = 900, step = 30, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(personsRefreshSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Weather refresh",
-                    subtitle = "Auto-refresh the Weather surface every…",
-                    value = s.integrations.weatherRefreshSec,
-                    min = 0, max = 3600, step = 60, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(weatherRefreshSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Calendars refresh",
-                    subtitle = "Auto-refresh the Calendars surface every…",
-                    value = s.integrations.calendarsRefreshSec,
-                    min = 0, max = 3600, step = 60, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(calendarsRefreshSec = v) } },
-                )
-            }
-            item { SubGroupLabel("CAMERAS") }
-            item {
-                NumberStepperRow(
-                    label = "Camera overlay polling",
-                    subtitle = "Snapshot fetch interval when viewing a camera fullscreen",
-                    value = s.integrations.cameraOverlayPollSec,
-                    min = 1, max = 60, step = 1, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(cameraOverlayPollSec = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Camera grid polling",
-                    subtitle = "Snapshot fetch interval per tile in GRID view",
-                    value = s.integrations.cameraGridPollSec,
-                    min = 2, max = 120, step = 2, suffix = " s",
-                    onChange = { v -> vm.updateIntegrations { it.copy(cameraGridPollSec = v) } },
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Cameras open in GRID",
-                    subtitle = "Default to the polling-tiles view rather than the text list",
-                    checked = s.integrations.camerasDefaultGrid,
-                    onCheckedChange = { v -> vm.updateIntegrations { it.copy(camerasDefaultGrid = v) } },
-                )
-            }
-            item { SubGroupLabel("DEFAULTS & LIMITS") }
-            item {
-                NumberStepperRow(
-                    label = "Logbook default window",
-                    subtitle = "Time window applied on Recent Activity entry",
-                    value = s.integrations.logbookDefaultWindowHours,
-                    min = 1, max = 168, step = 1, suffix = " h",
-                    onChange = { v -> vm.updateIntegrations { it.copy(logbookDefaultWindowHours = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Calendar look-ahead",
-                    subtitle = "Days of events fetched when drilling into a calendar",
-                    value = s.integrations.calendarLookaheadDays,
-                    min = 1, max = 90, step = 1, suffix = " d",
-                    onChange = { v -> vm.updateIntegrations { it.copy(calendarLookaheadDays = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "Quick Search result cap",
-                    subtitle = "Maximum entities shown for a search",
-                    value = s.integrations.searchResultCap,
-                    min = 10, max = 500, step = 10,
-                    onChange = { v -> vm.updateIntegrations { it.copy(searchResultCap = v) } },
-                )
-            }
-            item {
-                NumberStepperRow(
-                    label = "RECENT history depth",
-                    subtitle = "Items kept in Templates / Service Caller RECENT lists",
-                    value = s.integrations.recentHistoryDepth,
-                    min = 0, max = 30, step = 1,
-                    onChange = { v -> vm.updateIntegrations { it.copy(recentHistoryDepth = v) } },
-                )
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("APPEARANCE")) {
-            // ── Appearance ─────────────────────────────────────────────────────────
-            item { Section("APPEARANCE", expanded = "APPEARANCE" in expandedSections, onToggle = { toggleSection("APPEARANCE") }, modifiedCount = sectionModifiedCount["APPEARANCE"] ?: 0, onReset = { vm.resetCategory(com.github.itskenny0.r1ha.core.prefs.SettingCategory.APPEARANCE) }) }
-            if ("APPEARANCE" in expandedSections) {
-            item {
-                NavRow(
-                    label = "Theme",
-                    value = s.theme.name
-                        .replace('_', ' ')
-                        .lowercase()
-                        .replaceFirstChar { it.uppercase() },
-                    onClick = onOpenThemePicker,
-                )
-            }
-            item {
-                SwitchRow(
-                    label = "Auto night theme",
-                    subtitle = "Swap themes inside the configured night window",
-                    checked = s.autoThemeEnabled,
-                    onCheckedChange = { vm.setAutoThemeEnabled(it) },
-                )
-            }
-            if (s.autoThemeEnabled) {
-                item {
-                    val nightThemeDialog = remember { mutableStateOf(false) }
-                    NavRow(
-                        label = "Night theme",
-                        value = s.nightTheme.name
-                            .replace('_', ' ')
-                            .lowercase()
-                            .replaceFirstChar { it.uppercase() },
-                        onClick = { nightThemeDialog.value = true },
-                    )
-                    if (nightThemeDialog.value) {
-                        NightThemePickerDialog(
-                            current = s.nightTheme,
-                            onPick = {
-                                vm.setNightTheme(it)
-                                nightThemeDialog.value = false
-                            },
-                            onDismiss = { nightThemeDialog.value = false },
-                        )
-                    }
-                }
-                item {
-                    val hoursDialog = remember { mutableStateOf(false) }
-                    NavRow(
-                        label = "Night window",
-                        value = "${s.nightStartHour}:00 → ${s.nightEndHour}:00",
-                        onClick = { hoursDialog.value = true },
-                    )
-                    if (hoursDialog.value) {
-                        NightHoursDialog(
-                            startHour = s.nightStartHour,
-                            endHour = s.nightEndHour,
-                            onApply = { start, end ->
-                                vm.setNightWindow(start, end)
-                                hoursDialog.value = false
-                            },
-                            onDismiss = { hoursDialog.value = false },
-                        )
-                    }
-                }
-            }
-            // Native dashboards entry. Always shown so it stays reachable on
-            // every device. The full-screen card-grid renderer is roomier on
-            // phones / tablets, so on the R1 (small portrait display) tapping
-            // first asks for confirmation rather than hiding the entry (which
-            // also wrongly hid it on phones reporting exactly 360 dp).
-            item {
-                val isR1Width = com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
-                    com.github.itskenny0.r1ha.ui.layout.WidthTier.R1
-                NavRow(
-                    label = "Dashboards",
-                    value = "Native Lovelace renderer",
-                    onClick = {
-                        if (isR1Width) {
-                            dashboardsSmallScreenPrompt.value = true
-                        } else {
-                            onOpenDashboards()
-                        }
-                    },
-                )
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("TODAY")) {
-            // ── Today — at-a-glance dashboard + quick search ──────────────
-            item { Section("TODAY", expanded = "TODAY" in expandedSections, onToggle = { toggleSection("TODAY") }, modifiedCount = sectionModifiedCount["TODAY"] ?: 0) }
-            if ("TODAY" in expandedSections) {
-            item {
-                NavRow(label = "Dashboard", value = "Weather · People · Next event", onClick = onOpenDashboard)
-            }
-            item {
-                NavRow(label = "Quick Search", value = "Find any entity", onClick = onOpenSearch)
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            if (shouldShow("TALK & FIRE")) {
-            // ── Talk + Fire — high-frequency action surfaces ─────────────
-            item { Section("TALK & FIRE", expanded = "TALK & FIRE" in expandedSections, onToggle = { toggleSection("TALK & FIRE") }, modifiedCount = sectionModifiedCount["TALK & FIRE"] ?: 0) }
-            if ("TALK & FIRE" in expandedSections) {
-            item {
-                NavRow(label = "Assist", value = "Talk to HA", onClick = onOpenAssist)
-            }
-            item {
-                NavRow(label = "Scenes & Scripts", value = "Fire instantly", onClick = onOpenScenes)
-            }
-            item {
-                NavRow(
-                    label = "Automations",
-                    value = "List, trigger, enable / disable",
-                    onClick = onOpenAutomations,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Helpers",
-                    value = "input_*, counter, timer",
-                    onClick = onOpenHelpers,
-                )
-            }
-            item {
-                NavRow(
-                    label = "To-do lists",
-                    value = "Shopping lists, tasks",
-                    onClick = onOpenTodo,
-                )
-            }
-
-            if (shouldShow("STATUS VIEWS")) {
-            // ── Status views — read-only at-a-glance HA state ────────────
-            }
-            item { SectionDivider() }
-            }
-            item { Section("STATUS VIEWS", expanded = "STATUS VIEWS" in expandedSections, onToggle = { toggleSection("STATUS VIEWS") }, modifiedCount = sectionModifiedCount["STATUS VIEWS"] ?: 0) }
-            if ("STATUS VIEWS" in expandedSections) {
-            item {
-                NavRow(label = "Cameras", value = "Live snapshots", onClick = onOpenCameras)
-            }
-            item {
-                NavRow(label = "Weather", value = "Conditions readout", onClick = onOpenWeather)
-            }
-            item {
-                NavRow(label = "Who's home", value = "People + device trackers", onClick = onOpenPersons)
-            }
-            item {
-                NavRow(label = "Calendars", value = "Next event preview", onClick = onOpenCalendars)
-            }
-            item {
-                NavRow(label = "Recent Activity", value = "Logbook feed", onClick = onOpenLogbook)
-            }
-            item {
-                NavRow(label = "Notifications", value = "HA persistent alerts", onClick = onOpenNotifications)
-            }
-            item {
-                NavRow(label = "Areas", value = "HA area registry", onClick = onOpenAreas)
-            }
-            item {
-                NavRow(label = "Labels", value = "HA label registry (tags)", onClick = onOpenLabels)
-            }
-            item {
-                NavRow(label = "Floors", value = "Floor → areas hierarchy", onClick = onOpenFloors)
-            }
-            item {
-                NavRow(
-                    label = "Zones",
-                    value = "Geographic zones + who's there",
-                    onClick = onOpenZones,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Energy",
-                    value = "Draw, production, today's kWh",
-                    onClick = onOpenEnergy,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Device",
-                    value = "Local: brightness, volume, flashlight",
-                    onClick = onOpenDevice,
-                )
-            }
-
-            if (shouldShow("POWER TOOLS")) {
-            // ── Power tools — diagnostic / advanced surfaces ─────────────
-            }
-            item { SectionDivider() }
-            }
-            item { Section("POWER TOOLS", expanded = "POWER TOOLS" in expandedSections, onToggle = { toggleSection("POWER TOOLS") }, modifiedCount = sectionModifiedCount["POWER TOOLS"] ?: 0) }
-            if ("POWER TOOLS" in expandedSections) {
-            item {
-                NavRow(
-                    label = "Updates",
-                    value = "HA Core, add-ons, integrations",
-                    onClick = onOpenUpdates,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Repairs",
-                    value = "HA issues + ignore",
-                    onClick = onOpenRepairs,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Media Browse",
-                    value = "Browse + play any media_player library",
-                    onClick = onOpenMediaBrowse,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Backups",
-                    value = "View + create HA backups",
-                    onClick = onOpenBackups,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Zigbee pair",
-                    value = "Open the network to enrol new devices",
-                    onClick = onOpenZhaPairing,
-                )
-            }
-            item {
-                NavRow(label = "Templates", value = "Jinja2 evaluator", onClick = onOpenTemplate)
-            }
-            item {
-                NavRow(label = "Service Caller", value = "Fire any service", onClick = onOpenServiceCaller)
-            }
-            item {
-                NavRow(label = "Services Browser", value = "Discover available services", onClick = onOpenServices)
-            }
-            item {
-                NavRow(label = "System Health", value = "HA version + error log", onClick = onOpenSystemHealth)
-            }
-            item {
-                NavRow(
-                    label = "Lovelace (WebView)",
-                    value = "Open HA's frontend in-app",
-                    onClick = onOpenLovelace,
-                )
-            }
-            // Native browser for HA's device registry.
-            item {
-                NavRow(
-                    label = "Devices",
-                    value = "Browse HA's device registry",
-                    onClick = onOpenDevices,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Integrations",
-                    value = "Configured integrations + reload",
-                    onClick = onOpenIntegrations,
-                )
-            }
-            // Blueprint browser: lists HA's installed automation + script
-            // blueprints and imports new ones from a URL via the
-            // `blueprint/import` + `blueprint/save` WS pair.
-            item {
-                NavRow(
-                    label = "Blueprints",
-                    value = "Installed automations + scripts, import from URL",
-                    onClick = onOpenBlueprints,
-                )
-            }
-            // Native replacements for WebView-only HA panels.
-            item {
-                NavRow(
-                    label = "Logs",
-                    value = "Full /api/error_log with level + search",
-                    onClick = onOpenLogs,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Users",
-                    value = "Read-only HA user list (admin)",
-                    onClick = onOpenUsers,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Tags",
-                    value = "NFC / QR tag registry",
-                    onClick = onOpenTags,
-                )
-            }
-            item {
-                NavRow(
-                    label = "Statistics",
-                    value = "Long-term sensor stats",
-                    onClick = onOpenStatistics,
-                )
-            }
-            // Create-backup action. Two-stage confirm because triggering a
-            // backup on a busy HA install can momentarily hammer the disk
-            // and a stray tap shouldn't kick that off. Fires the standard
-            // `backup.create` service (HA Core 2024.4+); the supervisor
-            // surface handles the rest of the lifecycle (compression,
-            // encryption, location) per the user's HA backup config so we
-            // don't need to expose those knobs here.
-            item {
-                val backupArmed = androidx.compose.runtime.remember {
-                    androidx.compose.runtime.mutableStateOf(false)
-                }
-                androidx.compose.runtime.LaunchedEffect(backupArmed.value) {
-                    if (backupArmed.value) {
-                        kotlinx.coroutines.delay(3_000)
-                        backupArmed.value = false
-                    }
-                }
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
-                ) {
-                    Text(text = "BACKUP", style = R1.labelMicro, color = R1.AccentWarm)
-                    Spacer(Modifier.height(R1.space.xs))
-                    com.github.itskenny0.r1ha.ui.components.R1Button(
-                        text = if (backupArmed.value) "CONFIRM · CREATE BACKUP NOW" else "CREATE BACKUP NOW",
-                        onClick = {
-                            if (backupArmed.value) {
-                                backupArmed.value = false
-                                coroutineScope.launch {
-                                    haRepository.callRawService(
-                                        domain = "backup",
-                                        service = "create",
-                                        data = kotlinx.serialization.json.JsonObject(emptyMap()),
-                                    ).fold(
-                                        onSuccess = {
-                                            com.github.itskenny0.r1ha.core.util.Toaster.show(
-                                                "Backup creation started",
-                                            )
-                                        },
-                                        onFailure = { t ->
-                                            com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
-                                                shortText = "Backup failed to start",
-                                                fullText = t.message ?: t.toString(),
-                                            )
-                                        },
-                                    )
-                                }
-                            } else {
-                                backupArmed.value = true
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(R1.space.xs))
-                    Text(
-                        text = if (backupArmed.value)
-                            "Triggers HA's backup.create service. Honors your supervisor's backup destination + retention config."
-                        else
-                            "Fires backup.create on your HA server (HA Core 2024.4+).",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
-                }
-            }
-
-            }
-            item { SectionDivider() }
-            }
-
-            // About is reachable from the ROOT view's group cards; the
-            // standalone bottom row was redundant after the restructure
-            // and would render on every subpage. Keep ROOT as the only
-            // path to About so back-button semantics stay obvious.
-
-            item { Spacer(Modifier.height(48.dp)) }
         }
-        } // AdaptiveContent
     }
-    // Entity-picker overlay for the Quick Settings tile binding —
-    // sits above the LazyColumn so the picker isn't squeezed inside
-    // a single row.
+
     if (tilePickerOpen.value) {
         EntityPickerSheet(
             haRepository = haRepository,
@@ -2006,36 +467,1194 @@ fun SettingsScreen(
             onDismiss = { tilePickerOpen.value = false },
         )
     }
-    if (dashboardsSmallScreenPrompt.value) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { dashboardsSmallScreenPrompt.value = false },
-            containerColor = R1.Bg,
-            title = { Text(text = "DASHBOARDS", style = R1.sectionHeader, color = R1.Ink) },
-            text = {
-                Text(
-                    text = "This feature works better on larger screens. Do you want to continue?",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                )
-            },
-            confirmButton = {
+}
+
+// ── Page bodies: one LazyListScope extension per node ──────────────────────────────────────
+// Each renders the controls for one [SettingsNode]. Value-bearing category rows
+// pass an Android-style secondary `value` so the current state shows without
+// drilling in. Every control reuses the building-block composables further down
+// the file; persistence routes through the exact same SettingsViewModel / repo
+// fields as before, so this is purely a re-information-architecture.
+
+private fun LazyListScope.rootCategories(
+    s: AppSettings,
+    groupBadge: (Array<out String>) -> Int,
+    push: (SettingsNode) -> Unit,
+    onOpenCategory: (SettingsCategory) -> Unit,
+    onOpenAbout: () -> Unit,
+) {
+    item { CategoryRow(node = SettingsNode.CONNECTION, summary = s.server?.url ?: "Not connected", badge = groupBadge(arrayOf("SERVER")), onClick = { push(SettingsNode.CONNECTION) }) }
+    item { CategoryRow(node = SettingsNode.APPEARANCE, summary = "Theme: ${prettyEnumName(s.theme.name)}", badge = groupBadge(arrayOf("APPEARANCE", "CARD UI")), onClick = { push(SettingsNode.APPEARANCE) }) }
+    item { CategoryRow(node = SettingsNode.INPUT, summary = "Wheel step: ${s.wheel.stepPercent}%", badge = groupBadge(arrayOf("SCROLL WHEEL")), onClick = { push(SettingsNode.INPUT) }) }
+    item { CategoryRow(node = SettingsNode.BEHAVIOUR, summary = "Haptics, screen, tiles", badge = groupBadge(arrayOf("BEHAVIOUR")), onClick = { push(SettingsNode.BEHAVIOUR) }) }
+    item { CategoryRow(node = SettingsNode.DASHBOARD, summary = "Cards, thresholds, tile order", badge = groupBadge(arrayOf("DASHBOARD")), onClick = { push(SettingsNode.DASHBOARD) }) }
+    item { CategoryRow(node = SettingsNode.INTEGRATIONS, summary = "Refresh, cameras, IoT, sync", badge = groupBadge(arrayOf("INTEGRATIONS")), onClick = { push(SettingsNode.INTEGRATIONS) }) }
+    item { CategoryRow(node = SettingsNode.ADVANCED, summary = "Dev menu, modified, reset", badge = 0, onClick = { push(SettingsNode.ADVANCED) }) }
+    item { CategoryRow(node = SettingsNode.BROWSE, summary = "Dashboard, Assist, Scenes, tools", badge = 0, onClick = { push(SettingsNode.BROWSE) }) }
+    item {
+        R1Row(
+            label = "About",
+            description = "Version, source, file a bug",
+            onClick = onOpenAbout,
+            showChevron = true,
+            contentDescription = "Open About",
+        )
+    }
+}
+
+// ── Connection & server ────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.connectionRoot(
+    s: AppSettings,
+    haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
+    push: (SettingsNode) -> Unit,
+    groupBadge: (Array<out String>) -> Int,
+) {
+    item { InfoRow(label = "URL", value = s.server?.url ?: "(not connected)", mono = true) }
+    item { s.server?.haVersion?.let { InfoRow(label = "HA version", value = it, mono = true) } }
+    item {
+        val conn by haRepository.connection.collectAsStateWithLifecycle()
+        val label = when (val c = conn) {
+            is com.github.itskenny0.r1ha.core.ha.ConnectionState.Connected -> "Connected"
+            com.github.itskenny0.r1ha.core.ha.ConnectionState.Idle -> "Idle"
+            com.github.itskenny0.r1ha.core.ha.ConnectionState.Connecting -> "Connecting…"
+            com.github.itskenny0.r1ha.core.ha.ConnectionState.Authenticating -> "Authenticating…"
+            is com.github.itskenny0.r1ha.core.ha.ConnectionState.Disconnected -> "Disconnected (attempt ${c.attempt})"
+            is com.github.itskenny0.r1ha.core.ha.ConnectionState.AuthLost -> "Auth lost · sign in again"
+        }
+        InfoRow(label = "Status", value = label)
+    }
+    item {
+        InfoRow(
+            label = "App version",
+            value = "${com.github.itskenny0.r1ha.BuildConfig.VERSION_NAME} (${com.github.itskenny0.r1ha.BuildConfig.VERSION_CODE})",
+            mono = true,
+        )
+    }
+    item { SubGroupLabel("MANAGE") }
+    item {
+        R1Row(
+            label = "Account & sign-in",
+            description = "Long-lived token, reconnect, sign out",
+            onClick = { push(SettingsNode.CONNECTION_ACCOUNT) },
+            showChevron = true,
+            contentDescription = "Open Account & sign-in",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.CONNECTION_BACKUP.title,
+            description = "Export / import settings, reset to defaults",
+            onClick = { push(SettingsNode.CONNECTION_BACKUP) },
+            showChevron = true,
+            contentDescription = "Open Backup & restore",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.CONNECTION_SECURITY.title,
+            description = "TLS certificate pinning, mTLS client cert",
+            onClick = { push(SettingsNode.CONNECTION_SECURITY) },
+            showChevron = true,
+            contentDescription = "Open Security",
+        )
+    }
+}
+
+private fun LazyListScope.connectionAccount(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
+    context: android.content.Context,
+    onOpenLongLivedToken: () -> Unit,
+    onSignedOut: () -> Unit,
+) {
+    item {
+        NavRow(label = "Use long-lived token", value = "Paste instead of OAuth", onClick = onOpenLongLivedToken)
+    }
+    item {
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
+            com.github.itskenny0.r1ha.ui.components.R1Button(
+                text = "RECONNECT NOW",
+                onClick = {
+                    haRepository.reconnectNow()
+                    com.github.itskenny0.r1ha.core.util.Toaster.show("Reconnecting…")
+                },
+                modifier = Modifier.fillMaxWidth(),
+                variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+            )
+        }
+    }
+    item {
+        val url = s.server?.url
+        if (url != null) {
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
                 com.github.itskenny0.r1ha.ui.components.R1Button(
-                    text = "CONTINUE",
+                    text = "OPEN HA WEB UI",
                     onClick = {
-                        dashboardsSmallScreenPrompt.value = false
-                        onOpenDashboards()
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(url),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }.onFailure {
+                            com.github.itskenny0.r1ha.core.util.Toaster.error("No browser to open $url")
+                        }
                     },
-                )
-            },
-            dismissButton = {
-                com.github.itskenny0.r1ha.ui.components.R1Button(
-                    text = "CANCEL",
-                    onClick = { dashboardsSmallScreenPrompt.value = false },
+                    modifier = Modifier.fillMaxWidth(),
                     variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
                 )
+            }
+        }
+    }
+    item {
+        val armed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(armed.value) {
+            if (armed.value) {
+                kotlinx.coroutines.delay(3_000)
+                armed.value = false
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.m)) {
+            DangerButton(
+                text = if (armed.value) "CONFIRM · SIGN OUT" else "SIGN OUT & RECONNECT",
+                onClick = { if (armed.value) vm.signOut(onSignedOut) else armed.value = true },
+            )
+        }
+    }
+}
+
+private fun LazyListScope.connectionBackup(
+    vm: SettingsViewModel,
+    pendingBackupBlob: androidx.compose.runtime.MutableState<String?>,
+    exportLauncher: androidx.activity.result.ActivityResultLauncher<String>,
+    importLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
+) {
+    item { InfoRow(label = "What's included", value = "Server URL · pages · favourites · all settings (no tokens)") }
+    item {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.m),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+        ) {
+            com.github.itskenny0.r1ha.ui.components.R1Button(
+                text = "EXPORT",
+                onClick = {
+                    vm.exportBackupBlob { blob ->
+                        pendingBackupBlob.value = blob
+                        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())
+                        exportLauncher.launch("r1ha-backup-$stamp.json")
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            )
+            com.github.itskenny0.r1ha.ui.components.R1Button(
+                text = "IMPORT",
+                onClick = { importLauncher.launch(arrayOf("application/json", "*/*")) },
+                modifier = Modifier.weight(1f),
+                variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+            )
+        }
+    }
+    item {
+        val armed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(armed.value) {
+            if (armed.value) {
+                kotlinx.coroutines.delay(3_000)
+                armed.value = false
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
+            com.github.itskenny0.r1ha.ui.components.R1Button(
+                text = if (armed.value) "CONFIRM RESET · TAP AGAIN" else "RESET TO DEFAULTS",
+                onClick = {
+                    if (armed.value) {
+                        vm.resetToDefaults()
+                        armed.value = false
+                    } else {
+                        armed.value = true
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                accent = R1.StatusAmber,
+            )
+            if (armed.value) {
+                Spacer(Modifier.height(R1.space.xs))
+                Text(
+                    text = "Drops every override, theme, wheel + UI + behaviour preference. Keeps your account, favourites, and pages.",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
+        }
+    }
+}
+
+// ── Appearance ─────────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.appearanceRoot(
+    s: AppSettings,
+    push: (SettingsNode) -> Unit,
+    groupBadge: (Array<out String>) -> Int,
+) {
+    item {
+        CategorySubRow(
+            node = SettingsNode.APPEARANCE_THEME,
+            summary = if (s.autoThemeEnabled) "${prettyEnumName(s.theme.name)} · auto night" else prettyEnumName(s.theme.name),
+            badge = groupBadge(arrayOf("APPEARANCE")),
+            onClick = { push(SettingsNode.APPEARANCE_THEME) },
+        )
+    }
+    item {
+        CategorySubRow(
+            node = SettingsNode.APPEARANCE_CARDS,
+            summary = "Display mode: ${prettyEnumName(s.ui.displayMode.name)}",
+            badge = groupBadge(arrayOf("CARD UI")),
+            onClick = { push(SettingsNode.APPEARANCE_CARDS) },
+        )
+    }
+}
+
+private fun LazyListScope.appearanceTheme(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    onOpenThemePicker: () -> Unit,
+) {
+    item { NavRow(label = "Theme", value = prettyEnumName(s.theme.name), onClick = onOpenThemePicker) }
+    item {
+        SwitchRow(
+            label = "Auto night theme",
+            subtitle = "Swap themes inside the configured night window",
+            checked = s.autoThemeEnabled,
+            onCheckedChange = { vm.setAutoThemeEnabled(it) },
+        )
+    }
+    if (s.autoThemeEnabled) {
+        item {
+            val nightThemeDialog = remember { mutableStateOf(false) }
+            NavRow(label = "Night theme", value = prettyEnumName(s.nightTheme.name), onClick = { nightThemeDialog.value = true })
+            if (nightThemeDialog.value) {
+                NightThemePickerDialog(
+                    current = s.nightTheme,
+                    onPick = { vm.setNightTheme(it); nightThemeDialog.value = false },
+                    onDismiss = { nightThemeDialog.value = false },
+                )
+            }
+        }
+        item {
+            val hoursDialog = remember { mutableStateOf(false) }
+            NavRow(label = "Night window", value = nightWindowSummary(s.nightStartHour, s.nightEndHour), onClick = { hoursDialog.value = true })
+            if (hoursDialog.value) {
+                NightHoursDialog(
+                    startHour = s.nightStartHour,
+                    endHour = s.nightEndHour,
+                    onApply = { start, end -> vm.setNightWindow(start, end); hoursDialog.value = false },
+                    onDismiss = { hoursDialog.value = false },
+                )
+            }
+        }
+    }
+    item { CategoryResetRow(label = "RESET THEME", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.APPEARANCE, vm = vm) }
+}
+
+private fun LazyListScope.appearanceCards(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    push: (SettingsNode) -> Unit,
+) {
+    item {
+        LabeledControl(label = "Display mode") {
+            SegmentedEnumPicker(
+                options = DisplayMode.entries,
+                selected = s.ui.displayMode,
+                label = { when (it) { DisplayMode.PERCENT -> "PERCENT"; DisplayMode.RAW -> "RAW" } },
+                onSelect = { vm.setDisplayMode(it) },
+            )
+        }
+    }
+    item { SwitchRow(label = "Show on/off pill", checked = s.ui.showOnOffPill, onCheckedChange = { vm.setShowOnOffPill(it) }) }
+    item { SwitchRow(label = "Show area label", checked = s.ui.showAreaLabel, onCheckedChange = { vm.setShowAreaLabel(it) }) }
+    item {
+        SwitchRow(
+            label = "Hide card hint above current",
+            subtitle = "Solid chrome backdrop covers the previous card's tail",
+            checked = s.ui.hideCardTailAbove,
+            onCheckedChange = { vm.setHideCardTailAbove(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Infinite scroll",
+            subtitle = "Wheel past the last card wraps to the first",
+            checked = s.ui.infiniteScroll,
+            onCheckedChange = { vm.setInfiniteScroll(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show 0% arc when entity is off",
+            subtitle = "Off (default): arc shows whatever brightness HA reported, " +
+                "even if the entity is currently off. On: arc is always blank (0%) " +
+                "for off entities. Useful for bulbs that store pre-off brightness " +
+                "in HA so a dark bulb doesn't show 75% on its card.",
+            checked = s.ui.showZeroPercentWhenOff,
+            onCheckedChange = { vm.setShowZeroPercentWhenOff(it) },
+        )
+    }
+    item {
+        LabeledControl(label = "Sensor decimals") {
+            SegmentedIntPicker(
+                options = listOf(0, 1, 2, 3, 4),
+                selected = s.ui.maxDecimalPlaces,
+                label = { if (it == 0) "INT" else "$it" },
+                onSelect = { vm.setMaxDecimalPlaces(it) },
+            )
+        }
+    }
+    item {
+        LabeledControl(label = "Temperature unit") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.entries,
+                selected = s.ui.tempUnit,
+                label = {
+                    when (it) {
+                        com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.AUTO -> "AUTO"
+                        com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.CELSIUS -> "°C"
+                        com.github.itskenny0.r1ha.core.prefs.TemperatureUnit.FAHRENHEIT -> "°F"
+                    }
+                },
+                onSelect = { vm.setTempUnit(it) },
+            )
+        }
+    }
+    item { SubGroupLabel("LAYOUT") }
+    item {
+        R1Row(
+            label = SettingsNode.APPEARANCE_CARDS_VALUEBAR.title,
+            description = "Value bar location, position pip",
+            value = "${com.github.itskenny0.r1ha.core.prefs.valueBarLocationLabel(s.ui.valueBarLocation)} · ${com.github.itskenny0.r1ha.core.prefs.positionDotLocationLabel(s.ui.positionDotLocation)}",
+            onClick = { push(SettingsNode.APPEARANCE_CARDS_VALUEBAR) },
+            showChevron = true,
+            contentDescription = "Open Value bar & pip",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.APPEARANCE_CARDS_CHROME.title,
+            description = "Reorder + toggle the card-stack chrome buttons",
+            onClick = { push(SettingsNode.APPEARANCE_CARDS_CHROME) },
+            showChevron = true,
+            contentDescription = "Open Chrome buttons",
+        )
+    }
+    item { CategoryResetRow(label = "RESET CARD UI", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.CARD_UI, vm = vm) }
+}
+
+private fun LazyListScope.appearanceValueBar(s: AppSettings, vm: SettingsViewModel) {
+    item {
+        LabeledControl(label = "Position pip location") {
+            PositionDotLocationPicker(selected = s.ui.positionDotLocation, onSelect = { vm.setPositionDotLocation(it) })
+        }
+    }
+    item {
+        LabeledControl(label = "Value bar location") {
+            ValueBarLocationPicker(selected = s.ui.valueBarLocation, onSelect = { vm.setValueBarLocation(it) })
+        }
+    }
+}
+
+private fun LazyListScope.appearanceChrome(s: AppSettings, vm: SettingsViewModel) {
+    item {
+        Text(
+            text = "Chrome buttons",
+            style = R1.bodyEmph,
+            color = R1.Ink,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 10.dp),
+        )
+        Text(
+            text = "Reorder with ↑ / ↓ chips and toggle visibility per button. Right cluster of the card-stack chrome.",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(horizontal = R1.space.xl),
+        )
+        ChromeButtonsPreview(buttons = s.ui.chromeButtons)
+    }
+    itemsIndexed(s.ui.chromeButtons, key = { _, c -> c.ref.name }) { idx, cfg ->
+        ChromeButtonRow(
+            position = idx + 1,
+            config = cfg,
+            isFirst = idx == 0,
+            isLast = idx == s.ui.chromeButtons.lastIndex,
+            onMoveUp = { vm.moveChromeButton(idx, idx - 1) },
+            onMoveDown = { vm.moveChromeButton(idx, idx + 1) },
+            onToggle = { vm.setChromeButtonEnabled(cfg.ref, it) },
+        )
+    }
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.inputRoot(
+    s: AppSettings,
+    push: (SettingsNode) -> Unit,
+    onOpenKeyBindings: () -> Unit,
+) {
+    item {
+        R1Row(
+            label = SettingsNode.INPUT_WHEEL.title,
+            description = "Step size, acceleration, invert",
+            value = "${s.wheel.stepPercent}%",
+            onClick = { push(SettingsNode.INPUT_WHEEL) },
+            showChevron = true,
+            contentDescription = "Open Scroll wheel",
+        )
+    }
+    item {
+        val customCount = s.keyBindings.count { (name, list) ->
+            val action = runCatching { com.github.itskenny0.r1ha.core.input.KeyAction.valueOf(name) }.getOrNull()
+            val default = com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS[action].orEmpty()
+            list != default
+        }
+        NavRow(
+            label = "Key bindings",
+            value = if (customCount == 0) "Default mapping" else "$customCount custom",
+            onClick = onOpenKeyBindings,
+        )
+    }
+}
+
+private fun LazyListScope.inputWheel(s: AppSettings, vm: SettingsViewModel) {
+    item {
+        LabeledControl(label = "Step size") {
+            SegmentedIntPicker(
+                options = listOf(1, 2, 5, 10),
+                selected = s.wheel.stepPercent,
+                label = { "$it%" },
+                onSelect = { vm.setWheelStep(it) },
+            )
+        }
+    }
+    item {
+        SwitchRow(
+            label = "Acceleration",
+            subtitle = "Spin faster to jump further",
+            checked = s.wheel.acceleration,
+            onCheckedChange = { vm.setWheelAcceleration(it) },
+        )
+    }
+    if (s.wheel.acceleration) {
+        item {
+            LabeledControl(label = "Acceleration curve") {
+                SegmentedEnumPicker(
+                    options = com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.entries,
+                    selected = s.wheel.accelerationCurve,
+                    label = {
+                        when (it) {
+                            com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.SUBTLE -> "SUBTLE"
+                            com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.MEDIUM -> "MEDIUM"
+                            com.github.itskenny0.r1ha.core.prefs.AccelerationCurve.AGGRESSIVE -> "AGGRESSIVE"
+                        }
+                    },
+                    onSelect = { vm.setAccelerationCurve(it) },
+                )
+            }
+        }
+    }
+    item {
+        SwitchRow(
+            label = "Invert direction",
+            checked = s.wheel.invertDirection,
+            onCheckedChange = { vm.setWheelInvert(it) },
+        )
+    }
+    item { CategoryResetRow(label = "RESET WHEEL", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.INPUT, vm = vm) }
+}
+
+// ── Behaviour ──────────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.behaviourRoot(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    push: (SettingsNode) -> Unit,
+) {
+    item { SwitchRow(label = "Haptic feedback", checked = s.behavior.haptics, onCheckedChange = { vm.setHaptics(it) }) }
+    item { SwitchRow(label = "Keep screen on", checked = s.behavior.keepScreenOn, onCheckedChange = { vm.setKeepScreenOn(it) }) }
+    item {
+        SwitchRow(
+            label = "Tap to toggle",
+            subtitle = "Off (default): the whole-card tap is inert so a miss " +
+                "while aiming for the chrome buttons doesn't accidentally turn " +
+                "the entity on. On: tap anywhere on the card to flip it.",
+            checked = s.behavior.tapToToggle,
+            onCheckedChange = { vm.setTapToToggle(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Hide status bar",
+            subtitle = "Swipe down to peek the bar; auto-hides after release",
+            checked = s.behavior.hideStatusBar,
+            onCheckedChange = { vm.setHideStatusBar(it) },
+        )
+    }
+    if (s.behavior.hideStatusBar) {
+        item {
+            SwitchRow(
+                label = "↳ Show battery indicator",
+                subtitle = "Tiny percent pill on the right of the chrome row " +
+                    "(polled every 30 s). Useful so a low R1 battery doesn't catch you off-guard.",
+                checked = s.behavior.showBatteryWhenStatusBarHidden,
+                onCheckedChange = { vm.setShowBatteryWhenStatusBarHidden(it) },
+            )
+        }
+    }
+    item {
+        SwitchRow(
+            label = "Start on Dashboard",
+            subtitle = "Open the app on the TODAY dashboard instead of the card stack. " +
+                "Useful for wall-mounted / kiosk R1s. Takes effect on next app launch.",
+            checked = s.behavior.startOnDashboard,
+            onCheckedChange = { vm.setStartOnDashboard(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Wheel toggles switches",
+            subtitle = "On (default): wheel-up turns locks, covers, vacuums, plain " +
+                "switches on; wheel-down turns them off. Off: wheel does nothing on " +
+                "those cards; useful if a casual brush is accidentally relocking your door.",
+            checked = s.behavior.wheelTogglesSwitches,
+            onCheckedChange = { vm.setWheelTogglesSwitches(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Assist · open keyboard on entry",
+            subtitle = "Off (default): tapping into Assist shows the screen but " +
+                "leaves the keyboard closed; useful on phones where the IME " +
+                "popping up otherwise re-centers the empty state jarringly. " +
+                "On: opening Assist focuses the input field immediately. " +
+                "Voice input (🎤) works regardless of this setting.",
+            checked = s.behavior.assistAutoOpenKeyboard,
+            onCheckedChange = { vm.setAssistAutoOpenKeyboard(it) },
+        )
+    }
+    item { ToastLogLevelRow(current = s.behavior.toastLogLevel, onSelect = { vm.setToastLogLevel(it) }) }
+    item { OrientationModeRow(current = s.behavior.orientationMode, onSelect = { vm.setOrientationMode(it) }) }
+    item {
+        SwitchRow(
+            label = "Guest mode (read-only)",
+            subtitle = "When on, the app refuses every outbound service call. " +
+                "Lights, locks, scripts: everything is blocked until you turn this off. " +
+                "Hand the device to a guest without worrying they'll toggle something.",
+            checked = s.guestModeEnabled,
+            onCheckedChange = { vm.setGuestModeEnabled(it) },
+        )
+    }
+    item { SubGroupLabel("MORE") }
+    item {
+        val bound = listOfNotNull(
+            s.behavior.quickTileEntityId, s.behavior.quickTileEntityIdB,
+            s.behavior.quickTileEntityIdC, s.behavior.quickTileEntityIdD,
+        ).count { it.isNotBlank() }
+        R1Row(
+            label = SettingsNode.BEHAVIOUR_QUICKTILES.title,
+            description = "Bind HA entities to notification-shade tiles",
+            value = if (bound == 0) "None bound" else "$bound bound",
+            onClick = { push(SettingsNode.BEHAVIOUR_QUICKTILES) },
+            showChevron = true,
+            contentDescription = "Open Quick Settings tiles",
+        )
+    }
+    item { CategoryResetRow(label = "RESET BEHAVIOUR", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.BEHAVIOUR, vm = vm) }
+}
+
+private fun LazyListScope.behaviourQuickTiles(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    onPick: () -> Unit,
+) {
+    item {
+        LabeledControl(label = "Quick Settings tile") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    R1TextField(
+                        value = s.behavior.quickTileEntityId ?: "",
+                        onValueChange = { vm.setQuickTileEntityId(it) },
+                        placeholder = "light.kitchen",
+                        monospace = true,
+                    )
+                }
+                Spacer(Modifier.width(R1.space.s))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .r1Pressable(onClick = onPick)
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                ) {
+                    Text(text = "PICK", style = R1.labelMicro, color = R1.AccentWarm)
+                }
+            }
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "After binding, pull down the notification shade twice → " +
+                    "tap the pencil-edit icon → drag the 'HA Toggle' tile from " +
+                    "the bottom row up to your active set.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
+        LabeledControl(label = "Quick Settings tile · slot B (HA Toggle 2)") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    R1TextField(
+                        value = s.behavior.quickTileEntityIdB ?: "",
+                        onValueChange = { vm.setQuickTileEntityIdB(it) },
+                        placeholder = "switch.coffee_machine",
+                        monospace = true,
+                    )
+                }
+            }
+        }
+    }
+    item {
+        LabeledControl(label = "Quick Settings tile · slot C (HA Toggle 3)") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    R1TextField(
+                        value = s.behavior.quickTileEntityIdC ?: "",
+                        onValueChange = { vm.setQuickTileEntityIdC(it) },
+                        placeholder = "script.goodnight",
+                        monospace = true,
+                    )
+                }
+            }
+        }
+    }
+    item {
+        LabeledControl(label = "Quick Settings tile · slot D (HA Toggle 4)") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    R1TextField(
+                        value = s.behavior.quickTileEntityIdD ?: "",
+                        onValueChange = { vm.setQuickTileEntityIdD(it) },
+                        placeholder = "scene.away",
+                        monospace = true,
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Today / Dashboard ────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.dashboardRoot(
+    s: AppSettings,
+    push: (SettingsNode) -> Unit,
+    onOpenDashboard: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenDashboards: () -> Unit,
+) {
+    item { NavRow(label = "Open Dashboard", value = "Weather · People · Next event", onClick = onOpenDashboard) }
+    item { NavRow(label = "Quick Search", value = "Find any entity", onClick = onOpenSearch) }
+    // Native Lovelace dashboards renderer. Always shown so it stays reachable on
+    // every device; on an R1-sized display the full-screen card grid is tight, so
+    // tapping first asks for confirmation rather than hiding the entry (which also
+    // wrongly hid it on phones reporting exactly 360 dp).
+    item {
+        val isR1Width = com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
+            com.github.itskenny0.r1ha.ui.layout.WidthTier.R1
+        val showDashboardsPrompt = androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
+        NavRow(
+            label = "Dashboards",
+            value = "Native Lovelace renderer",
+            onClick = { if (isR1Width) showDashboardsPrompt.value = true else onOpenDashboards() },
+        )
+        if (showDashboardsPrompt.value) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showDashboardsPrompt.value = false },
+                containerColor = R1.Bg,
+                title = { Text(text = "DASHBOARDS", style = R1.sectionHeader, color = R1.Ink) },
+                text = {
+                    Text(
+                        text = "This feature works better on larger screens. Do you want to continue?",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                },
+                confirmButton = {
+                    com.github.itskenny0.r1ha.ui.components.R1Button(
+                        text = "CONTINUE",
+                        onClick = {
+                            showDashboardsPrompt.value = false
+                            onOpenDashboards()
+                        },
+                    )
+                },
+                dismissButton = {
+                    com.github.itskenny0.r1ha.ui.components.R1Button(
+                        text = "CANCEL",
+                        onClick = { showDashboardsPrompt.value = false },
+                        variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                    )
+                },
+            )
+        }
+    }
+    item { SubGroupLabel("LAYOUT") }
+    item {
+        R1Row(
+            label = SettingsNode.DASHBOARD_CARDS.title,
+            description = "Toggle which dashboard cards appear",
+            onClick = { push(SettingsNode.DASHBOARD_CARDS) },
+            showChevron = true,
+            contentDescription = "Open Visible cards",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.DASHBOARD_THRESHOLDS.title,
+            description = "Refresh cadence, battery, power thresholds",
+            value = if (s.dashboard.refreshIntervalSec == 0) "Pull-down" else "${s.dashboard.refreshIntervalSec}s",
+            onClick = { push(SettingsNode.DASHBOARD_THRESHOLDS) },
+            showChevron = true,
+            contentDescription = "Open Thresholds & intervals",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.DASHBOARD_ORDER.title,
+            description = "Reorder the dashboard tiles",
+            onClick = { push(SettingsNode.DASHBOARD_ORDER) },
+            showChevron = true,
+            contentDescription = "Open Tile order",
+        )
+    }
+}
+
+private fun LazyListScope.dashboardCards(s: AppSettings, vm: SettingsViewModel) {
+    item { SwitchRow(label = "Greeting", subtitle = "GOOD MORNING / AFTERNOON / EVENING / NIGHT row", checked = s.dashboard.showGreeting, onCheckedChange = { v -> vm.updateDashboard { it.copy(showGreeting = v) } }) }
+    item { SwitchRow(label = "Weather card", subtitle = "Current condition + temperature from your first weather.* entity", checked = s.dashboard.showWeather, onCheckedChange = { v -> vm.updateDashboard { it.copy(showWeather = v) } }) }
+    item { SwitchRow(label = "Sun card", subtitle = "Above/below horizon, elevation, next rise/set", checked = s.dashboard.showSun, onCheckedChange = { v -> vm.updateDashboard { it.copy(showSun = v) } }) }
+    item { SwitchRow(label = "Timers", subtitle = "Active timer.* entities with remaining time", checked = s.dashboard.showTimers, onCheckedChange = { v -> vm.updateDashboard { it.copy(showTimers = v) } }) }
+    item { SwitchRow(label = "Now Playing", subtitle = "Currently-playing media_player entities with prev / play / next", checked = s.dashboard.showMedia, onCheckedChange = { v -> vm.updateDashboard { it.copy(showMedia = v) } }) }
+    item { SwitchRow(label = "People", subtitle = "Home/away count + per-person state", checked = s.dashboard.showPersons, onCheckedChange = { v -> vm.updateDashboard { it.copy(showPersons = v) } }) }
+    item { SwitchRow(label = "Next event", subtitle = "Earliest upcoming calendar event with NOW pill", checked = s.dashboard.showNextEvent, onCheckedChange = { v -> vm.updateDashboard { it.copy(showNextEvent = v) } }) }
+    item { SwitchRow(label = "DRAW (power)", subtitle = "Sum of device_class=power sensors in watts", checked = s.dashboard.showPower, onCheckedChange = { v -> vm.updateDashboard { it.copy(showPower = v) } }) }
+    item { SwitchRow(label = "Metrics row", subtitle = "LIGHTS ON / CAMERAS / ALERTS tiles", checked = s.dashboard.showMetrics, onCheckedChange = { v -> vm.updateDashboard { it.copy(showMetrics = v) } }) }
+    item { SwitchRow(label = "Low-battery alerts", subtitle = "Surface battery sensors under the threshold", checked = s.dashboard.showLowBattery, onCheckedChange = { v -> vm.updateDashboard { it.copy(showLowBattery = v) } }) }
+    item { SwitchRow(label = "Inline alert previews", subtitle = "Preview the first N HA persistent alerts on the dashboard", checked = s.dashboard.showInlineAlerts, onCheckedChange = { v -> vm.updateDashboard { it.copy(showInlineAlerts = v) } }) }
+}
+
+private fun LazyListScope.dashboardThresholds(s: AppSettings, vm: SettingsViewModel) {
+    item { NumberStepperRow(label = "Dashboard refresh", subtitle = "Auto-refresh cadence (0 = pull-down only · long-press −/+ for ×10)", value = s.dashboard.refreshIntervalSec, min = 0, max = 600, step = 15, suffix = " s", onChange = { v -> vm.updateDashboard { it.copy(refreshIntervalSec = v) } }) }
+    item { NumberStepperRow(label = "Low-battery threshold", subtitle = "Surface batteries below this percentage", value = s.dashboard.lowBatteryThresholdPct, min = 1, max = 100, step = 5, suffix = " %", onChange = { v -> vm.updateDashboard { it.copy(lowBatteryThresholdPct = v) } }) }
+    item { NumberStepperRow(label = "DRAW amber above", subtitle = "Power threshold where the DRAW tile turns amber", value = s.dashboard.powerAmberThresholdW, min = 50, max = 10_000, step = 50, suffix = " W", onChange = { v -> vm.updateDashboard { it.copy(powerAmberThresholdW = v) } }) }
+    item { NumberStepperRow(label = "DRAW red above", subtitle = "Power threshold where the DRAW tile turns red", value = s.dashboard.powerRedThresholdW, min = 200, max = 30_000, step = 100, suffix = " W", onChange = { v -> vm.updateDashboard { it.copy(powerRedThresholdW = v) } }) }
+    item { NumberStepperRow(label = "Inline alerts shown", subtitle = "Max HA persistent-alert previews under METRICS", value = s.dashboard.inlineAlertsCount, min = 0, max = 10, step = 1, onChange = { v -> vm.updateDashboard { it.copy(inlineAlertsCount = v) } }) }
+    item { NumberStepperRow(label = "Media rows shown", subtitle = "Max simultaneous media-player cards on the dashboard", value = s.dashboard.mediaSummaryCount, min = 1, max = 10, step = 1, onChange = { v -> vm.updateDashboard { it.copy(mediaSummaryCount = v) } }) }
+}
+
+private fun LazyListScope.dashboardOrder(s: AppSettings, vm: SettingsViewModel) {
+    item {
+        Text(
+            text = "Drag-style reorder isn't on the R1's small screen yet. Use the arrows to nudge each tile up or down.",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
+        )
+    }
+    item {
+        TileOrderEditor(
+            order = s.dashboard.tileOrder,
+            onMove = { from, to ->
+                vm.updateDashboard {
+                    val list = it.tileOrder.toMutableList()
+                    if (from in list.indices && to in list.indices) {
+                        val moved = list.removeAt(from)
+                        list.add(to, moved)
+                    }
+                    it.copy(tileOrder = list)
+                }
+            },
+            onReset = {
+                vm.updateDashboard { it.copy(tileOrder = com.github.itskenny0.r1ha.core.prefs.DashboardSettings.DEFAULT_TILE_ORDER) }
             },
         )
     }
+}
+
+// ── Integrations ─────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.integrationsRoot(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    push: (SettingsNode) -> Unit,
+    groupBadge: (Array<out String>) -> Int,
+    onOpenCategory: (SettingsCategory) -> Unit,
+) {
+    item { SubGroupLabel("TUNING") }
+    item {
+        val badge = groupBadge(arrayOf("INTEGRATIONS"))
+        R1Row(
+            label = SettingsNode.INTEGRATIONS_REFRESH.title,
+            description = "Per-surface auto-refresh cadence",
+            onClick = { push(SettingsNode.INTEGRATIONS_REFRESH) },
+            showChevron = true,
+            contentDescription = "Open Auto-refresh intervals",
+            trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.INTEGRATIONS_CAMERAS.title,
+            description = "Snapshot polling, default grid view",
+            value = if (s.integrations.camerasDefaultGrid) "GRID" else "LIST",
+            onClick = { push(SettingsNode.INTEGRATIONS_CAMERAS) },
+            showChevron = true,
+            contentDescription = "Open Cameras",
+        )
+    }
+    item {
+        R1Row(
+            label = SettingsNode.INTEGRATIONS_DEFAULTS.title,
+            description = "Window sizes, result caps, history depth",
+            onClick = { push(SettingsNode.INTEGRATIONS_DEFAULTS) },
+            showChevron = true,
+            contentDescription = "Open Defaults & limits",
+        )
+    }
+    item { SubGroupLabel("DEVICE AS A SERVICE") }
+    item {
+        R1Row(
+            label = "Sync",
+            description = "Mirror settings across devices via Home Assistant",
+            value = if (s.integrations.haSyncEnabled) "ON · ${s.integrations.haSyncIntervalSec}s" else "Off",
+            onClick = { onOpenCategory(SettingsCategory.SYNC) },
+            showChevron = true,
+            contentDescription = "Open Sync",
+        )
+    }
+    item {
+        R1Row(
+            label = "IoT Camera Mode",
+            description = "Stream the device camera to Home Assistant",
+            value = if (s.iotCamera.enabled) {
+                val sinks = buildList {
+                    if (s.iotCamera.mjpegEnabled) add("MJPEG")
+                    if (s.iotCamera.mqttEnabled) add("MQTT")
+                }
+                "ON · ${if (sinks.isEmpty()) "no sinks" else sinks.joinToString(" + ")}"
+            } else "Off",
+            onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+            showChevron = true,
+            contentDescription = "Open IoT Camera Mode",
+        )
+    }
+    item {
+        R1Row(
+            label = "IoT Sensors Mode",
+            description = "Expose device sensors + controls to Home Assistant",
+            value = if (s.iotSensors.enabled) "On" else "Off",
+            onClick = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
+            showChevron = true,
+            contentDescription = "Open IoT Sensors Mode",
+        )
+    }
+    item {
+        R1Row(
+            label = "MQTT broker",
+            description = "Host / port / auth / TLS · required by IoT modes",
+            value = if (s.advanced.mqttHost.isNotBlank()) {
+                "${s.advanced.mqttHost}:${s.advanced.mqttPort}" + (if (s.advanced.mqttUseTls) " · TLS" else "")
+            } else "Not configured",
+            onClick = { onOpenCategory(SettingsCategory.MQTT) },
+            showChevron = true,
+            contentDescription = "Open MQTT broker",
+        )
+    }
+    item { CategoryResetRow(label = "RESET INTEGRATIONS", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS, vm = vm) }
+}
+
+private fun LazyListScope.integrationsRefresh(s: AppSettings, vm: SettingsViewModel) {
+    item { NumberStepperRow(label = "Notifications refresh", subtitle = "Auto-refresh the Notifications surface every…", value = s.integrations.notificationsRefreshSec, min = 0, max = 600, step = 15, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(notificationsRefreshSec = v) } }) }
+    item { NumberStepperRow(label = "Logbook refresh", subtitle = "Auto-refresh the Recent Activity feed every…", value = s.integrations.logbookRefreshSec, min = 0, max = 900, step = 30, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(logbookRefreshSec = v) } }) }
+    item { NumberStepperRow(label = "Who's-home refresh", subtitle = "Auto-refresh the Persons surface every…", value = s.integrations.personsRefreshSec, min = 0, max = 900, step = 30, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(personsRefreshSec = v) } }) }
+    item { NumberStepperRow(label = "Weather refresh", subtitle = "Auto-refresh the Weather surface every…", value = s.integrations.weatherRefreshSec, min = 0, max = 3600, step = 60, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(weatherRefreshSec = v) } }) }
+    item { NumberStepperRow(label = "Calendars refresh", subtitle = "Auto-refresh the Calendars surface every…", value = s.integrations.calendarsRefreshSec, min = 0, max = 3600, step = 60, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(calendarsRefreshSec = v) } }) }
+}
+
+private fun LazyListScope.integrationsCameras(s: AppSettings, vm: SettingsViewModel) {
+    item { NumberStepperRow(label = "Camera overlay polling", subtitle = "Snapshot fetch interval when viewing a camera fullscreen", value = s.integrations.cameraOverlayPollSec, min = 1, max = 60, step = 1, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(cameraOverlayPollSec = v) } }) }
+    item { NumberStepperRow(label = "Camera grid polling", subtitle = "Snapshot fetch interval per tile in GRID view", value = s.integrations.cameraGridPollSec, min = 2, max = 120, step = 2, suffix = " s", onChange = { v -> vm.updateIntegrations { it.copy(cameraGridPollSec = v) } }) }
+    item { SwitchRow(label = "Cameras open in GRID", subtitle = "Default to the polling-tiles view rather than the text list", checked = s.integrations.camerasDefaultGrid, onCheckedChange = { v -> vm.updateIntegrations { it.copy(camerasDefaultGrid = v) } }) }
+}
+
+private fun LazyListScope.integrationsDefaults(s: AppSettings, vm: SettingsViewModel) {
+    item { NumberStepperRow(label = "Logbook default window", subtitle = "Time window applied on Recent Activity entry", value = s.integrations.logbookDefaultWindowHours, min = 1, max = 168, step = 1, suffix = " h", onChange = { v -> vm.updateIntegrations { it.copy(logbookDefaultWindowHours = v) } }) }
+    item { NumberStepperRow(label = "Calendar look-ahead", subtitle = "Days of events fetched when drilling into a calendar", value = s.integrations.calendarLookaheadDays, min = 1, max = 90, step = 1, suffix = " d", onChange = { v -> vm.updateIntegrations { it.copy(calendarLookaheadDays = v) } }) }
+    item { NumberStepperRow(label = "Quick Search result cap", subtitle = "Maximum entities shown for a search", value = s.integrations.searchResultCap, min = 10, max = 500, step = 10, onChange = { v -> vm.updateIntegrations { it.copy(searchResultCap = v) } }) }
+    item { NumberStepperRow(label = "RECENT history depth", subtitle = "Items kept in Templates / Service Caller RECENT lists", value = s.integrations.recentHistoryDepth, min = 0, max = 30, step = 1, onChange = { v -> vm.updateIntegrations { it.copy(recentHistoryDepth = v) } }) }
+}
+
+// ── Advanced ───────────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.advancedRoot(
+    s: AppSettings,
+    vm: SettingsViewModel,
+    modifiedCount: Int,
+    onOpenDevMenu: () -> Unit,
+    onOpenModifiedSettings: () -> Unit,
+    onOpenSystemHealth: () -> Unit,
+) {
+    item { NavRow(label = "Dev menu", value = "Live logs, fire-event, integrations panel", onClick = onOpenDevMenu) }
+    item { NavRow(label = "Modified settings", value = if (modifiedCount > 0) "$modifiedCount changed" else "All at defaults", onClick = onOpenModifiedSettings) }
+    item { NavRow(label = "System health", value = "Server config, ping, error log", onClick = onOpenSystemHealth) }
+}
+
+// ── Browse ─────────────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.browseRoot(push: (SettingsNode) -> Unit) {
+    item { R1Row(label = SettingsNode.BROWSE_TODAY.title, description = "Dashboard, Quick Search", onClick = { push(SettingsNode.BROWSE_TODAY) }, showChevron = true, contentDescription = "Open Today") }
+    item { R1Row(label = SettingsNode.BROWSE_TALK.title, description = "Assist, Scenes, Automations, Helpers", onClick = { push(SettingsNode.BROWSE_TALK) }, showChevron = true, contentDescription = "Open Talk & fire") }
+    item { R1Row(label = SettingsNode.BROWSE_STATUS.title, description = "Cameras, Weather, People, registries", onClick = { push(SettingsNode.BROWSE_STATUS) }, showChevron = true, contentDescription = "Open Status views") }
+    item { R1Row(label = SettingsNode.BROWSE_POWER.title, description = "Updates, Repairs, diagnostics, backups", onClick = { push(SettingsNode.BROWSE_POWER) }, showChevron = true, contentDescription = "Open Power tools") }
+}
+
+private fun LazyListScope.browseToday(onOpenDashboard: () -> Unit, onOpenSearch: () -> Unit) {
+    item { NavRow(label = "Dashboard", value = "Weather · People · Next event", onClick = onOpenDashboard) }
+    item { NavRow(label = "Quick Search", value = "Find any entity", onClick = onOpenSearch) }
+}
+
+private fun LazyListScope.browseTalk(
+    onOpenAssist: () -> Unit,
+    onOpenScenes: () -> Unit,
+    onOpenAutomations: () -> Unit,
+    onOpenHelpers: () -> Unit,
+    onOpenTodo: () -> Unit,
+) {
+    item { NavRow(label = "Assist", value = "Talk to HA", onClick = onOpenAssist) }
+    item { NavRow(label = "Scenes & Scripts", value = "Fire instantly", onClick = onOpenScenes) }
+    item { NavRow(label = "Automations", value = "List, trigger, enable / disable", onClick = onOpenAutomations) }
+    item { NavRow(label = "Helpers", value = "input_*, counter, timer", onClick = onOpenHelpers) }
+    item { NavRow(label = "To-do lists", value = "Shopping lists, tasks", onClick = onOpenTodo) }
+}
+
+private fun LazyListScope.browseStatus(
+    onOpenCameras: () -> Unit,
+    onOpenWeather: () -> Unit,
+    onOpenPersons: () -> Unit,
+    onOpenCalendars: () -> Unit,
+    onOpenLogbook: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenAreas: () -> Unit,
+    onOpenLabels: () -> Unit,
+    onOpenFloors: () -> Unit,
+    onOpenZones: () -> Unit,
+    onOpenEnergy: () -> Unit,
+    onOpenDevice: () -> Unit,
+) {
+    item { NavRow(label = "Cameras", value = "Live snapshots", onClick = onOpenCameras) }
+    item { NavRow(label = "Weather", value = "Conditions readout", onClick = onOpenWeather) }
+    item { NavRow(label = "Who's home", value = "People + device trackers", onClick = onOpenPersons) }
+    item { NavRow(label = "Calendars", value = "Next event preview", onClick = onOpenCalendars) }
+    item { NavRow(label = "Recent Activity", value = "Logbook feed", onClick = onOpenLogbook) }
+    item { NavRow(label = "Notifications", value = "HA persistent alerts", onClick = onOpenNotifications) }
+    item { NavRow(label = "Areas", value = "HA area registry", onClick = onOpenAreas) }
+    item { NavRow(label = "Labels", value = "HA label registry (tags)", onClick = onOpenLabels) }
+    item { NavRow(label = "Floors", value = "Floor → areas hierarchy", onClick = onOpenFloors) }
+    item { NavRow(label = "Zones", value = "Geographic zones + who's there", onClick = onOpenZones) }
+    item { NavRow(label = "Energy", value = "Draw, production, today's kWh", onClick = onOpenEnergy) }
+    item { NavRow(label = "Device", value = "Local: brightness, volume, flashlight", onClick = onOpenDevice) }
+}
+
+private fun LazyListScope.browsePower(
+    haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onOpenUpdates: () -> Unit,
+    onOpenRepairs: () -> Unit,
+    onOpenMediaBrowse: () -> Unit,
+    onOpenBackups: () -> Unit,
+    onOpenZhaPairing: () -> Unit,
+    onOpenTemplate: () -> Unit,
+    onOpenServiceCaller: () -> Unit,
+    onOpenServices: () -> Unit,
+    onOpenSystemHealth: () -> Unit,
+    onOpenLovelace: () -> Unit,
+    onOpenDevices: () -> Unit,
+    onOpenIntegrations: () -> Unit,
+    onOpenBlueprints: () -> Unit,
+    onOpenLogs: () -> Unit,
+    onOpenUsers: () -> Unit,
+    onOpenTags: () -> Unit,
+    onOpenStatistics: () -> Unit,
+) {
+    item { NavRow(label = "Updates", value = "HA Core, add-ons, integrations", onClick = onOpenUpdates) }
+    item { NavRow(label = "Repairs", value = "HA issues + ignore", onClick = onOpenRepairs) }
+    item { NavRow(label = "Media Browse", value = "Browse + play any media_player library", onClick = onOpenMediaBrowse) }
+    item { NavRow(label = "Backups", value = "View + create HA backups", onClick = onOpenBackups) }
+    item { NavRow(label = "Zigbee pair", value = "Open the network to enrol new devices", onClick = onOpenZhaPairing) }
+    item { NavRow(label = "Templates", value = "Jinja2 evaluator", onClick = onOpenTemplate) }
+    item { NavRow(label = "Service Caller", value = "Fire any service", onClick = onOpenServiceCaller) }
+    item { NavRow(label = "Services Browser", value = "Discover available services", onClick = onOpenServices) }
+    item { NavRow(label = "System Health", value = "HA version + error log", onClick = onOpenSystemHealth) }
+    item { NavRow(label = "Lovelace (WebView)", value = "Open HA's frontend in-app", onClick = onOpenLovelace) }
+    item { NavRow(label = "Devices", value = "Browse HA's device registry", onClick = onOpenDevices) }
+    item { NavRow(label = "Integrations", value = "Configured integrations + reload", onClick = onOpenIntegrations) }
+    item { NavRow(label = "Blueprints", value = "Installed automations + scripts, import from URL", onClick = onOpenBlueprints) }
+    item { NavRow(label = "Logs", value = "Full /api/error_log with level + search", onClick = onOpenLogs) }
+    item { NavRow(label = "Users", value = "Read-only HA user list (admin)", onClick = onOpenUsers) }
+    item { NavRow(label = "Tags", value = "NFC / QR tag registry", onClick = onOpenTags) }
+    item { NavRow(label = "Statistics", value = "Long-term sensor stats", onClick = onOpenStatistics) }
+    item {
+        val backupArmed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+        androidx.compose.runtime.LaunchedEffect(backupArmed.value) {
+            if (backupArmed.value) {
+                kotlinx.coroutines.delay(3_000)
+                backupArmed.value = false
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xl, vertical = R1.space.s)) {
+            Text(text = "BACKUP", style = R1.labelMicro, color = R1.AccentWarm)
+            Spacer(Modifier.height(R1.space.xs))
+            com.github.itskenny0.r1ha.ui.components.R1Button(
+                text = if (backupArmed.value) "CONFIRM · CREATE BACKUP NOW" else "CREATE BACKUP NOW",
+                onClick = {
+                    if (backupArmed.value) {
+                        backupArmed.value = false
+                        coroutineScope.launch {
+                            haRepository.callRawService(
+                                domain = "backup",
+                                service = "create",
+                                data = kotlinx.serialization.json.JsonObject(emptyMap()),
+                            ).fold(
+                                onSuccess = { com.github.itskenny0.r1ha.core.util.Toaster.show("Backup creation started") },
+                                onFailure = { t ->
+                                    com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
+                                        shortText = "Backup failed to start",
+                                        fullText = t.message ?: t.toString(),
+                                    )
+                                },
+                            )
+                        }
+                    } else {
+                        backupArmed.value = true
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(R1.space.xs))
+            Text(
+                text = if (backupArmed.value)
+                    "Triggers HA's backup.create service. Honors your supervisor's backup destination + retention config."
+                else
+                    "Fires backup.create on your HA server (HA Core 2024.4+).",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────────────────────
+
+/** Search field rendered at the top of every level. Filters the registry; a
+ *  non-blank query swaps the page body for the flat matched-entries list. */
+@Composable
+private fun SettingsSearchBar(query: String, onQueryChange: (String) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.l, vertical = R1.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            R1TextField(value = query, onValueChange = onQueryChange, placeholder = "Search settings…", monospace = false)
+        }
+        if (query.isNotEmpty()) {
+            Spacer(Modifier.width(R1.space.s))
+            Box(
+                modifier = Modifier.size(48.dp).r1Pressable(onClick = { onQueryChange("") }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+            }
+        }
+    }
+}
+
+/** Flat matched-entries list grouped by registry category. Tapping a result
+ *  jumps the back-stack to that setting's home subpage. */
+private fun LazyListScope.settingsSearchResults(
+    query: String,
+    matched: List<com.github.itskenny0.r1ha.core.prefs.SettingEntry>,
+    current: AppSettings,
+    onJump: (com.github.itskenny0.r1ha.core.prefs.SettingEntry) -> Unit,
+) {
+    if (matched.isEmpty()) {
+        item {
+            Text(
+                text = "No settings match \"$query\".",
+                style = R1.body,
+                color = R1.InkMuted,
+                modifier = Modifier.padding(22.dp),
+            )
+        }
+        return
+    }
+    val grouped = matched
+        .groupBy { it.category }
+        .toList()
+        .sortedBy { (cat, _) -> com.github.itskenny0.r1ha.core.prefs.SettingCategory.entries.indexOf(cat) }
+    grouped.forEach { (category, entries) ->
+        item("__search_cat_${category.name}") {
+            Text(
+                text = category.label.uppercase(),
+                style = R1.labelMicro,
+                color = R1.AccentWarm,
+                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 2.dp),
+            )
+        }
+        itemsIndexed(entries, key = { _, it -> it.id }) { _, entry ->
+            SearchResultRow(entry = entry, current = current, onClick = { onJump(entry) })
+        }
+    }
+}
+
+// ── Category rows ───────────────────────────────────────────────────────────────────────────
+
+/** Top-level Settings list row: title + Android-style summary secondary text +
+ *  optional modified-count badge, drills into [node]. */
+@Composable
+private fun CategoryRow(node: SettingsNode, summary: String, badge: Int, onClick: () -> Unit) {
+    R1Row(
+        label = node.title,
+        description = summary,
+        onClick = onClick,
+        showChevron = true,
+        contentDescription = "Open ${node.title}",
+        trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
+    )
+}
+
+/** Like [CategoryRow] but shows the current value on the right edge (accent)
+ *  the way a leaf value row would, for mid-tree category rows. */
+@Composable
+private fun CategorySubRow(node: SettingsNode, summary: String, badge: Int, onClick: () -> Unit) {
+    R1Row(
+        label = node.title,
+        value = summary,
+        onClick = onClick,
+        showChevron = true,
+        contentDescription = "Open ${node.title}",
+        trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
+    )
 }
 
 /**
@@ -2060,117 +1679,7 @@ internal fun sectionNameForCategory(
 // ── Building blocks ──────────────────────────────────────────────────────────────────────
 
 /**
- * ROOT-view top-level group card. Big tap target with a title, subtitle, and
- * the modified-count badge so the user can tell at a glance which group
- * they've tweaked. Mirrors the visual shape of a Section header but doesn't
- * collapse: tap navigates into the corresponding subpage.
- */
-@Composable
-private fun GroupCard(
-    title: String,
-    subtitle: String,
-    modifiedCount: Int,
-    onClick: () -> Unit,
-) {
-    R1Row(
-        label = title,
-        description = subtitle,
-        onClick = onClick,
-        showChevron = true,
-        contentDescription = "Open $title",
-        trailing = if (modifiedCount > 0) {
-            { R1Chip(text = modifiedCount.toString(), variant = R1ChipVariant.Pill) }
-        } else {
-            null
-        },
-    )
-}
-
-@Composable
-private fun Section(
-    title: String,
-    expanded: Boolean = true,
-    onToggle: (() -> Unit)? = null,
-    /** How many registered settings in this section currently deviate from
-     *  their default value. Renders as a small accent-tinted pill between the
-     *  title and the hairline rule so the user sees 'where did I change
-     *  things?' at a glance, especially in collapsed view. 0 hides the pill. */
-    modifiedCount: Int = 0,
-    /** Per-section reset hook. When non-null AND modifiedCount > 0 a small
-     *  "RESET" chip appears that arms on first tap and commits on the second
-     *  (3s auto-disarm). Single-tap reset is too easy to fire by accident on
-     *  the wheel-only R1; arm-confirm matches the wholesale-reset pattern at
-     *  the bottom of the Settings screen. */
-    onReset: (() -> Unit)? = null,
-) {
-    val modifier = Modifier
-        .fillMaxWidth()
-        .then(if (onToggle != null) Modifier.r1Pressable(onClick = onToggle) else Modifier)
-        .padding(start = R1.space.xl, end = R1.space.xl, top = R1.space.xl, bottom = R1.space.s)
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
-        if (modifiedCount > 0) {
-            Spacer(Modifier.width(R1.space.s))
-            R1Chip(text = "$modifiedCount", variant = R1ChipVariant.Pill)
-        }
-        Spacer(Modifier.width(R1.space.m))
-        Box(
-            modifier = Modifier
-                .height(1.dp)
-                .weight(1f)
-                .background(R1.Hairline),
-        )
-        if (onReset != null && modifiedCount > 0) {
-            Spacer(Modifier.width(R1.space.s))
-            val armed = androidx.compose.runtime.remember(title) {
-                androidx.compose.runtime.mutableStateOf(false)
-            }
-            androidx.compose.runtime.LaunchedEffect(armed.value) {
-                if (armed.value) {
-                    kotlinx.coroutines.delay(3_000)
-                    armed.value = false
-                }
-            }
-            R1Chip(
-                text = if (armed.value) "CONFIRM" else "RESET",
-                variant = R1ChipVariant.Action,
-                tone = R1.StatusAmber,
-                selected = armed.value,
-                onClick = {
-                    if (armed.value) {
-                        armed.value = false
-                        onReset()
-                    } else {
-                        armed.value = true
-                    }
-                },
-                contentDescription = "Reset $title to defaults",
-            )
-        }
-        if (onToggle != null) {
-            Spacer(Modifier.width(R1.space.m))
-            // Chevron-style indicator: '−' (minus) when expanded, '+' when collapsed.
-            // Single-char readouts keep the visual weight low — the header line is
-            // already prominent and a full word would compete with the title.
-            Text(
-                text = if (expanded) "−" else "+",
-                style = R1.bodyEmph,
-                color = R1.InkSoft,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SectionDivider() {
-    Spacer(Modifier.height(R1.space.xxs))
-}
-
-/**
- * Smaller heading rendered inside a Section to split it into visual
+ * Smaller heading rendered inside a page body to split it into visual
  * groups (e.g. "VISIBLE CARDS" vs "THRESHOLDS & INTERVALS" under
  * DASHBOARD) without escalating to a full Section divider. Pairs
  * nicely with long lists of related rows that would otherwise blur
@@ -2190,6 +1699,49 @@ private fun SubGroupLabel(text: String) {
             bottom = R1.space.xs,
         ),
     )
+}
+
+/**
+ * Per-category "reset to defaults" affordance shown at the foot of a category
+ * page. Two-stage arm-confirm (first tap arms, second within 3 s commits, then
+ * auto-disarms) because single-tap reset is too easy to fire by accident on the
+ * wheel-only R1. Routes to [SettingsViewModel.resetCategory] which only touches
+ * the matching slice of [AppSettings]: server, favourites and pages are never
+ * affected.
+ */
+@Composable
+private fun CategoryResetRow(
+    label: String,
+    category: com.github.itskenny0.r1ha.core.prefs.SettingCategory,
+    vm: SettingsViewModel,
+) {
+    val armed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(armed.value) {
+        if (armed.value) {
+            kotlinx.coroutines.delay(3_000)
+            armed.value = false
+        }
+    }
+    Box(
+        modifier = Modifier
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
+    ) {
+        R1Chip(
+            text = if (armed.value) "CONFIRM RESET" else label,
+            variant = R1ChipVariant.Action,
+            tone = R1.StatusAmber,
+            selected = armed.value,
+            onClick = {
+                if (armed.value) {
+                    armed.value = false
+                    vm.resetCategory(category)
+                } else {
+                    armed.value = true
+                }
+            },
+            contentDescription = "Reset $label to defaults",
+        )
+    }
 }
 
 /**
@@ -2276,108 +1828,9 @@ private fun OrientationModeRow(
 
 
 /**
- * Top-of-Settings header that combines:
- *   - A live search field that filters the registry (consumed by the parent
- *     LazyColumn — when [query] is non-blank, the sections collapse and a flat
- *     matched-entries list takes their place).
- *   - A "N modified" chip that opens the Modified Settings subscreen. The
- *     number reads as muted when zero (nothing modified, nothing to audit) and
- *     as accent when >0 so users notice the trail of changes.
- */
-@Composable
-private fun SettingsHeader(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    modifiedCount: Int,
-    onOpenModified: () -> Unit,
-    anyExpanded: Boolean,
-    onCollapseAll: () -> Unit,
-    onExpandAll: () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.l, vertical = R1.space.s)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.weight(1f)) {
-                com.github.itskenny0.r1ha.ui.components.R1TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    placeholder = "Search settings…",
-                    monospace = false,
-                )
-            }
-            if (query.isNotEmpty()) {
-                Spacer(Modifier.width(R1.space.s))
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .r1Pressable(
-                            onClick = { onQueryChange("") },
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
-                }
-            }
-        }
-        Spacer(Modifier.height(R1.space.s))
-        // Modified-settings entry chip. Always rendered so the affordance is
-        // discoverable on a fresh install (where the count reads '0 modified'
-        // and the tap navigates to a friendly empty-state).
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(R1.ShapeS)
-                .background(R1.SurfaceMuted)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onClick = onOpenModified)
-                .padding(horizontal = R1.space.m, vertical = R1.space.s),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "$modifiedCount modified",
-                    style = R1.body,
-                    color = if (modifiedCount > 0) R1.AccentWarm else R1.InkSoft,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "VIEW →",
-                    style = R1.labelMicro,
-                    color = R1.InkSoft,
-                )
-            }
-        }
-        // Bulk-toggle every section in one tap. Toggles between fully-expanded
-        // (the default first-launch state) and fully-collapsed (true 'tiered
-        // menu' shape — only section titles visible, tap one to drill in).
-        // Hidden while searching: the section grid is replaced by the matched-
-        // entries list, so the toggle would have no visible effect.
-        if (query.isBlank()) {
-            Spacer(Modifier.height(R1.space.s))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = R1.MinTarget)
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = if (anyExpanded) onCollapseAll else onExpandAll)
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (anyExpanded) "COLLAPSE ALL SECTIONS" else "EXPAND ALL SECTIONS",
-                    style = R1.labelMicro,
-                    color = R1.InkSoft,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Single matched-entry row in the search-results view. Read-only: tells the
- * user which category the setting lives in, the label / description, and its
- * current value. The user scrolls the section open to actually edit (no deep-
- * link until the tiered-menus refactor lands).
+ * Single matched-entry row in the search-results view. Tells the user which
+ * category the setting lives in, the label / description, and its current
+ * value, and on tap jumps the back-stack to that setting's home subpage.
  */
 @Composable
 private fun SearchResultRow(
