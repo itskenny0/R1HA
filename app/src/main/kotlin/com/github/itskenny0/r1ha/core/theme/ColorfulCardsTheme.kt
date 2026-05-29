@@ -234,6 +234,20 @@ object ColorfulCardsTheme : R1Theme {
                                 accent = accent,
                             )
                         }
+                        CardRenderModel.Glyph.COVER -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.CoverPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
+                        CardRenderModel.Glyph.HUMIDIFIER -> {
+                            Spacer(Modifier.height(10.dp))
+                            com.github.itskenny0.r1ha.ui.components.HumidifierPanel(
+                                state = model.entityState,
+                                accent = accent,
+                            )
+                        }
                         else -> {
                             if (model.entityState.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.REMOTE) {
                                 Spacer(Modifier.height(10.dp))
