@@ -65,6 +65,11 @@ object ColorfulCardsTheme : R1Theme {
     @Composable
     override fun Card(model: CardRenderModel, modifier: Modifier, onTapToggle: () -> Unit) {
         val pal = paletteFor(model.entityIdText)
+        // The gradient backdrop depends only on the (stable, interned) palette for
+        // this entity, so build the Brush once and reuse it. The card recomposes on
+        // every wheel detent (percent change); rebuilding the linear-gradient Brush
+        // each time was an allocation in the per-detent rendering path for no benefit.
+        val bgBrush = androidx.compose.runtime.remember(pal) { Brush.linearGradient(pal) }
         val ui = LocalUiOptions.current
         // Accent is white for body text + slider, with a per-card override (from
         // EntityOverride.accentColor) winning when set. The gradient backdrop already
@@ -80,7 +85,7 @@ object ColorfulCardsTheme : R1Theme {
             accent = accent,
             outer = modifier
                 .fillMaxSize()
-                .background(Brush.linearGradient(pal))
+                .background(bgBrush)
                 .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
             // Default tick colour (R1.InkMuted) is invisible against the
             // colourful gradient; force a soft-white that reads on every

@@ -642,13 +642,19 @@ internal fun VerticalTapeMeter(
                 // wheel (0..360°). Top = red (0°), middle = green (~120°), bottom =
                 // violet/red again (300°→360°). Slightly wider than the standard
                 // 2 dp hairline so the colours are actually legible.
+                // Brush is a constant (gradient of the constant RainbowStops), so
+                // remember it once instead of rebuilding it on every spring-frame
+                // recomposition of the meter during a HUE wheel spin.
+                val rainbowBrush = androidx.compose.runtime.remember {
+                    androidx.compose.ui.graphics.Brush.verticalGradient(RainbowStops)
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(6.dp)
                         .align(Alignment.CenterEnd)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(rainbowStops())),
+                        .background(rainbowBrush),
                 )
             } else {
                 // Hairline track.
@@ -750,13 +756,18 @@ internal fun HorizontalTapeMeter(
                 .then(trackInteractionMod),
         ) {
             if (rainbow) {
+                // Constant gradient — remember once rather than rebuilding the
+                // Brush every recomposition (see VerticalTapeMeter for rationale).
+                val rainbowBrush = androidx.compose.runtime.remember {
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(RainbowStops)
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(6.dp)
                         .align(Alignment.Center)
                         .clip(RoundedCornerShape(3.dp))
-                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(rainbowStops())),
+                        .background(rainbowBrush),
                 )
             } else {
                 // Hairline track.
@@ -1367,7 +1378,12 @@ private fun EffectRow(label: String, isActive: Boolean, accent: Color, onClick: 
  * percent maps 0..100 onto 0..360°, so the user can read off the rough colour by
  * looking where the thumb sits on the track.
  */
-private fun rainbowStops(): List<Color> = listOf(
+// Constant — the hue wheel never changes, so hold the seven stops in a single
+// shared immutable list rather than reallocating it (and the seven Color boxes)
+// on every recomposition. The HUE-mode meter recomposes once per spring frame
+// while the wheel is churning, so a per-frame list + Brush allocation here was
+// pure GC churn in the brightest part of the rendering hot path.
+private val RainbowStops: List<Color> = listOf(
     Color(0xFFFF0000), // 0°   red
     Color(0xFFFFFF00), // 60°  yellow
     Color(0xFF00FF00), // 120° green
