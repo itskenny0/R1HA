@@ -141,7 +141,7 @@ fun HistoryScreen(
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() }, onClickLabel = "Refresh history")
+                        .r1Pressable(onClick = { vm.refresh() }, contentDescription = "Refresh history")
                         .padding(horizontal = 12.dp, vertical = 12.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -243,7 +243,7 @@ private fun WindowChips(
                     .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
                     .r1Pressable(
                         onClick = { onSelect(w) },
-                        onClickLabel = "Show ${windowAccessibleLabel(w)} of history",
+                        contentDescription = "Show ${windowAccessibleLabel(w)} of history",
                     )
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
@@ -574,7 +574,7 @@ private fun OverlayLegend(
                             .size(48.dp)
                             .r1Pressable(
                                 onClick = { onRemove(s.entityId) },
-                                onClickLabel = "Remove ${s.displayName} from chart",
+                                contentDescription = "Remove ${s.displayName} from chart",
                             ),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -595,7 +595,7 @@ private fun OverlayLegend(
                     if (ui.atCap) {
                         Modifier
                     } else {
-                        Modifier.r1Pressable(onClick = onAdd, onClickLabel = "Add entity to chart")
+                        Modifier.r1Pressable(onClick = onAdd, contentDescription = "Add entity to chart")
                     },
                 )
                 .padding(vertical = 10.dp),
@@ -752,6 +752,101 @@ private fun formatNum(v: Double): String =
  * series' OWN [yMin, yMax] so differing units / magnitudes stay legible on one
  * chart. Stored as FloatArrays so the per-frame Canvas draw is allocation-free.
  */
+// ---------------------------------------------------------------------------
+// Accessibility text helpers. Pure and deterministic so they can be unit
+// tested without a Compose runtime, and reused by the screen's semantics.
+// ---------------------------------------------------------------------------
+
+/** Spoken-out window label, e.g. "24H" reads as "1 day" rather than letters. */
+internal fun windowAccessibleLabel(window: HistoryViewModel.Window): String =
+    if (window.hours % 24 == 0) {
+        val days = window.hours / 24
+        if (days == 1) "1 day" else "$days days"
+    } else {
+        if (window.hours == 1) "1 hour" else "${window.hours} hours"
+    }
+
+/** Human colour name for a series accent slot, so legend rows describe the
+ *  colour instead of relying on the swatch alone. Slots beyond the named set
+ *  fall back to a numbered label. */
+internal fun seriesColorName(colorIndex: Int): String = when (colorIndex) {
+    0 -> "orange"
+    1 -> "blue"
+    2 -> "green"
+    3 -> "amber"
+    4 -> "grey"
+    else -> "series ${colorIndex + 1}"
+}
+
+/**
+ * Merged spoken label for one legend row: the series name, its colour, and the
+ * value range it spans. Without this a screen reader would announce only a bare
+ * coloured box and an unlabeled name.
+ */
+internal fun legendRowContentDescription(
+    name: String,
+    colorIndex: Int,
+    min: Double?,
+    max: Double?,
+    unit: String?,
+): String {
+    val color = seriesColorName(colorIndex)
+    val unitSuffix = unit?.let { " $it" } ?: ""
+    val range = if (min != null && max != null) {
+        ", range ${formatNum(min)} to ${formatNum(max)}$unitSuffix"
+    } else {
+        ""
+    }
+    return "$name, $color line$range"
+}
+
+/**
+ * Text alternative for the chart Canvas. Summarizes every plotted series
+ * (colour, min, max, average, trend) and, while the user is scrubbing, the
+ * value each series reports under the scrub guide. Returns a short sentence
+ * when nothing is chartable so the Canvas is never an unlabeled element.
+ */
+internal fun buildHistoryChartContentDescription(
+    multi: MultiProjection?,
+    scrubFrac: Float?,
+): String {
+    if (multi == null || multi.series.isEmpty()) {
+        return "Line chart with no numeric history to display."
+    }
+    val count = multi.series.size
+    val header = if (count == 1) "Line chart, 1 series." else "Line chart, $count series."
+    val bodies = multi.series.map { s ->
+        val values = s.samples.map { it.second }
+        val avg = if (values.isNotEmpty()) values.average() else 0.0
+        val trend = when {
+            values.size < 2 -> "flat"
+            values.last() > values.first() -> "rising"
+            values.last() < values.first() -> "falling"
+            else -> "flat"
+        }
+        val unitSuffix = s.unit?.let { " $it" } ?: ""
+        "${s.displayName}, ${seriesColorName(s.colorIndex)}: " +
+            "minimum ${formatNum(s.yMin)}$unitSuffix, " +
+            "maximum ${formatNum(s.yMax)}$unitSuffix, " +
+            "average ${formatNum(avg)}$unitSuffix, $trend"
+    }
+    val scrub = if (scrubFrac != null) {
+        val parts = multi.series.mapNotNull { s ->
+            val idx = nearestIndex(s.xsNorm, scrubFrac)
+            val sample = if (idx >= 0) s.samples.getOrNull(idx) else null
+            sample?.let {
+                "${s.displayName} ${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}"
+            }
+        }
+        if (parts.isEmpty()) "" else "Selected point: ${parts.joinToString(separator = ", ")}."
+    } else {
+        ""
+    }
+    return listOf(header, bodies.joinToString(separator = " "), scrub)
+        .filter { it.isNotBlank() }
+        .joinToString(separator = " ")
+}
+
 internal data class SeriesProjection(
     val colorIndex: Int,
     val displayName: String,
@@ -918,7 +1013,7 @@ private fun NumericEntityPickerSheet(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .r1Pressable(onClick = { query = "" }, onClickLabel = "Clear search"),
+                            .r1Pressable(onClick = { query = "" }, contentDescription = "Clear search"),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "X", style = R1.labelMicro, color = R1.InkSoft)

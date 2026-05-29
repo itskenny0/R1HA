@@ -69,7 +69,7 @@ class HistoryContentDescriptionTest {
         )
         assertTrue(label.contains("Living Room"))
         assertTrue(label.contains("blue line"))
-        assertTrue(label.contains("range 18 to 22.5 C"))
+        assertTrue(label.contains("range 18 to 22.50 C"))
     }
 
     @Test
