@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -924,12 +925,26 @@ fun CardStackScreen(
         if (state.settingsLoaded) androidx.compose.foundation.layout.Column(
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
+            // Effective position-pip slot for the currently-active card.
+            // Per-card override wins; otherwise inherit the global setting.
+            // Recomputed per recomposition so a wheel-driven page change
+            // (which swaps activeState) immediately moves the pip if the
+            // new card carries its own override.
+            val activePip = state.activeState?.id?.value
+                ?.let { appSettings.entityOverrides[it]?.positionDotLocation }
+                ?: appSettings.ui.positionDotLocation
             ChromeRow(
                 connection = connection,
                 wsSilent = wsSilent,
                 cardsCount = cards.size,
                 currentIndex = state.currentIndex,
-                showCounter = cards.size > 1,
+                // Pip only renders in the chrome row when the effective
+                // position is TOP_CENTER (the historical default). All other
+                // positions get a screen-level overlay outside the chrome
+                // column so the pip can sit at corner / mid-edge positions
+                // without affecting the chrome row's right-cluster layout.
+                showCounter = cards.size > 1 &&
+                    activePip == com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
                 onOpenFavoritesPicker = onOpenFavoritesPicker,
                 onOpenSettings = onOpenSettings,
                 onEditActive = {
@@ -999,6 +1014,55 @@ fun CardStackScreen(
                         text = "READ ONLY  ·  TAP TO DISABLE",
                         style = R1.labelMicro,
                         color = R1.AccentWarm,
+                    )
+                }
+            }
+        }
+
+        // ── Position-pip screen overlay ─────────────────────────────────────────────
+        // When the effective position-pip slot for the active card is anything
+        // OTHER than TOP_CENTER (the chrome-row default), we render the pip as a
+        // screen-level overlay aligned to the chosen slot. HIDDEN omits the
+        // overlay entirely; TOP_CENTER falls through to ChromeRow's existing
+        // pip rendering above. Per-card overrides win over the global setting,
+        // so changing the active card can move the pip mid-flight — that's the
+        // point: a card whose layout collides with the global slot can move
+        // the pip out of the way without changing the deck-wide default.
+        if (state.settingsLoaded && cards.size > 1) {
+            val activeId = state.activeState?.id?.value
+            val effectivePip = activeId
+                ?.let { appSettings.entityOverrides[it]?.positionDotLocation }
+                ?: appSettings.ui.positionDotLocation
+            val pipAlignment: Alignment? = when (effectivePip) {
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER -> null
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.HIDDEN -> null
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_LEFT -> Alignment.TopStart
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_RIGHT -> Alignment.TopEnd
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.LEFT_CENTER -> Alignment.CenterStart
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.RIGHT_CENTER -> Alignment.CenterEnd
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_LEFT -> Alignment.BottomStart
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_CENTER -> Alignment.BottomCenter
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_RIGHT -> Alignment.BottomEnd
+            }
+            if (pipAlignment != null) {
+                // Outer Box uses statusBarsPadding + navigationBarsPadding so
+                // the pip never sits under the system bars on devices that
+                // don't have edge-to-edge themed (the R1 itself has no
+                // visible bars, but the phone/tablet builds do). Inner
+                // padding keeps the pip a few dp away from the screen edge
+                // for visual breathing room.
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    contentAlignment = pipAlignment,
+                ) {
+                    VerticalPagePip(
+                        count = cards.size,
+                        current = state.currentIndex,
+                        onClick = { jumpPickerOpen.value = true },
                     )
                 }
             }

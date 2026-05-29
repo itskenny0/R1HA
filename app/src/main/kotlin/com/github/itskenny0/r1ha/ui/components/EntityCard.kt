@@ -172,7 +172,16 @@ fun EntityCard(
     val perCardOverridePulledEarly = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides
         .current[state.id.value]
     val effectiveTapToToggle = perCardOverridePulledEarly?.tapToToggle ?: tapToToggleEnabled
+    // Per-card actionOnTap override. NOOP explicitly disarms the card-level
+    // tap surface (overrides everything else, including tapToToggle=true).
+    // Any other explicit value falls through to the existing onTapToggle
+    // dispatch — that callback already covers TOGGLE for booleans / FIRE
+    // for actions; richer routing (e.g. NAVIGATE_HISTORY opening the
+    // sensor history overlay from any domain) will plug into the same
+    // hook from the screen layer as the routing surface evolves.
+    val tapActionOverride = perCardOverridePulledEarly?.actionOnTap
     val tapModifier = when {
+        tapActionOverride == com.github.itskenny0.r1ha.core.prefs.TapAction.NOOP -> Modifier
         !effectiveTapToToggle || !state.isAvailable -> Modifier
         state.id.domain.isSensor -> Modifier
         hasExplicitActivationButton -> Modifier
