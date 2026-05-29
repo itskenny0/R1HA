@@ -6,6 +6,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.util.R1Log
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -47,10 +49,29 @@ class TemplateViewModel(
          *  Off by default — REST-render is the simpler ask for one-off
          *  evaluations and doesn't tie up a WS subscription. */
         val live: Boolean = false,
+        /** When true, edits to the template trigger a debounced REST render so
+         *  the output tracks what the user is typing without a button tap.
+         *  Distinct from [live]: AUTO re-renders on keystroke (debounced),
+         *  LIVE re-renders on HA state change (WS subscription). The two are
+         *  mutually exclusive; turning one on turns the other off. */
+        val auto: Boolean = false,
+        /** Classification of the current [error], used by the UI to pick a
+         *  heading. Null when there is no error. */
+        val errorKind: TemplateLogic.ErrorKind? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
+
+    /** The last template string we issued (or scheduled) an AUTO render for.
+     *  Lets [scheduleAutoRender] skip redundant fires on identical input. */
+    @Volatile
+    private var lastAutoTemplate: String? = null
+
+    /** Pending debounced AUTO render. Cancelled + replaced on each keystroke
+     *  so only the trailing edit in a burst actually hits HA. */
+    @Volatile
+    private var autoJob: Job? = null
 
     fun setTemplate(value: String) {
         _ui.value = _ui.value.copy(template = value)
@@ -62,6 +83,43 @@ class TemplateViewModel(
                 liveSubscription = null
                 startLiveSubscription()
             }
+        } else if (_ui.value.auto) {
+            scheduleAutoRender(value)
+        }
+    }
+
+    /**
+     * Toggle AUTO (debounced render-on-type). On = mutually exclusive with
+     * LIVE, so flipping it on tears down any WS subscription and fires an
+     * immediate first render of the current template. Off = cancels any
+     * pending debounced render; the last result stays on screen.
+     */
+    fun setAuto(enabled: Boolean) {
+        if (_ui.value.auto == enabled) return
+        if (enabled) {
+            // AUTO and LIVE are mutually exclusive — one owns the rendered value.
+            if (_ui.value.live) setLive(false)
+            _ui.value = _ui.value.copy(auto = true)
+            // Render immediately so toggling on doesn't sit blank for the
+            // debounce window; subsequent keystrokes go through the debounce.
+            lastAutoTemplate = _ui.value.template
+            render()
+        } else {
+            _ui.value = _ui.value.copy(auto = false)
+            autoJob?.cancel()
+            autoJob = null
+        }
+    }
+
+    private fun scheduleAutoRender(value: String) {
+        autoJob?.cancel()
+        if (!TemplateLogic.shouldAutoRender(value, lastAutoTemplate)) {
+            return
+        }
+        autoJob = viewModelScope.launch {
+            delay(TemplateLogic.AUTO_DEBOUNCE_MS)
+            lastAutoTemplate = value
+            render()
         }
     }
 
@@ -82,7 +140,13 @@ class TemplateViewModel(
      */
     fun setLive(enabled: Boolean) {
         if (_ui.value.live == enabled) return
-        _ui.value = _ui.value.copy(live = enabled, error = null)
+        // LIVE and AUTO are mutually exclusive — one owns the rendered value.
+        if (enabled && _ui.value.auto) {
+            _ui.value = _ui.value.copy(auto = false)
+            autoJob?.cancel()
+            autoJob = null
+        }
+        _ui.value = _ui.value.copy(live = enabled, error = null, errorKind = null)
         if (enabled) {
             startLiveSubscription()
         } else {
@@ -100,7 +164,11 @@ class TemplateViewModel(
             haRepository.subscribeTemplate(template) { rendered ->
                 // Renders land on the IO scope; push into _ui from there since
                 // MutableStateFlow.value is thread-safe.
-                _ui.value = _ui.value.copy(rendered = rendered.trim(), error = null)
+                _ui.value = _ui.value.copy(
+                    rendered = TemplateLogic.formatRendered(rendered),
+                    error = null,
+                    errorKind = null,
+                )
             }.fold(
                 onSuccess = { sub ->
                     liveSubscription = sub
@@ -108,9 +176,11 @@ class TemplateViewModel(
                 },
                 onFailure = { t ->
                     R1Log.w("Template", "live subscribe failed: ${t.message}")
+                    val classified = TemplateLogic.classifyError(t.message ?: "Live subscribe failed")
                     _ui.value = _ui.value.copy(
                         live = false,
-                        error = t.message ?: "Live subscribe failed",
+                        error = classified.message,
+                        errorKind = classified.kind,
                     )
                 },
             )
@@ -126,6 +196,8 @@ class TemplateViewModel(
         // a (possibly dead) WS round-trips. cancel() is safe to run detached
         // because the subscription's inbound collector lives on the repository's
         // own scope, not this ViewModel's, so it survives until the frame lands.
+        autoJob?.cancel()
+        autoJob = null
         val sub = liveSubscription
         liveSubscription = null
         if (sub != null) {
@@ -138,7 +210,7 @@ class TemplateViewModel(
     fun render() {
         val template = _ui.value.template
         if (template.isBlank() || _ui.value.inFlight) return
-        _ui.value = _ui.value.copy(inFlight = true, error = null)
+        _ui.value = _ui.value.copy(inFlight = true, error = null, errorKind = null)
         viewModelScope.launch {
             historyDepth = settings.settings.first().integrations.recentHistoryDepth
                 .coerceIn(0, 100)
@@ -149,13 +221,14 @@ class TemplateViewModel(
                     val newRecent = (listOf(template) + _ui.value.recent.filterNot { it == template })
                         .take(historyDepth)
                     _ui.value = _ui.value.copy(
-                        // Strip outer whitespace — HA wraps template
+                        // Strip outer whitespace / quotes — HA wraps template
                         // output with the leading/trailing whitespace of
                         // the original template (e.g. spaces around
                         // `{{ … }}`); displaying raw makes the result
                         // panel start with a blank line.
-                        rendered = rendered.trim(),
+                        rendered = TemplateLogic.formatRendered(rendered),
                         error = null,
+                        errorKind = null,
                         inFlight = false,
                         recent = newRecent,
                     )
@@ -163,10 +236,14 @@ class TemplateViewModel(
                 onFailure = { t ->
                     // HA's syntax-error path returns a 400 with the Jinja
                     // traceback in the body; surface it verbatim so the
-                    // user can iterate without leaving the screen.
+                    // user can iterate without leaving the screen. Classify
+                    // it so the panel can distinguish a template bug from a
+                    // connection/auth failure.
                     R1Log.w("Template", "render failed: ${t.message}")
+                    val classified = TemplateLogic.classifyError(t.message)
                     _ui.value = _ui.value.copy(
-                        error = t.message ?: "Render failed",
+                        error = classified.message,
+                        errorKind = classified.kind,
                         inFlight = false,
                     )
                 },

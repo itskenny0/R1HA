@@ -104,45 +104,56 @@ fun TemplateScreen(
                 R1Button(
                     text = if (ui.inFlight) "RENDERING…" else "RENDER",
                     onClick = { vm.render() },
-                    enabled = ui.template.isNotBlank() && !ui.inFlight && !ui.live,
+                    enabled = ui.template.isNotBlank() && !ui.inFlight && !ui.live && !ui.auto,
+                )
+                Spacer(Modifier.width(8.dp))
+                // AUTO toggle — debounced render-on-type. While on, every edit
+                // re-renders after a short pause so the output tracks the
+                // template without a button tap. Mutually exclusive with LIVE.
+                ModeToggle(
+                    onLabel = "AUTO · ON",
+                    offLabel = "AUTO",
+                    enabled = ui.auto,
+                    accentOn = R1.AccentWarm,
+                    accentOff = R1.AccentWarm,
+                    onToggle = { vm.setAuto(!ui.auto) },
                 )
                 Spacer(Modifier.width(8.dp))
                 // LIVE toggle — subscribes to HA's render_template WS command,
                 // streaming re-renders on every relevant state change. The
                 // manual RENDER button is disabled while LIVE is on (the
                 // subscription owns the rendered value).
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(if (ui.live) R1.AccentCool.copy(alpha = 0.18f) else R1.SurfaceMuted)
-                        .border(
-                            1.dp,
-                            if (ui.live) R1.AccentCool.copy(alpha = 0.6f) else R1.Hairline,
-                            R1.ShapeS,
-                        )
-                        .r1Pressable(onClick = { vm.setLive(!ui.live) })
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = if (ui.live) "LIVE · ON" else "LIVE",
-                        style = R1.labelMicro,
-                        color = if (ui.live) R1.AccentCool else R1.AccentWarm,
-                    )
-                }
+                ModeToggle(
+                    onLabel = "LIVE · ON",
+                    offLabel = "LIVE",
+                    enabled = ui.live,
+                    accentOn = R1.AccentCool,
+                    accentOff = R1.AccentWarm,
+                    onToggle = { vm.setLive(!ui.live) },
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = if (ui.live) "subscribed to render_template" else "POSTs /api/template",
+                    text = when {
+                        ui.live -> "subscribed to render_template"
+                        ui.auto -> "renders as you type"
+                        else -> "POSTs /api/template"
+                    },
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
             }
             Spacer(Modifier.padding(top = 12.dp))
-            // Output panel — switches between OK / ERROR styling. Empty
-            // string while we're waiting for the first render so the
-            // panel doesn't show "OK" with no body.
+            // Output panel — distinct loading / error / rendered / empty
+            // states. Loading takes priority so a slow render shows progress
+            // rather than the stale previous value reading as current.
             when {
+                ui.inFlight && ui.rendered.isEmpty() && ui.error == null -> Text(
+                    text = "Rendering against live HA state…",
+                    style = R1.body,
+                    color = R1.InkSoft,
+                )
                 ui.error != null -> ResultPanel(
-                    heading = "ERROR",
+                    heading = ui.errorKind?.let { TemplateLogic.headingFor(it) } ?: "ERROR",
                     body = ui.error!!,
                     accent = R1.StatusRed,
                 )
@@ -152,7 +163,7 @@ fun TemplateScreen(
                     accent = R1.AccentWarm,
                 )
                 else -> Text(
-                    text = "Hit RENDER to evaluate against live HA state.",
+                    text = "Hit RENDER, or turn on AUTO to evaluate as you type.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
@@ -211,14 +222,6 @@ private fun RecentTemplateRow(template: String, onPick: () -> Unit) {
  *  sees the live output on a single tap. */
 @Composable
 private fun ExampleChips(onPick: (String) -> Unit) {
-    val examples = listOf(
-        "Now" to "{{ now().isoformat() }}",
-        "Sun" to "{{ state_attr('sun.sun','elevation') }}°",
-        "On lights" to "{{ states.light | selectattr('state','eq','on') | list | count }}",
-        "States count" to "{{ states | count }}",
-        "Unavailable" to "{{ states | selectattr('state','in',['unavailable','unknown']) | map(attribute='entity_id') | list }}",
-        "Areas" to "{{ areas() }}",
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -228,18 +231,50 @@ private fun ExampleChips(onPick: (String) -> Unit) {
     ) {
         Text(text = "TRY", style = R1.labelMicro, color = R1.InkMuted)
         Spacer(Modifier.width(4.dp))
-        for ((label, template) in examples) {
+        for (example in TemplateLogic.examples) {
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { onPick(template) })
+                    .r1Pressable(onClick = { onPick(example.template) })
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             ) {
-                Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = example.label, style = R1.labelMicro, color = R1.InkSoft)
             }
         }
+    }
+}
+
+/** Shared on/off pill used by the AUTO and LIVE mode toggles. Lights up with
+ *  [accentOn] when enabled (tinted background + border) and shows [accentOff]
+ *  text when idle, matching the existing R1 toggle treatment. */
+@Composable
+private fun ModeToggle(
+    onLabel: String,
+    offLabel: String,
+    enabled: Boolean,
+    accentOn: androidx.compose.ui.graphics.Color,
+    accentOff: androidx.compose.ui.graphics.Color,
+    onToggle: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeS)
+            .background(if (enabled) accentOn.copy(alpha = 0.18f) else R1.SurfaceMuted)
+            .border(
+                1.dp,
+                if (enabled) accentOn.copy(alpha = 0.6f) else R1.Hairline,
+                R1.ShapeS,
+            )
+            .r1Pressable(onClick = onToggle)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = if (enabled) onLabel else offLabel,
+            style = R1.labelMicro,
+            color = if (enabled) accentOn else accentOff,
+        )
     }
 }
 
