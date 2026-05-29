@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +41,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -152,10 +155,10 @@ fun SearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = 8.dp))
+            Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = R1.space.s))
             Box(modifier = Modifier.weight(1f)) {
                 R1TextField(
                     value = ui.query,
@@ -192,7 +195,7 @@ fun SearchScreen(
             // hint at recovery (pull-to-refresh or reconnect via
             // Settings).
             ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Column {
@@ -201,13 +204,13 @@ fun SearchScreen(
                         style = R1.body,
                         color = R1.StatusRed,
                     )
-                    Spacer(Modifier.size(4.dp))
+                    Spacer(Modifier.size(R1.space.xs))
                     Text(
                         text = ui.error ?: "Unknown error",
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                     )
-                    Spacer(Modifier.size(8.dp))
+                    Spacer(Modifier.size(R1.space.s))
                     Text(
                         text = "Check Settings → Server, or wait for the WS to reconnect.",
                         style = R1.labelMicro,
@@ -217,7 +220,7 @@ fun SearchScreen(
             }
             results.isEmpty() && ui.query.isBlank() &&
                 ui.bucket == SearchViewModel.Bucket.ALL -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Column {
@@ -226,7 +229,7 @@ fun SearchScreen(
                         style = R1.body,
                         color = R1.InkMuted,
                     )
-                    Spacer(Modifier.size(6.dp))
+                    Spacer(Modifier.size(R1.space.s))
                     Text(
                         text = "Type a name, entity_id, or area to find. Or tap a chip above to narrow by kind. Tap a result to fire (scenes / scripts / buttons) or toggle (lights / switches / fans).",
                         style = R1.labelMicro,
@@ -235,7 +238,7 @@ fun SearchScreen(
                 }
             }
             results.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -246,7 +249,7 @@ fun SearchScreen(
                         color = R1.InkMuted,
                     )
                     if (ui.bucket != SearchViewModel.Bucket.ALL) {
-                        Spacer(Modifier.size(6.dp))
+                        Spacer(Modifier.size(R1.space.s))
                         Text(
                             text = "Filter set to ${ui.bucket.name}. Tap ALL above to widen the search.",
                             style = R1.labelMicro,
@@ -260,7 +263,7 @@ fun SearchScreen(
                     // matches the substring search; stage the query on
                     // AssistDraftBus and navigate.
                     if (ui.query.isNotBlank()) {
-                        Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(R1.space.l))
                         Box(
                             modifier = Modifier
                                 .clip(R1.ShapeS)
@@ -269,7 +272,9 @@ fun SearchScreen(
                                     com.github.itskenny0.r1ha.core.util.AssistDraftBus.push(ui.query)
                                     onOpenAssist()
                                 })
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                .heightIn(min = R1.MinTarget)
+                                .padding(horizontal = R1.space.l, vertical = R1.space.m),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = "Ask Assist about \"${ui.query}\"",
@@ -289,16 +294,16 @@ fun SearchScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     item("__count_header") {
                         Text(
                             text = "${results.size} result${if (results.size == 1) "" else "s"}",
                             style = R1.labelMicro,
                             color = R1.InkMuted,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                            modifier = Modifier.padding(start = R1.space.xs, bottom = R1.space.xs),
                         )
                     }
                     items(items = results, key = { it.id.value }) { entity ->
@@ -430,30 +435,22 @@ private fun BucketChips(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         for ((bucket, label) in items) {
-            val active = bucket == current
             // ALL chip shows the grand total; the rest show their own bucket
             // count. Suppressed while the registry is still loading (totalCount
             // == 0) so the chips don't briefly read 'CONTROLS 0' before the
             // first refresh lands.
             val count = if (bucket == SearchViewModel.Bucket.ALL) totalCount else counts[bucket] ?: 0
             val display = if (totalCount == 0) label else "$label  $count"
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(bucket) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = display,
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = display,
+                variant = R1ChipVariant.Filter,
+                selected = bucket == current,
+                onClick = { onSelect(bucket) },
+            )
         }
     }
 }
@@ -476,7 +473,8 @@ private fun SearchResultRow(
             // Tap = the domain-appropriate action (fire/press/toggle/info).
             // Long-press = open the entity's /history view in HA's web UI.
             .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -489,9 +487,9 @@ private fun SearchResultRow(
             style = R1.labelMicro,
             color = accentFor(entity.id.domain),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = entity.friendlyName, style = R1.body, color = R1.Ink, maxLines = 1)
+            Text(text = entity.friendlyName, style = R1.bodyEmph, color = R1.Ink, maxLines = 1)
             val stateLine = buildString {
                 append(entity.id.value)
                 entity.rawState?.let { append("  ·  ").append(it) }
@@ -499,7 +497,7 @@ private fun SearchResultRow(
             }
             Text(text = stateLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         // History drill-in glyph — opens the full-screen history view
         // for this entity. Separate tap target from the action/toggle
         // path so the user can investigate a sensor's recent state
@@ -536,7 +534,7 @@ private fun SearchResultRow(
                 color = if (isFavorite) R1.AccentWarm else R1.InkSoft,
             )
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(R1.space.xs))
         // Action affordance hint — what tap will do.
         val actionLabel = when (entity.id.domain) {
             Domain.SCENE, Domain.SCRIPT -> "FIRE"
