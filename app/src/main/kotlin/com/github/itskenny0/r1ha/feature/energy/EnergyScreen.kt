@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -146,13 +148,13 @@ fun EnergyScreen(
                     BigStatTile(
                         modifier = Modifier.weight(1f),
                         label = "DRAW",
-                        value = ui.currentDrawW?.let { formatWatts(it) } ?: "—",
+                        value = ui.currentDrawW?.let { formatWatts(it) } ?: NO_VALUE,
                         accent = drawAccent(ui.currentDrawW),
                     )
                     BigStatTile(
                         modifier = Modifier.weight(1f),
                         label = "PRODUCTION",
-                        value = ui.productionW?.let { formatWatts(it) } ?: "—",
+                        value = ui.productionW?.let { formatWatts(it) } ?: NO_VALUE,
                         accent = if ((ui.productionW ?: 0.0) > 0) R1.AccentGreen else R1.InkMuted,
                     )
                 }
@@ -160,7 +162,7 @@ fun EnergyScreen(
                 BigStatTile(
                     modifier = Modifier.fillMaxWidth(),
                     label = "TODAY",
-                    value = ui.todayKwh?.let { "${"%.2f".format(java.util.Locale.US, it)} kWh" } ?: "—",
+                    value = ui.todayKwh?.let { "${"%.2f".format(java.util.Locale.US, it)} kWh" } ?: NO_VALUE,
                     accent = if ((ui.todayKwh ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
                 )
                 // ── CONSUMPTION HISTORY ────────────────────────────────
@@ -216,25 +218,27 @@ fun EnergyScreen(
                             .padding(R1.space.m),
                     ) {
                         Text(
-                            text = "No `device_class=power` sensors found. Add a power " +
-                                "integration (smart meter, smart plug, energy monitor) and " +
-                                "the dashboard will populate.",
+                            text = "No power sensors found. Add a power integration " +
+                                "(smart meter, smart plug, energy monitor) and the " +
+                                "dashboard will populate.",
                             style = R1.labelMicro,
                             color = R1.InkSoft,
                         )
                     }
                 }
-                if (ui.error != null && ui.currentDrawW == null && ui.todayKwh == null) {
+                val error = ui.error
+                if (error != null && ui.currentDrawW == null && ui.todayKwh == null) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(R1.ShapeS)
                             .background(R1.StatusRed.copy(alpha = 0.12f))
                             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
+                            .semantics { contentDescription = "Error. $error" }
                             .padding(horizontal = R1.space.m, vertical = R1.space.s),
                     ) {
                         Text(
-                            text = ui.error ?: "",
+                            text = error,
                             style = R1.labelMicro,
                             color = R1.StatusRed,
                         )
@@ -256,11 +260,15 @@ private fun BigStatTile(
     value: String,
     accent: androidx.compose.ui.graphics.Color,
 ) {
+    // Merge the label and value into one spoken node so TalkBack announces
+    // "DRAW, 1.2 kW" rather than two disconnected fragments.
+    val spoken = "$label, $value"
     Column(
         modifier = modifier
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .semantics { contentDescription = spoken }
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
@@ -358,7 +366,10 @@ private fun EnergyHistoryPanel(ui: EnergyViewModel.UiState) {
         when {
             ui.historyLoading && bars.isEmpty() -> {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(160.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .semantics { contentDescription = "Loading energy history" },
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(
@@ -377,8 +388,8 @@ private fun EnergyHistoryPanel(ui: EnergyViewModel.UiState) {
             ui.historyNoStatistics -> {
                 HistoryNote(
                     "No recorder energy statistics found. Add an energy meter " +
-                        "(device_class=energy, total_increasing kWh) and Home Assistant " +
-                        "will start collecting the long-term history this chart plots.",
+                        "(a total-increasing kWh sensor) and Home Assistant will start " +
+                        "collecting the long-term history this chart plots.",
                 )
             }
             bars.isEmpty() -> {
@@ -433,6 +444,10 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
         DateTimeFormatter.ofPattern("d MMM").withZone(zone)
     }
     val scrubIdx = remember(proj) { mutableStateOf<Int?>(null) }
+    // Text alternative announced by TalkBack in place of the invisible Canvas.
+    val chartDescription = remember(proj) {
+        energyChartDescription(proj.heights.size, proj.total, proj.peak)
+    }
     Row {
         Column(modifier = Modifier.weight(1f)) {
             Canvas(
@@ -441,6 +456,7 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
                     .height(160.dp)
                     .clip(RoundedCornerShape(2.dp))
                     .background(R1.Surface)
+                    .semantics { contentDescription = chartDescription }
                     .padding(horizontal = 6.dp, vertical = 6.dp)
                     .pointerInput(proj) {
                         val canvasW = size.width.toFloat()
@@ -544,12 +560,28 @@ private data class EnergyBarProjection(
     val total: Double,
 )
 
+/** Placeholder shown in a stat tile when the figure is unavailable. Plain
+ *  "n/a" rather than an em-dash so screen readers announce something
+ *  meaningful and the copy stays em-dash-free. */
+private const val NO_VALUE = "n/a"
+
 /** Format kWh with adaptive precision: sub-kWh keeps two decimals (12 Wh
  *  reads as 0.01 kWh), larger values one, matching the rest of the app's
  *  Locale.US number formatting. */
 private fun formatKwh(kwh: Double): String =
     if (kotlin.math.abs(kwh) < 10) "${"%.2f".format(java.util.Locale.US, kwh)} kWh"
     else "${"%.1f".format(java.util.Locale.US, kwh)} kWh"
+
+/**
+ * Spoken text alternative for the consumption bar chart, which is otherwise an
+ * invisible [Canvas] to TalkBack. Summarises the window total, the peak bucket,
+ * and the bar count so a non-sighted user gets the same headline figures a
+ * sighted user reads off the chart. Pure so it is unit-tested.
+ *
+ * Example: "Consumption chart, 24 bars, total 12.3 kWh, peak 1.4 kWh".
+ */
+internal fun energyChartDescription(barCount: Int, totalKwh: Double, peakKwh: Double): String =
+    "Consumption chart, $barCount bars, total ${formatKwh(totalKwh)}, peak ${formatKwh(peakKwh)}"
 
 /** Format watts as "N W" up to ~999 W, switching to kW above. The
  *  unit suffix is uppercase to match the rest of the app's all-caps
