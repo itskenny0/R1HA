@@ -40,7 +40,9 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  *    sandboxed WebView at the card's aspect ratio.
  *  - cards that carry entity refs (`entity` / `entities`, the common
  *    `custom:*` shape) render a generic tile per entity with live state +
- *    tap-to-toggle, under a small "type: <name>" caption.
+ *    tap-to-toggle, under a subtle humanized provenance label. (Recognised
+ *    custom cards are mapped to native cards upstream in the parser; this
+ *    fallback only catches the custom cards we don't model.)
  *  - everything else keeps the original placeholder + expandable raw-JSON
  *    body so a power user can see why a card isn't rendering and (if useful)
  *    re-author it as a supported type.
@@ -143,8 +145,8 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
 /**
  * Best-effort render of a custom card via its entity refs: one generic tile
  * row per entity (name + live state + tap-to-toggle for toggleable domains),
- * under a caption naming the original card type so the user knows it's a
- * fallback rather than a first-class render.
+ * under a subtle humanized label so the user knows it's a fallback rather than
+ * a first-class render, without the shouty raw "type:" string.
  */
 @Composable
 private fun CustomEntityCard(
@@ -166,14 +168,30 @@ private fun CustomEntityCard(
             GenericEntityRow(ref = ref, stateMap = stateMap, onAction = onAction)
         }
         Spacer(Modifier.height(4.dp))
+        // Subtle, humanized provenance label. Recognised custom cards are mapped
+        // to native cards upstream (see LovelaceParser.mapCustomCard); this
+        // fallback only fires for custom cards we don't map, so a quiet
+        // "Mushroom Light" reads better than the shouty raw "type:" string.
         Text(
-            text = "type: ${card.friendlyType}",
+            text = humanizeCardType(card.friendlyType),
             style = R1.labelMicro,
             color = R1.InkMuted,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
         )
     }
 }
+
+/**
+ * Turn a card type token ("mushroom-light-card", "my-slider-button") into a
+ * tasteful Title Case label ("Mushroom Light Card"). Drops a leading "custom:"
+ * if it survived, splits on dashes/underscores, and capitalises each word.
+ */
+internal fun humanizeCardType(type: String): String =
+    type.removePrefix("custom:")
+        .split('-', '_')
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+        .ifBlank { type }
 
 @Composable
 private fun GenericEntityRow(
@@ -242,7 +260,7 @@ private fun RawJsonCard(card: LovelaceCard.Unsupported, modifier: Modifier = Mod
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "type: ${card.type}",
+            text = humanizeCardType(card.type),
             style = R1.body,
             color = R1.Ink,
         )

@@ -390,12 +390,15 @@ class LovelaceParserTest {
     }
 
     @Test fun `custom card with single entity captures entity ref`() {
+        // An UNMAPPED custom type still falls to the best-effort Unsupported card
+        // and captures its entity ref. Recognised types like mushroom-light-card
+        // are now routed to native cards instead (see LovelaceCustomCardMappingTest).
         val card = LovelaceParser.parseCard(
-            obj("""{"type":"custom:mushroom-light-card","entity":"light.kitchen"}"""),
+            obj("""{"type":"custom:my-single","entity":"light.kitchen"}"""),
         ) as LovelaceCard.Unsupported
-        assertEquals("custom:mushroom-light-card", card.type)
+        assertEquals("custom:my-single", card.type)
         assertEquals(listOf("light.kitchen"), card.entityRefs)
-        assertEquals("mushroom-light-card", card.friendlyType)
+        assertEquals("my-single", card.friendlyType)
         assertEquals(null, card.url)
     }
 

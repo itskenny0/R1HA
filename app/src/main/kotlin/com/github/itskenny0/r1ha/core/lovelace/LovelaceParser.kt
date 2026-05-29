@@ -28,6 +28,14 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object LovelaceParser {
 
+    /**
+     * Matches a Home Assistant entity id (`domain.object_id`) embedded in a
+     * larger string. Used to scrape an entity reference out of a Mushroom
+     * template card's `primary` / `secondary` / `icon` template when the card
+     * carries no explicit `entity` key.
+     */
+    private val ENTITY_ID_REGEX = Regex("""\b[a-z_]+\.[a-z0-9_]+\b""")
+
     /** Parse the top-level dashboard config returned by `lovelace/config`. */
     fun parseConfig(root: JsonObject): LovelaceConfig {
         val title = root["title"]?.asStringOrNull()
@@ -355,9 +363,178 @@ object LovelaceParser {
                 analog = obj["clock_style"]?.asStringOrNull()?.equals("analog", ignoreCase = true) ?: false,
             )
             "iframe" -> bestEffortUnsupported(obj, type)
-            else -> bestEffortUnsupported(obj, type)
+            else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
         }
     }
+
+    /**
+     * Route a recognised community / custom card (`custom:*`) to the nearest
+     * native [LovelaceCard] so it renders as a first-class tile instead of the
+     * generic best-effort fallback with a raw "type:" caption.
+     *
+     * Returns null when the type isn't one we map, or when a mapping needs an
+     * entity the config doesn't provide. The caller then falls through to
+     * [bestEffortUnsupported], which keeps a tasteful placeholder.
+     *
+     * We deliberately reuse the existing native card variants rather than
+     * inventing new ones: mushroom-* cards are thin styling wrappers around the
+     * same entity controls HA's own cards expose, so a `mushroom-light-card`
+     * maps cleanly onto our [LovelaceCard.Light], a `mushroom-climate-card`
+     * onto [LovelaceCard.Thermostat], and so on. Cards without a dedicated
+     * native twin (fan / cover / person / generic entity / template) map onto
+     * [LovelaceCard.Tile], whose tap action already toggles or drills into the
+     * entity per its domain. `mushroom-chips-card` maps onto [LovelaceCard.Glance]
+     * (a compact row of entity chips), the closest native idiom.
+     */
+    private fun mapCustomCard(obj: JsonObject, type: String): LovelaceCard? {
+        val normalized = type.removePrefix("custom:").lowercase()
+        return when (normalized) {
+            "mushroom-light-card" ->
+                obj.entityIfPresent()?.let { entity ->
+                    LovelaceCard.Light(
+                        raw = obj,
+                        entityId = entity,
+                        name = obj["name"]?.asStringOrNull(),
+                        icon = obj["icon"]?.asStringOrNull(),
+                    )
+                }
+            "mushroom-media-player-card" ->
+                obj.entityIfPresent()?.let { entity ->
+                    LovelaceCard.MediaControl(
+                        raw = obj,
+                        entityId = entity,
+                        name = obj["name"]?.asStringOrNull(),
+                    )
+                }
+            "mushroom-climate-card" ->
+                obj.entityIfPresent()?.let { entity ->
+                    LovelaceCard.Thermostat(
+                        raw = obj,
+                        entityId = entity,
+                        name = obj["name"]?.asStringOrNull(),
+                    )
+                }
+            // Fan / cover / person / generic entity all map to the native Tile,
+            // whose domain-aware default tap action does the right thing (toggle
+            // a fan, open/close a cover, more-info a person) when no explicit
+            // tap_action is configured.
+            "mushroom-fan-card",
+            "mushroom-cover-card",
+            "mushroom-person-card",
+            "mushroom-entity-card",
+            ->
+                obj.entityIfPresent()?.let { entity ->
+                    tileFor(obj, entity, obj["name"]?.asStringOrNull(), obj["icon"]?.asStringOrNull())
+                }
+            "mushroom-template-card" -> mapTemplateCard(obj)
+            "mushroom-chips-card" -> mapChipsCard(obj)
+            "button-card" -> mapButtonCard(obj)
+            else -> null
+        }
+    }
+
+    /**
+     * Mushroom template cards render arbitrary Jinja. We can't evaluate templates
+     * client-side, so we map to a [LovelaceCard.Tile] best-effort: prefer the
+     * explicit `entity`, else scrape the first entity id out of the `primary`,
+     * `secondary`, or `icon` templates. `primary` becomes the tile name only when
+     * it's plain text (no template markers); an `icon` is passed through only when
+     * it's a literal `mdi:` glyph rather than a template.
+     */
+    private fun mapTemplateCard(obj: JsonObject): LovelaceCard? {
+        val primary = obj["primary"]?.asStringOrNull()
+        val secondary = obj["secondary"]?.asStringOrNull()
+        val iconRaw = obj["icon"]?.asStringOrNull()
+        val entity = obj.entityIfPresent()
+            ?: extractEntityId(primary)
+            ?: extractEntityId(secondary)
+            ?: extractEntityId(iconRaw)
+            ?: return null
+        val name = primary?.takeIf { it.isPlainText() }
+        val icon = iconRaw?.takeIf { it.isPlainText() }
+        return tileFor(obj, entity, name, icon)
+    }
+
+    /** Build a Tile carrying the card's parsed tap_action (or null for the
+     *  domain default applied at render time). */
+    private fun tileFor(obj: JsonObject, entity: String, name: String?, icon: String?): LovelaceCard.Tile =
+        LovelaceCard.Tile(
+            raw = obj,
+            entityId = entity,
+            name = name,
+            icon = icon,
+            hideState = false,
+            vertical = false,
+            color = obj["icon_color"]?.asStringOrNull() ?: obj["color"]?.asStringOrNull(),
+            tapAction = parseAction(obj["tap_action"] as? JsonObject),
+        )
+
+    /**
+     * Map a mushroom chips card onto a native [LovelaceCard.Glance]: one chip per
+     * entry that names an entity. Chips that carry no entity (weather / template /
+     * conditional chips we can't resolve) are dropped. Returns null when nothing
+     * usable remains, so the card falls back rather than rendering an empty glance.
+     */
+    private fun mapChipsCard(obj: JsonObject): LovelaceCard? {
+        val chips = obj["chips"] as? JsonArray ?: return null
+        val rows = chips.mapNotNull { chip ->
+            val co = chip as? JsonObject ?: return@mapNotNull null
+            val entity = co["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
+                ?: return@mapNotNull null
+            EntityRow(
+                entityId = entity,
+                name = co["name"]?.asStringOrNull(),
+                icon = co["icon"]?.asStringOrNull(),
+                secondaryInfo = null,
+            )
+        }
+        if (rows.isEmpty()) return null
+        return LovelaceCard.Glance(
+            raw = obj,
+            title = obj["title"]?.asStringOrNull(),
+            entities = rows,
+            columns = null,
+            showName = true,
+            showState = true,
+            showIcon = true,
+        )
+    }
+
+    /**
+     * Map a `custom:button-card` onto the native [LovelaceCard.Button]. button-card
+     * configs almost always carry an `entity` and/or `name`; we surface both plus
+     * the icon and preserve any `tap_action`, so it renders as a labelled,
+     * actionable button rather than a bare "TAP" box. Requires at least an entity
+     * or a name (a totally empty button-card has nothing to show).
+     */
+    private fun mapButtonCard(obj: JsonObject): LovelaceCard? {
+        val entity = obj.entityIfPresent()
+        val name = obj["name"]?.asStringOrNull()
+        if (entity == null && name == null) return null
+        return LovelaceCard.Button(
+            raw = obj,
+            entityId = entity,
+            name = name,
+            icon = obj["icon"]?.asStringOrNull(),
+            showName = obj["show_name"]?.asBooleanOrNull() ?: true,
+            showIcon = obj["show_icon"]?.asBooleanOrNull() ?: true,
+            showState = obj["show_state"]?.asBooleanOrNull() ?: false,
+            tapAction = parseAction(obj["tap_action"] as? JsonObject),
+        )
+    }
+
+    /** The card's `entity` value, but only when it parses to a real entity id. */
+    private fun JsonObject.entityIfPresent(): String? =
+        this["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
+
+    /** First `domain.object_id` entity reference inside a (template) string, if any. */
+    private fun extractEntityId(text: String?): String? {
+        if (text == null) return null
+        return ENTITY_ID_REGEX.find(text)?.value
+    }
+
+    /** True when a string is a literal value, not a Jinja template fragment. */
+    private fun String.isPlainText(): Boolean = !contains("{{") && !contains("{%")
 
     /**
      * Build an [LovelaceCard.Unsupported] that captures whatever the renderer
