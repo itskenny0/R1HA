@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -172,7 +172,16 @@ fun CalendarEventsScreen(
                         verticalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
                         val now = Instant.now()
-                        items(items = ui.events, key = { "${it.summary}|${it.start?.toEpochMilli()}" }) { e ->
+                        // Key includes the list index: summary+start alone collides for
+                        // repeated-title events that share (or both lack) a start time,
+                        // e.g. two all-day events whose start parses to null both keyed
+                        // "Lunch|null" — duplicate LazyColumn keys throw at composition.
+                        // The index keeps every row distinct while preserving stability
+                        // within a single loaded window.
+                        itemsIndexed(
+                            items = ui.events,
+                            key = { index, e -> "$index|${e.summary}|${e.start?.toEpochMilli()}" },
+                        ) { _, e ->
                             EventRow(e, isHappeningNow = e.start != null && e.end != null &&
                                 now.isAfter(e.start) && now.isBefore(e.end))
                         }
