@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,7 +46,9 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.feature.dashboards.cards.LovelaceCardRenderer
 import com.github.itskenny0.r1ha.feature.dashboards.cards.dispatchLovelaceAction
 import com.github.itskenny0.r1ha.ui.components.DragReorderColumn
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.launch
 
@@ -183,6 +186,12 @@ fun DashboardViewScreen(
             else -> ViewModeBody(
                 cards = renderedCards,
                 stateMap = entities,
+                // A "sections" view is authored as a multi-column grid (HA
+                // defaults to up to four section columns); ask for that and
+                // let dashboardColumnCount() clamp it down per screen width.
+                // A legacy "masonry" / null view expresses no preference, so
+                // it follows the tier's natural column count.
+                requestedColumns = if (view.type == "sections") 4 else null,
                 onAction = { action ->
                     scope.launch {
                         dispatchLovelaceAction(
@@ -253,6 +262,11 @@ private fun ViewModeBody(
     cards: List<LovelaceCard>,
     stateMap: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
     onAction: (LovelaceAction) -> Unit,
+    /** Column count the view config asks for (legacy masonry `columns`, or a
+     *  sections view's `max_columns`). Null means "no preference, use the
+     *  tier default". Always clamped to the tier ceiling so a wide-config
+     *  view never crams several cards into one row on a phone. */
+    requestedColumns: Int? = null,
 ) {
     // Wrap the live map in a stable, value-equal holder once per emission.
     // A bare Map is an unstable Compose parameter, so without this every
@@ -261,28 +275,113 @@ private fun ViewModeBody(
     val states = remember(stateMap) {
         com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(stateMap ?: emptyMap())
     }
+    val tier = LocalWindowTier.current
+    val columns = dashboardColumnCount(tier, requestedColumns)
+    val scroll = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        cards.forEachIndexed { index, card ->
-            // key() keeps each card's composition identity stable across
-            // state churn; the per-card slice means an unrelated entity
-            // update doesn't invalidate this card. Index is folded into the
-            // key so two cards with identical raw JSON stay distinct.
-            androidx.compose.runtime.key(index, card.raw) {
-                LovelaceCardRenderer(
-                    card = card,
-                    stateMap = states.sliceFor(card),
-                    onAction = onAction,
-                )
+        if (columns <= 1) {
+            // Single column: render cards in order, one per row. This is the
+            // R1 / compact-phone path and must stay a plain vertical list so
+            // the narrow panel never tries to share a row between two cards.
+            cards.forEachIndexed { index, card ->
+                if (index > 0) Spacer(Modifier.height(10.dp))
+                // key() keeps each card's composition identity stable across
+                // state churn; the per-card slice means an unrelated entity
+                // update doesn't invalidate this card. Index is folded into
+                // the key so two cards with identical raw JSON stay distinct.
+                androidx.compose.runtime.key(index, card.raw) {
+                    LovelaceCardRenderer(
+                        card = card,
+                        stateMap = states.sliceFor(card),
+                        onAction = onAction,
+                    )
+                }
+            }
+        } else {
+            // Multi-column: distribute cards round-robin into `columns`
+            // balanced vertical lanes (the same shape HA's masonry layout
+            // uses). Each lane gets an equal fraction of the width via
+            // weight(), so inner grids inside a card clamp to the lane and
+            // can't overflow the screen.
+            val lanes = distributeCardsIntoLanes(cards.size, columns)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                lanes.forEach { laneIndices ->
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .wrapContentHeight(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        laneIndices.forEach { index ->
+                            val card = cards[index]
+                            androidx.compose.runtime.key(index, card.raw) {
+                                LovelaceCardRenderer(
+                                    card = card,
+                                    stateMap = states.sliceFor(card),
+                                    onAction = onAction,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(28.dp))
     }
+}
+
+/**
+ * Decide how many side-by-side card columns the Lovelace view should use.
+ *
+ * Pure (no Compose / Android deps) so it is unit-testable. Drives the
+ * column count off the app-wide [WindowTier] so narrow screens never cram
+ * cards into a single row:
+ *  - [WindowTier.R1] and [WindowTier.Compact] always collapse to a single
+ *    column (the R1 panel and ordinary phones get one card per row).
+ *  - [WindowTier.Medium] allows up to two.
+ *  - [WindowTier.Expanded] allows up to four.
+ *
+ * [requestedColumns] is what the view/card config asks for (legacy masonry
+ * `columns` or a sections view's `max_columns`). It is honoured when sane
+ * but always clamped to the tier ceiling, so a config authored on a desktop
+ * can never force four cards onto one phone row. A null or non-positive
+ * request falls back to the tier's natural default.
+ */
+internal fun dashboardColumnCount(tier: WindowTier, requestedColumns: Int?): Int {
+    val ceiling = when (tier) {
+        WindowTier.R1 -> 1
+        WindowTier.Compact -> 1
+        WindowTier.Medium -> 2
+        WindowTier.Expanded -> 4
+    }
+    val natural = when (tier) {
+        WindowTier.R1 -> 1
+        WindowTier.Compact -> 1
+        WindowTier.Medium -> 2
+        WindowTier.Expanded -> 3
+    }
+    val desired = requestedColumns?.takeIf { it > 0 } ?: natural
+    return desired.coerceIn(1, ceiling)
+}
+
+/**
+ * Split [count] card indices into [columns] balanced lanes, round-robin so
+ * the first card goes to lane 0, the second to lane 1, and so on. Returns a
+ * list with exactly [columns] lanes (some may be empty when there are fewer
+ * cards than columns). [columns] is clamped to at least one.
+ */
+internal fun distributeCardsIntoLanes(count: Int, columns: Int): List<List<Int>> {
+    val lanes = columns.coerceAtLeast(1)
+    val result = List(lanes) { mutableListOf<Int>() }
+    for (index in 0 until count) {
+        result[index % lanes].add(index)
+    }
+    return result
 }
 
 @Composable
