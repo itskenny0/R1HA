@@ -1,6 +1,9 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -22,8 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.itskenny0.r1ha.core.lovelace.LOVELACE_EDIT_JSON
@@ -62,21 +68,25 @@ fun UnsupportedCard(
 }
 
 /**
- * Embedded WebView for an `iframe` card. Sandboxed sensibly: JavaScript on
- * (most embeds need it), file + content access off so a hostile URL can't
- * read local files. Aspect ratio honours the card's `aspect_ratio` when set,
- * else a 16:9 default. Caption keeps the source URL visible.
+ * Embedded WebView for an `iframe` / `webpage` card. Sandboxed sensibly:
+ * JavaScript on (most embeds need it), file + content access off so a hostile
+ * URL can't read local files. Aspect ratio honours the card's `aspect_ratio`
+ * when set, else a 16:9 default. Links open in the card (a WebViewClient keeps
+ * navigation in-frame). A url that can't be resolved into something the WebView
+ * can load degrades to a labeled placeholder rather than a silent blank card,
+ * and a slow or failed load surfaces a loading / error line.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modifier) {
-    val rawUrl = card.url ?: return
+    val rawUrl = card.url
     // HA's iframe `url` is often relative (e.g. "/local/panel.html"). A relative
     // string handed to WebView.loadUrl renders blank, so resolve it against the
     // configured HA server origin the way the picture cards resolve images.
     val serverUrl = com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl.current
-    val url = remember(rawUrl, serverUrl) { resolveIframeUrl(rawUrl, serverUrl) } ?: return
+    val url = remember(rawUrl, serverUrl) { rawUrl?.let { resolveIframeUrl(it, serverUrl) } }
     val ratio = remember(card.raw) { parseAspectRatio(card.raw["aspect_ratio"]?.let { aspectString(it) }) }
+    val description = card.friendlyType.ifBlank { "Embedded web content" }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -85,13 +95,51 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
             .border(1.dp, R1.Hairline, R1.ShapeM)
             .padding(8.dp),
     ) {
+        if (url == null) {
+            // Unresolvable url (blank, unsupported scheme, or a relative path with
+            // no server origin to anchor it). Show why instead of a blank box.
+            IframePlaceholder(
+                message = iframeStatusMessage(rawUrl, serverUrl),
+                ratio = ratio,
+            )
+            return@Column
+        }
+        EmbeddedWebView(url = url, ratio = ratio, contentDescription = description)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = url,
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+}
+
+/**
+ * The WebView surface itself plus its loading / error overlay. Pulled out of
+ * [IframeCard] so the load-state plumbing stays readable. The host Activity is
+ * never captured (applicationContext is used) so the view can't leak it.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+private fun EmbeddedWebView(url: String, ratio: Float, contentDescription: String) {
+    var loading by remember(url) { mutableStateOf(true) }
+    var failed by remember(url) { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(ratio)
+            .clip(R1.ShapeM)
+            .background(R1.SurfaceMuted)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
         AndroidView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(ratio)
-                .clip(R1.ShapeM),
+            modifier = Modifier.fillMaxWidth().aspectRatio(ratio),
             factory = { ctx ->
-                WebView(ctx).apply {
+                WebView(ctx.applicationContext).apply {
                     // Match the parent so the AndroidView's aspectRatio constraint
                     // gives the WebView a real, non-zero height. Without explicit
                     // layout params a freshly-constructed WebView can measure to 0,
@@ -100,7 +148,39 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                         android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                     )
-                    webViewClient = WebViewClient()
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView,
+                            request: WebResourceRequest,
+                        ): Boolean {
+                            // Keep navigation inside the card instead of leaving
+                            // the app for a system browser.
+                            view.loadUrl(request.url.toString())
+                            return true
+                        }
+
+                        override fun onPageStarted(view: WebView, target: String?, favicon: Bitmap?) {
+                            loading = true
+                            failed = false
+                        }
+
+                        override fun onPageFinished(view: WebView, target: String?) {
+                            loading = false
+                        }
+
+                        override fun onReceivedError(
+                            view: WebView,
+                            request: WebResourceRequest,
+                            error: WebResourceError,
+                        ) {
+                            // Only a main-frame failure flips the card to its error
+                            // state; a failed sub-resource shouldn't blank the page.
+                            if (request.isForMainFrame) {
+                                loading = false
+                                failed = true
+                            }
+                        }
+                    }
                     settings.javaScriptEnabled = true
                     // Most embeds (Grafana panels, weather widgets, HA add-on UIs)
                     // need DOM storage; without it many render blank or error out.
@@ -121,24 +201,68 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
                         settings.allowFileAccessFromFileURLs = false
                         settings.allowUniversalAccessFromFileURLs = false
                     }
+                    loadUrl(url)
                 }
             },
             update = { web ->
                 // Only (re)load when the target actually changed. web.url is null
-                // before the first load and tracks redirects after, so the initial
-                // composition always loads once.
-                if (web.url != url) web.loadUrl(url)
+                // before the first load and tracks redirects after, so a target
+                // change reloads while normal navigation does not.
+                if (web.url != url && !failed) web.loadUrl(url)
             },
         )
-        Spacer(Modifier.height(6.dp))
+        when {
+            failed -> Text(
+                text = "Could not load this page.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+            loading -> Text(
+                text = "Loading...",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun IframePlaceholder(message: String, ratio: Float) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(ratio)
+            .clip(R1.ShapeM)
+            .background(R1.SurfaceMuted),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
-            text = url,
+            text = message,
             style = R1.labelMicro,
             color = R1.InkMuted,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp),
+            modifier = Modifier.padding(horizontal = 12.dp),
         )
+    }
+}
+
+/**
+ * Human-readable reason an iframe / webpage card can't load its [rawUrl].
+ * Pure (no Compose / Android) so the placeholder copy is unit testable.
+ *
+ *  - blank url            -> "No web address set for this card."
+ *  - relative path, no HA origin to anchor it -> server-not-set message.
+ *  - anything else (unsupported scheme)       -> generic can't-display message.
+ *
+ * Only called when [resolveIframeUrl] already returned null, so a value that
+ * would have resolved never reaches here.
+ */
+internal fun iframeStatusMessage(rawUrl: String?, serverUrl: String?): String {
+    val trimmed = rawUrl?.trim().orEmpty()
+    return when {
+        trimmed.isEmpty() -> "No web address set for this card."
+        trimmed.startsWith("/") && serverUrl.isNullOrBlank() ->
+            "Set the Home Assistant server address to load this page."
+        else -> "Can't display this web address."
     }
 }
 
