@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -48,6 +49,8 @@ import com.github.itskenny0.r1ha.core.input.keyCodeLabel
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.delay
@@ -100,7 +103,10 @@ fun KeyBindingsScreen(
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
         Column(modifier = Modifier.fillMaxSize()) {
             R1TopBar(title = "KEY BINDINGS", onBack = onBack)
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+            ) {
                 item { HeaderBlock(customizedCount = customizedCount, conflictCount = conflictingCodes.size) }
                 items(KeyAction.entries) { action ->
                     val effective = effectiveByAction[action].orEmpty()
@@ -117,9 +123,9 @@ fun KeyBindingsScreen(
                     )
                 }
                 item {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     GlobalResetRow(onResetAll = { vm.resetAllKeyBindings() })
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(R1.space.xl))
                 }
             }
         }
@@ -145,7 +151,7 @@ fun KeyBindingsScreen(
  */
 @Composable
 private fun HeaderBlock(customizedCount: Int, conflictCount: Int) {
-    Column(modifier = Modifier.padding(horizontal = 22.dp, vertical = 14.dp)) {
+    Column(modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.l)) {
         Text(
             text = "Map hardware keys to in-app actions. " +
                 "Tap ADD to capture the next key press; tap a chip to remove it; " +
@@ -154,35 +160,27 @@ private fun HeaderBlock(customizedCount: Int, conflictCount: Int) {
             color = R1.InkMuted,
         )
         if (customizedCount > 0 || conflictCount > 0) {
-            Spacer(Modifier.height(10.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.height(R1.space.m))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            ) {
                 if (customizedCount > 0) {
-                    StatusPill(
+                    R1Chip(
                         text = "$customizedCount CUSTOM",
-                        tint = R1.AccentWarm,
+                        variant = R1ChipVariant.Pill,
+                        tone = R1.AccentWarm,
                     )
-                    Spacer(Modifier.width(6.dp))
                 }
                 if (conflictCount > 0) {
-                    StatusPill(
+                    R1Chip(
                         text = "$conflictCount CONFLICT" + if (conflictCount > 1) "S" else "",
-                        tint = R1.StatusRed,
+                        variant = R1ChipVariant.Pill,
+                        tone = R1.StatusRed,
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun StatusPill(text: String, tint: androidx.compose.ui.graphics.Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .border(1.dp, tint.copy(alpha = 0.6f), R1.ShapeS)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(text = text, style = R1.labelMicro, color = tint)
     }
 }
 
@@ -212,14 +210,14 @@ private fun KeyBindingActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 22.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = R1.space.l, end = R1.space.xl, top = R1.space.m, bottom = R1.space.m),
     ) {
         // Left rail: 2dp accent stripe when customised. drawBehind so the
         // stripe stays glued to the row's full height even if the title
         // wraps to a second line.
         Box(
             modifier = Modifier
-                .width(8.dp)
+                .width(R1.space.s)
                 .drawBehind {
                     if (isCustomized) {
                         drawLine(
@@ -243,34 +241,30 @@ private fun KeyBindingActionRow(
                         text = action.description,
                         style = R1.body,
                         color = R1.InkMuted,
-                        modifier = Modifier.padding(top = 1.dp),
+                        modifier = Modifier.padding(top = R1.space.xxs),
                     )
                 }
-                ChipButton(
-                    label = "ADD",
-                    color = R1.AccentWarm,
+                R1Chip(
+                    text = "ADD",
+                    variant = R1ChipVariant.Action,
+                    tone = R1.AccentWarm,
+                    selected = true,
                     onClick = onAdd,
+                    contentDescription = "Add a key binding",
                 )
                 if (isCustomized) {
-                    Spacer(Modifier.width(6.dp))
-                    ChipButton(
-                        label = "RESET",
-                        color = R1.InkSoft,
-                        outlined = false,
+                    Spacer(Modifier.width(R1.space.s))
+                    R1Chip(
+                        text = "RESET",
+                        variant = R1ChipVariant.Action,
                         onClick = onReset,
+                        contentDescription = "Reset this binding",
                     )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             if (bound.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = "UNBOUND", style = R1.labelMicro, color = R1.InkMuted)
-                }
+                R1Chip(text = "UNBOUND", variant = R1ChipVariant.Pill, tone = R1.InkMuted)
             } else {
                 Row(
                     modifier = Modifier
@@ -306,12 +300,12 @@ private fun BoundKeyChip(
     val textColor = if (isConflict) R1.StatusRed else R1.Ink
     Box(
         modifier = Modifier
-            .padding(end = 6.dp, top = 2.dp, bottom = 2.dp)
+            .padding(end = R1.space.s, top = R1.space.xxs, bottom = R1.space.xxs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, borderColor, R1.ShapeS)
             .r1Pressable(onClick = onRemove, contentDescription = "Remove ${keyCodeLabel(code)}")
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isConflict) {
@@ -321,31 +315,12 @@ private fun BoundKeyChip(
                         .clip(RoundedCornerShape(50))
                         .background(R1.StatusRed),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
             Text(text = keyCodeLabel(code), style = R1.labelMicro, color = textColor)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(text = "X", style = R1.labelMicro, color = R1.InkMuted)
         }
-    }
-}
-
-@Composable
-private fun ChipButton(
-    label: String,
-    color: androidx.compose.ui.graphics.Color,
-    outlined: Boolean = true,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .then(if (outlined) Modifier.background(R1.SurfaceMuted) else Modifier)
-            .then(if (outlined) Modifier.border(1.dp, R1.Hairline, R1.ShapeS) else Modifier)
-            .r1Pressable(onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = color)
     }
 }
 
@@ -354,16 +329,17 @@ private fun GlobalResetRow(onResetAll: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = R1.space.xl),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(min = R1.MinTarget)
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onResetAll)
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = "RESET ALL TO DEFAULTS", style = R1.labelMicro, color = R1.InkMuted)
@@ -432,11 +408,11 @@ private fun KeyCaptureOverlay(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
-                .padding(horizontal = 28.dp)
+                .padding(horizontal = R1.space.xxl)
                 .clip(RoundedCornerShape(12.dp))
                 .background(R1.Surface)
                 .border(1.dp, R1.AccentWarm.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
-                .padding(horizontal = 28.dp, vertical = 22.dp),
+                .padding(horizontal = R1.space.xxl, vertical = R1.space.xl),
         ) {
             // Pulsing accent dot to signal active capture. Always-on label
             // beside it so screen readers and low-vision users don't need to
@@ -446,32 +422,32 @@ private fun KeyCaptureOverlay(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 CapturePulseDot()
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "PRESS A KEY NOW",
                     style = R1.labelMicro,
                     color = R1.AccentWarm,
                 )
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(R1.space.l))
             Text(
                 text = "Assigning to",
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = target.displayLabel.uppercase(),
                 style = R1.screenTitle,
                 color = R1.Ink,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             Text(
                 text = target.description,
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(R1.space.xl))
             // Countdown bar: 1dp tall, drains from full to empty. Sits
             // immediately above the timer label so the eye reads them as
             // one unit.
@@ -488,7 +464,7 @@ private fun KeyCaptureOverlay(
                         .background(R1.AccentWarm),
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
@@ -499,16 +475,12 @@ private fun KeyCaptureOverlay(
                     color = R1.InkSoft,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onCancel)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                ) {
-                    Text(text = "CANCEL", style = R1.labelMicro, color = R1.InkMuted)
-                }
+                R1Chip(
+                    text = "CANCEL",
+                    variant = R1ChipVariant.Action,
+                    onClick = onCancel,
+                    contentDescription = "Cancel key capture",
+                )
             }
         }
     }
