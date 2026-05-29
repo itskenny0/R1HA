@@ -686,6 +686,12 @@ class DefaultHaRepository(
         // session, silently freezing all live updates. Guard it the same way the REST
         // seed path does (see seedCacheFromHa / listAllControllable) and drop the event.
         val id = runCatching { EntityId(idStr) }.getOrNull() ?: return
+        // Resolve the domain once. EntityId.domain re-parses the entity_id string
+        // (substringBefore('.') allocation + a map lookup) on every access, and the
+        // EntityState construction below reads it ~60 times; hoisting to a local turns
+        // ~60 substring allocations + map lookups per event into one.
+        val domain = id.domain
+        val objectId = id.objectId
         // State-string → isOn mapping, branched by domain. Each domain has its own state
         // vocabulary in HA: lights/switches/input_boolean/automation/humidifier use
         // "on"/"off", media_players use "playing"/"paused"/"idle", covers use "open"/
@@ -694,7 +700,7 @@ class DefaultHaRepository(
         // reads as "the affordance is engaged" — light on, switch on, cover open, lock
         // UNLOCKED (so the toggle reads intuitively: tap to lock when unlocked), thermostat
         // running.
-        val isOn = when (id.domain) {
+        val isOn = when (domain) {
             Domain.LIGHT, Domain.FAN, Domain.SWITCH, Domain.INPUT_BOOLEAN,
             Domain.AUTOMATION, Domain.HUMIDIFIER -> stateStr.equals("on", ignoreCase = true)
             Domain.COVER, Domain.VALVE -> stateStr.equals("open", ignoreCase = true)
@@ -757,19 +763,19 @@ class DefaultHaRepository(
                 stateStr != "unavailable" && stateStr != "unknown" && stateStr.isNotBlank()
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
-        val pct = computePercentWithState(id.domain, raw.attributes, stateStr)
-        val rawNum = computeRaw(id.domain, raw.attributes)
-            ?: if (id.domain == Domain.NUMBER || id.domain == Domain.INPUT_NUMBER) stateStr.toDoubleOrNull() else null
+        val pct = computePercentWithState(domain, raw.attributes, stateStr)
+        val rawNum = computeRaw(domain, raw.attributes)
+            ?: if (domain == Domain.NUMBER || domain == Domain.INPUT_NUMBER) stateStr.toDoubleOrNull() else null
         val newState = EntityState(
             id = id,
-            friendlyName = raw.attributes["friendly_name"].asString() ?: id.objectId,
+            friendlyName = raw.attributes["friendly_name"].asString() ?: objectId,
             area = raw.attributes["area_id"].asString(),
             isOn = isOn,
             percent = if (available) pct else null,
             raw = rawNum,
             lastChanged = runCatching { Instant.parse(raw.lastChanged ?: "") }.getOrDefault(Instant.now()),
             isAvailable = available,
-            supportsScalar = supportsScalar(id.domain, raw.attributes),
+            supportsScalar = supportsScalar(domain, raw.attributes),
             rawState = stateStr,
             // For climate, HA puts the temperature unit on `temperature_unit` rather than
             // `unit_of_measurement` (which it doesn't expose at all). Surface it through
@@ -780,127 +786,127 @@ class DefaultHaRepository(
             // Range for any scalar with a custom span — climate (min_temp), humidifier
             // (min_humidity), number/input_number (min). Picked by domain so HA's
             // overloaded attribute names don't bleed across.
-            minRaw = when (id.domain) {
+            minRaw = when (domain) {
                 Domain.CLIMATE, Domain.WATER_HEATER -> raw.attributes["min_temp"].asDouble()
                 Domain.HUMIDIFIER -> raw.attributes["min_humidity"].asDouble()
                 Domain.NUMBER, Domain.INPUT_NUMBER -> raw.attributes["min"].asDouble() ?: 0.0
                 else -> null
             },
-            maxRaw = when (id.domain) {
+            maxRaw = when (domain) {
                 Domain.CLIMATE, Domain.WATER_HEATER -> raw.attributes["max_temp"].asDouble()
                 Domain.HUMIDIFIER -> raw.attributes["max_humidity"].asDouble()
                 Domain.NUMBER, Domain.INPUT_NUMBER -> raw.attributes["max"].asDouble() ?: 100.0
                 else -> null
             },
-            supportedColorModes = if (id.domain == Domain.LIGHT) extractColorModes(raw.attributes) else emptyList(),
-            colorTempK = if (id.domain == Domain.LIGHT) raw.attributes["color_temp_kelvin"].asInt() else null,
-            minColorTempK = if (id.domain == Domain.LIGHT) raw.attributes["min_color_temp_kelvin"].asInt() else null,
-            maxColorTempK = if (id.domain == Domain.LIGHT) raw.attributes["max_color_temp_kelvin"].asInt() else null,
-            hue = if (id.domain == Domain.LIGHT) extractHue(raw.attributes) else null,
-            step = if (id.domain == Domain.NUMBER || id.domain == Domain.INPUT_NUMBER)
+            supportedColorModes = if (domain == Domain.LIGHT) extractColorModes(raw.attributes) else emptyList(),
+            colorTempK = if (domain == Domain.LIGHT) raw.attributes["color_temp_kelvin"].asInt() else null,
+            minColorTempK = if (domain == Domain.LIGHT) raw.attributes["min_color_temp_kelvin"].asInt() else null,
+            maxColorTempK = if (domain == Domain.LIGHT) raw.attributes["max_color_temp_kelvin"].asInt() else null,
+            hue = if (domain == Domain.LIGHT) extractHue(raw.attributes) else null,
+            step = if (domain == Domain.NUMBER || domain == Domain.INPUT_NUMBER)
                 raw.attributes["step"].asDouble() else null,
-            effectList = if (id.domain == Domain.LIGHT) extractEffectList(raw.attributes) else emptyList(),
-            effect = if (id.domain == Domain.LIGHT) raw.attributes["effect"].asString()?.takeIf { it != "None" } else null,
+            effectList = if (domain == Domain.LIGHT) extractEffectList(raw.attributes) else emptyList(),
+            effect = if (domain == Domain.LIGHT) raw.attributes["effect"].asString()?.takeIf { it != "None" } else null,
             attributesJson = raw.attributes,
             // Select-domain bits — options list + current option track via state.
-            selectOptions = if (id.domain.isSelect) extractStringList(raw.attributes["options"]) else emptyList(),
-            currentOption = if (id.domain.isSelect) stateStr.takeIf { it.isNotBlank() && it != "unknown" && it != "unavailable" } else null,
-            mediaTitle = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["media_title"].asString() else null,
-            mediaArtist = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["media_artist"].asString() else null,
-            mediaAlbumName = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["media_album_name"].asString() else null,
-            mediaDuration = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["media_duration"].asInt() else null,
-            mediaPosition = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["media_position"].asInt() else null,
-            mediaPositionUpdatedAt = if (id.domain == Domain.MEDIA_PLAYER) {
+            selectOptions = if (domain.isSelect) extractStringList(raw.attributes["options"]) else emptyList(),
+            currentOption = if (domain.isSelect) stateStr.takeIf { it.isNotBlank() && it != "unknown" && it != "unavailable" } else null,
+            mediaTitle = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_title"].asString() else null,
+            mediaArtist = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_artist"].asString() else null,
+            mediaAlbumName = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_album_name"].asString() else null,
+            mediaDuration = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_duration"].asInt() else null,
+            mediaPosition = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_position"].asInt() else null,
+            mediaPositionUpdatedAt = if (domain == Domain.MEDIA_PLAYER) {
                 raw.attributes["media_position_updated_at"].asString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
             } else null,
-            mediaPicture = if (id.domain == Domain.MEDIA_PLAYER) raw.attributes["entity_picture"].asString() else null,
-            isVolumeMuted = id.domain == Domain.MEDIA_PLAYER &&
+            mediaPicture = if (domain == Domain.MEDIA_PLAYER) raw.attributes["entity_picture"].asString() else null,
+            isVolumeMuted = domain == Domain.MEDIA_PLAYER &&
                 (raw.attributes["is_volume_muted"].asBoolean() ?: false),
-            mediaSupportedFeatures = if (id.domain == Domain.MEDIA_PLAYER)
+            mediaSupportedFeatures = if (domain == Domain.MEDIA_PLAYER)
                 raw.attributes["supported_features"].asInt() ?: 0
             else 0,
-            mediaShuffle = id.domain == Domain.MEDIA_PLAYER &&
+            mediaShuffle = domain == Domain.MEDIA_PLAYER &&
                 (raw.attributes["shuffle"].asBoolean() ?: false),
-            mediaRepeat = if (id.domain == Domain.MEDIA_PLAYER)
+            mediaRepeat = if (domain == Domain.MEDIA_PLAYER)
                 raw.attributes["repeat"].asString() else null,
-            mediaSource = if (id.domain == Domain.MEDIA_PLAYER)
+            mediaSource = if (domain == Domain.MEDIA_PLAYER)
                 raw.attributes["source"].asString() else null,
-            mediaSourceList = if (id.domain == Domain.MEDIA_PLAYER)
+            mediaSourceList = if (domain == Domain.MEDIA_PLAYER)
                 extractStringList(raw.attributes["source_list"]) else emptyList(),
-            vacuumSupportedFeatures = if (id.domain == Domain.VACUUM)
+            vacuumSupportedFeatures = if (domain == Domain.VACUUM)
                 raw.attributes["supported_features"].asInt() ?: 0 else 0,
             // Generic supported_features for the domains that get a dedicated
             // panel but don't share fields with the vacuum/media branches.
             // Lawn-mower / climate / valve / water_heater each read this field
             // via [EntityState.hasFeature] to gate their respective chips.
-            supportedFeatures = when (id.domain) {
+            supportedFeatures = when (domain) {
                 Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
                 Domain.ALARM_CONTROL_PANEL ->
                     raw.attributes["supported_features"].asInt() ?: 0
                 else -> 0
             },
-            vacuumBatteryLevel = if (id.domain == Domain.VACUUM)
+            vacuumBatteryLevel = if (domain == Domain.VACUUM)
                 raw.attributes["battery_level"].asInt() else null,
-            vacuumStatus = if (id.domain == Domain.VACUUM)
+            vacuumStatus = if (domain == Domain.VACUUM)
                 raw.attributes["status"].asString() ?: stateStr else null,
-            vacuumFanSpeed = if (id.domain == Domain.VACUUM)
+            vacuumFanSpeed = if (domain == Domain.VACUUM)
                 raw.attributes["fan_speed"].asString() else null,
-            vacuumFanSpeedList = if (id.domain == Domain.VACUUM)
+            vacuumFanSpeedList = if (domain == Domain.VACUUM)
                 extractStringList(raw.attributes["fan_speed_list"]) else emptyList(),
-            climateHvacMode = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
-                (if (id.domain == Domain.CLIMATE) stateStr
+            climateHvacMode = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
+                (if (domain == Domain.CLIMATE) stateStr
                 else raw.attributes["operation_mode"].asString()) else null,
-            climateHvacModes = if (id.domain == Domain.CLIMATE)
+            climateHvacModes = if (domain == Domain.CLIMATE)
                 extractStringList(raw.attributes["hvac_modes"])
-            else if (id.domain == Domain.WATER_HEATER)
+            else if (domain == Domain.WATER_HEATER)
                 extractStringList(raw.attributes["operation_list"])
             else emptyList(),
-            climateFanMode = if (id.domain == Domain.CLIMATE)
+            climateFanMode = if (domain == Domain.CLIMATE)
                 raw.attributes["fan_mode"].asString() else null,
-            climateFanModes = if (id.domain == Domain.CLIMATE)
+            climateFanModes = if (domain == Domain.CLIMATE)
                 extractStringList(raw.attributes["fan_modes"]) else emptyList(),
-            climatePresetMode = if (id.domain == Domain.CLIMATE)
+            climatePresetMode = if (domain == Domain.CLIMATE)
                 raw.attributes["preset_mode"].asString() else null,
-            climatePresetModes = if (id.domain == Domain.CLIMATE)
+            climatePresetModes = if (domain == Domain.CLIMATE)
                 extractStringList(raw.attributes["preset_modes"]) else emptyList(),
-            climateCurrentTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            climateCurrentTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["current_temperature"].asDouble() else null,
-            climateTargetTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            climateTargetTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["temperature"].asDouble() else null,
-            climateTargetTempLow = if (id.domain == Domain.CLIMATE)
+            climateTargetTempLow = if (domain == Domain.CLIMATE)
                 raw.attributes["target_temp_low"].asDouble() else null,
-            climateTargetTempHigh = if (id.domain == Domain.CLIMATE)
+            climateTargetTempHigh = if (domain == Domain.CLIMATE)
                 raw.attributes["target_temp_high"].asDouble() else null,
-            climateTempStep = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            climateTempStep = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["target_temp_step"].asDouble() else null,
-            climateMinTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            climateMinTemp = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["min_temp"].asDouble() else null,
-            climateMaxTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            climateMaxTemp = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["max_temp"].asDouble() else null,
-            temperatureUnit = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+            temperatureUnit = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["temperature_unit"].asString()
                     ?: raw.attributes["unit_of_measurement"].asString() else null,
-            lockCodeFormat = if (id.domain == Domain.LOCK)
+            lockCodeFormat = if (domain == Domain.LOCK)
                 raw.attributes["code_format"].asString() else null,
-            lockChangedBy = if (id.domain == Domain.LOCK)
+            lockChangedBy = if (domain == Domain.LOCK)
                 raw.attributes["changed_by"].asString() else null,
-            fanPresetMode = if (id.domain == Domain.FAN)
+            fanPresetMode = if (domain == Domain.FAN)
                 raw.attributes["preset_mode"].asString() else null,
-            fanPresetModes = if (id.domain == Domain.FAN)
+            fanPresetModes = if (domain == Domain.FAN)
                 extractStringList(raw.attributes["preset_modes"]) else emptyList(),
-            fanOscillating = if (id.domain == Domain.FAN)
+            fanOscillating = if (domain == Domain.FAN)
                 raw.attributes["oscillating"].asBoolean() else null,
-            fanDirection = if (id.domain == Domain.FAN)
+            fanDirection = if (domain == Domain.FAN)
                 raw.attributes["direction"].asString() else null,
-            remoteCurrentActivity = if (id.domain == Domain.REMOTE)
+            remoteCurrentActivity = if (domain == Domain.REMOTE)
                 raw.attributes["current_activity"].asString() else null,
-            remoteActivityList = if (id.domain == Domain.REMOTE)
+            remoteActivityList = if (domain == Domain.REMOTE)
                 extractStringList(raw.attributes["activity_list"]) else emptyList(),
-            alarmCodeFormat = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+            alarmCodeFormat = if (domain == Domain.ALARM_CONTROL_PANEL)
                 raw.attributes["code_format"].asString() else null,
-            alarmCodeArmRequired = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+            alarmCodeArmRequired = if (domain == Domain.ALARM_CONTROL_PANEL)
                 (raw.attributes["code_arm_required"].asBoolean() ?: true) else true,
-            alarmChangedBy = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+            alarmChangedBy = if (domain == Domain.ALARM_CONTROL_PANEL)
                 raw.attributes["changed_by"].asString() else null,
         )
         cache.update { it + (id to newState) }
@@ -1165,6 +1171,12 @@ class DefaultHaRepository(
 
     override fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>> =
         cache.map { it.filterKeys { id -> id in entities } }
+            // HA re-emits state_changed events whose to_state is byte-identical to the
+            // last one for an entity (sensors that report the same reading on a fixed
+            // poll interval are the common case). EntityState is a value-equals data
+            // class, so the filtered subset compares equal and we can skip the whole
+            // downstream materialize + recomposition for the no-op churn.
+            .distinctUntilChanged()
 
     override suspend fun call(call: ServiceCall): Result<Unit> {
         // Read-only "guest mode": if the user has flipped the Settings toggle,
@@ -1270,12 +1282,17 @@ class DefaultHaRepository(
                 // `adb logcat -s HaRepo.listAll`.
                 runCatching {
                 val id = EntityId(row.entity_id)
+                // Resolve the domain once: EntityId.domain re-parses the entity_id on
+                // every access and the construction below reads it ~60 times. At a
+                // 5000-entity /api/states response this turns ~300k substring allocations
+                // + map lookups into 5000.
+                val domain = id.domain
                 val stateStr = row.stateStr
                 val attrs = row.attrsObj
                 val available = stateStr != "unavailable" && stateStr != "unknown"
-                val pct = if (available) computePercentWithState(id.domain, attrs, stateStr) else null
-                val rawNum = computeRaw(id.domain, attrs)
-                    ?: if (id.domain == Domain.NUMBER || id.domain == Domain.INPUT_NUMBER) stateStr.toDoubleOrNull() else null
+                val pct = if (available) computePercentWithState(domain, attrs, stateStr) else null
+                val rawNum = computeRaw(domain, attrs)
+                    ?: if (domain == Domain.NUMBER || domain == Domain.INPUT_NUMBER) stateStr.toDoubleOrNull() else null
                 EntityState(
                     id = id,
                     friendlyName = attrs["friendly_name"].asString() ?: row.entity_id.substringAfter('.'),
@@ -1283,7 +1300,7 @@ class DefaultHaRepository(
                     // Use the same domain-aware logic as `applyEvent` so REST seed matches
                     // event-driven cache updates. Inline rather than calling out so this
                     // function stays self-contained for testing.
-                    isOn = when (id.domain) {
+                    isOn = when (domain) {
                         Domain.LIGHT, Domain.FAN, Domain.SWITCH, Domain.INPUT_BOOLEAN,
                         Domain.AUTOMATION, Domain.HUMIDIFIER -> stateStr.equals("on", ignoreCase = true)
                         Domain.COVER, Domain.VALVE -> stateStr.equals("open", ignoreCase = true)
@@ -1320,130 +1337,130 @@ class DefaultHaRepository(
                     raw = rawNum,
                     lastChanged = runCatching { Instant.parse(row.last_changed ?: "") }.getOrDefault(Instant.now()),
                     isAvailable = available,
-                    supportsScalar = supportsScalar(id.domain, attrs),
+                    supportsScalar = supportsScalar(domain, attrs),
                     rawState = stateStr,
                     unit = attrs["unit_of_measurement"].asString()
                         ?: attrs["temperature_unit"].asString(),
                     deviceClass = attrs["device_class"].asString(),
-                    minRaw = when (id.domain) {
+                    minRaw = when (domain) {
                         Domain.CLIMATE, Domain.WATER_HEATER -> attrs["min_temp"].asDouble()
                         Domain.HUMIDIFIER -> attrs["min_humidity"].asDouble()
                         Domain.NUMBER, Domain.INPUT_NUMBER -> attrs["min"].asDouble() ?: 0.0
                         else -> null
                     },
-                    maxRaw = when (id.domain) {
+                    maxRaw = when (domain) {
                         Domain.CLIMATE, Domain.WATER_HEATER -> attrs["max_temp"].asDouble()
                         Domain.HUMIDIFIER -> attrs["max_humidity"].asDouble()
                         Domain.NUMBER, Domain.INPUT_NUMBER -> attrs["max"].asDouble() ?: 100.0
                         else -> null
                     },
-                    supportedColorModes = if (id.domain == Domain.LIGHT) extractColorModes(attrs) else emptyList(),
-                    colorTempK = if (id.domain == Domain.LIGHT) attrs["color_temp_kelvin"].asInt() else null,
-                    minColorTempK = if (id.domain == Domain.LIGHT) attrs["min_color_temp_kelvin"].asInt() else null,
-                    maxColorTempK = if (id.domain == Domain.LIGHT) attrs["max_color_temp_kelvin"].asInt() else null,
-                    hue = if (id.domain == Domain.LIGHT) extractHue(attrs) else null,
-                    step = if (id.domain == Domain.NUMBER || id.domain == Domain.INPUT_NUMBER)
+                    supportedColorModes = if (domain == Domain.LIGHT) extractColorModes(attrs) else emptyList(),
+                    colorTempK = if (domain == Domain.LIGHT) attrs["color_temp_kelvin"].asInt() else null,
+                    minColorTempK = if (domain == Domain.LIGHT) attrs["min_color_temp_kelvin"].asInt() else null,
+                    maxColorTempK = if (domain == Domain.LIGHT) attrs["max_color_temp_kelvin"].asInt() else null,
+                    hue = if (domain == Domain.LIGHT) extractHue(attrs) else null,
+                    step = if (domain == Domain.NUMBER || domain == Domain.INPUT_NUMBER)
                         attrs["step"].asDouble() else null,
-                    effectList = if (id.domain == Domain.LIGHT) extractEffectList(attrs) else emptyList(),
-                    effect = if (id.domain == Domain.LIGHT) attrs["effect"].asString()?.takeIf { it != "None" } else null,
+                    effectList = if (domain == Domain.LIGHT) extractEffectList(attrs) else emptyList(),
+                    effect = if (domain == Domain.LIGHT) attrs["effect"].asString()?.takeIf { it != "None" } else null,
                     attributesJson = attrs,
                     // Select / input_select — options list from `options` attribute,
                     // current option is just the state string. Empty / null for
                     // other domains.
-                    selectOptions = if (id.domain.isSelect) extractStringList(attrs["options"]) else emptyList(),
-                    currentOption = if (id.domain.isSelect) stateStr.takeIf { it.isNotBlank() && it != "unknown" && it != "unavailable" } else null,
-                    mediaTitle = if (id.domain == Domain.MEDIA_PLAYER) attrs["media_title"].asString() else null,
-                    mediaArtist = if (id.domain == Domain.MEDIA_PLAYER) attrs["media_artist"].asString() else null,
-                    mediaAlbumName = if (id.domain == Domain.MEDIA_PLAYER) attrs["media_album_name"].asString() else null,
-                    mediaDuration = if (id.domain == Domain.MEDIA_PLAYER) attrs["media_duration"].asInt() else null,
-                    mediaPosition = if (id.domain == Domain.MEDIA_PLAYER) attrs["media_position"].asInt() else null,
-                    mediaPositionUpdatedAt = if (id.domain == Domain.MEDIA_PLAYER) {
+                    selectOptions = if (domain.isSelect) extractStringList(attrs["options"]) else emptyList(),
+                    currentOption = if (domain.isSelect) stateStr.takeIf { it.isNotBlank() && it != "unknown" && it != "unavailable" } else null,
+                    mediaTitle = if (domain == Domain.MEDIA_PLAYER) attrs["media_title"].asString() else null,
+                    mediaArtist = if (domain == Domain.MEDIA_PLAYER) attrs["media_artist"].asString() else null,
+                    mediaAlbumName = if (domain == Domain.MEDIA_PLAYER) attrs["media_album_name"].asString() else null,
+                    mediaDuration = if (domain == Domain.MEDIA_PLAYER) attrs["media_duration"].asInt() else null,
+                    mediaPosition = if (domain == Domain.MEDIA_PLAYER) attrs["media_position"].asInt() else null,
+                    mediaPositionUpdatedAt = if (domain == Domain.MEDIA_PLAYER) {
                         attrs["media_position_updated_at"].asString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
                     } else null,
-                    mediaPicture = if (id.domain == Domain.MEDIA_PLAYER) attrs["entity_picture"].asString() else null,
-                    isVolumeMuted = id.domain == Domain.MEDIA_PLAYER &&
+                    mediaPicture = if (domain == Domain.MEDIA_PLAYER) attrs["entity_picture"].asString() else null,
+                    isVolumeMuted = domain == Domain.MEDIA_PLAYER &&
                         (attrs["is_volume_muted"] as? JsonPrimitive)?.content == "true",
-                    mediaSupportedFeatures = if (id.domain == Domain.MEDIA_PLAYER)
+                    mediaSupportedFeatures = if (domain == Domain.MEDIA_PLAYER)
                         attrs["supported_features"].asInt() ?: 0
                     else 0,
-                    mediaShuffle = id.domain == Domain.MEDIA_PLAYER &&
+                    mediaShuffle = domain == Domain.MEDIA_PLAYER &&
                         (attrs["shuffle"].asBoolean() ?: false),
-                    mediaRepeat = if (id.domain == Domain.MEDIA_PLAYER)
+                    mediaRepeat = if (domain == Domain.MEDIA_PLAYER)
                         attrs["repeat"].asString() else null,
-                    mediaSource = if (id.domain == Domain.MEDIA_PLAYER)
+                    mediaSource = if (domain == Domain.MEDIA_PLAYER)
                         attrs["source"].asString() else null,
-                    mediaSourceList = if (id.domain == Domain.MEDIA_PLAYER)
+                    mediaSourceList = if (domain == Domain.MEDIA_PLAYER)
                         extractStringList(attrs["source_list"]) else emptyList(),
-                    vacuumSupportedFeatures = if (id.domain == Domain.VACUUM)
+                    vacuumSupportedFeatures = if (domain == Domain.VACUUM)
                         attrs["supported_features"].asInt() ?: 0 else 0,
-                    supportedFeatures = when (id.domain) {
+                    supportedFeatures = when (domain) {
                         Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
                         Domain.ALARM_CONTROL_PANEL ->
                             attrs["supported_features"].asInt() ?: 0
                         else -> 0
                     },
-                    vacuumBatteryLevel = if (id.domain == Domain.VACUUM)
+                    vacuumBatteryLevel = if (domain == Domain.VACUUM)
                         attrs["battery_level"].asInt() else null,
-                    vacuumStatus = if (id.domain == Domain.VACUUM)
+                    vacuumStatus = if (domain == Domain.VACUUM)
                         attrs["status"].asString() ?: stateStr else null,
-                    vacuumFanSpeed = if (id.domain == Domain.VACUUM)
+                    vacuumFanSpeed = if (domain == Domain.VACUUM)
                         attrs["fan_speed"].asString() else null,
-                    vacuumFanSpeedList = if (id.domain == Domain.VACUUM)
+                    vacuumFanSpeedList = if (domain == Domain.VACUUM)
                         extractStringList(attrs["fan_speed_list"]) else emptyList(),
-                    climateHvacMode = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
-                        (if (id.domain == Domain.CLIMATE) stateStr
+                    climateHvacMode = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
+                        (if (domain == Domain.CLIMATE) stateStr
                         else attrs["operation_mode"].asString()) else null,
-                    climateHvacModes = if (id.domain == Domain.CLIMATE)
+                    climateHvacModes = if (domain == Domain.CLIMATE)
                         extractStringList(attrs["hvac_modes"])
-                    else if (id.domain == Domain.WATER_HEATER)
+                    else if (domain == Domain.WATER_HEATER)
                         extractStringList(attrs["operation_list"])
                     else emptyList(),
-                    climateFanMode = if (id.domain == Domain.CLIMATE)
+                    climateFanMode = if (domain == Domain.CLIMATE)
                         attrs["fan_mode"].asString() else null,
-                    climateFanModes = if (id.domain == Domain.CLIMATE)
+                    climateFanModes = if (domain == Domain.CLIMATE)
                         extractStringList(attrs["fan_modes"]) else emptyList(),
-                    climatePresetMode = if (id.domain == Domain.CLIMATE)
+                    climatePresetMode = if (domain == Domain.CLIMATE)
                         attrs["preset_mode"].asString() else null,
-                    climatePresetModes = if (id.domain == Domain.CLIMATE)
+                    climatePresetModes = if (domain == Domain.CLIMATE)
                         extractStringList(attrs["preset_modes"]) else emptyList(),
-                    climateCurrentTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    climateCurrentTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["current_temperature"].asDouble() else null,
-                    climateTargetTemperature = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    climateTargetTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["temperature"].asDouble() else null,
-                    climateTargetTempLow = if (id.domain == Domain.CLIMATE)
+                    climateTargetTempLow = if (domain == Domain.CLIMATE)
                         attrs["target_temp_low"].asDouble() else null,
-                    climateTargetTempHigh = if (id.domain == Domain.CLIMATE)
+                    climateTargetTempHigh = if (domain == Domain.CLIMATE)
                         attrs["target_temp_high"].asDouble() else null,
-                    climateTempStep = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    climateTempStep = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["target_temp_step"].asDouble() else null,
-                    climateMinTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    climateMinTemp = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["min_temp"].asDouble() else null,
-                    climateMaxTemp = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    climateMaxTemp = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["max_temp"].asDouble() else null,
-                    temperatureUnit = if (id.domain == Domain.CLIMATE || id.domain == Domain.WATER_HEATER)
+                    temperatureUnit = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["temperature_unit"].asString()
                             ?: attrs["unit_of_measurement"].asString() else null,
-                    lockCodeFormat = if (id.domain == Domain.LOCK)
+                    lockCodeFormat = if (domain == Domain.LOCK)
                         attrs["code_format"].asString() else null,
-                    lockChangedBy = if (id.domain == Domain.LOCK)
+                    lockChangedBy = if (domain == Domain.LOCK)
                         attrs["changed_by"].asString() else null,
-                    fanPresetMode = if (id.domain == Domain.FAN)
+                    fanPresetMode = if (domain == Domain.FAN)
                         attrs["preset_mode"].asString() else null,
-                    fanPresetModes = if (id.domain == Domain.FAN)
+                    fanPresetModes = if (domain == Domain.FAN)
                         extractStringList(attrs["preset_modes"]) else emptyList(),
-                    fanOscillating = if (id.domain == Domain.FAN)
+                    fanOscillating = if (domain == Domain.FAN)
                         attrs["oscillating"].asBoolean() else null,
-                    fanDirection = if (id.domain == Domain.FAN)
+                    fanDirection = if (domain == Domain.FAN)
                         attrs["direction"].asString() else null,
-                    remoteCurrentActivity = if (id.domain == Domain.REMOTE)
+                    remoteCurrentActivity = if (domain == Domain.REMOTE)
                         attrs["current_activity"].asString() else null,
-                    remoteActivityList = if (id.domain == Domain.REMOTE)
+                    remoteActivityList = if (domain == Domain.REMOTE)
                         extractStringList(attrs["activity_list"]) else emptyList(),
-                    alarmCodeFormat = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                    alarmCodeFormat = if (domain == Domain.ALARM_CONTROL_PANEL)
                         attrs["code_format"].asString() else null,
-                    alarmCodeArmRequired = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                    alarmCodeArmRequired = if (domain == Domain.ALARM_CONTROL_PANEL)
                         (attrs["code_arm_required"].asBoolean() ?: true) else true,
-                    alarmChangedBy = if (id.domain == Domain.ALARM_CONTROL_PANEL)
+                    alarmChangedBy = if (domain == Domain.ALARM_CONTROL_PANEL)
                         attrs["changed_by"].asString() else null,
                 )
                 }.getOrElse { t ->

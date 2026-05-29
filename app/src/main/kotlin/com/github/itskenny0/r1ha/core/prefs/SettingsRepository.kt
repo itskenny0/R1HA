@@ -24,6 +24,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Mutex
@@ -368,6 +369,15 @@ class SettingsRepository private constructor(
         .onEach { s ->
             R1Log.d("SettingsRepo.settings.emit", "server=${s.server?.url ?: "null"} favorites=${s.favorites.size} theme=${s.theme}")
         }
+        // The map block above decodes ~10 JSON payloads (advanced, dashboard,
+        // integrations, pages, iotCamera, iotSensors, chrome buttons, key bindings,
+        // name + entity overrides) and rebuilds the whole AppSettings on every emit.
+        // Most collectors are ViewModels whose flows run on Dispatchers.Main.immediate;
+        // without flowOn that decode work runs on the main thread on every settings
+        // change and every shadow tick. Move it to Default so the UI thread only sees
+        // the finished AppSettings. flowOn affects only the upstream operators, so each
+        // collector still receives emissions on its own dispatcher.
+        .flowOn(Dispatchers.Default)
 
     suspend fun update(transform: (AppSettings) -> AppSettings): Unit = updateMutex.withLock {
         val current = currentBlocking()
@@ -777,13 +787,14 @@ class SettingsRepository private constructor(
  * The id 'home' is reserved for the migration page so even users who later
  * delete and re-create get a stable default id.
  */
+private val pagesJsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
 private fun decodePages(raw: String?, legacyFavorites: List<String>): List<FavoritePage> {
-    val parser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
     val parsed = raw
         ?.takeIf { it.isNotBlank() }
         ?.let {
             runCatching {
-                parser.decodeFromString(
+                pagesJsonParser.decodeFromString(
                     kotlinx.serialization.builtins.ListSerializer(FavoritePage.serializer()),
                     it,
                 )

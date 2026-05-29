@@ -203,4 +203,88 @@ class DefaultHaRepositoryTest {
         http.dispatcher.executorService.shutdown()
         http.connectionPool.evictAll()
     }
+
+    /**
+     * observe() is distinctUntilChanged: HA re-emits state_changed events whose to_state
+     * is byte-identical to the previous one (a sensor reporting the same reading on a fixed
+     * poll interval is the common case). EntityState has value equality, so a second
+     * identical event must NOT produce a downstream emission — otherwise every no-op churn
+     * would re-run the whole card-stack materialize + recomposition.
+     */
+    @Test fun `observe dedups an identical repeated state event`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl), favorites = listOf("light.kitchen")) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val wsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val ws = HaWebSocketClient(http = http, scope = wsScope)
+
+        val wsUrl = baseUrl.replace("http://", "ws://") + "/api/websocket"
+        ws.connect(wsUrl, "TOK")
+
+        val opened = recorder.awaitOpen(5_000)
+        opened.send("""{"type":"auth_required","ha_version":"2026.5.0"}""")
+        recorder.awaitTextMessage(5_000) // auth frame
+        opened.send("""{"type":"auth_ok","ha_version":"2026.5.0"}""")
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        repo.start()
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(300)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val subFrame = recorder.awaitTextMessage(5_000)
+        assertThat(subFrame).contains("subscribe_trigger")
+
+        // A fixed event payload (same last_changed so the parsed EntityState is identical).
+        val event =
+            """{"id":1,"type":"event","event":{"variables":{"trigger":{"platform":"state","entity_id":"light.kitchen",""" +
+            """"to_state":{"entity_id":"light.kitchen","state":"on","attributes":{"brightness":128,"friendly_name":"Kitchen"},""" +
+            """"last_changed":"2026-05-11T10:00:00+00:00"}}}}}"""
+
+        opened.send(event)
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+
+        repo.observe(setOf(EntityId("light.kitchen"))).test {
+            var entry: Map<EntityId, EntityState> = awaitItem()
+            while (entry.isEmpty()) entry = awaitItem()
+            val first = checkNotNull(entry[EntityId("light.kitchen")])
+            assertThat(first.percent).isEqualTo(50)
+
+            // Push the byte-identical event again — the cache.update writes an equal
+            // EntityState, so the filtered subset compares equal and distinctUntilChanged
+            // must swallow it: no further downstream emission.
+            opened.send(event)
+            @Suppress("BlockingMethodInNonBlockingContext")
+            Thread.sleep(250)
+            expectNoEvents()
+            cancelAndConsumeRemainingEvents()
+        }
+
+        repo.stop()
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
 }
