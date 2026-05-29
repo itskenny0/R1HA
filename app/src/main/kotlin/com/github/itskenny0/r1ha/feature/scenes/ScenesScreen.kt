@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,9 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -43,12 +47,12 @@ import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
  * Fast-fire launcher for HA scenes + scripts. Pulls the full entity list
  * via the REST `/api/states` endpoint (same call the favourites picker
  * uses), filters to scene.* / script.*, and renders a dense LazyColumn
- * the user can scroll with the wheel. Tap a row → fires the appropriate
+ * the user can scroll with the wheel. Tap a row fires the appropriate
  * service (scene.turn_on for scenes, script.<script_id> for scripts) +
  * shows a brief confirmation toast.
  *
  * Why a dedicated surface: scenes / scripts are the muscle-memory
- * affordances of a HA setup — 'movie night', 'dinner mode', 'all off'.
+ * affordances of a HA setup ('movie night', 'dinner mode', 'all off').
  * Putting each one as a card on the card stack works but requires
  * scrolling to it. A flat list with a tap-fire interaction is faster.
  */
@@ -100,7 +104,7 @@ fun ScenesScreen(
                     )
                 }
                 ui.entries.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     // Distinguish "the install has no scenes" from "the search /
@@ -114,7 +118,7 @@ fun ScenesScreen(
                     }
                     Text(text = msg, style = R1.body, color = R1.InkMuted)
                 }
-                // Pull-to-refresh wrap — re-issue /api/states to pick up any
+                // Pull-to-refresh wrap re-issues /api/states to pick up any
                 // new scenes / scripts the user added in HA without backing
                 // out and re-entering the screen.
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
@@ -125,10 +129,10 @@ fun ScenesScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                        contentPadding = PaddingValues(
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         items(items = ui.entries, key = { it.id.value }) { entry ->
                             SceneRow(
@@ -150,40 +154,31 @@ private fun SceneRow(
     onFire: () -> Unit,
     onLongPress: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
-            // Tap = fire the scene/script; long-press = expand detail toast with
-            // entity_id + service name. Long press is the right home for the
-            // metadata affordance: it's the non-destructive gesture.
-            .r1RowPressable(onTap = onFire, onLongPress = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = when (entry.kind) {
-                ScenesViewModel.Kind.SCENE -> "SCENE"
-                ScenesViewModel.Kind.SCRIPT -> "SCRIPT"
-            },
-            style = R1.labelMicro,
-            color = when (entry.kind) {
-                ScenesViewModel.Kind.SCENE -> R1.AccentWarm
-                ScenesViewModel.Kind.SCRIPT -> R1.AccentCool
-            },
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(text = entry.name, style = R1.body, color = R1.Ink, maxLines = 2)
-            Text(
-                text = entry.id.value,
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-                maxLines = 1,
-            )
-        }
+    val kindLabel = when (entry.kind) {
+        ScenesViewModel.Kind.SCENE -> "SCENE"
+        ScenesViewModel.Kind.SCRIPT -> "SCRIPT"
     }
+    val kindTone = when (entry.kind) {
+        ScenesViewModel.Kind.SCENE -> R1.AccentWarm
+        ScenesViewModel.Kind.SCRIPT -> R1.AccentCool
+    }
+    // Canonical row: friendly name primary, entity_id secondary, kind shown as a
+    // leading Pill chip. Tap fires the scene/script; long-press surfaces the
+    // detail toast (entity_id + service) since it's the non-destructive gesture,
+    // so the row stays on r1RowPressable rather than R1Row's single onClick.
+    R1Row(
+        label = entry.name,
+        description = entry.id.value,
+        boxed = true,
+        leadingContent = {
+            R1Chip(text = kindLabel, variant = R1ChipVariant.Pill, tone = kindTone)
+        },
+        modifier = Modifier.r1RowPressable(
+            onTap = onFire,
+            onLongPress = onLongPress,
+            contentDescription = "Fire $kindLabel ${entry.name}",
+        ),
+    )
 }
 
 @Composable
@@ -209,8 +204,8 @@ private fun MasterActionsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         MasterActionPill(
             modifier = Modifier.weight(1f),
@@ -263,17 +258,17 @@ private fun MasterActionsRow(
         )
     }
     // Discoverability hint for the asymmetric long-press affordance. LIGHTS is
-    // the only pill with a hidden second action (long-press → turn ON, because
+    // the only pill with a hidden second action (long-press turns ON, because
     // turning all lights on is a common kiosk-wakeup intent), and without a
     // hint nobody would find it. Single muted line under the row keeps the
     // visual weight low while still surfacing the gesture.
     Text(
-        text = "Tap = OFF · long-press LIGHTS for ON",
+        text = "Tap = OFF, long-press LIGHTS for ON",
         style = R1.labelMicro,
         color = R1.InkMuted,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 2.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.xxs),
     )
 }
 
@@ -303,14 +298,14 @@ private fun MasterActionPill(
     }
     Box(
         modifier = modifier
-            .height(36.dp)
+            .height(R1.MinTarget)
             .clip(R1.ShapeS)
             .background(fill)
             .then(pressable),
         contentAlignment = Alignment.Center,
     ) {
         // Micro hint glyph in the corner when the pill has a hidden long-press action.
-        // ⋯ is the same affordance EntityCard uses for its long-press indicator, so the
+        // The same affordance EntityCard uses for its long-press indicator, so the
         // semantic is consistent across the app.
         if (onLongClick != null && !inFlight && !armed) {
             Text(
@@ -319,7 +314,7 @@ private fun MasterActionPill(
                 color = accent.copy(alpha = 0.7f),
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(end = 4.dp, top = 2.dp),
+                    .padding(end = R1.space.xs, top = R1.space.xxs),
             )
         }
         Text(
@@ -339,14 +334,14 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "FIND",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = R1.space.s),
         )
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
@@ -357,11 +352,11 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .r1Pressable({ onQueryChange("") }),
+                    .size(R1.MinTarget)
+                    .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
@@ -384,24 +379,16 @@ private fun FilterChips(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         for ((filter, label) in items) {
-            val active = filter == current
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(filter) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = "$label · ${counts[filter] ?: 0}",
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = "$label  ${counts[filter] ?: 0}",
+                variant = R1ChipVariant.Filter,
+                selected = filter == current,
+                onClick = { onSelect(filter) },
+            )
         }
     }
 }
