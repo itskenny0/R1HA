@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -41,6 +42,9 @@ import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -681,7 +685,7 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 6.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                 ) {
                     com.github.itskenny0.r1ha.ui.components.R1Button(
                         text = "RECONNECT NOW",
@@ -705,7 +709,7 @@ fun SettingsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                     ) {
                         com.github.itskenny0.r1ha.ui.components.R1Button(
                             text = "OPEN HA WEB UI",
@@ -748,7 +752,7 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 10.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.m),
                 ) {
                     DangerButton(
                         text = if (armed.value) "CONFIRM · SIGN OUT" else "SIGN OUT & RECONNECT",
@@ -942,7 +946,7 @@ fun SettingsScreen(
                         "Right cluster of the card-stack chrome.",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl),
                 )
                 // Live preview of the rendered cluster — mirrors what the chrome row
                 // will actually look like in card-stack order. Hidden buttons render
@@ -1104,19 +1108,19 @@ fun SettingsScreen(
                                 monospace = true,
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(R1.space.s))
                         Box(
                             modifier = Modifier
                                 .clip(R1.ShapeS)
                                 .background(R1.SurfaceMuted)
                                 .border(1.dp, R1.Hairline, R1.ShapeS)
                                 .r1Pressable(onClick = { tilePickerOpen.value = true })
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = R1.space.m, vertical = R1.space.s),
                         ) {
                             Text(text = "PICK", style = R1.labelMicro, color = R1.AccentWarm)
                         }
                     }
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     // Discovery hint — without this, users bind an
                     // entity and then wonder why nothing happens.
                     // Android's tile-add flow lives a few menus deep,
@@ -1197,8 +1201,8 @@ fun SettingsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.m),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     com.github.itskenny0.r1ha.ui.components.R1Button(
                         text = "EXPORT",
@@ -1242,7 +1246,7 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 6.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                 ) {
                     com.github.itskenny0.r1ha.ui.components.R1Button(
                         text = if (armed.value) "CONFIRM RESET · TAP AGAIN" else "RESET TO DEFAULTS",
@@ -1258,7 +1262,7 @@ fun SettingsScreen(
                         accent = R1.StatusAmber,
                     )
                     if (armed.value) {
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(R1.space.xs))
                         Text(
                             text = "Drops every override, theme, wheel + UI + behaviour preference. Keeps your account, favourites, and pages.",
                             style = R1.labelMicro,
@@ -1440,7 +1444,7 @@ fun SettingsScreen(
                     text = "Drag-style reorder isn't on the R1's small screen yet. Use the arrows to nudge each tile up or down.",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                 )
             }
             item {
@@ -1909,10 +1913,10 @@ fun SettingsScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 6.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                 ) {
                     Text(text = "BACKUP", style = R1.labelMicro, color = R1.AccentWarm)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(R1.space.xs))
                     com.github.itskenny0.r1ha.ui.components.R1Button(
                         text = if (backupArmed.value) "CONFIRM · CREATE BACKUP NOW" else "CREATE BACKUP NOW",
                         onClick = {
@@ -1943,7 +1947,7 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(R1.space.xs))
                     Text(
                         text = if (backupArmed.value)
                             "Triggers HA's backup.create service. Honors your supervisor's backup destination + retention config."
@@ -2018,36 +2022,18 @@ private fun GroupCard(
     modifiedCount: Int,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .r1Pressable(onClick = onClick, contentDescription = "Open $title")
-            .padding(horizontal = 22.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = R1.bodyEmph, color = R1.Ink)
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, style = R1.labelMicro, color = R1.InkSoft)
-        }
-        if (modifiedCount > 0) {
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeRound)
-                    .background(R1.AccentWarm)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            ) {
-                Text(
-                    text = modifiedCount.toString(),
-                    style = R1.labelMicro,
-                    color = R1.Bg,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-        }
-        // Chevron-style trailing hint that this row navigates further.
-        Text(text = "›", style = R1.bodyEmph, color = R1.InkSoft)
-    }
+    R1Row(
+        label = title,
+        description = subtitle,
+        onClick = onClick,
+        showChevron = true,
+        contentDescription = "Open $title",
+        trailing = if (modifiedCount > 0) {
+            { R1Chip(text = modifiedCount.toString(), variant = R1ChipVariant.Pill) }
+        } else {
+            null
+        },
+    )
 }
 
 @Composable
@@ -2070,28 +2056,17 @@ private fun Section(
     val modifier = Modifier
         .fillMaxWidth()
         .then(if (onToggle != null) Modifier.r1Pressable(onClick = onToggle) else Modifier)
-        .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 8.dp)
+        .padding(start = R1.space.xl, end = R1.space.xl, top = R1.space.xl, bottom = R1.space.s)
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
         if (modifiedCount > 0) {
-            Spacer(Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.AccentWarm.copy(alpha = 0.18f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-                Text(
-                    text = "$modifiedCount",
-                    style = R1.labelMicro,
-                    color = R1.AccentWarm,
-                )
-            }
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(text = "$modifiedCount", variant = R1ChipVariant.Pill)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Box(
             modifier = Modifier
                 .height(1.dp)
@@ -2099,7 +2074,7 @@ private fun Section(
                 .background(R1.Hairline),
         )
         if (onReset != null && modifiedCount > 0) {
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             val armed = androidx.compose.runtime.remember(title) {
                 androidx.compose.runtime.mutableStateOf(false)
             }
@@ -2109,35 +2084,24 @@ private fun Section(
                     armed.value = false
                 }
             }
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(
-                        if (armed.value) R1.StatusAmber.copy(alpha = 0.22f) else R1.SurfaceMuted,
-                    )
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(
-                        onClick = {
-                            if (armed.value) {
-                                armed.value = false
-                                onReset()
-                            } else {
-                                armed.value = true
-                            }
-                        },
-                        contentDescription = "Reset $title to defaults",
-                    )
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-                Text(
-                    text = if (armed.value) "CONFIRM" else "RESET",
-                    style = R1.labelMicro,
-                    color = if (armed.value) R1.StatusAmber else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = if (armed.value) "CONFIRM" else "RESET",
+                variant = R1ChipVariant.Action,
+                tone = R1.StatusAmber,
+                selected = armed.value,
+                onClick = {
+                    if (armed.value) {
+                        armed.value = false
+                        onReset()
+                    } else {
+                        armed.value = true
+                    }
+                },
+                contentDescription = "Reset $title to defaults",
+            )
         }
         if (onToggle != null) {
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(R1.space.m))
             // Chevron-style indicator: '−' (minus) when expanded, '+' when collapsed.
             // Single-char readouts keep the visual weight low — the header line is
             // already prominent and a full word would compete with the title.
@@ -2152,7 +2116,7 @@ private fun Section(
 
 @Composable
 private fun SectionDivider() {
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
 }
 
 /**
@@ -2164,12 +2128,17 @@ private fun SectionDivider() {
  */
 @Composable
 private fun SubGroupLabel(text: String) {
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     androidx.compose.material3.Text(
         text = text,
         style = R1.labelMicro,
         color = R1.InkMuted,
-        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 2.dp, bottom = 4.dp),
+        modifier = Modifier.padding(
+            start = R1.space.xl,
+            end = R1.space.xl,
+            top = R1.space.xxs,
+            bottom = R1.space.xs,
+        ),
     )
 }
 
@@ -2186,7 +2155,7 @@ private fun ToastLogLevelRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
     ) {
         Text("Toast log level", style = R1.bodyEmph, color = R1.Ink)
         Text(
@@ -2195,30 +2164,22 @@ private fun ToastLogLevelRow(
                 "entity?' on devices without adb. Debug: everything R1Log emits.",
             style = R1.body,
             color = R1.InkMuted,
-            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            modifier = Modifier.padding(top = R1.space.xxs, bottom = R1.space.s),
         )
         val scroll = rememberScrollState()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(scroll),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
             com.github.itskenny0.r1ha.core.prefs.ToastLogLevel.entries.forEach { level ->
-                val active = level == current
-                Box(
-                    modifier = Modifier
-                        .padding(end = 6.dp)
-                        .clip(R1.ShapeS)
-                        .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                        .r1Pressable({ onSelect(level) })
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    Text(
-                        text = level.name,
-                        style = R1.labelMicro,
-                        color = if (active) R1.Bg else R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = level.name,
+                    variant = R1ChipVariant.Filter,
+                    selected = level == current,
+                    onClick = { onSelect(level) },
+                )
             }
         }
     }
@@ -2232,7 +2193,7 @@ private fun OrientationModeRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
     ) {
         Text("Screen orientation", style = R1.bodyEmph, color = R1.Ink)
         Text(
@@ -2241,31 +2202,23 @@ private fun OrientationModeRow(
                 "Right choice for R1 and one-handed phone use.",
             style = R1.body,
             color = R1.InkMuted,
-            modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            modifier = Modifier.padding(top = R1.space.xxs, bottom = R1.space.s),
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
             com.github.itskenny0.r1ha.core.prefs.OrientationMode.entries.forEach { mode ->
-                val active = mode == current
                 val label = when (mode) {
                     com.github.itskenny0.r1ha.core.prefs.OrientationMode.FOLLOW_DEVICE -> "Follow device"
                     com.github.itskenny0.r1ha.core.prefs.OrientationMode.PORTRAIT_ONLY -> "Portrait only"
                 }
-                Box(
-                    modifier = Modifier
-                        .padding(end = 6.dp)
-                        .clip(R1.ShapeS)
-                        .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                        .r1Pressable({ onSelect(mode) })
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                ) {
-                    Text(
-                        text = label,
-                        style = R1.labelMicro,
-                        color = if (active) R1.Bg else R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = label,
+                    variant = R1ChipVariant.Filter,
+                    selected = mode == current,
+                    onClick = { onSelect(mode) },
+                )
             }
         }
     }
@@ -2291,7 +2244,7 @@ private fun SettingsHeader(
     onCollapseAll: () -> Unit,
     onExpandAll: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.l, vertical = R1.space.s)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.weight(1f)) {
                 com.github.itskenny0.r1ha.ui.components.R1TextField(
@@ -2302,7 +2255,7 @@ private fun SettingsHeader(
                 )
             }
             if (query.isNotEmpty()) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Box(
                     modifier = Modifier
                         .size(48.dp)
@@ -2315,7 +2268,7 @@ private fun SettingsHeader(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         // Modified-settings entry chip. Always rendered so the affordance is
         // discoverable on a fresh install (where the count reads '0 modified'
         // and the tap navigates to a friendly empty-state).
@@ -2326,7 +2279,7 @@ private fun SettingsHeader(
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onClick = onOpenModified)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -2348,15 +2301,17 @@ private fun SettingsHeader(
         // Hidden while searching: the section grid is replaced by the matched-
         // entries list, so the toggle would have no visible effect.
         if (query.isBlank()) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.s))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
                     .r1Pressable(onClick = if (anyExpanded) onCollapseAll else onExpandAll)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = if (anyExpanded) "COLLAPSE ALL SECTIONS" else "EXPAND ALL SECTIONS",
@@ -2380,40 +2335,30 @@ private fun SearchResultRow(
     current: com.github.itskenny0.r1ha.core.prefs.AppSettings,
     onClick: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 4.dp)
-            .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            // Category tag lives on the group header now (parent LazyColumn), so
-            // the row body only needs label + description.
-            Text(text = entry.label, style = R1.body, color = R1.Ink, maxLines = 2)
-            Text(
-                text = entry.description,
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-                maxLines = 2,
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        // Tint the value accent-warm when the entry is non-default — gives the
-        // user a visual cue 'this is something I've changed' alongside the
-        // matched-text result. Default values stay muted so they don't compete
-        // with actually-modified ones.
-        val isModified = !entry.isDefault(current)
-        Text(
-            text = entry.currentDisplay(current),
-            style = R1.bodyEmph,
-            color = if (isModified) R1.AccentWarm else R1.InkSoft,
-        )
-    }
+    // Category tag lives on the group header now (parent LazyColumn), so the row
+    // body only needs label + description + the current value. The value tints
+    // accent-warm when non-default via R1Row's built-in value treatment; default
+    // values read muted so they don't compete with actually-modified ones.
+    val isModified = !entry.isDefault(current)
+    R1Row(
+        label = entry.label,
+        description = entry.description,
+        value = if (isModified) entry.currentDisplay(current) else null,
+        onClick = onClick,
+        boxed = true,
+        modifier = Modifier.padding(horizontal = R1.space.m, vertical = R1.space.xs),
+        trailing = if (!isModified) {
+            {
+                androidx.compose.material3.Text(
+                    text = entry.currentDisplay(current),
+                    style = R1.bodyEmph,
+                    color = R1.InkSoft,
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 /**
@@ -2458,7 +2403,7 @@ private fun ChromeButtonRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Position number — disambiguates "slot 1" (leftmost in the cluster) from
@@ -2474,9 +2419,9 @@ private fun ChromeButtonRow(
         // still render the disabled state so the row's left edge stays aligned
         // even at the list extremes.
         ReorderChip(label = "↑", enabled = !isFirst, onClick = onMoveUp)
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(R1.space.xs))
         ReorderChip(label = "↓", enabled = !isLast, onClick = onMoveDown)
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = R1.bodyEmph, color = R1.Ink)
             Text(text = subtitle, style = R1.labelMicro, color = R1.InkMuted)
@@ -2509,7 +2454,7 @@ private fun ChromeButtonsPreview(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 4.dp)
+            .padding(start = R1.space.xl, end = R1.space.xl, top = R1.space.s, bottom = R1.space.xs)
             .horizontalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -2518,7 +2463,7 @@ private fun ChromeButtonsPreview(
             style = R1.labelMicro,
             color = R1.InkSoft,
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         buttons.forEachIndexed { idx, cfg ->
             val gear = cfg.ref == com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.GEAR
             val visible = cfg.enabled || gear
@@ -2537,7 +2482,7 @@ private fun ChromeButtonsPreview(
                         color = if (visible) R1.AccentWarm.copy(alpha = 0.6f) else R1.Hairline,
                         shape = R1.ShapeS,
                     )
-                    .padding(horizontal = 8.dp, vertical = 3.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -2547,13 +2492,13 @@ private fun ChromeButtonsPreview(
                 )
             }
             if (idx != buttons.lastIndex) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "›",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
         }
     }
@@ -2582,29 +2527,12 @@ private fun SwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            // r1Pressable instead of bare clickable so the whole row dips on press AND fires
-            // a CLOCK_TICK haptic to match the rest of the app. The inner R1Switch ignores
-            // the synthetic click here — it'll fire its own haptic on the toggle thumb tap.
-            .r1Pressable(onClick = { onCheckedChange(!checked) }, hapticOnClick = false)
-            .padding(horizontal = 22.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = R1.bodyEmph, color = R1.Ink)
-            if (subtitle != null) {
-                Spacer(Modifier.height(2.dp))
-                Text(subtitle, style = R1.body, color = R1.InkMuted)
-            }
-        }
-        R1Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            modifier = Modifier.padding(start = 12.dp),
-        )
-    }
+    R1Row(
+        label = label,
+        description = subtitle,
+        onClick = { onCheckedChange(!checked) },
+        trailing = { R1Switch(checked = checked, onCheckedChange = onCheckedChange) },
+    )
 }
 
 /**
@@ -2633,13 +2561,13 @@ private fun NumberStepperRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = R1.bodyEmph, color = R1.Ink)
             if (subtitle != null) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(R1.space.xxs))
                 Text(subtitle, style = R1.body, color = R1.InkMuted)
             }
         }
@@ -2665,14 +2593,14 @@ private fun NumberStepperRow(
             ) {
                 Text(text = "−", style = R1.body, color = if (canDec) R1.Ink else R1.InkMuted)
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "$value$suffix",
                 style = R1.bodyEmph,
                 color = R1.Ink,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                modifier = Modifier.padding(horizontal = R1.space.xs),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             val canInc = value < max
             Box(
                 modifier = Modifier
@@ -2700,10 +2628,10 @@ private fun LabeledControl(label: String, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
     ) {
         Text(label, style = R1.bodyEmph, color = R1.Ink)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         content()
     }
 }
@@ -2718,7 +2646,8 @@ private fun NavRow(
         modifier = Modifier
             .fillMaxWidth()
             .r1Pressable(onClick)
-            .padding(horizontal = 22.dp, vertical = 14.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Label gets a fixed maxLines = 1 so a long supplementary
@@ -2740,7 +2669,7 @@ private fun NavRow(
             // Value takes the remaining width via weight(1f) and
             // right-aligns with single-line ellipsis. Long values
             // gracefully truncate rather than push the label out.
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = value,
                 style = R1.body,
@@ -2750,7 +2679,7 @@ private fun NavRow(
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 8.dp),
+                    .padding(end = R1.space.s),
             )
         } else {
             Spacer(Modifier.weight(1f))
@@ -2768,11 +2697,12 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
         verticalAlignment = Alignment.Top,
     ) {
         Text(label, style = R1.bodyEmph, color = R1.Ink)
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(R1.space.l))
         Text(
             text = value,
             style = if (mono) R1.body.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
@@ -2789,12 +2719,13 @@ private fun DangerButton(text: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             // Hairline border in StatusRed so the destructive intent reads at a glance — the
             // earlier flat `SurfaceMuted` fill didn't signal "danger" from across the screen.
             .r1Pressable(onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = R1.space.m),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = R1.labelMicro, color = R1.StatusRed.copy(alpha = 0.92f))
@@ -2841,7 +2772,7 @@ private fun <T> Segmented(
                     .weight(1f)
                     .background(if (isSelected) R1.AccentWarm else R1.SurfaceMuted)
                     .r1Pressable(onClick = { onSelect(option) })
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = R1.space.m),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -2934,12 +2865,12 @@ private fun PositionDotLocationPicker(
             }
             @Suppress("UNUSED_EXPRESSION") rowIdx
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(
             text = com.github.itskenny0.r1ha.core.prefs.positionDotLocationLabel(selected),
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(horizontal = 22.dp),
+            modifier = Modifier.padding(horizontal = R1.space.xl),
         )
     }
 }
@@ -3001,12 +2932,12 @@ private fun ValueBarLocationPicker(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(
             text = com.github.itskenny0.r1ha.core.prefs.valueBarLocationLabel(selected),
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(horizontal = 22.dp),
+            modifier = Modifier.padding(horizontal = R1.space.xl),
         )
     }
 }
@@ -3043,7 +2974,7 @@ private fun NightThemePickerDialog(
                                 R1.ShapeS,
                             )
                             .r1Pressable(onClick = { onPick(theme) })
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.m),
                     ) {
                         Text(
                             text = theme.name.replace('_', ' ').lowercase()
@@ -3083,9 +3014,9 @@ private fun NightHoursDialog(
         text = {
             Column {
                 HourStepper(label = "Start hour", value = start, onChange = { start = it })
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 HourStepper(label = "End hour", value = end, onChange = { end = it })
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(R1.space.m))
                 val rangeStr = if (start == end) {
                     "Night theme disabled (start == end)"
                 } else if (start < end) {
@@ -3200,23 +3131,23 @@ private fun SecuritySection() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 4.dp)
+                .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(text = statusText, style = R1.labelMicro, color = statusColor)
         }
 
         // Pin list. Each row: monospace hash + REMOVE.
         if (policy.sha256Pins.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.s))
             policy.sha256Pins.forEachIndexed { idx, pin ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
@@ -3224,11 +3155,11 @@ private fun SecuritySection() {
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(text = "#${idx + 1}", style = R1.labelMicro, color = R1.InkMuted)
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Text(
                         text = pin,
                         style = R1.body.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
@@ -3236,7 +3167,7 @@ private fun SecuritySection() {
                         modifier = Modifier.weight(1f),
                         maxLines = 2,
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Box(
                         modifier = Modifier
                             .clip(R1.ShapeS)
@@ -3245,7 +3176,7 @@ private fun SecuritySection() {
                             .r1Pressable(onClick = {
                                 applyPolicy { it.copy(sha256Pins = it.sha256Pins.toMutableList().also { l -> l.removeAt(idx) }) }
                             })
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                     ) {
                         Text(text = "REMOVE", style = R1.labelMicro, color = R1.StatusAmber)
                     }
@@ -3259,14 +3190,14 @@ private fun SecuritySection() {
         // typical shape of a copy-paste from a `openssl s_client … |
         // openssl dgst -sha256 -binary | openssl enc -base64` pipeline,
         // which is the standard way to derive a pin from the server cert.
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 6.dp),
+                .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         ) {
             Text(text = "ADD PIN", style = R1.labelMicro, color = R1.AccentWarm)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) {
                     R1TextField(
@@ -3279,7 +3210,7 @@ private fun SecuritySection() {
                         monospace = true,
                     )
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Box(
                     modifier = Modifier
                         .clip(R1.ShapeS)
@@ -3298,22 +3229,22 @@ private fun SecuritySection() {
                                 pendingPinError.value = null
                             }
                         })
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
                 ) {
                     Text(text = "ADD", style = R1.labelMicro, color = R1.AccentWarm)
                 }
             }
             pendingPinError.value?.let { err ->
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(text = err, style = R1.labelMicro, color = R1.StatusAmber)
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.s))
             Text(
                 text = "Derive a pin manually: openssl s_client -connect HOST:443 -servername HOST | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | openssl enc -base64",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.s))
             // FETCH-FROM-SERVER chip — runs a one-shot HEAD against the user's
             // server URL (using an unpinned ephemeral client), pulls the leaf
             // cert's SPKI hash, and offers ADD chips per certificate in the
@@ -3362,7 +3293,7 @@ private fun SecuritySection() {
                             fetchInFlight.value = false
                         }
                     })
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
             ) {
                 Text(
                     text = if (fetchInFlight.value) "FETCHING…" else "FETCH PINS FROM SERVER",
@@ -3371,14 +3302,14 @@ private fun SecuritySection() {
                 )
             }
             fetchError.value?.let { err ->
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(text = err, style = R1.labelMicro, color = R1.StatusAmber)
             }
             fetchedPins.value?.let { pins ->
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(R1.space.s))
                 pins.forEach { p ->
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -3392,7 +3323,7 @@ private fun SecuritySection() {
                                 maxLines = 1,
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(R1.space.s))
                         Box(
                             modifier = Modifier
                                 .clip(R1.ShapeS)
@@ -3409,7 +3340,7 @@ private fun SecuritySection() {
                                         }
                                     }
                                 })
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .padding(horizontal = R1.space.m, vertical = R1.space.s),
                         ) {
                             Text(
                                 text = if (p.sha256Base64 in policy.sha256Pins) "ADDED" else "ADD",
@@ -3430,7 +3361,7 @@ private fun SecuritySection() {
         // step-ca / openssl) plus its password. The keystore file is
         // copied to filesDir/mtls/ on import; mTLS is opt-in via the
         // toggle and changes need an app restart to apply.
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         MtlsClientCertEditor(store = store, policy = policy, onUpdated = { policyState.value = store.current() })
     }
 }
@@ -3491,7 +3422,7 @@ private fun MtlsClientCertEditor(
         text = "MTLS CLIENT CERTIFICATE",
         style = R1.labelMicro,
         color = R1.AccentWarm,
-        modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp),
+        modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.s),
     )
     SwitchRow(
         label = "Present client certificate",
@@ -3505,11 +3436,11 @@ private fun MtlsClientCertEditor(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.Surface)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Text(
             text = if (policy.mtlsKeystorePath.isNullOrBlank()) "NO CERTIFICATE IMPORTED"
@@ -3521,8 +3452,8 @@ private fun MtlsClientCertEditor(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Box(
             modifier = Modifier
@@ -3533,7 +3464,7 @@ private fun MtlsClientCertEditor(
                 .r1Pressable(onClick = {
                     importLauncher.launch(arrayOf("application/x-pkcs12", "*/*"))
                 })
-                .padding(vertical = 10.dp),
+                .padding(vertical = R1.space.m),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -3564,7 +3495,7 @@ private fun MtlsClientCertEditor(
                             "Certificate removed (restart to apply).",
                         )
                     })
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.m),
             ) {
                 Text(text = "REMOVE", style = R1.labelMicro, color = R1.StatusAmber)
             }
@@ -3582,7 +3513,7 @@ private fun MtlsClientCertEditor(
                     monospace = true,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
@@ -3595,7 +3526,7 @@ private fun MtlsClientCertEditor(
                             "Password saved (restart to apply).",
                         )
                     })
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
             ) {
                 Text(text = "SAVE", style = R1.labelMicro, color = R1.AccentWarm)
             }
@@ -3629,7 +3560,7 @@ private fun TileOrderEditor(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 22.dp, vertical = 4.dp),
+                    .padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
@@ -3637,11 +3568,11 @@ private fun TileOrderEditor(
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(text = "${idx + 1}", style = R1.labelMicro, color = R1.InkMuted)
                 }
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(R1.space.m))
                 Text(text = label, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f))
                 val canUp = idx > 0
                 val canDown = idx < order.lastIndex
@@ -3656,7 +3587,7 @@ private fun TileOrderEditor(
                 ) {
                     Text(text = "↑", style = R1.body, color = if (canUp) R1.Ink else R1.InkMuted)
                 }
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -3670,15 +3601,15 @@ private fun TileOrderEditor(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         Box(
             modifier = Modifier
-                .padding(horizontal = 22.dp, vertical = 4.dp)
+                .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .r1Pressable(onClick = onReset)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(text = "RESET ORDER", style = R1.labelMicro, color = R1.AccentWarm)
         }
