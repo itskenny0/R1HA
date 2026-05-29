@@ -1,7 +1,6 @@
 package com.github.itskenny0.r1ha.feature.logbook
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
@@ -36,6 +36,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -130,25 +132,16 @@ fun LogbookScreen(
                 // TAIL chip — subscribes to HA's logbook_entry event stream and
                 // prepends events in real-time. The window picker is still
                 // honoured for the initial REST fetch; TAIL just adds the
-                // live additions.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(if (ui.tail) R1.AccentCool.copy(alpha = 0.18f) else R1.SurfaceMuted)
-                        .border(
-                            1.dp,
-                            if (ui.tail) R1.AccentCool.copy(alpha = 0.6f) else R1.Hairline,
-                            R1.ShapeS,
-                        )
-                        .r1Pressable(onClick = { vm.setTail(!ui.tail) })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.tail) "TAIL · ON" else "TAIL",
-                        style = R1.labelMicro,
-                        color = if (ui.tail) R1.AccentCool else R1.InkSoft,
-                    )
-                }
+                // live additions. Action variant with an on-state tone so the
+                // live-tail toggle reads against the other top-bar actions.
+                R1Chip(
+                    text = if (ui.tail) "TAIL · ON" else "TAIL",
+                    variant = R1ChipVariant.Action,
+                    selected = ui.tail,
+                    tone = R1.AccentCool,
+                    onClick = { vm.setTail(!ui.tail) },
+                    contentDescription = "Toggle live tail",
+                )
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -166,13 +159,13 @@ fun LogbookScreen(
                 )
             }
             ui.entries.isEmpty() && ui.error != null -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = ui.error!!, style = R1.body, color = R1.StatusRed)
             }
             ui.entries.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Distinguish a quiet HA install from a filter that hides
@@ -198,9 +191,9 @@ fun LogbookScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(
                         items = ui.entries,
@@ -240,24 +233,16 @@ private fun WindowChips(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         for (w in LogbookViewModel.Window.entries) {
-            val active = w == current
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(w) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = w.label,
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = w.label,
+                variant = R1ChipVariant.Filter,
+                selected = w == current,
+                onClick = { onSelect(w) },
+            )
         }
     }
 }
@@ -281,7 +266,8 @@ private fun LogbookRow(
             // HA's web UI via the system browser, for users who want the full
             // HA-native graph view alongside this app.
             .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Domain accent label — coloured by HA-side domain so a glance
@@ -292,9 +278,9 @@ private fun LogbookRow(
             style = R1.labelMicro,
             color = accentFor(entry.domain),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = entry.name, style = R1.body, color = R1.Ink, maxLines = 2)
+            Text(text = entry.name, style = R1.bodyEmph, color = R1.Ink, maxLines = 2)
             Text(
                 text = entry.message,
                 style = R1.labelMicro,
@@ -302,7 +288,7 @@ private fun LogbookRow(
                 maxLines = 2,
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         // Relative timestamp — "2m", "47s", "1h" — produced by the same
         // ticker as elsewhere in the app so all surfaces tick together.
         RelativeTimeLabel(
@@ -318,14 +304,14 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "FIND",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = R1.space.s),
         )
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
@@ -336,7 +322,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.s))
             // 48 dp tap surface meets Android's interactive-target guidance;
             // the visible ✕ stays glyph-sized via the inner Text.
             Box(
