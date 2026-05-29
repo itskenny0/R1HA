@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -261,7 +262,49 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .background(com.github.itskenny0.r1ha.core.theme.R1.Bg),
                     ) {
-                        com.github.itskenny0.r1ha.ui.layout.ResponsiveColumn {
+                        // Provide the responsive window tier high in the tree so every
+                        // screen below can read LocalWindowTier without re-measuring, and
+                        // wrap the nav graph in the AdaptiveNavShell. On the R1 / compact
+                        // tiers the shell is a pure passthrough (no rail / drawer), so the
+                        // card-stack + wheel experience renders exactly as before; medium
+                        // gets a NavigationRail and expanded / XL a permanent drawer. The
+                        // shell's onNavigate routes through the same NavController with the
+                        // top-level back-stack semantics so tab switches don't pile entries.
+                        com.github.itskenny0.r1ha.ui.components.ProvideWindowTier {
+                            val currentRoute = navController
+                                .currentBackStackEntryAsState().value?.destination?.route
+                            val navDestinations = androidx.compose.runtime.remember {
+                                com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
+                                    homeRoute = Routes.CARD_STACK,
+                                    dashboardRoute = Routes.DASHBOARD,
+                                    searchRoute = Routes.SEARCH,
+                                    assistRoute = Routes.ASSIST,
+                                    settingsRoute = Routes.SETTINGS,
+                                )
+                            }
+                            // Suppress the rail / drawer on full-bleed flows where there's
+                            // no app to navigate yet (onboarding, the long-lived-token
+                            // setup). Everywhere else the shell decides chrome by tier.
+                            val showShellChrome = when (currentRoute) {
+                                Routes.ONBOARDING, Routes.LONG_LIVED_TOKEN -> false
+                                else -> true
+                            }
+                            com.github.itskenny0.r1ha.ui.components.AdaptiveNavShell(
+                                destinations = navDestinations,
+                                currentRoute = currentRoute,
+                                showChrome = showShellChrome,
+                                onNavigate = { route ->
+                                    navController.navigate(route) {
+                                        // Top-level switch semantics: keep a single copy of
+                                        // each tab and restore its state rather than stacking.
+                                        launchSingleTop = true
+                                        restoreState = true
+                                        popUpTo(navController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
+                                    }
+                                },
+                            ) {
                             AppNavGraph(
                                 navController = navController,
                                 startDestination = startDestination,
@@ -271,6 +314,7 @@ class MainActivity : ComponentActivity() {
                                 wheelInput = graph.wheelInput,
                                 overrideStore = graph.lovelaceOverrideStore,
                             )
+                            }
                         }
                         // Route non-wheel key actions (OPEN_SETTINGS, OPEN_ASSIST,
                         // PAGE_LEFT/RIGHT, RECONNECT, REFRESH, ACTIVATE) into nav /
