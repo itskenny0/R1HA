@@ -59,11 +59,20 @@ fun EntityPickerSheet(
     haRepository: HaRepository,
     onPick: (entityId: String) -> Unit,
     onDismiss: () -> Unit,
+    /** Optional domain-prefix allow-list (e.g. `setOf("sensor", "person")`).
+     *  When non-null it replaces the default toggleable [PICKABLE_DOMAINS]
+     *  restriction so callers that want a different scope (the logbook entity
+     *  filter wants read-only / observable domains) can broaden or narrow the
+     *  result set. Null keeps today's "toggleable + action only" behaviour. */
+    domains: Set<String>? = null,
 ) {
     BackHandler(onBack = onDismiss)
-    val entities by produceState<List<EntityState>?>(null) {
+    val entities by produceState<List<EntityState>?>(null, domains) {
         value = haRepository.listAllEntities().getOrNull().orEmpty()
-            .filter { it.id.domain in PICKABLE_DOMAINS }
+            .filter {
+                if (domains != null) it.id.domain.prefix in domains
+                else it.id.domain in PICKABLE_DOMAINS
+            }
             .sortedBy { it.friendlyName.lowercase() }
     }
     var query by remember { mutableStateOf("") }
@@ -103,7 +112,10 @@ fun EntityPickerSheet(
             Text(text = "PICK ENTITY", style = R1.sectionHeader, color = R1.AccentWarm)
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Toggleable + action entities only",
+                // Reflect the active scope: the default toggleable set, or the
+                // caller-supplied domain allow-list when one is provided.
+                text = domains?.let { "Filtered to: " + it.sorted().joinToString(", ") }
+                    ?: "Toggleable + action entities only",
                 style = R1.labelMicro,
                 color = R1.InkSoft,
             )
