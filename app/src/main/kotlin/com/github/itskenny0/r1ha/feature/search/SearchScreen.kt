@@ -31,6 +31,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.Domain
@@ -173,7 +179,12 @@ fun SearchScreen(
                 // visible ✕ stays glyph-sized via the inner Text. Same pattern
                 // applies on every clear-button across the app.
                 Box(
-                    modifier = Modifier.size(48.dp).r1Pressable({ vm.setQuery("") }),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .r1Pressable(
+                            onClick = { vm.setQuery("") },
+                            contentDescription = "Clear search",
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
@@ -182,7 +193,12 @@ fun SearchScreen(
         }
         when {
             ui.loading && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading entities"
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
@@ -198,11 +214,19 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                Column {
+                // Merge the three lines into one polite live-region node so TalkBack
+                // announces the failure (and its recovery hint) as a single utterance
+                // when the error first lands, instead of three separate stops.
+                Column(
+                    modifier = Modifier.semantics(mergeDescendants = true) {
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                ) {
                     Text(
                         text = "Couldn't load entities.",
                         style = R1.body,
                         color = R1.StatusRed,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Spacer(Modifier.size(R1.space.xs))
                     Text(
@@ -212,7 +236,7 @@ fun SearchScreen(
                     )
                     Spacer(Modifier.size(R1.space.s))
                     Text(
-                        text = "Check Settings → Server, or wait for the WS to reconnect.",
+                        text = "Open Settings and check your Server, or wait for the connection to reconnect.",
                         style = R1.labelMicro,
                         color = R1.InkMuted,
                     )
@@ -223,11 +247,14 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                Column {
+                Column(
+                    modifier = Modifier.semantics(mergeDescendants = true) {},
+                ) {
                     Text(
                         text = "${ui.all.size} entities indexed.",
                         style = R1.body,
                         color = R1.InkMuted,
+                        modifier = Modifier.semantics { heading() },
                     )
                     Spacer(Modifier.size(R1.space.s))
                     Text(
@@ -241,12 +268,21 @@ fun SearchScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    // Announce the no-results outcome politely the moment a query
+                    // settles with no match, so TalkBack users aren't left waiting
+                    // on a silent empty list.
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                    },
+                ) {
                     Text(
                         text = if (ui.query.isNotBlank()) "No matches for '${ui.query}'."
-                        else "No ${ui.bucket.name.lowercase()} entities.",
+                        else "No ${ui.bucket.name.lowercase(java.util.Locale.US)} entities.",
                         style = R1.body,
                         color = R1.InkMuted,
+                        modifier = Modifier.semantics { heading() },
                     )
                     if (ui.bucket != SearchViewModel.Bucket.ALL) {
                         Spacer(Modifier.size(R1.space.s))
@@ -268,10 +304,13 @@ fun SearchScreen(
                             modifier = Modifier
                                 .clip(R1.ShapeS)
                                 .background(R1.AccentWarm.copy(alpha = 0.18f))
-                                .r1Pressable(onClick = {
-                                    com.github.itskenny0.r1ha.core.util.AssistDraftBus.push(ui.query)
-                                    onOpenAssist()
-                                })
+                                .r1Pressable(
+                                    onClick = {
+                                        com.github.itskenny0.r1ha.core.util.AssistDraftBus.push(ui.query)
+                                        onOpenAssist()
+                                    },
+                                    contentDescription = "Ask Assist about ${ui.query}",
+                                )
                                 .heightIn(min = R1.MinTarget)
                                 .padding(horizontal = R1.space.l, vertical = R1.space.m),
                             contentAlignment = Alignment.Center,
@@ -299,11 +338,21 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     item("__count_header") {
+                        val countLabel = "${results.size} result${if (results.size == 1) "" else "s"}"
                         Text(
-                            text = "${results.size} result${if (results.size == 1) "" else "s"}",
+                            text = countLabel,
                             style = R1.labelMicro,
                             color = R1.InkMuted,
-                            modifier = Modifier.padding(start = R1.space.xs, bottom = R1.space.xs),
+                            modifier = Modifier
+                                .padding(start = R1.space.xs, bottom = R1.space.xs)
+                                // Announce the live result count as the query narrows,
+                                // and expose it as a heading so TalkBack users can jump
+                                // straight to the start of the results list.
+                                .semantics {
+                                    heading()
+                                    liveRegion = LiveRegionMode.Polite
+                                    contentDescription = countLabel
+                                },
                         )
                     }
                     // contentType keyed on domain lets Compose recycle a row's layout
@@ -453,11 +502,20 @@ private fun BucketChips(
             // first refresh lands.
             val count = if (bucket == SearchViewModel.Bucket.ALL) totalCount else counts[bucket] ?: 0
             val display = if (totalCount == 0) label else "$label  $count"
+            val selected = bucket == current
             R1Chip(
                 text = display,
                 variant = R1ChipVariant.Filter,
-                selected = bucket == current,
+                selected = selected,
                 onClick = { onSelect(bucket) },
+                // Spell the count and selection out so TalkBack reads
+                // "CONTROLS filter, 12 entities, selected" rather than the
+                // packed "CONTROLS  12" glyph string.
+                contentDescription = bucketChipContentDescription(
+                    label = label,
+                    count = if (totalCount == 0) null else count,
+                    selected = selected,
+                ),
             )
         }
     }
@@ -484,6 +542,22 @@ private fun SearchResultRow(
         domain.prefix.uppercase().let { p -> if (p.length <= 10) p else p.take(9) + "…" }
     }
     val domainAccent = remember(domain) { accentFor(domain) }
+    val actionLabel = remember(domain, entity.isOn) { actionLabelFor(domain, entity.isOn) }
+    // Single spoken description for the row's primary tap target. Without it
+    // TalkBack would stitch together the domain tag, name, raw entity_id, state
+    // and the action glyph into a noisy run; this collapses them into one tidy
+    // utterance that leads with the friendly name and ends with what a tap does.
+    val rowDescription = remember(
+        entity.friendlyName, entity.rawState, entity.area, domain, actionLabel,
+    ) {
+        rowContentDescription(
+            friendlyName = entity.friendlyName,
+            domainPrefix = domain.prefix,
+            rawState = entity.rawState,
+            area = entity.area,
+            actionLabel = actionLabel,
+        )
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -491,8 +565,12 @@ private fun SearchResultRow(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             // Tap = the domain-appropriate action (fire/press/toggle/info).
-            // Long-press = open the entity's /history view in HA's web UI.
-            .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
+            // Long-press = open the inline history-peek dialog.
+            .r1RowPressable(
+                onTap = onTap,
+                onLongPress = onLongPress,
+                contentDescription = rowDescription,
+            )
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
@@ -526,7 +604,10 @@ private fun SearchResultRow(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .r1Pressable(onClick = onHistory),
+                .r1Pressable(
+                    onClick = onHistory,
+                    contentDescription = "History for ${entity.friendlyName}",
+                ),
             contentAlignment = Alignment.Center,
         ) {
             com.github.itskenny0.r1ha.ui.components.HistoryChartGlyph(
@@ -542,7 +623,14 @@ private fun SearchResultRow(
         Box(
             modifier = Modifier
                 .size(48.dp)
-                .r1Pressable(onClick = onFavorite),
+                .r1Pressable(
+                    onClick = onFavorite,
+                    contentDescription = if (isFavorite) {
+                        "${entity.friendlyName} is a favourite"
+                    } else {
+                        "Add ${entity.friendlyName} to favourites"
+                    },
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -552,12 +640,66 @@ private fun SearchResultRow(
             )
         }
         Spacer(Modifier.width(R1.space.xs))
-        // Action affordance hint — what tap will do. Pure function of (domain, isOn),
-        // so remember it keyed on those rather than re-evaluating the when on every
-        // recomposition.
-        val actionLabel = remember(domain, entity.isOn) { actionLabelFor(domain, entity.isOn) }
-        Text(text = actionLabel, style = R1.labelMicro, color = R1.AccentWarm)
+        // Action affordance hint, what tap will do. Already folded into the row's
+        // merged contentDescription above, so hide this glyph from TalkBack to
+        // avoid a duplicate "ON" / "FIRE" announcement after the row description.
+        Text(
+            text = actionLabel,
+            style = R1.labelMicro,
+            color = R1.AccentWarm,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
+}
+
+/**
+ * Spoken description for a result row's primary tap target. Leads with the
+ * friendly name (what the user is looking for), then the kind, current state and
+ * area when present, and closes with the action a tap performs. Extracted as a
+ * pure function so the exact wording can be unit-tested without a composable.
+ *
+ * The trailing [actionLabel] is mapped to a spoken verb: the row glyph shows a
+ * terse "ON" / "OFF" / "FIRE" / "PRESS" / "INFO", but TalkBack reads better with
+ * a phrase describing the gesture's effect.
+ */
+internal fun rowContentDescription(
+    friendlyName: String,
+    domainPrefix: String,
+    rawState: String?,
+    area: String?,
+    actionLabel: String,
+): String = buildString {
+    append(friendlyName)
+    append(", ").append(domainPrefix.replace('_', ' '))
+    if (!rawState.isNullOrBlank()) append(", ").append(rawState)
+    if (!area.isNullOrBlank()) append(", ").append(area)
+    append(". ").append(actionVerbFor(actionLabel))
+}
+
+/** Maps a terse on-screen action glyph to a spoken phrase for TalkBack. */
+private fun actionVerbFor(actionLabel: String): String = when (actionLabel) {
+    "ON" -> "Tap to turn on"
+    "OFF" -> "Tap to turn off"
+    "FIRE" -> "Tap to fire"
+    "PRESS" -> "Tap to press"
+    else -> "Tap for details"
+}
+
+/**
+ * Spoken description for a domain-filter chip. Reads the kind, the matching
+ * entity count when known, and whether the chip is the active filter. Pure so
+ * the phrasing is unit-testable.
+ */
+internal fun bucketChipContentDescription(
+    label: String,
+    count: Int?,
+    selected: Boolean,
+): String = buildString {
+    append(label).append(" filter")
+    if (count != null) {
+        append(", ").append(count).append(if (count == 1) " entity" else " entities")
+    }
+    if (selected) append(", selected")
 }
 
 /**
