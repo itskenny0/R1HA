@@ -325,8 +325,47 @@ object LovelaceParser {
                     name = obj["name"]?.asStringOrNull(),
                 )
             }
-            else -> LovelaceCard.Unsupported(raw = obj, type = type)
+            "iframe" -> bestEffortUnsupported(obj, type)
+            else -> bestEffortUnsupported(obj, type)
         }
+    }
+
+    /**
+     * Build an [LovelaceCard.Unsupported] that captures whatever the renderer
+     * can still make use of: entity refs (from `entity` / `entities`) and an
+     * iframe `url`. Covers the long tail of `custom:*` cards so the renderer
+     * can fall back to generic tiles / an embedded frame rather than a bare
+     * placeholder. Cards with neither still resolve to a plain Unsupported and
+     * keep the raw-JSON expander.
+     */
+    private fun bestEffortUnsupported(obj: JsonObject, type: String): LovelaceCard.Unsupported {
+        val refs = LinkedHashSet<String>()
+        obj["entity"]?.asStringOrNull()?.let { if (it.looksLikeEntityId()) refs.add(it) }
+        (obj["entities"] as? JsonArray)?.forEach { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString && item.content.looksLikeEntityId()) refs.add(item.content)
+                is JsonObject -> item["entity"]?.asStringOrNull()?.let { if (it.looksLikeEntityId()) refs.add(it) }
+                else -> Unit
+            }
+        }
+        val url = obj["url"]?.asStringOrNull()?.takeUnless { it.isBlank() }
+        // Strip a leading "custom:" so the caption reads "mushroom-light"
+        // rather than "custom:mushroom-light".
+        val friendly = type.removePrefix("custom:").ifBlank { type }
+        return LovelaceCard.Unsupported(
+            raw = obj,
+            type = type,
+            entityRefs = refs.toList(),
+            url = url,
+            friendlyType = friendly,
+        )
+    }
+
+    /** Loose `domain.object_id` shape check so we don't pull non-entity
+     *  strings (template snippets, css selectors) into the entity refs. */
+    private fun String.looksLikeEntityId(): Boolean {
+        val dot = indexOf('.')
+        return dot > 0 && dot < length - 1 && none { it.isWhitespace() }
     }
 
     private fun parseChildCards(el: JsonElement?): List<LovelaceCard> =

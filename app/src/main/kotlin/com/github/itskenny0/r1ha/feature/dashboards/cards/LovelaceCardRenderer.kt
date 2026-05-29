@@ -88,7 +88,7 @@ fun LovelaceCardRenderer(
                 Spacer(Modifier.height(0.dp))
             }
         }
-        is LovelaceCard.Unsupported -> UnsupportedCard(card, modifier)
+        is LovelaceCard.Unsupported -> UnsupportedCard(card, stateMap, onAction, modifier)
     }
 }
 

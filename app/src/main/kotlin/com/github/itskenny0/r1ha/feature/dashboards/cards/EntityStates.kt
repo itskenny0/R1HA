@@ -110,7 +110,7 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
         is LovelaceCard.Humidifier -> sink.addEntity(card.entityId)
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> Unit
-        is LovelaceCard.Unsupported -> Unit
+        is LovelaceCard.Unsupported -> card.entityRefs.forEach { sink.addEntity(it) }
     }
 }
 

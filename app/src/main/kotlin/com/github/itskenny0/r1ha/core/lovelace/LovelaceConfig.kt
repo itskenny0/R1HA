@@ -417,13 +417,29 @@ sealed class LovelaceCard {
         override val type: String = "humidifier"
     }
 
-    /** Any card type we don't natively render. The renderer surfaces a
-     *  placeholder with the [type] label and a debug-only expander that
-     *  shows the raw JSON. */
+    /** Any card type we don't natively render.
+     *
+     * Best-effort fallback: even for a type we don't model, most cards carry
+     * enough JSON to render *something* more useful than a raw dump. The
+     * parser captures:
+     *  - [entityRefs]: entity ids pulled from an `entity` (string) or
+     *    `entities` (array) key. Covers the bulk of `custom:*` cards
+     *    (mushroom-*, button-card, etc.); the renderer shows a generic tile
+     *    per ref with live state + tap-to-toggle.
+     *  - [url]: the `url` of an `iframe` card, which the renderer embeds in a
+     *    sandboxed WebView.
+     *  - [friendlyType]: a human-readable label for the caption (the raw
+     *    `custom:` prefix stripped), falling back to [type].
+     *
+     * When none of these are present the renderer keeps the original
+     * placeholder + expandable raw-JSON affordance. */
     @Immutable
     data class Unsupported(
         override val raw: JsonObject,
         override val type: String,
+        val entityRefs: List<String> = emptyList(),
+        val url: String? = null,
+        val friendlyType: String = type,
     ) : LovelaceCard()
 }
 

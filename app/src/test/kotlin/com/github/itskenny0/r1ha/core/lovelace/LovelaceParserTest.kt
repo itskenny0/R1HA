@@ -344,6 +344,50 @@ class LovelaceParserTest {
         assertTrue(LovelaceParser.parseCard(obj("""{"type":"humidifier"}""")) is LovelaceCard.Unsupported)
     }
 
+    @Test fun `custom card with single entity captures entity ref`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"custom:mushroom-light-card","entity":"light.kitchen"}"""),
+        ) as LovelaceCard.Unsupported
+        assertEquals("custom:mushroom-light-card", card.type)
+        assertEquals(listOf("light.kitchen"), card.entityRefs)
+        assertEquals("mushroom-light-card", card.friendlyType)
+        assertEquals(null, card.url)
+    }
+
+    @Test fun `custom card with entities array captures all entity refs`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """{"type":"custom:auto-entities",
+                    "entities":["light.a", {"entity":"switch.b"}, "sensor.c"]}""",
+            ),
+        ) as LovelaceCard.Unsupported
+        assertEquals(listOf("light.a", "switch.b", "sensor.c"), card.entityRefs)
+    }
+
+    @Test fun `iframe card captures url`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"iframe","url":"https://example.com/panel","aspect_ratio":"50%"}"""),
+        ) as LovelaceCard.Unsupported
+        assertEquals("https://example.com/panel", card.url)
+        assertTrue(card.entityRefs.isEmpty())
+    }
+
+    @Test fun `unknown card with neither entity nor url stays plain Unsupported`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"custom:weird-thing","foo":"bar"}"""),
+        ) as LovelaceCard.Unsupported
+        assertTrue(card.entityRefs.isEmpty())
+        assertEquals(null, card.url)
+        assertEquals("bar", (card.raw["foo"] as kotlinx.serialization.json.JsonPrimitive).content)
+    }
+
+    @Test fun `custom card skips non-entity-shaped strings in entities`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"custom:thing","entity":"not an entity","entities":["light.ok","template stuff"]}"""),
+        ) as LovelaceCard.Unsupported
+        assertEquals(listOf("light.ok"), card.entityRefs)
+    }
+
     @Test fun `dashboard list parses entries and skips malformed rows`() {
         val arr = (Json.parseToJsonElement(
             """[{"id":"a","url_path":"lights","title":"Lights","mode":"storage"},

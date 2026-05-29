@@ -409,7 +409,8 @@ class DashboardsViewModel(
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Humidifier -> sink.addOptional(card.entityId)
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Markdown -> Unit
             is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Heading -> Unit
-            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Unsupported -> Unit
+            is com.github.itskenny0.r1ha.core.lovelace.LovelaceCard.Unsupported ->
+                card.entityRefs.forEach { sink.addOptional(it) }
         }
     }
 
