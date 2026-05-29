@@ -89,7 +89,13 @@ class BackgroundRefreshJob : JobService() {
             )
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
                 .setPeriodic(PERIOD_MS)
-                .setPersisted(true)
+                // Not persisted across reboot: setPersisted(true) requires the
+                // RECEIVE_BOOT_COMPLETED permission, and building the JobInfo
+                // without it throws, crashing the caller the moment background
+                // refresh is enabled. The app re-schedules this job on every
+                // launch, so the only cost of dropping reboot-persistence is no
+                // background warming between a reboot and the next app open.
+                .setPersisted(false)
                 .build()
             val result = scheduler.schedule(info)
             R1Log.i(

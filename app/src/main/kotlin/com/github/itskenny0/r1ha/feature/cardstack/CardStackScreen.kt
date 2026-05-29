@@ -1150,7 +1150,11 @@ fun CardStackScreen(
             if (entity != null) {
                 val initialOverride = appSettings.entityOverrides[editingId]
                     ?: com.github.itskenny0.r1ha.core.prefs.EntityOverride.NONE
-                val initialName = appSettings.nameOverrides[editingId] ?: entity.friendlyName
+                // Seed from the raw override only (empty when none is set) so a
+                // SAVE without editing doesn't persist friendly_name as a no-op
+                // override. The dialog shows friendly_name as the placeholder and
+                // treats blank as "no override". Mirrors FavoritesPickerScreen.
+                val initialName = appSettings.nameOverrides[editingId].orEmpty()
                 com.github.itskenny0.r1ha.feature.favoritespicker.RenameDialog(
                     entity = entity,
                     initialName = initialName,
