@@ -185,10 +185,12 @@ class HaSettingsSync(
         // but short enough that a misconfigured server surfaces as a toast
         // rather than spinning forever.
         kotlinx.coroutines.withTimeoutOrNull(30_000L) {
-            haRepository.connection
-                .map { it is ConnectionState.Connected }
-                .distinctUntilChanged()
-                .collect { connected -> if (connected) return@collect }
+            // first { } suspends until the predicate matches and then RETURNS,
+            // terminating collection. The previous `collect { if (connected)
+            // return@collect }` only returned from the lambda — the StateFlow
+            // never completes, so collection ran for the full 30 s timeout even
+            // after the WS connected, delaying every enable-time pull/push by 30 s.
+            haRepository.connection.first { it is ConnectionState.Connected }
         }
     }
 
