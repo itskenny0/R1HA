@@ -25,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,11 +37,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
-import com.github.itskenny0.r1ha.core.ha.ToDoItem
 import com.github.itskenny0.r1ha.core.ha.ToDoList
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -48,9 +52,10 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * Drives every `todo.*` integration HA exposes: shopping list, Local
  * To-do, Google Tasks, CalDAV, etc. List picker chips at the top switch
  * between todo entities; the body shows the items in the active list
- * with a checkbox toggle, a remove (X) button per row, and an input
- * field at the bottom for adding new items. Wheel input scrolls the
- * item list.
+ * with a checkbox toggle, an edit (rename) and a remove (X) button per
+ * row, due date / description shown when the provider supplies them, and
+ * an input field at the bottom for adding new items. Wheel input scrolls
+ * the item list.
  *
  * REST-backed: items come from `todo.get_items?return_response=true`
  * which HA gained in 2024.1. Older HA servers will see an empty list
@@ -69,6 +74,8 @@ fun ToDoScreen(
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
 
+    var editing by remember { mutableStateOf<ToDoViewModel.Item?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -83,35 +90,18 @@ fun ToDoScreen(
                 val hasCompleted = ui.items.any { it.completed }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (hasCompleted) {
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeS)
-                                .r1Pressable(onClick = { vm.clearCompleted() })
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        ) {
-                            Text(
-                                text = "CLEAR DONE",
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                            )
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = { vm.refresh() })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = if (ui.loadingItems || ui.loadingLists) "…" else "REFRESH",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
+                        R1Chip(
+                            text = "CLEAR DONE",
+                            tone = R1.AccentWarm,
+                            onClick = { vm.clearCompleted() },
+                            contentDescription = "Clear completed items",
                         )
                     }
+                    R1Chip(
+                        text = if (ui.loadingItems || ui.loadingLists) "…" else "REFRESH",
+                        onClick = { vm.refresh() },
+                        contentDescription = "Refresh",
+                    )
                 }
             },
         )
@@ -127,11 +117,13 @@ fun ToDoScreen(
                     when {
                         ui.loadingLists && ui.lists.isEmpty() ->
                             CenteredSpinner()
+                        ui.error != null && ui.lists.isEmpty() ->
+                            EmptyText("Could not load to-do lists.\n\n${ui.error}")
                         ui.lists.isEmpty() ->
                             EmptyText(
                                 "No to-do lists found.\n\n" +
-                                "Add one in Home Assistant: Settings → Devices & services " +
-                                "→ Add integration → Local To-do. Or install one of the " +
+                                "Add one in Home Assistant: Settings, Devices & services, " +
+                                "Add integration, Local To-do. Or install one of the " +
                                 "Google Tasks / CalDAV / Shopping List integrations.",
                             )
                         ui.activeEntityId == null ->
@@ -151,12 +143,13 @@ fun ToDoScreen(
                                     pendingItems = ui.pendingItems,
                                     listState = listState,
                                     onToggle = vm::toggleCompleted,
+                                    onEdit = { editing = it },
                                     onRemove = vm::remove,
                                 )
                             }
                     }
                 }
-                if (ui.error != null && ui.items.isEmpty()) {
+                if (ui.error != null && ui.items.isEmpty() && ui.lists.isNotEmpty()) {
                     Text(
                         text = "Error: ${ui.error}",
                         style = R1.body,
@@ -172,6 +165,17 @@ fun ToDoScreen(
                 )
             }
         }
+    }
+
+    editing?.let { item ->
+        EditItemDialog(
+            item = item,
+            onConfirm = { newSummary ->
+                vm.rename(item, newSummary)
+                editing = null
+            },
+            onDismiss = { editing = null },
+        )
     }
 }
 
@@ -190,39 +194,32 @@ private fun ListPickerChips(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         lists.forEach { l ->
-            val selected = l.entityId == activeEntityId
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (selected) R1.AccentWarm else R1.SurfaceMuted)
-                    .border(1.dp, if (selected) R1.AccentWarm else R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { onPick(l.entityId) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = l.friendlyName.uppercase(),
-                    style = R1.labelMicro,
-                    color = if (selected) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = l.friendlyName.uppercase(),
+                variant = R1ChipVariant.Filter,
+                selected = l.entityId == activeEntityId,
+                onClick = { onPick(l.entityId) },
+                contentDescription = l.friendlyName,
+            )
         }
     }
 }
 
 @Composable
 private fun ItemList(
-    items: List<ToDoItem>,
+    items: List<ToDoViewModel.Item>,
     pendingItems: Set<String>,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    onToggle: (ToDoItem) -> Unit,
-    onRemove: (ToDoItem) -> Unit,
+    onToggle: (ToDoViewModel.Item) -> Unit,
+    onEdit: (ToDoViewModel.Item) -> Unit,
+    onRemove: (ToDoViewModel.Item) -> Unit,
 ) {
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(items, key = { it.uid }) { item ->
-            val pending = item.uid in pendingItems
+        items(items, key = { it.key }) { item ->
+            val pending = item.key in pendingItems
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -237,7 +234,7 @@ private fun ItemList(
                         .clip(R1.ShapeS)
                         .background(if (item.completed) R1.AccentGreen else R1.SurfaceMuted)
                         .border(1.dp, if (item.completed) R1.AccentGreen else R1.InkMuted, R1.ShapeS)
-                        .r1Pressable(onClick = { onToggle(item) }),
+                        .r1Pressable(onClick = { onToggle(item) }, contentDescription = "Toggle ${item.summary}"),
                     contentAlignment = Alignment.Center,
                 ) {
                     if (item.completed) {
@@ -245,20 +242,47 @@ private fun ItemList(
                     }
                 }
                 Spacer(Modifier.width(12.dp))
-                Text(
-                    text = item.summary,
-                    style = R1.body,
-                    color = if (item.completed) R1.InkMuted else R1.Ink,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.summary,
+                        style = R1.body,
+                        color = if (item.completed) R1.InkMuted else R1.Ink,
+                    )
+                    val due = item.due
+                    if (!due.isNullOrBlank()) {
+                        Text(
+                            text = "DUE ${due.uppercase()}",
+                            style = R1.labelMicro,
+                            color = R1.AccentWarm,
+                        )
+                    }
+                    val description = item.description
+                    if (!description.isNullOrBlank()) {
+                        Text(
+                            text = description,
+                            style = R1.body,
+                            color = R1.InkMuted,
+                        )
+                    }
+                }
                 Spacer(Modifier.width(8.dp))
+                // Edit (rename) — 32-by-32 hit area, accessibility-expanded by r1Pressable.
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(R1.ShapeS)
+                        .r1Pressable(onClick = { onEdit(item) }, contentDescription = "Edit ${item.summary}"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "✎", style = R1.labelMicro, color = R1.InkMuted)
+                }
                 // Remove "✕" — 32-by-32 hit area with R1's standard
                 // accessibility expansion via r1Pressable.
                 Box(
                     modifier = Modifier
                         .size(32.dp)
                         .clip(R1.ShapeS)
-                        .r1Pressable(onClick = { onRemove(item) }),
+                        .r1Pressable(onClick = { onRemove(item) }, contentDescription = "Remove ${item.summary}"),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -300,7 +324,7 @@ private fun AddItemRow(
             modifier = Modifier
                 .clip(R1.ShapeS)
                 .background(if (canSubmit) R1.AccentWarm else R1.SurfaceMuted)
-                .let { if (canSubmit) it.r1Pressable(onClick = onSubmit) else it }
+                .let { if (canSubmit) it.r1Pressable(onClick = onSubmit, contentDescription = "Add item") else it }
                 .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             Text(
@@ -308,6 +332,68 @@ private fun AddItemRow(
                 style = R1.labelMicro,
                 color = if (canSubmit) R1.Bg else R1.InkMuted,
             )
+        }
+    }
+}
+
+/**
+ * Modal rename sheet. A single text field seeded with the current summary,
+ * a CANCEL and a SAVE affordance. SAVE is disabled while the field is blank
+ * or unchanged so we never fire a no-op `update_item`.
+ */
+@Composable
+private fun EditItemDialog(
+    item: ToDoViewModel.Item,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        var text by remember { mutableStateOf(item.summary) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(text = "EDIT ITEM", style = R1.sectionHeader, color = R1.InkSoft)
+            R1TextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = "ITEM NAME",
+                monospace = false,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    if (text.isNotBlank() && text.trim() != item.summary) onConfirm(text)
+                }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                R1Chip(
+                    text = "CANCEL",
+                    onClick = onDismiss,
+                    contentDescription = "Cancel edit",
+                )
+                val canSave = text.isNotBlank() && text.trim() != item.summary
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(if (canSave) R1.AccentWarm else R1.SurfaceMuted)
+                        .let { if (canSave) it.r1Pressable(onClick = { onConfirm(text) }, contentDescription = "Save edit") else it }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = "SAVE",
+                        style = R1.labelMicro,
+                        color = if (canSave) R1.Bg else R1.InkMuted,
+                    )
+                }
+            }
         }
     }
 }
