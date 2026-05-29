@@ -9,8 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -21,7 +21,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -32,13 +31,16 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
+import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
- * Energy summary surface — a four-tile readout of the most useful
+ * Energy summary surface, a four-tile readout of the most useful
  * Energy-panel numbers, sized down to fit the R1's portrait display:
  *  - DRAW (current W) + PRODUCTION (W) side-by-side at the top
  *  - TODAY (kWh since midnight) as its own line below
@@ -54,7 +56,7 @@ fun EnergyScreen(
     settings: SettingsRepository,
     wheelInput: WheelInput,
     onBack: () -> Unit,
-    /** Tap a TOP CONSUMERS row → open the full-screen History view for
+    /** Tap a TOP CONSUMERS row to open the full-screen History view for
      *  that sensor's entity_id. Default no-op so previews / tests don't
      *  need to thread it through. */
     onOpenHistory: (entityId: String) -> Unit = {},
@@ -63,7 +65,7 @@ fun EnergyScreen(
     val ui by vm.ui.collectAsState()
     val scrollState = rememberScrollState()
     WheelScrollForScrollState(wheelInput = wheelInput, scrollState = scrollState, settings = settings)
-    // 30 s auto-refresh — energy figures change slowly relative to
+    // 30 s auto-refresh, energy figures change slowly relative to
     // wall-clock so any tighter would be wasted server work.
     AutoRefresh(everyMillis = 30_000L) { vm.refresh() }
     Column(
@@ -77,46 +79,38 @@ fun EnergyScreen(
             title = "ENERGY",
             onBack = onBack,
             action = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                // Snapshot the current UI state into a square PNG and fire the
-                                // share-intent. Done on the UI thread because Canvas-backed
-                                // rendering takes ~30 ms on the R1 and the file write is
-                                // bounded by cache size; no need for a coroutine.
-                                runCatching {
-                                    val bmp = EnergyShareSnapshot.render(ui)
-                                    EnergyShareSnapshot.shareAsPng(context, bmp)
-                                    bmp.recycle()
-                                }.onFailure { t ->
-                                    com.github.itskenny0.r1ha.core.util.Toaster.error(
-                                        "Share failed: ${t.message ?: "unknown"}",
-                                    )
-                                }
-                            })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(text = "SHARE", style = R1.labelMicro, color = R1.AccentWarm)
-                    }
-                    Spacer(Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = { vm.refresh() })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            text = if (ui.loading) "…" else "REFRESH",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                        )
-                    }
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                ) {
+                    R1Chip(
+                        text = "SHARE",
+                        variant = R1ChipVariant.Action,
+                        selected = true,
+                        tone = R1.AccentWarm,
+                        contentDescription = "Share energy snapshot",
+                        onClick = {
+                            // Snapshot the current UI state into a square PNG and fire the
+                            // share-intent. Done on the UI thread because Canvas-backed
+                            // rendering takes ~30 ms on the R1 and the file write is
+                            // bounded by cache size; no need for a coroutine.
+                            runCatching {
+                                val bmp = EnergyShareSnapshot.render(ui)
+                                EnergyShareSnapshot.shareAsPng(context, bmp)
+                                bmp.recycle()
+                            }.onFailure { t ->
+                                com.github.itskenny0.r1ha.core.util.Toaster.error(
+                                    "Share failed: ${t.message ?: "unknown"}",
+                                )
+                            }
+                        },
+                    )
+                    R1Chip(
+                        text = if (ui.loading) "…" else "REFRESH",
+                        variant = R1ChipVariant.Action,
+                        onClick = { vm.refresh() },
+                        contentDescription = "Refresh energy",
+                    )
                 }
             },
         )
@@ -124,14 +118,14 @@ fun EnergyScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
                 // ── DRAW + PRODUCTION row ──────────────────────────────
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     BigStatTile(
                         modifier = Modifier.weight(1f),
@@ -155,41 +149,38 @@ fun EnergyScreen(
                 )
                 // ── TOP CONSUMERS ──────────────────────────────────────
                 if (ui.topConsumers.isNotEmpty()) {
-                    Spacer(Modifier.size(4.dp))
                     var consumersExpanded by androidx.compose.runtime.remember {
                         androidx.compose.runtime.mutableStateOf(false)
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "TOP CONSUMERS",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (ui.topConsumers.size > 5) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable(onClick = { consumersExpanded = !consumersExpanded })
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            ) {
-                                Text(
+                    R1Section(
+                        title = "TOP CONSUMERS",
+                        count = ui.topConsumers.size,
+                        topSpace = R1.space.s,
+                        trailing = if (ui.topConsumers.size > 5) {
+                            {
+                                R1Chip(
                                     text = if (consumersExpanded) {
                                         "COLLAPSE"
                                     } else {
-                                        "SHOW ALL (${ui.topConsumers.size})"
+                                        "SHOW ALL"
                                     },
-                                    style = R1.labelMicro,
-                                    color = R1.InkSoft,
+                                    variant = R1ChipVariant.Action,
+                                    onClick = { consumersExpanded = !consumersExpanded },
+                                    contentDescription = if (consumersExpanded) {
+                                        "Collapse consumers"
+                                    } else {
+                                        "Show all consumers"
+                                    },
                                 )
                             }
+                        } else {
+                            null
+                        },
+                    ) {
+                        val visible = if (consumersExpanded) ui.topConsumers else ui.topConsumers.take(5)
+                        for (c in visible) {
+                            ConsumerRow(c, onClick = { onOpenHistory(c.entityId) })
                         }
-                    }
-                    val visible = if (consumersExpanded) ui.topConsumers else ui.topConsumers.take(5)
-                    for (c in visible) {
-                        ConsumerRow(c, onClick = { onOpenHistory(c.entityId) })
                     }
                 } else if (!ui.loading && ui.error == null && ui.currentDrawW == null) {
                     // Empty state when no device_class=power sensors are
@@ -201,7 +192,7 @@ fun EnergyScreen(
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .padding(R1.space.m),
                     ) {
                         Text(
                             text = "No `device_class=power` sensors found. Add a power " +
@@ -219,7 +210,7 @@ fun EnergyScreen(
                             .clip(R1.ShapeS)
                             .background(R1.StatusRed.copy(alpha = 0.12f))
                             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                     ) {
                         Text(
                             text = ui.error ?: "",
@@ -228,13 +219,13 @@ fun EnergyScreen(
                         )
                     }
                 }
-                Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.height(R1.space.xl))
             }
         } // AdaptiveContent
     }
 }
 
-/** Wide stat tile — bold value, small label above. Same shape as the
+/** Wide stat tile, bold value with a small label above. Same shape as the
  *  metric tiles on the TODAY dashboard so the visual language is
  *  consistent. */
 @Composable
@@ -249,8 +240,8 @@ private fun BigStatTile(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
         Text(
@@ -264,45 +255,34 @@ private fun BigStatTile(
 
 @Composable
 private fun ConsumerRow(c: EnergyViewModel.Consumer, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(R1.ShapeS)
-            .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            // Tap a consumer → open its history. Lets the user investigate
-            // 'what's drawing 1.2 kW right now?' without leaving the app
-            // to dig through HA's web UI.
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = c.name, style = R1.body, color = R1.Ink, maxLines = 1)
+    // Canonical boxed row: friendly name primary, entity_id secondary, current
+    // draw as the trailing accent value. Tap opens its history so the user can
+    // investigate 'what's drawing 1.2 kW right now?' without leaving the app.
+    R1Row(
+        label = c.name,
+        description = c.entityId,
+        boxed = true,
+        onClick = onClick,
+        contentDescription = "Open history for ${c.name}",
+        trailing = {
             Text(
-                text = c.entityId,
-                style = R1.labelMicro,
-                color = R1.InkSoft,
+                text = formatWatts(c.watts),
+                style = R1.bodyEmph,
+                color = drawAccent(c.watts),
                 maxLines = 1,
             )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = formatWatts(c.watts),
-            style = R1.body.copy(fontWeight = FontWeight.SemiBold),
-            color = drawAccent(c.watts),
-        )
-    }
+        },
+    )
 }
 
-/** Format watts as "Nw" up to ~999 W, switching to kW above. The
+/** Format watts as "N W" up to ~999 W, switching to kW above. The
  *  unit suffix is uppercase to match the rest of the app's all-caps
  *  metric language. */
 private fun formatWatts(w: Double): String =
     if (kotlin.math.abs(w) >= 1000) "${"%.1f".format(w / 1000.0)} kW"
     else "${w.toInt()} W"
 
-/** Three-band accent for draw values — green under 200 W (idle
+/** Three-band accent for draw values: green under 200 W (idle
  *  household), amber up to 1500 W (typical mid-load), red beyond
  *  (heavy load like an electric kettle or EV charging). The
  *  thresholds are deliberate guesses and could become settings. */
