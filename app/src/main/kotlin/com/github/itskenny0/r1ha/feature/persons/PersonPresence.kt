@@ -70,3 +70,48 @@ fun initialsFor(name: String): String {
     val cleaned = letters.uppercase(Locale.US)
     return cleaned.ifBlank { "?" }
 }
+
+/**
+ * Spoken presence phrase for a person/device row, conveyed entirely by words
+ * so a screen-reader user gets the same information a sighted user reads from
+ * the coloured presence chip (presence must never be colour-only).
+ *
+ * "Home", "Away", "Location unknown", or "In <zone>" for a named HA zone. The
+ * zone name keeps its original casing here (unlike the upper-cased visible
+ * chip) so it reads naturally aloud.
+ */
+fun presenceSpoken(state: String): String {
+    val trimmed = state.trim()
+    return when (presenceLabel(state).kind) {
+        PresenceKind.HOME -> "Home"
+        PresenceKind.AWAY -> "Away"
+        PresenceKind.UNKNOWN -> "Location unknown"
+        PresenceKind.ZONE -> "In $trimmed"
+    }
+}
+
+/**
+ * One merged accessibility description for a person/device row so a screen
+ * reader announces it as a single phrase ("Jane Doe, Home, phone 82 percent")
+ * instead of reading the avatar, presence chip, name, entity id, and each
+ * metadata chip as disconnected fragments.
+ *
+ * [name] display name, [state] raw HA state, then the optional metadata that
+ * the row renders as chips. [relativeTime] is the already-formatted freshness
+ * string (e.g. "5m ago") or null/blank when the row shows none.
+ */
+fun rowContentDescription(
+    name: String,
+    state: String,
+    relativeTime: String? = null,
+    source: String? = null,
+    batteryLevel: Int? = null,
+    gpsAccuracy: Int? = null,
+): String {
+    val parts = mutableListOf(name, presenceSpoken(state))
+    relativeTime?.takeIf { it.isNotBlank() }?.let { parts += it }
+    source?.takeIf { it.isNotBlank() }?.let { parts += it }
+    batteryLevel?.let { parts += "battery $it percent" }
+    gpsAccuracy?.let { parts += "accuracy $it meters" }
+    return parts.joinToString(", ")
+}

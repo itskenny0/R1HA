@@ -63,4 +63,46 @@ class PersonPresenceTest {
         assertThat(initialsFor("")).isEqualTo("?")
         assertThat(initialsFor("   ")).isEqualTo("?")
     }
+
+    @Test fun `presenceSpoken describes each bucket in words`() {
+        assertThat(presenceSpoken("home")).isEqualTo("Home")
+        assertThat(presenceSpoken("not_home")).isEqualTo("Away")
+        assertThat(presenceSpoken("away")).isEqualTo("Away")
+        assertThat(presenceSpoken("unknown")).isEqualTo("Location unknown")
+        assertThat(presenceSpoken("")).isEqualTo("Location unknown")
+    }
+
+    @Test fun `presenceSpoken names the zone with natural casing`() {
+        assertThat(presenceSpoken("Work")).isEqualTo("In Work")
+        assertThat(presenceSpoken("  Grandma's House  ")).isEqualTo("In Grandma's House")
+    }
+
+    @Test fun `rowContentDescription merges name and presence only`() {
+        assertThat(rowContentDescription(name = "Jane Doe", state = "home"))
+            .isEqualTo("Jane Doe, Home")
+    }
+
+    @Test fun `rowContentDescription appends metadata in order`() {
+        val desc = rowContentDescription(
+            name = "Jane Doe",
+            state = "not_home",
+            relativeTime = "5m ago",
+            source = "gps",
+            batteryLevel = 82,
+            gpsAccuracy = 12,
+        )
+        assertThat(desc).isEqualTo("Jane Doe, Away, 5m ago, gps, battery 82 percent, accuracy 12 meters")
+    }
+
+    @Test fun `rowContentDescription omits blank or null metadata`() {
+        val desc = rowContentDescription(
+            name = "Phone",
+            state = "home",
+            relativeTime = "",
+            source = null,
+            batteryLevel = null,
+            gpsAccuracy = null,
+        )
+        assertThat(desc).isEqualTo("Phone, Home")
+    }
 }

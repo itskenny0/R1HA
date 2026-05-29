@@ -25,6 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -83,7 +88,9 @@ fun PersonsScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .semantics { contentDescription = "Loading who's home" },
                     strokeWidth = 2.dp,
                     color = R1.AccentWarm,
                 )
@@ -130,12 +137,17 @@ fun PersonsScreen(
                     // its rows; ordering and visible content are unchanged.
                     if (ui.people.isNotEmpty()) {
                         item(key = "__sec_people", contentType = "header") {
-                            R1Section(
-                                title = "People",
-                                count = ui.people.size,
-                                topSpace = R1.space.s,
-                                content = {},
-                            )
+                            // heading() promotes the section title to a TalkBack
+                            // navigation landmark so users can jump between the
+                            // People and Device trackers groups.
+                            Box(modifier = Modifier.semantics { heading() }) {
+                                R1Section(
+                                    title = "People",
+                                    count = ui.people.size,
+                                    topSpace = R1.space.s,
+                                    content = {},
+                                )
+                            }
                         }
                         items(
                             items = ui.people,
@@ -147,11 +159,13 @@ fun PersonsScreen(
                     }
                     if (ui.devices.isNotEmpty()) {
                         item(key = "__sec_devices", contentType = "header") {
-                            R1Section(
-                                title = "Device trackers",
-                                count = ui.devices.size,
-                                content = {},
-                            )
+                            Box(modifier = Modifier.semantics { heading() }) {
+                                R1Section(
+                                    title = "Device trackers",
+                                    count = ui.devices.size,
+                                    content = {},
+                                )
+                            }
                         }
                         items(
                             items = ui.devices,
@@ -201,7 +215,10 @@ private fun PersonAvatar(
                 modifier = Modifier
                     .size(size)
                     .clip(androidx.compose.foundation.shape.CircleShape),
-                contentDescription = "${entry.name} picture",
+                // The parent row merges name + presence into a single spoken
+                // label via clearAndSetSemantics, so this per-image description
+                // is cleared and never announced on its own.
+                contentDescription = "${entry.name} avatar",
             )
         }
     }
@@ -229,6 +246,20 @@ private fun rowPresence(state: String): RowPresence {
 @Composable
 private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
     val presence = rowPresence(entry.state)
+    // Merge the avatar, presence chip, name, entity id, and metadata chips into
+    // one spoken phrase so TalkBack announces the row as a unit ("Jane Doe,
+    // Home, 5m ago, battery 82 percent") instead of reading each fragment
+    // separately. mergeDescendants keeps the row's tap action while the
+    // explicit contentDescription replaces the child text for announcement.
+    val rel = com.github.itskenny0.r1ha.ui.components.rememberRelativeTime(entry.since)
+    val rowDescription = rowContentDescription(
+        name = entry.name,
+        state = entry.state,
+        relativeTime = rel,
+        source = entry.source,
+        batteryLevel = entry.batteryLevel,
+        gpsAccuracy = entry.gpsAccuracy,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -237,6 +268,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
             .heightIn(min = R1.MinTarget)
+            .semantics(mergeDescendants = true) { contentDescription = rowDescription }
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -258,6 +290,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 // Relative timestamp on the right of the name — 'since
@@ -277,6 +310,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 if (entry.source != null) {
