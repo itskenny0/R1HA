@@ -39,10 +39,11 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -89,43 +90,48 @@ fun LogsScreen(
             title = "LOGS",
             onBack = onBack,
             action = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+                ) {
                     // COPY chip — hand the currently-filtered text to the
                     // clipboard. Filter-aware so a "copy only the errors"
                     // workflow is one tap rather than a manual selection.
                     if (ui.lines.isNotEmpty()) {
-                        Chip(
-                            label = "COPY",
-                            active = false,
+                        R1Chip(
+                            text = "COPY",
+                            variant = R1ChipVariant.Action,
                             onClick = {
                                 clipboard.setText(AnnotatedString(vm.copyableText()))
                                 Toaster.show("Copied")
                             },
+                            contentDescription = "Copy log to clipboard",
                         )
-                        Spacer(Modifier.width(4.dp))
                     }
-                    Chip(
-                        label = if (ui.autoRefresh) "AUTO·ON" else "AUTO",
-                        active = ui.autoRefresh,
+                    R1Chip(
+                        text = if (ui.autoRefresh) "AUTO·ON" else "AUTO",
+                        variant = R1ChipVariant.Action,
+                        selected = ui.autoRefresh,
                         onClick = { vm.toggleAutoRefresh() },
+                        contentDescription = "Toggle auto refresh",
                     )
-                    Spacer(Modifier.width(4.dp))
-                    Chip(
-                        label = if (ui.loading) "…" else "REFRESH",
-                        active = false,
+                    R1Chip(
+                        text = if (ui.loading) "…" else "REFRESH",
+                        variant = R1ChipVariant.Action,
                         onClick = { vm.refresh() },
+                        contentDescription = "Refresh log",
                     )
                 }
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
-            Column(modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(horizontal = R1.space.m, vertical = R1.space.s)) {
                 SizeHint(ui)
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.s))
                 LevelChips(current = ui.level, onSelect = { vm.setLevel(it) })
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.s))
                 SearchField(query = ui.query, onChange = { vm.setQuery(it) })
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.s))
                 LogBody(vm = vm, ui = ui, listState = listState)
             }
         }
@@ -159,14 +165,14 @@ private fun SizeHint(ui: LogsViewModel.UiState) {
         }
     }
     if (ui.error != null) {
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(R1.ShapeS)
                 .background(R1.StatusRed.copy(alpha = 0.12f))
                 .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(text = ui.error ?: "", style = R1.labelMicro, color = R1.StatusRed)
         }
@@ -180,26 +186,16 @@ private fun LevelChips(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         LogsViewModel.Level.entries.forEach { lvl ->
-            val active = lvl == current
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { onSelect(lvl) })
-                    .padding(vertical = 6.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = lvl.label,
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = lvl.label,
+                variant = R1ChipVariant.Filter,
+                selected = lvl == current,
+                onClick = { onSelect(lvl) },
+                contentDescription = "Filter to ${lvl.label}",
+            )
         }
     }
 }
@@ -216,8 +212,13 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
-            Chip(label = "CLEAR", active = false, onClick = { onChange("") })
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = "CLEAR",
+                variant = R1ChipVariant.Action,
+                onClick = { onChange("") },
+                contentDescription = "Clear filter",
+            )
         }
     }
 }
@@ -274,8 +275,8 @@ private fun LogBody(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 8.dp,
-                            vertical = 6.dp,
+                            horizontal = R1.space.s,
+                            vertical = R1.space.s,
                         ),
                     ) {
                         items(items = visible, key = { it.index }) { line ->
@@ -306,24 +307,6 @@ private fun LogLineRow(line: LogsViewModel.Line) {
         color = accent,
         modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
     )
-}
-
-@Composable
-private fun Chip(label: String, active: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(
-            text = label,
-            style = R1.labelMicro,
-            color = if (active) R1.Bg else R1.InkSoft,
-        )
-    }
 }
 
 /** Compact byte-count formatter — "5.3 KB", "412 KB", "1.1 MB". */
