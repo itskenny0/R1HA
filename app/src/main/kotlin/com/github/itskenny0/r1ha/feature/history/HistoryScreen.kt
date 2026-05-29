@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -43,6 +44,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -102,6 +106,7 @@ fun HistoryScreen(
                     text = "Invalid entity_id: $entityId",
                     style = R1.body,
                     color = R1.StatusRed,
+                    modifier = Modifier.semantics { heading() },
                 )
             }
         }
@@ -132,14 +137,16 @@ fun HistoryScreen(
             action = {
                 Box(
                     modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .r1Pressable(onClick = { vm.refresh() }, onClickLabel = "Refresh history")
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (ui.loading) "…" else "REFRESH",
+                        text = if (ui.loading) "LOADING" else "REFRESH",
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                     )
@@ -231,9 +238,13 @@ private fun WindowChips(
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .sizeIn(minHeight = 48.dp)
                     .clip(R1.ShapeS)
                     .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(w) })
+                    .r1Pressable(
+                        onClick = { onSelect(w) },
+                        onClickLabel = "Show ${windowAccessibleLabel(w)} of history",
+                    )
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -325,6 +336,10 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             androidx.compose.runtime.mutableStateOf<Float?>(null)
         }
         val single = multi.series.size == 1
+        // Text alternative for the hand-drawn Canvas: screen readers can't
+        // see the line, so summarize each series (min, max, avg, trend) and,
+        // while the user is scrubbing, the value under the scrub guide.
+        val chartDescription = buildHistoryChartContentDescription(multi, scrubX.value)
         Row {
             Column(modifier = Modifier.weight(1f)) {
                 Canvas(
@@ -333,6 +348,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         .height(180.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(R1.Surface)
+                        .semantics { contentDescription = chartDescription }
                         .padding(horizontal = 6.dp, vertical = 6.dp)
                         .pointerInput(multi) {
                             val canvasW = size.width.toFloat()
@@ -440,7 +456,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                                 maxLines = 1,
                             )
                             Text(
-                                text = sample?.let { "${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}" } ?: "—",
+                                text = sample?.let { "${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}" } ?: "n/a",
                                 style = R1.labelMicro,
                                 color = seriesColor(s.colorIndex),
                             )
@@ -508,12 +524,28 @@ private fun OverlayLegend(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "OVERLAY · ${ui.series.size}/${HistoryViewModel.MAX_SERIES}",
+            text = "OVERLAY, ${ui.series.size} of ${HistoryViewModel.MAX_SERIES}",
             style = R1.labelMicro,
             color = R1.InkSoft,
+            modifier = Modifier.semantics { heading() },
         )
         ui.series.forEachIndexed { index, s ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // The swatch only conveys colour, which a screen reader can't read.
+            // Merge the row into one spoken label naming the series, its colour
+            // slot, and its value range so colour is described, not implied.
+            val rowLabel = legendRowContentDescription(
+                name = s.displayName,
+                colorIndex = s.colorIndex,
+                min = s.min,
+                max = s.max,
+                unit = s.unit,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    contentDescription = rowLabel
+                },
+            ) {
                 Box(
                     modifier = Modifier
                         .padding(end = 8.dp)
@@ -529,33 +561,43 @@ private fun OverlayLegend(
                         maxLines = 1,
                     )
                     val range = if (s.min != null && s.max != null) {
-                        "${formatNum(s.min)} – ${formatNum(s.max)}${s.unit?.let { " $it" } ?: ""}"
+                        "${formatNum(s.min)} to ${formatNum(s.max)}${s.unit?.let { " $it" } ?: ""}"
                     } else {
                         s.entityId.value
                     }
                     Text(text = range, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
                 }
-                // Index 0 is the primary drill-in entity — keep it pinned.
+                // Index 0 is the primary drill-in entity, which stays pinned.
                 if (index != 0) {
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .r1Pressable(onClick = { onRemove(s.entityId) }),
+                            .r1Pressable(
+                                onClick = { onRemove(s.entityId) },
+                                onClickLabel = "Remove ${s.displayName} from chart",
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                        Text(text = "X", style = R1.labelMicro, color = R1.InkSoft)
                     }
                 }
             }
         }
-        // ADD affordance — disabled once the cap is reached, with copy
+        // ADD affordance, disabled once the cap is reached, with copy
         // explaining why.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
+                .sizeIn(minHeight = 48.dp)
                 .clip(R1.ShapeS)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
-                .then(if (ui.atCap) Modifier else Modifier.r1Pressable(onClick = onAdd))
+                .then(
+                    if (ui.atCap) {
+                        Modifier
+                    } else {
+                        Modifier.r1Pressable(onClick = onAdd, onClickLabel = "Add entity to chart")
+                    },
+                )
                 .padding(vertical = 10.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -580,9 +622,10 @@ private fun SummaryPanel(ui: HistoryViewModel.UiState) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(
-            text = "SUMMARY · ${ui.window.label}",
+            text = "SUMMARY, ${ui.window.label}",
             style = R1.labelMicro,
             color = R1.InkSoft,
+            modifier = Modifier.semantics { heading() },
         )
         // 4-cell summary grid: CURRENT / MIN / MAX / AVG. Each cell
         // shows the readout with the unit appended; non-numeric
@@ -655,7 +698,12 @@ private fun RewindPanel(ui: HistoryViewModel.UiState) {
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(text = "REWIND", style = R1.labelMicro, color = R1.InkSoft)
+        Text(
+            text = "REWIND",
+            style = R1.labelMicro,
+            color = R1.InkSoft,
+            modifier = Modifier.semantics { heading() },
+        )
         for ((label, offsetSec) in applicable) {
             val target = now.minusSeconds(offsetSec)
             // Pick the latest point at or before the target time, falling back
@@ -842,7 +890,12 @@ private fun NumericEntityPickerSheet(
                 .r1Pressable(onClick = {}, hapticOnClick = false)
                 .padding(14.dp),
         ) {
-            Text(text = "ADD TO CHART", style = R1.sectionHeader, color = R1.AccentWarm)
+            Text(
+                text = "ADD TO CHART",
+                style = R1.sectionHeader,
+                color = R1.AccentWarm,
+                modifier = Modifier.semantics { heading() },
+            )
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "Numeric sensors only",
@@ -855,7 +908,7 @@ private fun NumericEntityPickerSheet(
                     R1TextField(
                         value = query,
                         onValueChange = { query = it },
-                        placeholder = "temperature, power…",
+                        placeholder = "temperature, power",
                         monospace = false,
                         focusRequester = focus,
                     )
@@ -865,10 +918,10 @@ private fun NumericEntityPickerSheet(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
-                            .r1Pressable(onClick = { query = "" }),
+                            .r1Pressable(onClick = { query = "" }, onClickLabel = "Clear search"),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                        Text(text = "X", style = R1.labelMicro, color = R1.InkSoft)
                     }
                 }
             }
