@@ -137,6 +137,14 @@ class UrlNormalizerTest {
     }
 
     @Test
+    fun `uppercase scheme casing is preserved when the default port is added`() {
+        // A typed HTTP:// without a port must keep its casing, not be silently
+        // downcased to http:// while gaining the :8123 default.
+        assertThat(normalizeServerUrl("HTTP://192.168.1.10"))
+            .isEqualTo("HTTP://192.168.1.10:8123")
+    }
+
+    @Test
     fun `explicit-protocol URL with a path is preserved verbatim`() {
         // The user with HA reverse-proxied at /ha needs us to NOT insert :8123 in
         // the middle of their URL. Explicit http:// means hands-off.

@@ -57,12 +57,13 @@ internal fun normalizeServerUrl(raw: String): String {
 }
 
 private fun autoAddDefaultPort(url: String): String {
-    val scheme = when {
-        url.startsWith("http://", ignoreCase = true) -> "http://"
-        url.startsWith("HTTP://") -> "HTTP://"
-        else -> return url
-    }
-    val withoutScheme = url.substring(scheme.length)
+    // Only http:// (port 80) gets the default-port treatment; https stays on its
+    // implicit :443. Match case-insensitively but preserve the user's original
+    // scheme casing in the rebuilt URL so a typed "HTTP://" survives verbatim.
+    if (!url.startsWith("http://", ignoreCase = true)) return url
+    val schemeLen = "http://".length
+    val scheme = url.substring(0, schemeLen)
+    val withoutScheme = url.substring(schemeLen)
     val hostAndPort = withoutScheme.substringBefore('/').substringBefore('?')
     val pathSuffix = withoutScheme.substring(hostAndPort.length)
     if (hostAndPort.isBlank()) return url
