@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.time.Instant
 
 /**
  * Drives the Scenes & Scripts launcher. Pulls the full HA entity list
@@ -42,6 +44,15 @@ class ScenesViewModel(
         val id: EntityId,
         val name: String,
         val kind: Kind,
+        /**
+         * When this scene / script last fired, derived from HA state. Scenes set
+         * their `state` to the last-activated ISO-8601 timestamp; scripts keep
+         * `state` as on/off and report the time in a `last_triggered` attribute.
+         * Null when the entity has never run (HA reports `unknown`) or the
+         * timestamp couldn't be parsed. Drives the subtle 'activated <relative>'
+         * label on the row.
+         */
+        val lastActivated: Instant? = null,
     )
 
     @androidx.compose.runtime.Stable
@@ -58,6 +69,10 @@ class ScenesViewModel(
         /** True while the "All Lights Off" master action is in flight; the
          *  button disables itself to prevent double-tap re-fires. */
         val masterActionInFlight: Boolean = false,
+        /** Entity ids of scenes / scripts whose `turn_on` is currently in
+         *  flight. The row renders a spinner and ignores re-taps while its id
+         *  is present so a slow HA round-trip can't be double-fired. */
+        val firing: Set<EntityId> = emptySet(),
     ) {
         /** Subset visible under the current filter + search query. Counts are
          *  small (typically <50) so the in-place filter is trivial. */
@@ -89,7 +104,17 @@ class ScenesViewModel(
                             Domain.SCRIPT -> Kind.SCRIPT
                             else -> null
                         } ?: return@mapNotNull null
-                        Entry(id = es.id, name = es.friendlyName, kind = kind)
+                        Entry(
+                            id = es.id,
+                            name = es.friendlyName,
+                            kind = kind,
+                            lastActivated = lastActivatedOf(
+                                kind = kind,
+                                rawState = es.rawState,
+                                lastTriggeredAttr = (es.attributesJson?.get("last_triggered")
+                                    as? JsonPrimitive)?.content,
+                            ),
+                        )
                     }.sortedBy { it.name.lowercase() }
                     val counts = mapOf(
                         Filter.ALL to entries.size,
@@ -249,6 +274,10 @@ class ScenesViewModel(
      * service for these action-only domains.
      */
     fun fire(entry: Entry) {
+        // Ignore a re-tap while this entity's turn_on is still in flight so a
+        // slow HA round-trip can't double-fire the scene.
+        if (entry.id in _ui.value.firing) return
+        _ui.value = _ui.value.copy(firing = _ui.value.firing + entry.id)
         viewModelScope.launch {
             val call = ServiceCall(
                 target = entry.id,
@@ -265,10 +294,45 @@ class ScenesViewModel(
                     Toaster.error("Fire failed: ${t.message ?: "unknown"}")
                 },
             )
+            _ui.value = _ui.value.copy(firing = _ui.value.firing - entry.id)
         }
     }
 
     companion object {
+        /**
+         * Derive the last-activated [Instant] for a scene / script from its HA
+         * state. Two sources, because HA models them differently:
+         *
+         *  * SCENE  — the entity `state` itself is the last-activated ISO-8601
+         *    timestamp (e.g. `2026-05-29T08:13:04.123456+00:00`). Before a scene
+         *    has ever run HA reports `unknown` / `unavailable`, which won't parse
+         *    and so yields null.
+         *  * SCRIPT — `state` is on/off; the time lives in the `last_triggered`
+         *    attribute (same field automations use), null until first run.
+         *
+         * Pure + side-effect free so it's unit-testable without a repository.
+         * Any unparseable value (placeholder, blank, `unknown`) maps to null so
+         * the caller simply omits the freshness label.
+         */
+        fun lastActivatedOf(
+            kind: Kind,
+            rawState: String?,
+            lastTriggeredAttr: String?,
+        ): Instant? {
+            val candidate = when (kind) {
+                Kind.SCENE -> rawState
+                Kind.SCRIPT -> lastTriggeredAttr
+            }?.trim().orEmpty()
+            if (candidate.isEmpty() ||
+                candidate.equals("unknown", ignoreCase = true) ||
+                candidate.equals("unavailable", ignoreCase = true) ||
+                candidate.equals("none", ignoreCase = true)
+            ) {
+                return null
+            }
+            return runCatching { Instant.parse(candidate) }.getOrNull()
+        }
+
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { ScenesViewModel(haRepository) }
         }

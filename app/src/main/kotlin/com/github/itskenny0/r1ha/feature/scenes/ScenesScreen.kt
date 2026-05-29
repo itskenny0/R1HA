@@ -39,6 +39,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
@@ -142,6 +143,7 @@ fun ScenesScreen(
                         items(items = entries, key = { it.id.value }) { entry ->
                             SceneRow(
                                 entry,
+                                firing = entry.id in ui.firing,
                                 onFire = { vm.fire(entry) },
                                 onLongPress = { vm.showDetail(entry) },
                             )
@@ -156,6 +158,7 @@ fun ScenesScreen(
 @Composable
 private fun SceneRow(
     entry: ScenesViewModel.Entry,
+    firing: Boolean,
     onFire: () -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -171,12 +174,36 @@ private fun SceneRow(
     // leading Pill chip. Tap fires the scene/script; long-press surfaces the
     // detail toast (entity_id + service) since it's the non-destructive gesture,
     // so the row stays on r1RowPressable rather than R1Row's single onClick.
+    // Trailing freshness label: scenes set their state to the last-activated
+    // timestamp (scripts report it via last_triggered), surfaced as a subtle
+    // 'activated <relative>' so the user can tell which scenes ran recently. It
+    // self-omits when the entity has never run (label resolves to "").
     R1Row(
         label = entry.name,
         description = entry.id.value,
         boxed = true,
         leadingContent = {
             R1Chip(text = kindLabel, variant = R1ChipVariant.Pill, tone = kindTone)
+        },
+        trailing = if (firing) {
+            {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = kindTone,
+                )
+            }
+        } else entry.lastActivated?.let { at ->
+            {
+                val rel = rememberRelativeTime(at)
+                if (rel.isNotEmpty()) {
+                    Text(
+                        text = "activated $rel",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+            }
         },
         modifier = Modifier.r1RowPressable(
             onTap = onFire,
