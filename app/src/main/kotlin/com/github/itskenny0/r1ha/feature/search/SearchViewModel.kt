@@ -12,9 +12,11 @@ import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
@@ -100,12 +102,30 @@ class SearchViewModel(
      * [flowOn] so a 2000-entity registry re-filters off the main thread; typing one
      * character no longer blocks Compose recomposition while we iterate everything.
      * stateIn keeps the latest value warm so the screen reads it synchronously.
+     *
+     * Keystrokes are debounced via [QUERY_DEBOUNCE_MILLIS] so a burst of fast typing
+     * runs the filter once on the settled query rather than once per character. The
+     * debounce is keyed on the query alone: bucket-chip taps and the registry refresh
+     * are dropped through immediately (timeoutMillis = 0) so those stay snappy. The
+     * eventual results are identical to the un-debounced path: debounce only collapses
+     * intermediate query states, it never changes what matches or the ordering.
      */
+    @OptIn(FlowPreview::class)
     val results: StateFlow<List<EntityState>> =
-        _ui.map { s -> filterAndSort(s) }
+        _ui.debounce { s -> if (s.query == debouncedFrom) QUERY_DEBOUNCE_MILLIS else 0L }
+            .map { s ->
+                debouncedFrom = s.query
+                filterAndSort(s)
+            }
             .distinctUntilChanged()
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Last query the [results] pipeline actually filtered on. Lets the debounce skip
+     *  the wait when the user is changing a bucket (or the registry refreshed) rather
+     *  than typing, so only genuine keystroke bursts pay the debounce window. */
+    @Volatile
+    private var debouncedFrom: String = ""
 
     /**
      * Per-bucket entity counts, precomputed off Main so the BucketChips row doesn't
@@ -235,6 +255,11 @@ class SearchViewModel(
     }
 
     companion object {
+        /** Quiet window after the last keystroke before the filter runs. Long enough to
+         *  collapse a fast typist's burst into a single filter pass, short enough that
+         *  the result list still feels live. */
+        private const val QUERY_DEBOUNCE_MILLIS = 120L
+
         fun factory(
             haRepository: HaRepository,
             settings: com.github.itskenny0.r1ha.core.prefs.SettingsRepository,
