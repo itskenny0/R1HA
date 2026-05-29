@@ -1,0 +1,19 @@
+New features:
+* Native dashboards: render your HA Lovelace `lovelace/config` in Compose. Thirteen card types covered (Entities, Tile, Button, Light, Gauge, Markdown, Heading, Glance, Weather Forecast, Horizontal Stack, Vertical Stack, Grid, Conditional) with a drag-and-drop editor and per-view overrides. Unsupported cards fall back to the Lovelace WebView in one tap.
+* Per-card customization: long-press the card-stack hamburger to open a nested CUSTOMIZE sheet (NAME / GLYPH / POSITION / TAP / LIGHTING / LOCK / RESET) with live preview, 9-way position-pip picker, per-card glyph override, and per-card tap-action override.
+* Alarm control panel card with optional per-entity PIN keypad; PIN stored encrypted at rest.
+* Native registry browsers: Devices, Integrations (with per-entry RELOAD), Blueprints (with import-by-URL), Logs (with level filter), Users, Tags (NFC and QR), Statistics (long-term recorder chart).
+
+Polish:
+* IoT Camera Mode sectioned page, soft-confirm on disable, advanced settings collapsed by default.
+* IoT Sensors Mode: collapsible categories, MQTT topics surfaced inline.
+* MQTT settings: connection-state pill, inline test result, per-feature hierarchy.
+* Sync: unified onboarding into 01/02/03 flow, conflict-model card, SYNC NOW chip, push-overwrite escape hatch, probe-status indicator.
+* Key Bindings: conflict warnings, customized rail, animated capture overlay.
+
+New in IoT Sensors:
+* Device sensors and controls publish to HA via MQTT discovery (battery, screen state, ringer, charging, etc.) without any HA-side YAML.
+
+Fixes:
+* IoT Camera Mode self-heals capture after camera loss.
+* IoT Camera Mode service teardown no longer ANRs the main thread.
