@@ -1,0 +1,316 @@
+package com.github.itskenny0.r1ha.core.lovelace
+
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * Pure parser turning HA's raw `lovelace/config` JSON into the typed
+ * [LovelaceConfig] tree. Stateless: no IO, no caching, no Compose.
+ * Tested in isolation against fixture JSON.
+ *
+ * Design rules:
+ *  - never throw on a card type / field we don't understand. Drop to
+ *    [LovelaceCard.Unsupported] (whole card) or null (single field).
+ *  - preserve the raw JSON inside every card so the editor + the debug
+ *    expander on Unsupported cards can show the original payload.
+ *  - mirror HA's tolerant shape: bare strings where objects are valid,
+ *    missing keys with sensible defaults, mixed `service` / `action`
+ *    field names for service calls.
+ */
+object LovelaceParser {
+
+    /** Parse the top-level dashboard config returned by `lovelace/config`. */
+    fun parseConfig(root: JsonObject): LovelaceConfig {
+        val title = root["title"]?.asStringOrNull()
+        val views = (root["views"] as? JsonArray)
+            ?.mapIndexedNotNull { idx, el -> (el as? JsonObject)?.let { parseView(it, idx) } }
+            ?: emptyList()
+        return LovelaceConfig(title = title, views = views)
+    }
+
+    /** Parse the dashboard list returned by `lovelace/dashboards/list`. */
+    fun parseDashboards(arr: JsonArray): List<LovelaceDashboard> =
+        arr.mapNotNull { el ->
+            val obj = el as? JsonObject ?: return@mapNotNull null
+            val urlPath = obj["url_path"]?.asStringOrNull()
+            val title = obj["title"]?.asStringOrNull() ?: urlPath ?: return@mapNotNull null
+            LovelaceDashboard(
+                id = obj["id"]?.asStringOrNull(),
+                urlPath = urlPath,
+                title = title,
+                icon = obj["icon"]?.asStringOrNull(),
+                showInSidebar = obj["show_in_sidebar"]?.asBooleanOrNull() ?: true,
+                requireAdmin = obj["require_admin"]?.asBooleanOrNull() ?: false,
+                mode = obj["mode"]?.asStringOrNull(),
+            )
+        }
+
+    private fun parseView(obj: JsonObject, index: Int): LovelaceView {
+        val cards = (obj["cards"] as? JsonArray)
+            ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) }
+            ?: emptyList()
+        return LovelaceView(
+            title = obj["title"]?.asStringOrNull(),
+            path = obj["path"]?.asStringOrNull() ?: index.toString(),
+            icon = obj["icon"]?.asStringOrNull(),
+            panel = obj["panel"]?.asBooleanOrNull() ?: false,
+            cards = cards,
+        )
+    }
+
+    /**
+     * Recursive: stack and conditional cards re-enter the parser for
+     * their children. Cycles aren't possible (HA's config is a tree).
+     */
+    fun parseCard(obj: JsonObject): LovelaceCard {
+        val type = obj["type"]?.asStringOrNull()?.lowercase() ?: return LovelaceCard.Unsupported(obj, type = "(missing type)")
+        return when (type) {
+            "entities" -> LovelaceCard.Entities(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                showHeaderToggle = obj["show_header_toggle"]?.asBooleanOrNull(),
+                entities = parseEntityRows(obj["entities"]),
+            )
+            "glance" -> LovelaceCard.Glance(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                entities = parseEntityRows(obj["entities"]),
+                columns = obj["columns"]?.asIntOrNull(),
+                showName = obj["show_name"]?.asBooleanOrNull() ?: true,
+                showState = obj["show_state"]?.asBooleanOrNull() ?: true,
+                showIcon = obj["show_icon"]?.asBooleanOrNull() ?: true,
+            )
+            "button", "entity-button" -> LovelaceCard.Button(
+                raw = obj,
+                entityId = obj["entity"]?.asStringOrNull(),
+                name = obj["name"]?.asStringOrNull(),
+                icon = obj["icon"]?.asStringOrNull(),
+                showName = obj["show_name"]?.asBooleanOrNull() ?: true,
+                showIcon = obj["show_icon"]?.asBooleanOrNull() ?: true,
+                showState = obj["show_state"]?.asBooleanOrNull() ?: false,
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+            )
+            "tile" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Tile(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                    icon = obj["icon"]?.asStringOrNull(),
+                    hideState = obj["hide_state"]?.asBooleanOrNull() ?: false,
+                    vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
+                    color = obj["color"]?.asStringOrNull(),
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                )
+            }
+            "light" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Light(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                    icon = obj["icon"]?.asStringOrNull(),
+                )
+            }
+            "gauge" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Gauge(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                    unit = obj["unit"]?.asStringOrNull(),
+                    min = obj["min"]?.asDoubleOrNull() ?: 0.0,
+                    max = obj["max"]?.asDoubleOrNull() ?: 100.0,
+                    needle = obj["needle"]?.asBooleanOrNull() ?: false,
+                    severity = (obj["severity"] as? JsonObject)?.let { sev ->
+                        GaugeSeverity(
+                            green = sev["green"]?.asDoubleOrNull(),
+                            yellow = sev["yellow"]?.asDoubleOrNull(),
+                            red = sev["red"]?.asDoubleOrNull(),
+                        )
+                    },
+                )
+            }
+            "weather-forecast" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.WeatherForecast(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                    showCurrent = obj["show_current"]?.asBooleanOrNull() ?: true,
+                    showForecast = obj["show_forecast"]?.asBooleanOrNull() ?: true,
+                    forecastType = obj["forecast_type"]?.asStringOrNull(),
+                    forecastSlots = obj["forecast_slots"]?.asIntOrNull(),
+                )
+            }
+            "markdown" -> LovelaceCard.Markdown(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                content = obj["content"]?.asStringOrNull().orEmpty(),
+            )
+            "heading" -> LovelaceCard.Heading(
+                raw = obj,
+                heading = obj["heading"]?.asStringOrNull().orEmpty(),
+                headingStyle = obj["heading_style"]?.asStringOrNull() ?: "title",
+                icon = obj["icon"]?.asStringOrNull(),
+            )
+            "vertical-stack" -> LovelaceCard.VerticalStack(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                cards = parseChildCards(obj["cards"]),
+            )
+            "horizontal-stack" -> LovelaceCard.HorizontalStack(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                cards = parseChildCards(obj["cards"]),
+            )
+            "grid" -> LovelaceCard.Grid(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                columns = obj["columns"]?.asIntOrNull() ?: 3,
+                square = obj["square"]?.asBooleanOrNull() ?: true,
+                cards = parseChildCards(obj["cards"]),
+            )
+            "conditional" -> {
+                val inner = obj["card"] as? JsonObject
+                    ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Conditional(
+                    raw = obj,
+                    conditions = parseConditions(obj["conditions"]),
+                    card = parseCard(inner),
+                )
+            }
+            else -> LovelaceCard.Unsupported(raw = obj, type = type)
+        }
+    }
+
+    private fun parseChildCards(el: JsonElement?): List<LovelaceCard> =
+        (el as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let(::parseCard) }
+            ?: emptyList()
+
+    private fun parseEntityRows(el: JsonElement?): List<EntityRow> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) {
+                    EntityRow(
+                        entityId = item.content,
+                        name = null,
+                        icon = null,
+                        secondaryInfo = null,
+                    )
+                } else null
+                is JsonObject -> {
+                    val entity = item["entity"]?.asStringOrNull() ?: return@mapNotNull null
+                    EntityRow(
+                        entityId = entity,
+                        name = item["name"]?.asStringOrNull(),
+                        icon = item["icon"]?.asStringOrNull(),
+                        secondaryInfo = item["secondary_info"]?.asStringOrNull(),
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    private fun parseAction(obj: JsonObject?): LovelaceAction? {
+        if (obj == null) return null
+        val actionName = obj["action"]?.asStringOrNull()?.lowercase() ?: return null
+        return when (actionName) {
+            "call-service", "perform-action" -> {
+                // HA renamed `service` → `perform_action` in 2025.x; accept both.
+                val service = obj["service"]?.asStringOrNull()
+                    ?: obj["perform_action"]?.asStringOrNull()
+                    ?: return null
+                val target = obj["target"] as? JsonObject
+                val entity = target?.get("entity_id")?.let { e ->
+                    when (e) {
+                        is JsonPrimitive -> e.contentOrNull()
+                        is JsonArray -> e.firstOrNull()?.asStringOrNull()
+                        else -> null
+                    }
+                } ?: obj["entity_id"]?.asStringOrNull()
+                LovelaceAction.CallService(
+                    service = service,
+                    entityId = entity,
+                    data = (obj["data"] as? JsonObject) ?: (obj["service_data"] as? JsonObject),
+                )
+            }
+            "navigate" -> {
+                val path = obj["navigation_path"]?.asStringOrNull() ?: return null
+                LovelaceAction.Navigate(path = path)
+            }
+            "url" -> {
+                val url = obj["url_path"]?.asStringOrNull() ?: obj["url"]?.asStringOrNull() ?: return null
+                LovelaceAction.Url(url = url)
+            }
+            "toggle", "more-info", "none" -> LovelaceAction.Builtin(name = actionName)
+            else -> LovelaceAction.Builtin(name = actionName)
+        }
+    }
+
+    private fun parseConditions(el: JsonElement?): List<LovelaceCondition> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { cond ->
+            val obj = cond as? JsonObject ?: return@mapNotNull null
+            val condition = obj["condition"]?.asStringOrNull()?.lowercase()
+            val entity = obj["entity"]?.asStringOrNull()
+            when {
+                entity == null -> LovelaceCondition.AlwaysTrue
+                condition == "state" || condition == null -> {
+                    val state = obj["state"]?.asStringOrNull()
+                        ?: obj["state_not"]?.asStringOrNull()
+                        ?: return@mapNotNull LovelaceCondition.AlwaysTrue
+                    LovelaceCondition.StateEquals(entityId = entity, state = state)
+                }
+                condition == "numeric_state" -> LovelaceCondition.NumericState(
+                    entityId = entity,
+                    above = obj["above"]?.asDoubleOrNull(),
+                    below = obj["below"]?.asDoubleOrNull(),
+                )
+                else -> LovelaceCondition.AlwaysTrue
+            }
+        }
+    }
+
+    // Per-element accessors that mirror HA's loose JSON shape: numbers
+    // sometimes arrive as strings, booleans as 0/1, etc. Returning null
+    // on shape-mismatch (rather than throwing) is intentional. every
+    // call site has a sensible default to fall back to.
+
+    private fun JsonElement.asStringOrNull(): String? =
+        (this as? JsonPrimitive)?.contentOrNull()
+
+    private fun JsonElement.asBooleanOrNull(): Boolean? {
+        val prim = this as? JsonPrimitive ?: return null
+        prim.booleanOrNull?.let { return it }
+        return when (prim.content.lowercase()) {
+            "true", "1", "yes", "on" -> true
+            "false", "0", "no", "off" -> false
+            else -> null
+        }
+    }
+
+    private fun JsonElement.asIntOrNull(): Int? {
+        val prim = this as? JsonPrimitive ?: return null
+        return prim.intOrNull ?: prim.content.toIntOrNull()
+    }
+
+    private fun JsonElement.asDoubleOrNull(): Double? {
+        val prim = this as? JsonPrimitive ?: return null
+        return prim.doubleOrNull ?: prim.content.toDoubleOrNull()
+    }
+
+    private fun JsonPrimitive.contentOrNull(): String? =
+        if (this is JsonNull) null else content
+}

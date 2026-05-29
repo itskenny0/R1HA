@@ -3178,6 +3178,39 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun fetchLovelaceConfig(
+        urlPath: String?,
+    ): Result<kotlinx.serialization.json.JsonObject> = withContext(Dispatchers.IO) {
+        // HA's `lovelace/config` command accepts `url_path` (null = default
+        // dashboard) and a `force: false` flag. Force is always false on
+        // our side; the live dashboard data flows through state
+        // subscriptions, not through repeated config fetches.
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("url_path", if (urlPath == null) kotlinx.serialization.json.JsonNull else JsonPrimitive(urlPath))
+            put("force", JsonPrimitive(false))
+        }
+        callWsExpectingPayload("lovelace/config", extras).mapCatching { payload ->
+            // Storage-mode dashboards that are still auto-generated return
+            // `config_not_found`. Surface that as a typed error so the UI
+            // can offer the user a useful next step ("HA hasn't published
+            // a Lovelace config for this dashboard yet").
+            payload as? kotlinx.serialization.json.JsonObject
+                ?: error("lovelace/config returned a non-object payload")
+        }.onFailure { t ->
+            R1Log.w("HaRepo.lovelace", "fetchConfig urlPath=${urlPath ?: "(default)"} failed: ${t.message}")
+        }
+    }
+
+    override suspend fun listLovelaceDashboards():
+        Result<kotlinx.serialization.json.JsonArray> = withContext(Dispatchers.IO) {
+            callWsExpectingPayload("lovelace/dashboards/list").mapCatching { payload ->
+                payload as? kotlinx.serialization.json.JsonArray
+                    ?: error("lovelace/dashboards/list returned a non-array payload")
+            }.onFailure { t ->
+                R1Log.w("HaRepo.lovelace", "listDashboards failed: ${t.message}")
+            }
+        }
+
     override suspend fun listAuthUsers(): Result<List<HaUser>> = withContext(Dispatchers.IO) {
         callWsExpectingPayload("config/auth/list").mapCatching { payload ->
             val arr = payload as? kotlinx.serialization.json.JsonArray

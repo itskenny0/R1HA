@@ -542,6 +542,21 @@ interface HaRepository {
         end: java.time.Instant,
         period: String,
     ): Result<Map<String, List<StatisticsBucket>>>
+
+    /**
+     * Fetch the raw `lovelace/config` blob for the dashboard at [urlPath].
+     * Pass null to load HA's default dashboard. Returns the raw JsonObject
+     * so the parser can stay in the lovelace module without R1HA's
+     * repository layer having to know the card schema.
+     */
+    suspend fun fetchLovelaceConfig(urlPath: String? = null): Result<kotlinx.serialization.json.JsonObject>
+
+    /**
+     * List the user-visible dashboards exposed by `lovelace/dashboards/list`.
+     * The default dashboard is always available even when the list is
+     * empty; callers compose it in locally. Each entry's [url_path] is the
+     * value to pass to [fetchLovelaceConfig] for that dashboard. */
+    suspend fun listLovelaceDashboards(): Result<kotlinx.serialization.json.JsonArray>
 }
 
 /**
