@@ -189,4 +189,107 @@ class HaFixtureParseTest {
         val volume = (mediaAttrs["volume_level"] as JsonPrimitive).content.toDouble()
         assertThat(EntityState.normaliseMediaVolume(volume)).isEqualTo(35)
     }
+
+    // ---- /api/states through the production decoder ------------------------------------
+
+    @Test fun `decodeStatesBody maps the REST body into typed EntityStates`() {
+        // Drive the SAME pure decoder the live listAllEntities() path uses, so the
+        // per-domain isOn / percent / raw / attribute typing is covered against a real
+        // /api/states body rather than re-parsed raw JSON.
+        // No-op loggers keep the decode off android.util.Log in this non-Robolectric test.
+        val states = DefaultHaRepository.decodeStatesBody(
+            fixture("rest_api_states.json"),
+            logInfo = { _, _ -> },
+            logWarn = { _, _ -> },
+        )
+        val byId = states.associateBy { it.id.value }
+
+        // Every supported row survives the resilient per-row decode.
+        assertThat(byId.keys).containsExactly(
+            "light.living_room",
+            "climate.thermostat",
+            "sensor.outside_temperature",
+            "media_player.living_room_speaker",
+            "cover.garage_door",
+            "person.alice",
+        )
+
+        // Light: on, brightness 204 -> ~80% via normaliseLightBrightness, raw brightness,
+        // kelvin reading typed through.
+        val light = byId.getValue("light.living_room")
+        assertThat(light.isOn).isTrue()
+        assertThat(light.isAvailable).isTrue()
+        assertThat(light.friendlyName).isEqualTo("Living Room")
+        assertThat(light.raw).isEqualTo(204)
+        assertThat(light.percent).isEqualTo(EntityState.normaliseLightBrightness(204))
+        assertThat(light.colorTempK).isEqualTo(3500)
+        assertThat(light.supportsScalar).isTrue()
+
+        // Climate: heat is "on", target 21.0, current 19.5, hvac mode mirrors state,
+        // percent scaled into the 7..35 range.
+        val climate = byId.getValue("climate.thermostat")
+        assertThat(climate.isOn).isTrue()
+        assertThat(climate.climateHvacMode).isEqualTo("heat")
+        assertThat(climate.climateTargetTemperature).isEqualTo(21.0)
+        assertThat(climate.climateCurrentTemperature).isEqualTo(19.5)
+        assertThat(climate.raw).isEqualTo(21.0)
+        // (21 - 7) / (35 - 7) * 100 = 50.
+        assertThat(climate.percent).isEqualTo(50)
+
+        // Sensor: read-only, numeric state surfaced as rawState, unit + device class typed.
+        val sensor = byId.getValue("sensor.outside_temperature")
+        assertThat(sensor.isOn).isFalse()
+        assertThat(sensor.supportsScalar).isFalse()
+        assertThat(sensor.rawState).isEqualTo("4.7")
+        assertThat(sensor.unit).isEqualTo("°C")
+        assertThat(sensor.deviceClass).isEqualTo("temperature")
+
+        // Media player: playing -> on, volume 0.35 -> 35%, title typed through.
+        val media = byId.getValue("media_player.living_room_speaker")
+        assertThat(media.isOn).isTrue()
+        assertThat(media.percent).isEqualTo(35)
+        assertThat(media.mediaTitle).isEqualTo("Some Track")
+
+        // Cover: closed -> not on; current_position 0 surfaces as percent 0.
+        val cover = byId.getValue("cover.garage_door")
+        assertThat(cover.isOn).isFalse()
+        assertThat(cover.percent).isEqualTo(0)
+
+        // Person: home -> on.
+        assertThat(byId.getValue("person.alice").isOn).isTrue()
+    }
+
+    // ---- recorder/statistics_during_period through the production decoder ---------------
+
+    @Test fun `decodeStatisticsBuckets parses ISO and epoch-millis buckets`() {
+        val payload = fixtureObject("statistics_during_period.json")
+        val result = DefaultHaRepository.decodeStatisticsBuckets(payload, period = "hour")
+
+        assertThat(result.keys)
+            .containsExactly("sensor.outside_temperature", "sensor.house_energy")
+
+        // Measurement series: ISO-8601 boundaries, mean/min/max filled, sum/state/change null.
+        val temp = result.getValue("sensor.outside_temperature")
+        assertThat(temp).hasSize(3)
+        val firstTemp = temp.first()
+        assertThat(firstTemp.start).isEqualTo(java.time.Instant.parse("2024-12-20T00:00:00Z"))
+        assertThat(firstTemp.end).isEqualTo(java.time.Instant.parse("2024-12-20T01:00:00Z"))
+        assertThat(firstTemp.mean).isEqualTo(4.2)
+        assertThat(firstTemp.min).isEqualTo(3.1)
+        assertThat(firstTemp.max).isEqualTo(5.0)
+        assertThat(firstTemp.sum).isNull()
+        assertThat(firstTemp.change).isNull()
+
+        // Energy series: epoch-millis boundaries (exercises the dual-format parser),
+        // sum/state/change filled, mean/min/max null.
+        val energy = result.getValue("sensor.house_energy")
+        assertThat(energy).hasSize(2)
+        val firstEnergy = energy.first()
+        assertThat(firstEnergy.start).isEqualTo(java.time.Instant.parse("2024-12-20T00:00:00Z"))
+        assertThat(firstEnergy.end).isEqualTo(java.time.Instant.parse("2024-12-20T01:00:00Z"))
+        assertThat(firstEnergy.sum).isEqualTo(1450.5)
+        assertThat(firstEnergy.state).isEqualTo(1450.5)
+        assertThat(firstEnergy.change).isEqualTo(0.42)
+        assertThat(firstEnergy.mean).isNull()
+    }
 }
