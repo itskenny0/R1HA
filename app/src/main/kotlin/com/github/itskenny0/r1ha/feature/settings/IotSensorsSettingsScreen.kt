@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -36,6 +37,8 @@ import com.github.itskenny0.r1ha.core.iotsensors.LockAdminReceiver
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -110,7 +113,7 @@ fun IotSensorsSettingsScreen(
                         "MQTT broker.",
                     style = R1.body,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.m),
                 )
             }
             if (!mqttConfigured) {
@@ -118,12 +121,12 @@ fun IotSensorsSettingsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 4.dp)
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.StatusAmber, R1.ShapeS)
                             .r1Pressable(onClick = onOpenMqttSettings)
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                            .padding(horizontal = R1.space.l, vertical = R1.space.m),
                     ) {
                         Column {
                             Text(
@@ -131,7 +134,7 @@ fun IotSensorsSettingsScreen(
                                 style = R1.labelMicro,
                                 color = R1.StatusAmber,
                             )
-                            Spacer(Modifier.height(2.dp))
+                            Spacer(Modifier.height(R1.space.xxs))
                             Text(
                                 text = "Tap to configure. Sensors mode won't connect to " +
                                     "the broker until host, port, and credentials are set.",
@@ -385,14 +388,14 @@ fun IotSensorsSettingsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 8.dp),
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                     ) {
                         Text("Node id", style = R1.labelMicro, color = R1.InkSoft)
                         Text(
                             text = sensors.nodeId.ifBlank { "(assigned on first enable)" },
                             style = R1.body.copy(fontFamily = FontFamily.Monospace),
                             color = R1.Ink,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = R1.space.xs),
                         )
                         Text(
                             text = "Topics: r1ha/$nodeId/<entity>/state. " +
@@ -400,7 +403,7 @@ fun IotSensorsSettingsScreen(
                                 "everything under one device.",
                             style = R1.labelMicro,
                             color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = R1.space.xs),
                         )
                     }
                 }
@@ -408,26 +411,26 @@ fun IotSensorsSettingsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 8.dp),
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                     ) {
                         Text("Discovery prefix", style = R1.labelMicro, color = R1.InkSoft)
                         Text(
                             text = sensors.discoveryPrefix.ifBlank { "homeassistant" },
                             style = R1.body.copy(fontFamily = FontFamily.Monospace),
                             color = R1.Ink,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = R1.space.xs),
                         )
                         Text(
                             text = "Default \"homeassistant\" matches HA's out-of-the-box config.",
                             style = R1.labelMicro,
                             color = R1.InkMuted,
-                            modifier = Modifier.padding(top = 4.dp),
+                            modifier = Modifier.padding(top = R1.space.xs),
                         )
                     }
                 }
             }
 
-            item { Spacer(Modifier.height(48.dp)) }
+            item { Spacer(Modifier.height(R1.MinTarget)) }
         }
     }
 }
@@ -474,29 +477,25 @@ private fun CategoryHeader(
         modifier = Modifier
             .fillMaxWidth()
             .r1Pressable(onClick = onToggle)
-            .padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 6.dp),
+            .padding(start = R1.space.l, end = R1.space.l, top = R1.space.xl, bottom = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = R1.sectionHeader, color = R1.AccentWarm)
         if (summary != null) {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = summary,
-                style = R1.labelMicro,
-                color = R1.InkMuted,
-            )
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(text = summary, variant = R1ChipVariant.Pill, tone = R1.InkSoft)
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Box(
             modifier = Modifier
                 .height(1.dp)
                 .weight(1f)
                 .background(R1.Hairline),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.m))
         Box(
             modifier = Modifier
-                .size(48.dp),
+                .size(R1.MinTarget),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -518,7 +517,7 @@ private fun MasterSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 8.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(
@@ -527,7 +526,7 @@ private fun MasterSwitchRow(
                 R1.ShapeS,
             )
             .r1Pressable(onClick = onCheckedChange)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -549,17 +548,18 @@ private fun SensorRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onCheckedChange)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = R1.bodyEmph, color = R1.Ink)
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = topic,
                 style = R1.numeralS,
@@ -569,7 +569,7 @@ private fun SensorRow(
                 text = meta,
                 style = R1.labelMicro,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
         R1Switch(checked = checked, onCheckedChange = { onCheckedChange() })
@@ -589,11 +589,11 @@ private fun NumberStepperRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -607,7 +607,7 @@ private fun NumberStepperRow(
         StepperButton(label = "−", enabled = value > min) {
             onChange((value - step).coerceAtLeast(min))
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         StepperButton(label = "+", enabled = value < max) {
             onChange((value + step).coerceAtMost(max))
         }
@@ -618,7 +618,7 @@ private fun NumberStepperRow(
 private fun StepperButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(R1.MinTarget)
             .clip(R1.ShapeS)
             .background(if (enabled) R1.Bg else R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -638,11 +638,11 @@ private fun PermissionGrantBanner(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.xl, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.StatusAmber, R1.ShapeS)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -651,18 +651,13 @@ private fun PermissionGrantBanner(
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
         )
-        Spacer(Modifier.width(12.dp))
-        Box(
-            modifier = Modifier
-                .height(48.dp)
-                .clip(R1.ShapeS)
-                .background(R1.Bg)
-                .border(1.dp, R1.StatusAmber, R1.ShapeS)
-                .r1Pressable(onClick = onClick)
-                .padding(horizontal = 14.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(cta, style = R1.labelMicro, color = R1.StatusAmber)
-        }
+        Spacer(Modifier.width(R1.space.m))
+        R1Chip(
+            text = cta,
+            variant = R1ChipVariant.Action,
+            tone = R1.StatusAmber,
+            selected = true,
+            onClick = onClick,
+        )
     }
 }
