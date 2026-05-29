@@ -8,9 +8,15 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.LogbookEntry
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -58,22 +64,36 @@ class LogbookViewModel(
         /** TAIL mode: subscribed to HA's logbook_entry event stream so new
          *  events arrive in real time and prepend to [all]. */
         val tail: Boolean = false,
-    ) {
-        /** Filtered subset shown in the list. Substring-matches case-
-         *  insensitively against the event name, message and entity_id. */
-        val entries: List<LogbookEntry> get() {
-            if (query.isBlank()) return all
-            val q = query.trim().lowercase()
-            return all.filter { e ->
-                e.name.lowercase().contains(q) ||
-                    e.message.lowercase().contains(q) ||
-                    (e.entityId?.value?.lowercase()?.contains(q) ?: false)
-            }
-        }
-    }
+    )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
+
+    /**
+     * Filtered subset shown in the list, derived off Main. Previously this was a
+     * computed `UiState.entries` get() that re-filtered (and re-lowercased every
+     * row) on every read; collected directly in `items()`, it re-ran on every
+     * recomposition, including the per-second RelativeTimeLabel ticks, and handed
+     * Compose a fresh List instance each time. Hoisting it to a Default-dispatched
+     * StateFlow keyed on (all, query) means the filter runs once per data/query
+     * change, off the main thread, with a stable identity between unrelated
+     * recompositions. Substring-matches case-insensitively against the event name,
+     * message and entity_id.
+     */
+    val visibleEntries: StateFlow<List<LogbookEntry>> =
+        _ui.map { it.all to it.query }
+            .distinctUntilChanged()
+            .map { (all, query) ->
+                if (query.isBlank()) return@map all
+                val q = query.trim().lowercase()
+                all.filter { e ->
+                    e.name.lowercase().contains(q) ||
+                        e.message.lowercase().contains(q) ||
+                        (e.entityId?.value?.lowercase()?.contains(q) ?: false)
+                }
+            }
+            .flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** First fetch needs to honour the user's
      *  Settings → INTEGRATIONS → 'Logbook default window' value. Track

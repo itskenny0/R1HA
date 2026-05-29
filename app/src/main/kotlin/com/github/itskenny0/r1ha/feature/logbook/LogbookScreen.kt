@@ -76,6 +76,10 @@ fun LogbookScreen(
 ) {
     val vm: LogbookViewModel = viewModel(factory = LogbookViewModel.factory(haRepository, settings))
     val ui by vm.ui.collectAsState()
+    // Query-filtered rows, derived off Main in the ViewModel. Collected here so the
+    // list doesn't re-filter the full buffer on every recomposition (incl. the
+    // per-second relative-timestamp ticks).
+    val visibleEntries by vm.visibleEntries.collectAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -158,13 +162,13 @@ fun LogbookScreen(
                     color = R1.AccentWarm,
                 )
             }
-            ui.entries.isEmpty() && ui.error != null -> Box(
+            visibleEntries.isEmpty() && ui.error != null -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = ui.error!!, style = R1.body, color = R1.StatusRed)
             }
-            ui.entries.isEmpty() -> Box(
+            visibleEntries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
@@ -196,7 +200,7 @@ fun LogbookScreen(
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(
-                        items = ui.entries,
+                        items = visibleEntries,
                     // Stable key: timestamp nanos + entity-id + name keeps
                     // duplicate-message rows distinct (two automations firing
                     // at the same wall-clock second on different entities).

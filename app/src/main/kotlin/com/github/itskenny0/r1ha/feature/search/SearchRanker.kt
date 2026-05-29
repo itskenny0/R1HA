@@ -24,24 +24,44 @@ internal object SearchRanker {
     ): List<EntityState> {
         val q = query.trim().lowercase()
         if (q.isBlank() && bucket == SearchViewModel.Bucket.ALL) return emptyList()
-        return all.asSequence().filter { e ->
-            val matchesQuery = if (q.isBlank()) true else (
-                e.friendlyName.lowercase().contains(q) ||
-                    e.id.value.lowercase().contains(q) ||
-                    (e.area?.lowercase()?.contains(q) ?: false)
-                )
+        // Lowercase each entity's searchable fields exactly once. Previously the
+        // filter predicate and the sort comparator both called lowercase() per
+        // entity, and the comparator runs O(n log n) times: a 2000-entity sort
+        // re-lowercased every friendlyName ~11x. Caching into a small Scored
+        // holder collapses that to one lowercase() per field per entity, then
+        // sorts on the precomputed strings before unwrapping back to EntityState.
+        val scored = ArrayList<Scored>(if (all.size < resultCap) all.size else resultCap.coerceAtLeast(16))
+        for (e in all) {
             val matchesBucket = bucket == SearchViewModel.Bucket.ALL || bucketOf(e.id.domain) == bucket
-            matchesQuery && matchesBucket
+            if (!matchesBucket) continue
+            val nameLower = e.friendlyName.lowercase()
+            val idLower = e.id.value.lowercase()
+            if (q.isNotBlank()) {
+                val matchesQuery = nameLower.contains(q) ||
+                    idLower.contains(q) ||
+                    (e.area?.lowercase()?.contains(q) ?: false)
+                if (!matchesQuery) continue
+            }
+            val prefixMatch = q.isNotBlank() && (
+                nameLower.startsWith(q) || idLower.substringAfter('.').startsWith(q)
+                )
+            scored.add(Scored(e, nameLower, prefixMatch))
         }
-            .sortedWith(
-                compareByDescending<EntityState> {
-                    q.isNotBlank() && (
-                        it.friendlyName.lowercase().startsWith(q) ||
-                            it.id.value.lowercase().substringAfter('.').startsWith(q)
-                        )
-                }.thenBy { it.friendlyName.lowercase() },
-            )
-            .take(resultCap)
-            .toList()
+        scored.sortWith(
+            compareByDescending<Scored> { it.prefixMatch }.thenBy { it.nameLower },
+        )
+        return if (scored.size <= resultCap) {
+            scored.map { it.entity }
+        } else {
+            scored.subList(0, resultCap).map { it.entity }
+        }
     }
+
+    /** Per-entity scratch holder so the hot sort path reads precomputed lowercased
+     *  strings instead of re-lowercasing on every comparator invocation. */
+    private class Scored(
+        val entity: EntityState,
+        val nameLower: String,
+        val prefixMatch: Boolean,
+    )
 }

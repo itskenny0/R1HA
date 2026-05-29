@@ -262,7 +262,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                 xs[i] = (Duration.between(tStart0, ts).toMillis().toFloat() / tSpan0)
                 ysn[i] = 1f - (((v - yMin0) / yRange0).toFloat())
             }
-            ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0)
+            ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0, numeric)
         }
         if (proj == null) {
             Box(
@@ -400,8 +400,10 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                 // readable without a full table jump.
                 val si = scrubIdx.value
                 if (si != null && si in proj.xsNorm.indices) {
-                    val sample = ui.points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
-                        .getOrNull(si)
+                    // Reuse the numeric samples already computed by the projection
+                    // instead of re-running mapNotNull over every point on each
+                    // scrub-driven recomposition.
+                    val sample = proj.samples.getOrNull(si)
                     if (sample != null) {
                         Row {
                             Text(
@@ -599,4 +601,7 @@ private data class ChartProjection(
     val tStart: java.time.Instant,
     val tEnd: java.time.Instant,
     val tSpan: Long,
+    /** (timestamp, value) for each numeric sample, in xsNorm/ysNorm order, so the
+     *  scrub readout can index a sample without re-deriving it from ui.points. */
+    val samples: List<Pair<java.time.Instant, Double>>,
 )
