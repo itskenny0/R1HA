@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -40,6 +41,8 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -140,13 +143,13 @@ fun CalendarEventsScreen(
                     )
                 }
                 ui.error != null && ui.events.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
                 }
                 ui.events.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -164,9 +167,9 @@ fun CalendarEventsScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
                         val now = Instant.now()
                         items(items = ui.events, key = { "${it.summary}|${it.start?.toEpochMilli()}" }) { e ->
@@ -188,41 +191,28 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isHappeningNow) {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentGreen.copy(alpha = 0.22f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "NOW", style = R1.labelMicro, color = R1.AccentGreen)
-                }
-                Spacer(Modifier.width(8.dp))
+                R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
+                Spacer(Modifier.width(R1.space.s))
             }
             if (e.allDay) {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentCool.copy(alpha = 0.22f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "ALL-DAY", style = R1.labelMicro, color = R1.AccentCool)
-                }
-                Spacer(Modifier.width(8.dp))
+                R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
+                Spacer(Modifier.width(R1.space.s))
             }
-            Text(text = e.summary, style = R1.body, color = R1.Ink, maxLines = 2, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
+            Text(text = e.summary, style = R1.bodyEmph, color = R1.Ink, maxLines = 2, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(R1.space.s))
             RelativeTimeLabel(at = e.start, color = R1.InkMuted, style = R1.labelMicro)
         }
         if (!e.location.isNullOrBlank()) {
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(text = "@ ${e.location}", style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         }
         if (!e.description.isNullOrBlank()) {
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(text = e.description, style = R1.labelMicro, color = R1.InkMuted, maxLines = 3)
         }
     }

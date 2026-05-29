@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -33,6 +34,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -102,7 +105,7 @@ fun CalendarsScreen(
                 )
             }
             ui.error != null && ui.calendars.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Calendar registry fetch failed — distinct from "no
@@ -114,7 +117,7 @@ fun CalendarsScreen(
                 )
             }
             ui.calendars.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -132,9 +135,9 @@ fun CalendarsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     items(items = ui.calendars, key = { it.entityId }) { c ->
                         CalendarRow(c, onTap = { drillingInto = c })
@@ -155,25 +158,19 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (c.state == "on") {
                 // NOW pill — pulled to the front of the line so the user
                 // sees "this is happening right now" at a glance.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentGreen.copy(alpha = 0.22f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "NOW", style = R1.labelMicro, color = R1.AccentGreen)
-                }
-                Spacer(Modifier.width(8.dp))
+                R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
+                Spacer(Modifier.width(R1.space.s))
             }
             Text(
                 text = c.name,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -183,14 +180,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
                 // countdown that would be misleading for events without
                 // a specific start time. Sits in the position the
                 // RelativeTimeLabel would normally occupy.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.AccentWarm.copy(alpha = 0.18f))
-                        .padding(horizontal = 6.dp, vertical = 1.dp),
-                ) {
-                    Text(text = "ALL-DAY", style = R1.labelMicro, color = R1.AccentWarm)
-                }
+                R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentWarm)
             } else {
                 // Relative timestamp for the next event (or current event end
                 // if NOW). Same ticker as the rest of the app.
@@ -199,7 +189,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
             }
         }
         if (!c.eventMessage.isNullOrBlank()) {
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = c.eventMessage,
                 style = R1.body,
@@ -208,7 +198,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
             )
         }
         if (!c.eventLocation.isNullOrBlank()) {
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = "@ ${c.eventLocation}",
                 style = R1.labelMicro,
