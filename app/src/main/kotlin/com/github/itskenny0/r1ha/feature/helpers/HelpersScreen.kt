@@ -56,14 +56,17 @@ import com.github.itskenny0.r1ha.ui.components.r1RowPressable
  *   - input_number: -/+ stepper with current value + unit
  *   - counter: -/+ + RESET (counter only steps by the configured `step`)
  *   - input_select: tap to cycle through options (long-press shows full list)
- *   - input_text / input_datetime: read-only value display (editing
- *     these on a wheel-input device isn't great UX; we display only)
+ *   - input_text: current value + EDIT chip opening an inline text dialog
+ *     (input_text.set_value, clamped to the helper's max length)
+ *   - input_datetime: current value + EDIT chip opening a date / time entry
+ *     dialog (input_datetime.set_datetime; only the fields the helper carries)
  *   - input_button: PRESS chip
  *   - timer: state label + START / PAUSE / CANCEL pills
  *
- * The screen never tries to be a full editor; for that the user has the
- * web UI. This is the at-a-glance "what helpers do I have, can I poke
- * them?" surface, matches HA Companion's helpers list parity item.
+ * Editing covers each helper's native value via the existing HA service
+ * surface; structural CRUD of the helpers themselves (create / rename /
+ * delete) still lives in HA's web UI since those are WS config commands,
+ * not service calls. Matches HA Companion's helpers list parity item.
  */
 @Composable
 fun HelpersScreen(
@@ -446,8 +449,8 @@ private fun HelperRow(
             )
             HelpersViewModel.Kind.COUNTER -> CounterControl(entry, vm)
             HelpersViewModel.Kind.SELECT -> SelectControl(entry, vm)
-            HelpersViewModel.Kind.TEXT -> ReadOnlyValue(entry.state)
-            HelpersViewModel.Kind.DATETIME -> ReadOnlyValue(entry.state)
+            HelpersViewModel.Kind.TEXT -> TextControl(entry, vm)
+            HelpersViewModel.Kind.DATETIME -> DateTimeControl(entry, vm)
             HelpersViewModel.Kind.BUTTON -> ButtonControl(entry, vm)
             HelpersViewModel.Kind.TIMER -> TimerControl(entry, vm)
             HelpersViewModel.Kind.UNKNOWN -> ReadOnlyValue(entry.state)
@@ -700,6 +703,228 @@ private fun ButtonControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
         onClick = { vm.pressButton(entry) },
         contentDescription = "Press ${entry.name}",
     )
+}
+
+@Composable
+private fun TextControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
+    val showEditor = androidx.compose.runtime.remember(entry.id.value) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = entry.state.ifBlank { "(empty)" },
+            style = R1.body,
+            color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
+            maxLines = 2,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(
+            text = "EDIT",
+            variant = R1ChipVariant.Action,
+            onClick = { showEditor.value = true },
+            contentDescription = "Edit ${entry.name}",
+        )
+    }
+    if (showEditor.value) {
+        TextEditDialog(
+            initial = entry.state,
+            label = entry.name.ifBlank { entry.id.value },
+            min = entry.textMin,
+            max = entry.textMax,
+            onConfirm = { value ->
+                vm.setText(entry, value)
+                showEditor.value = false
+            },
+            onDismiss = { showEditor.value = false },
+        )
+    }
+}
+
+/**
+ * Inline single-line editor for an input_text helper. Live character count
+ * against the helper's max; the SAVE chip disables when the value is shorter
+ * than the configured min (HA would reject it). Auto-focuses on open so the
+ * keyboard appears without a stray tap.
+ */
+@Composable
+private fun TextEditDialog(
+    initial: String,
+    label: String,
+    min: Int?,
+    max: Int?,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val draft = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(initial)
+    }
+    val focusRequester = androidx.compose.runtime.remember {
+        androidx.compose.ui.focus.FocusRequester()
+    }
+    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
+    val meetsMin = HelpersLogic.textMeetsMinLength(draft.value, min)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        ) {
+            Text(text = label.uppercase(), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Spacer(Modifier.height(R1.space.s))
+            R1TextField(
+                value = draft.value,
+                onValueChange = { draft.value = HelpersLogic.clampText(it, min, max) },
+                monospace = false,
+                focusRequester = focusRequester,
+            )
+            Spacer(Modifier.height(R1.space.xs))
+            Text(
+                text = "${draft.value.length} / ${max ?: 100}" +
+                    if (min != null && min > 0) "  (min $min)" else "",
+                style = R1.labelMicro,
+                color = if (meetsMin) R1.InkSoft else R1.StatusAmber,
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                R1Chip(
+                    text = "CANCEL",
+                    variant = R1ChipVariant.Action,
+                    onClick = onDismiss,
+                    contentDescription = "Cancel edit",
+                )
+                R1Chip(
+                    text = "SAVE",
+                    variant = R1ChipVariant.Action,
+                    selected = meetsMin,
+                    tone = R1.AccentGreen,
+                    onClick = { if (meetsMin) onConfirm(draft.value) },
+                    contentDescription = "Save value",
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DateTimeControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
+    val showEditor = androidx.compose.runtime.remember(entry.id.value) {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = entry.state.ifBlank { "(unset)" },
+            style = R1.body,
+            color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(
+            text = "EDIT",
+            variant = R1ChipVariant.Action,
+            onClick = { showEditor.value = true },
+            contentDescription = "Edit ${entry.name}",
+        )
+    }
+    if (showEditor.value) {
+        val (initialDate, initialTime) = HelpersLogic.splitDateTimeState(
+            entry.state, entry.hasDate, entry.hasTime,
+        )
+        DateTimeEditDialog(
+            label = entry.name.ifBlank { entry.id.value },
+            hasDate = entry.hasDate,
+            hasTime = entry.hasTime,
+            initialDate = initialDate.orEmpty(),
+            initialTime = initialTime.orEmpty(),
+            onConfirm = { date, time ->
+                vm.setDateTime(entry, date.ifBlank { null }, time.ifBlank { null })
+                showEditor.value = false
+            },
+            onDismiss = { showEditor.value = false },
+        )
+    }
+}
+
+/**
+ * Date / time entry dialog for an input_datetime helper. Shows a YYYY-MM-DD
+ * field and / or an HH:MM[:SS] field depending on which components the helper
+ * carries. SAVE disables until every shown field validates so we never spend
+ * a round-trip on input HA would reject. Typed rather than picker-driven: a
+ * native date/time picker overlay is heavy on the R1's small display and the
+ * field is usually a quick correction.
+ */
+@Composable
+private fun DateTimeEditDialog(
+    label: String,
+    hasDate: Boolean,
+    hasTime: Boolean,
+    initialDate: String,
+    initialTime: String,
+    onConfirm: (date: String, time: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val date = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(initialDate)
+    }
+    val time = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(initialTime)
+    }
+    val dateOk = !hasDate || HelpersLogic.isValidDate(date.value)
+    val timeOk = !hasTime || HelpersLogic.isValidTime(time.value)
+    val canSave = dateOk && timeOk && (hasDate || hasTime)
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        ) {
+            Text(text = label.uppercase(), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            if (hasDate) {
+                Spacer(Modifier.height(R1.space.s))
+                Text(text = "DATE", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.height(R1.space.xxs))
+                R1TextField(
+                    value = date.value,
+                    onValueChange = { date.value = it.trim() },
+                    placeholder = "2024-01-15",
+                    isError = date.value.isNotBlank() && !HelpersLogic.isValidDate(date.value),
+                )
+            }
+            if (hasTime) {
+                Spacer(Modifier.height(R1.space.s))
+                Text(text = "TIME", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.height(R1.space.xxs))
+                R1TextField(
+                    value = time.value,
+                    onValueChange = { time.value = it.trim() },
+                    placeholder = "14:30:00",
+                    isError = time.value.isNotBlank() && !HelpersLogic.isValidTime(time.value),
+                )
+            }
+            Spacer(Modifier.height(R1.space.s))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                R1Chip(
+                    text = "CANCEL",
+                    variant = R1ChipVariant.Action,
+                    onClick = onDismiss,
+                    contentDescription = "Cancel edit",
+                )
+                R1Chip(
+                    text = "SAVE",
+                    variant = R1ChipVariant.Action,
+                    selected = canSave,
+                    tone = R1.AccentGreen,
+                    onClick = { if (canSave) onConfirm(date.value, time.value) },
+                    contentDescription = "Save date and time",
+                )
+            }
+        }
+    }
 }
 
 @Composable

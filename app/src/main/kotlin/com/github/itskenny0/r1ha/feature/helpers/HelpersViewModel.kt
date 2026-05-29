@@ -72,6 +72,15 @@ class HelpersViewModel(
         /** Timer's `remaining` attribute (HH:MM:SS). Useful when
          *  paused — `finishes_at` is stale at that point. */
         val remaining: String? = null,
+        /** input_text length window (HA defaults 0..100). Used to clamp /
+         *  validate the inline editor before dispatching set_value. */
+        val textMin: Int? = null,
+        val textMax: Int? = null,
+        /** input_datetime shape — which of date / time the helper carries.
+         *  Drives which editor fields the row shows and which keys land in
+         *  the set_datetime payload. */
+        val hasDate: Boolean = false,
+        val hasTime: Boolean = false,
     )
 
     @androidx.compose.runtime.Stable
@@ -87,9 +96,8 @@ class HelpersViewModel(
                 val byBucket = if (bucket == Bucket.ALL) all
                 else all.filter { entryDomain(it.id) in bucket.domains }
                 if (query.isBlank()) return byBucket
-                val q = query.trim().lowercase()
                 return byBucket.filter {
-                    it.name.lowercase().contains(q) || it.id.value.lowercase().contains(q)
+                    HelpersLogic.matchesQuery(it.name, it.id.value, query)
                 }
             }
 
@@ -155,6 +163,10 @@ class HelpersViewModel(
                     finishesAt = (attrs["finishes_at"] as? JsonPrimitive)?.content
                         ?.let { runCatching { Instant.parse(it) }.getOrNull() },
                     remaining = (attrs["remaining"] as? JsonPrimitive)?.content,
+                    textMin = (attrs["min"] as? JsonPrimitive)?.content?.toIntOrNull(),
+                    textMax = (attrs["max"] as? JsonPrimitive)?.content?.toIntOrNull(),
+                    hasDate = (attrs["has_date"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
+                    hasTime = (attrs["has_time"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
                 )
             }.sortedWith(
                 // Group by kind first (so the eye finds e.g. all the
@@ -235,6 +247,53 @@ class HelpersViewModel(
         }
     }
 
+    /** Set an `input_text` value via `set_value`. The text is clamped to the
+     *  helper's max length client-side; HA still rejects values shorter than
+     *  the configured min, in which case the failure path surfaces a toast. */
+    fun setText(entry: Entry, newValue: String) {
+        viewModelScope.launch {
+            val clamped = HelpersLogic.clampText(newValue, entry.textMin, entry.textMax)
+            haRepository.call(
+                ServiceCall(
+                    target = entry.id,
+                    service = "set_value",
+                    data = buildJsonObject {
+                        put("value", JsonPrimitive(clamped))
+                    },
+                ),
+            ).onFailure { Toaster.error("Set failed: ${it.message ?: "unknown"}") }
+            kotlinx.coroutines.delay(400L)
+            refresh()
+        }
+    }
+
+    /** Set an `input_datetime` via `set_datetime`. Only the fields the helper
+     *  carries are sent: a date-only helper gets `date`, a time-only helper
+     *  gets `time`, a combined helper gets both. Blank / null fields are
+     *  omitted so HA keeps the existing component. */
+    fun setDateTime(entry: Entry, date: String?, time: String?) {
+        viewModelScope.launch {
+            val sendDate = entry.hasDate && !date.isNullOrBlank()
+            val sendTime = entry.hasTime && !time.isNullOrBlank()
+            if (!sendDate && !sendTime) {
+                Toaster.error("Nothing to set")
+                return@launch
+            }
+            haRepository.call(
+                ServiceCall(
+                    target = entry.id,
+                    service = "set_datetime",
+                    data = buildJsonObject {
+                        if (sendDate) put("date", JsonPrimitive(date))
+                        if (sendTime) put("time", JsonPrimitive(HelpersLogic.normaliseTime(time!!)))
+                    },
+                ),
+            ).onFailure { Toaster.error("Set failed: ${it.message ?: "unknown"}") }
+            kotlinx.coroutines.delay(400L)
+            refresh()
+        }
+    }
+
     /** Press an `input_button` — fires the press service, no payload. */
     fun pressButton(entry: Entry) {
         viewModelScope.launch {
@@ -275,18 +334,9 @@ class HelpersViewModel(
             "timer",
         )
 
-        /** Map an entity_id's domain prefix to our [Kind] enum. */
-        private fun kindOf(domain: String): Kind = when (domain) {
-            "input_boolean" -> Kind.BOOLEAN
-            "input_number" -> Kind.NUMBER
-            "counter" -> Kind.COUNTER
-            "input_select" -> Kind.SELECT
-            "input_text" -> Kind.TEXT
-            "input_datetime" -> Kind.DATETIME
-            "input_button" -> Kind.BUTTON
-            "timer" -> Kind.TIMER
-            else -> Kind.UNKNOWN
-        }
+        /** Map an entity_id's domain prefix to our [Kind] enum. Delegates to
+         *  [HelpersLogic.kindForDomain] so the mapping is unit-tested in one place. */
+        private fun kindOf(domain: String): Kind = HelpersLogic.kindForDomain(domain)
 
         private fun entryDomain(id: EntityId): String = id.value.substringBefore('.')
 
