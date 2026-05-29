@@ -75,7 +75,7 @@ fun GaugeCard(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    text = rawValue?.let { formatNumber(it) } ?: ". ",
+                    text = rawValue?.let { formatGaugeNumber(it) } ?: ". ",
                     style = R1.numeralXl.copy(fontSize = androidx.compose.ui.unit.TextUnit.Unspecified),
                     color = R1.Ink,
                     fontWeight = FontWeight.Medium,
@@ -91,8 +91,8 @@ fun GaugeCard(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
         ) {
-            Text(text = formatNumber(card.min), style = R1.numeralS, color = R1.InkMuted)
-            Text(text = formatNumber(card.max), style = R1.numeralS, color = R1.InkMuted)
+            Text(text = formatGaugeNumber(card.min), style = R1.numeralS, color = R1.InkMuted)
+            Text(text = formatGaugeNumber(card.max), style = R1.numeralS, color = R1.InkMuted)
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -165,8 +165,17 @@ internal fun severityBandFor(value: Double?, severity: com.github.itskenny0.r1ha
     return null
 }
 
-private fun formatNumber(d: Double): String {
+/**
+ * Format a gauge number for display. Whole numbers render without a decimal
+ * point; everything else rounds to one decimal place. Always [Locale.US] so the
+ * min and max end labels stay "30" and "100" (not a locale-comma "30,0") and a
+ * 30..100 range never reads as a mashed-together "30100".
+ */
+internal fun formatGaugeNumber(d: Double): String {
     val rounded = kotlin.math.round(d * 100.0) / 100.0
-    return if (rounded == kotlin.math.floor(rounded)) rounded.toInt().toString()
-    else "%.1f".format(rounded)
+    return if (rounded == kotlin.math.floor(rounded)) {
+        rounded.toLong().toString()
+    } else {
+        String.format(java.util.Locale.US, "%.1f", rounded)
+    }
 }

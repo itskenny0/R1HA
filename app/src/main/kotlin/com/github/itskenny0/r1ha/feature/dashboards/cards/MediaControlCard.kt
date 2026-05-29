@@ -93,6 +93,18 @@ fun MediaControlCard(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        // Selected input source (e.g. "Spotify", "HDMI 1") when the player
+        // reports one, so the card reads like HA's media-control card.
+        state?.mediaSource?.takeUnless { it.isBlank() }?.let { source ->
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = source,
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Spacer(Modifier.height(12.dp))
         // Transport row.
         Row(
