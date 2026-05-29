@@ -293,6 +293,14 @@ fun SettingsScreen(
         androidx.compose.runtime.mutableStateOf(false)
     }
 
+    // Confirmation prompt shown when the native dashboards renderer is opened
+    // on an R1-sized display, where the full-screen card grid is tight. Lives
+    // at screen scope so the row's onClick (in the LazyColumn) can raise it and
+    // the dialog can render above the body.
+    val dashboardsSmallScreenPrompt = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
+
     // SAF launchers for backup export / import. Using CreateDocument / OpenDocument
     // routes through the Android system file picker, so the user can save to the
     // R1's local storage, a USB stick, or any cloud-storage app they have wired
@@ -1662,20 +1670,25 @@ fun SettingsScreen(
                     }
                 }
             }
-            // Native dashboards entry. Gated to non-R1 widths because
-            // the dashboards renderer is full-screen with a card-grid
-            // layout: meaningful on phones / tablets but visually
-            // cramped on the R1's small portrait display. The check
-            // runs inside the `item` so a tier change (rotation,
-            // foldable hinge) flips visibility live.
+            // Native dashboards entry. Always shown so it stays reachable on
+            // every device. The full-screen card-grid renderer is roomier on
+            // phones / tablets, so on the R1 (small portrait display) tapping
+            // first asks for confirmation rather than hiding the entry (which
+            // also wrongly hid it on phones reporting exactly 360 dp).
             item {
-                if (com.github.itskenny0.r1ha.ui.layout.currentWidthTier() != com.github.itskenny0.r1ha.ui.layout.WidthTier.R1) {
-                    NavRow(
-                        label = "Dashboards",
-                        value = "Native Lovelace renderer",
-                        onClick = onOpenDashboards,
-                    )
-                }
+                val isR1Width = com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
+                    com.github.itskenny0.r1ha.ui.layout.WidthTier.R1
+                NavRow(
+                    label = "Dashboards",
+                    value = "Native Lovelace renderer",
+                    onClick = {
+                        if (isR1Width) {
+                            dashboardsSmallScreenPrompt.value = true
+                        } else {
+                            onOpenDashboards()
+                        }
+                    },
+                )
             }
 
             }
@@ -1991,6 +2004,36 @@ fun SettingsScreen(
                 com.github.itskenny0.r1ha.core.util.Toaster.show("Tile bound to $entityId")
             },
             onDismiss = { tilePickerOpen.value = false },
+        )
+    }
+    if (dashboardsSmallScreenPrompt.value) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { dashboardsSmallScreenPrompt.value = false },
+            containerColor = R1.Bg,
+            title = { Text(text = "DASHBOARDS", style = R1.sectionHeader, color = R1.Ink) },
+            text = {
+                Text(
+                    text = "This feature works better on larger screens. Do you want to continue?",
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+            },
+            confirmButton = {
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = "CONTINUE",
+                    onClick = {
+                        dashboardsSmallScreenPrompt.value = false
+                        onOpenDashboards()
+                    },
+                )
+            },
+            dismissButton = {
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = "CANCEL",
+                    onClick = { dashboardsSmallScreenPrompt.value = false },
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                )
+            },
         )
     }
 }
