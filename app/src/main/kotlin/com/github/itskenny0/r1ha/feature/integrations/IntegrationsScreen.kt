@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.ConfigEntry
@@ -35,6 +34,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -76,20 +77,12 @@ fun IntegrationsScreen(
             title = "INTEGRATIONS",
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "..." else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = if (ui.loading) "..." else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh integrations",
+                )
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -135,9 +128,9 @@ fun IntegrationsScreen(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
-                                    horizontal = 12.dp, vertical = 8.dp,
+                                    horizontal = R1.space.m, vertical = R1.space.s,
                                 ),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                             ) {
                                 for ((domain, entries) in sections) {
                                     item(key = "domain/$domain") {
@@ -173,34 +166,34 @@ private fun FilterBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "SHOW",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = R1.space.s),
         )
-        FilterChip(
-            label = "ALL",
-            count = totalCount,
+        R1Chip(
+            text = "ALL $totalCount",
+            variant = R1ChipVariant.Filter,
             selected = current == IntegrationsViewModel.Filter.ALL,
             tone = R1.AccentNeutral,
             onClick = { onSelect(IntegrationsViewModel.Filter.ALL) },
         )
-        Spacer(Modifier.width(6.dp))
-        FilterChip(
-            label = "LOADED",
-            count = loadedCount,
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(
+            text = "LOADED $loadedCount",
+            variant = R1ChipVariant.Filter,
             selected = current == IntegrationsViewModel.Filter.LOADED,
             tone = R1.AccentGreen,
             onClick = { onSelect(IntegrationsViewModel.Filter.LOADED) },
         )
-        Spacer(Modifier.width(6.dp))
-        FilterChip(
-            label = "FAILED",
-            count = failedCount,
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(
+            text = "FAILED $failedCount",
+            variant = R1ChipVariant.Filter,
             selected = current == IntegrationsViewModel.Filter.FAILED,
             tone = R1.StatusRed,
             onClick = { onSelect(IntegrationsViewModel.Filter.FAILED) },
@@ -209,44 +202,30 @@ private fun FilterBar(
 }
 
 @Composable
-private fun FilterChip(
-    label: String,
-    count: Int,
-    selected: Boolean,
-    tone: Color,
-    onClick: () -> Unit,
-) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(if (selected) tone.copy(alpha = 0.18f) else R1.SurfaceMuted)
-            .border(1.dp, if (selected) tone.copy(alpha = 0.6f) else R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(
-            text = "$label $count",
-            style = R1.labelMicro,
-            color = if (selected) tone else R1.InkSoft,
-        )
-    }
-}
-
-@Composable
 private fun DomainHeader(domain: String, count: Int) {
+    // Canonical group-header treatment (matches R1Section's title line): uppercase
+    // section-header type in the accent colour, a hairline rule filling the gap, and a
+    // count rendered as an R1Chip Pill at the right edge.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = domain.uppercase(),
-            style = R1.labelMicro,
+            style = R1.sectionHeader,
             color = R1.AccentWarm,
-            modifier = Modifier.weight(1f),
         )
-        Text(text = "$count", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.width(R1.space.m))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(text = "$count", variant = R1ChipVariant.Pill, tone = R1.InkSoft)
     }
 }
 
@@ -270,8 +249,8 @@ private fun EntryRow(
             .clip(R1.ShapeS)
             .background(if (disabled) R1.Bg else R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -281,8 +260,12 @@ private fun EntryRow(
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            Spacer(Modifier.width(8.dp))
-            StateChip(state = entry.state, tone = stateTone)
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = entry.state.uppercase(),
+                variant = R1ChipVariant.Pill,
+                tone = stateTone,
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -292,12 +275,12 @@ private fun EntryRow(
                 modifier = Modifier.weight(1f),
             )
             if (disabled) {
-                MicroChip(text = "DISABLED", tone = R1.StatusAmber)
-                Spacer(Modifier.width(6.dp))
+                R1Chip(text = "DISABLED", variant = R1ChipVariant.Pill, tone = R1.StatusAmber)
+                Spacer(Modifier.width(R1.space.s))
             }
             if (entry.prefDisablePolling) {
-                MicroChip(text = "NO POLL", tone = R1.AccentCool)
-                Spacer(Modifier.width(6.dp))
+                R1Chip(text = "NO POLL", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
+                Spacer(Modifier.width(R1.space.s))
             }
             ReloadChip(
                 supportsUnload = entry.supportsUnload,
@@ -317,33 +300,10 @@ private fun EntryRow(
 }
 
 @Composable
-private fun StateChip(state: String, tone: Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(tone.copy(alpha = 0.18f))
-            .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    ) {
-        Text(text = state.uppercase(), style = R1.labelMicro, color = tone)
-    }
-}
-
-@Composable
-private fun MicroChip(text: String, tone: Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(tone.copy(alpha = 0.18f))
-            .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text = text, style = R1.labelMicro, color = tone)
-    }
-}
-
-@Composable
 private fun ReloadChip(supportsUnload: Boolean, reloading: Boolean, onClick: () -> Unit) {
+    // RELOAD is the one mutating action on the surface, so it stays bespoke: it folds a
+    // spinner into the chip footprint while in flight and goes inert (no tap target, muted
+    // tone) when the integration can't be unloaded.
     val enabled = supportsUnload && !reloading
     val tone = if (supportsUnload) R1.AccentWarm else R1.InkMuted
     Box(
@@ -352,7 +312,7 @@ private fun ReloadChip(supportsUnload: Boolean, reloading: Boolean, onClick: () 
             .background(if (enabled) tone.copy(alpha = 0.18f) else R1.SurfaceMuted)
             .border(1.dp, if (enabled) tone.copy(alpha = 0.5f) else R1.Hairline, R1.ShapeS)
             .let { if (enabled) it.r1Pressable(onClick = onClick) else it }
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         contentAlignment = Alignment.Center,
     ) {
         if (reloading) {
@@ -374,7 +334,7 @@ private fun ReloadChip(supportsUnload: Boolean, reloading: Boolean, onClick: () 
 @Composable
 private fun EmptyState(message: String) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(22.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = message, style = R1.body, color = R1.InkMuted)
@@ -384,14 +344,14 @@ private fun EmptyState(message: String) {
 @Composable
 private fun ErrorState(message: String) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "COULDN'T LOAD INTEGRATIONS", style = R1.labelMicro, color = R1.StatusAmber)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         Text(text = message, style = R1.body, color = R1.InkSoft)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text(
             text = "config_entries only flows over the live WebSocket. Retry once it reconnects.",
             style = R1.labelMicro,
