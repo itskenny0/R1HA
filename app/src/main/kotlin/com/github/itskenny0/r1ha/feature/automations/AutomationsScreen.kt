@@ -5,10 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
@@ -32,6 +34,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -40,7 +44,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
 /**
- * Automations browser — mirrors HA's frontend Automations panel.
+ * Automations browser, mirrors HA's frontend Automations panel.
  * Each row carries:
  *  - state chip (ENABLED / DISABLED) coloured per state
  *  - friendly name + a smaller `entity_id` underneath
@@ -50,7 +54,7 @@ import com.github.itskenny0.r1ha.ui.components.r1RowPressable
  *    `skip_condition: true`, so the conditions block doesn't block a
  *    manual test).
  *
- * Long-press a row to toggle its enabled state — `automation.turn_on`
+ * Long-press a row to toggle its enabled state: `automation.turn_on`
  * / `automation.turn_off`. Re-fetch is automatic after every dispatch
  * so the row stays in sync.
  *
@@ -73,7 +77,7 @@ fun AutomationsScreen(
     val vm: AutomationsViewModel = viewModel(
         factory = AutomationsViewModel.factory(haRepository, settings),
     )
-    // Active-page favourites set — used to swap the ☆ glyph for ★ on
+    // Active-page favourites set, used to swap the ☆ glyph for ★ on
     // rows the user has already pinned (same idiom as the Search
     // screen's filled-when-favourited star).
     val appSettings by settings.settings.collectAsState(
@@ -100,23 +104,15 @@ fun AutomationsScreen(
             title = "AUTOMATIONS",
             onBack = onBack,
             action = {
-                // RELOAD chip — fires automation.reload. Disabled while
-                // a previous reload is in flight to stop a rapid
-                // double-tap from queueing two reloads back-to-back.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { if (!ui.reloading) vm.reload() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.reloading) "…" else "RELOAD",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                // RELOAD chip fires automation.reload. While a previous reload
+                // is in flight the chip reads "…" and the tap is ignored, so a
+                // rapid double-tap can't queue two reloads back-to-back.
+                R1Chip(
+                    text = if (ui.reloading) "…" else "RELOAD",
+                    variant = R1ChipVariant.Action,
+                    onClick = { if (!ui.reloading) vm.reload() },
+                    contentDescription = "Reload automations",
+                )
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -133,7 +129,7 @@ fun AutomationsScreen(
                 )
             }
             ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -143,17 +139,17 @@ fun AutomationsScreen(
                 )
             }
             ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "No automations defined. Settings → Automations in HA's web UI.",
+                    text = "No automations defined. Settings, Automations in HA's web UI.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
             }
             ui.entries.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -170,10 +166,10 @@ fun AutomationsScreen(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                        contentPadding = PaddingValues(
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         items(items = ui.entries, key = { it.id.value }) { entry ->
                             AutomationRow(
@@ -197,14 +193,14 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "FIND",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = 8.dp),
+            modifier = Modifier.padding(end = R1.space.s),
         )
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
@@ -215,9 +211,11 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
-                modifier = Modifier.size(48.dp).r1Pressable({ onQueryChange("") }),
+                modifier = Modifier
+                    .size(R1.MinTarget)
+                    .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
@@ -235,6 +233,11 @@ private fun AutomationRow(
     onLongPress: () -> Unit,
     onFavorite: () -> Unit,
 ) {
+    // Bespoke control row: the body toggles enabled state, plus there are
+    // independent star + RUN tap targets on the trailing edge, so it can't
+    // collapse to a single-onClick R1Row. It does adopt the canonical boxed
+    // surface (muted fill + hairline + 48dp min height) and spacing tokens so
+    // it sits flush with R1Row instances elsewhere.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -247,27 +250,28 @@ private fun AutomationRow(
             // frequently. Separate RUN affordance on the right edge
             // dispatches a manual trigger.
             .r1RowPressable(onTap = onToggleEnabled, onLongPress = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ENABLED / DISABLED chip — green when active, muted when off.
+        // ON / OFF state label, green when active, muted when off.
         Text(
             text = if (entry.enabled) "ON" else "OFF",
             style = R1.labelMicro,
             color = if (entry.enabled) R1.AccentGreen else R1.InkMuted,
-            modifier = Modifier.width(24.dp),
+            modifier = Modifier.width(R1.space.xl),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = entry.name,
-                    style = R1.body,
+                    style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.s))
                 RelativeTimeLabel(
                     at = entry.lastTriggered,
                     color = R1.InkMuted,
@@ -283,7 +287,7 @@ private fun AutomationRow(
                     modifier = Modifier.weight(1f),
                 )
                 if (entry.mode != AutomationsViewModel.Mode.UNKNOWN) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     // Long-press a mode badge surfaces a one-line explainer; HA's
                     // automation-mode jargon (queued/restart/parallel) isn't obvious
                     // even to fairly experienced users.
@@ -305,8 +309,8 @@ private fun AutomationRow(
                     )
                 }
                 if (entry.currentRunning > 0) {
-                    Spacer(Modifier.width(6.dp))
-                    // "RUNNING ×N" badge — only renders when at least
+                    Spacer(Modifier.width(R1.space.s))
+                    // "RUNNING ×N" badge, only renders when at least
                     // one instance is live (relevant for parallel /
                     // queued modes that allow concurrent runs).
                     Text(
@@ -317,14 +321,17 @@ private fun AutomationRow(
                 }
             }
         }
-        Spacer(Modifier.width(6.dp))
-        // ☆ pin-to-favourites button — tap to add this automation to
+        Spacer(Modifier.width(R1.space.s))
+        // ☆ pin-to-favourites button, tap to add this automation to
         // the active page's card stack. Glyph swaps to ★ once pinned
         // so the user doesn't fruitlessly re-tap.
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .r1Pressable(onClick = onFavorite),
+                .size(R1.MinTarget)
+                .r1Pressable(
+                    onClick = onFavorite,
+                    contentDescription = if (isFavorite) "Pinned to favourites" else "Pin to favourites",
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -333,20 +340,18 @@ private fun AutomationRow(
                 color = if (isFavorite) R1.AccentWarm else R1.InkSoft,
             )
         }
-        Spacer(Modifier.width(2.dp))
-        // RUN tap target — fires automation.trigger. Separate from the
+        Spacer(Modifier.width(R1.space.xs))
+        // RUN tap target, fires automation.trigger. Separate from the
         // row's enabled-toggle press handler so a tap here is
         // unambiguously "run now" rather than "toggle on/off".
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.AccentGreen.copy(alpha = 0.18f))
-                .border(1.dp, R1.AccentGreen.copy(alpha = 0.4f), R1.ShapeS)
-                .r1Pressable(onClick = onRun)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            Text(text = "RUN", style = R1.labelMicro, color = R1.AccentGreen)
-        }
+        R1Chip(
+            text = "RUN",
+            variant = R1ChipVariant.Action,
+            selected = true,
+            tone = R1.AccentGreen,
+            onClick = onRun,
+            contentDescription = "Run ${entry.name}",
+        )
     }
 }
 
