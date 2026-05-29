@@ -95,6 +95,7 @@ fun DashboardViewScreen(
     val overrides by vm.overrides.collectAsState()
     val entities by vm.entities.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(dashboardUrlPath, viewPath) {
         vm.loadConfig(dashboardUrlPath)
         // Wait for the config to land in state, then pick the view.
@@ -189,7 +190,7 @@ fun DashboardViewScreen(
                             fallbackEntityId = (action as? LovelaceAction.CallService)?.entityId,
                             haRepository = haRepository,
                             onNavigate = { /* navigation is dashboard-internal only today */ },
-                            onOpenUrl = { /* swallow; URL launch surfaces wired later */ },
+                            onOpenUrl = { url -> launchUrl(context, url) },
                             onMoreInfo = { /* TODO: hook into card-stack drill-in */ },
                         )
                     }
@@ -491,4 +492,28 @@ private fun originalIndexFor(
         .toSet()
     val surviving = originalCards.indices.filter { it !in deletedIndices }
     return surviving.getOrNull(renderedIndex) ?: renderedIndex
+}
+
+/**
+ * Launch a `url` / `navigate`-to-url / custom-card tap target in the
+ * system browser. A blank or unparseable URL is dropped with a toast
+ * rather than crashing, and a device with no browser activity surfaces
+ * the same friendly message instead of throwing ActivityNotFound.
+ */
+private fun launchUrl(context: android.content.Context, url: String) {
+    val trimmed = url.trim()
+    if (trimmed.isEmpty()) {
+        com.github.itskenny0.r1ha.core.util.Toaster.error("No link to open")
+        return
+    }
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(trimmed),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        com.github.itskenny0.r1ha.core.util.Toaster.error("No app to open link")
+    }
 }
