@@ -189,7 +189,13 @@ fun FavoritesPickerScreen(
         if (editingId != null) {
             val entity = ui.rows.firstOrNull { it.state.id.value == editingId }?.state
             if (entity != null) {
-                val currentName = ui.rows.first { it.state.id.value == editingId }.displayName
+                // Seed the name field from the RAW name override (empty when none),
+                // not the resolved display name. Pre-filling with the friendly_name
+                // would make an untouched SAVE persist a redundant override equal to
+                // HA's friendly_name; an empty field instead shows friendly_name as a
+                // placeholder, and SAVE-without-edit leaves no override behind. Matches
+                // the dialog's documented "Clear to revert to HA's friendly_name."
+                val currentName = appSettingsForOverrides.nameOverrides[editingId].orEmpty()
                 val currentOverride = appSettingsForOverrides.entityOverrides[editingId]
                     ?: com.github.itskenny0.r1ha.core.prefs.EntityOverride.NONE
                 RenameDialog(
