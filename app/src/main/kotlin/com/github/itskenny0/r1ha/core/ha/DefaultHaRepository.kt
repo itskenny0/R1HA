@@ -3338,6 +3338,125 @@ class DefaultHaRepository(
         )
     }
 
+    override suspend fun listStatisticIds(): Result<List<StatisticId>> = withContext(Dispatchers.IO) {
+        // recorder/list_statistic_ids returns an array of catalogue rows. We
+        // call without a `statistic_type` filter so the user can pick from
+        // every recorded series; the per-series has_mean / has_sum flags
+        // tell the UI which aggregation chips to enable.
+        callWsExpectingPayload("recorder/list_statistic_ids").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray
+                ?: error("recorder/list_statistic_ids returned a non-array payload")
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                fun str(key: String): String? = (o[key] as? JsonPrimitive)?.content
+                fun bool(key: String): Boolean =
+                    (o[key] as? JsonPrimitive)?.booleanOrNull == true
+                val sid = str("statistic_id") ?: return@mapNotNull null
+                // HA returns unit under "statistics_unit_of_measurement" on
+                // newer cores and "unit_of_measurement" on older ones; accept
+                // either so the picker still labels rows correctly.
+                val unit = str("statistics_unit_of_measurement")
+                    ?: str("unit_of_measurement")
+                StatisticId(
+                    statisticId = sid,
+                    name = str("name"),
+                    source = str("source"),
+                    unitOfMeasurement = unit,
+                    hasMean = bool("has_mean"),
+                    hasSum = bool("has_sum"),
+                )
+            }.sortedBy { (it.name?.lowercase()?.ifBlank { null } ?: it.statisticId.lowercase()) }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.statistics", "list ids failed: ${t.message}")
+        }
+    }
+
+    override suspend fun getStatisticsDuringPeriod(
+        statisticIds: List<String>,
+        start: java.time.Instant,
+        end: java.time.Instant,
+        period: String,
+    ): Result<Map<String, List<StatisticsBucket>>> = withContext(Dispatchers.IO) {
+        if (statisticIds.isEmpty()) {
+            return@withContext Result.success(emptyMap())
+        }
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("start_time", JsonPrimitive(start.toString()))
+            put("end_time", JsonPrimitive(end.toString()))
+            put(
+                "statistic_ids",
+                kotlinx.serialization.json.buildJsonArray {
+                    statisticIds.forEach { add(JsonPrimitive(it)) }
+                },
+            )
+            put("period", JsonPrimitive(period))
+            // Ask for every aggregation type the recorder might have stored;
+            // the parser silently drops the ones HA didn't fill in. Smaller
+            // type-filter would mean re-fetching when the user flips the
+            // aggregation chip, which would feel laggy.
+            put(
+                "types",
+                kotlinx.serialization.json.buildJsonArray {
+                    add(JsonPrimitive("mean"))
+                    add(JsonPrimitive("min"))
+                    add(JsonPrimitive("max"))
+                    add(JsonPrimitive("sum"))
+                    add(JsonPrimitive("state"))
+                    add(JsonPrimitive("change"))
+                },
+            )
+        }
+        callWsExpectingPayload("recorder/statistics_during_period", extras).mapCatching { payload ->
+            val obj = payload as? kotlinx.serialization.json.JsonObject
+                ?: error("recorder/statistics_during_period returned a non-object payload")
+            val out = LinkedHashMap<String, List<StatisticsBucket>>(obj.size)
+            for ((sid, value) in obj) {
+                val arr = value as? kotlinx.serialization.json.JsonArray ?: continue
+                val buckets = arr.mapNotNull { el ->
+                    val b = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                    // HA encodes bucket boundaries as either ISO strings (default)
+                    // or epoch milliseconds (some older cores / custom integrations);
+                    // accept both so a single odd source doesn't blank the chart.
+                    val startAt = parseBucketInstant(b["start"]) ?: return@mapNotNull null
+                    val endAt = parseBucketInstant(b["end"])
+                        ?: startAt.plusSeconds(bucketSpanSeconds(period))
+                    StatisticsBucket(
+                        start = startAt,
+                        end = endAt,
+                        mean = b["mean"].asDouble(),
+                        min = b["min"].asDouble(),
+                        max = b["max"].asDouble(),
+                        sum = b["sum"].asDouble(),
+                        state = b["state"].asDouble(),
+                        change = b["change"].asDouble(),
+                    )
+                }
+                out[sid] = buckets
+            }
+            out
+        }.onFailure { t ->
+            R1Log.w("HaRepo.statistics", "period fetch failed: ${t.message}")
+        }
+    }
+
+    /** Decode the wire's bucket boundary, accepting either an ISO-8601 string
+     *  or an epoch-millis number. */
+    private fun parseBucketInstant(element: kotlinx.serialization.json.JsonElement?): java.time.Instant? {
+        val raw = (element as? JsonPrimitive)?.content ?: return null
+        raw.toLongOrNull()?.let { return runCatching { java.time.Instant.ofEpochMilli(it) }.getOrNull() }
+        return runCatching { java.time.Instant.parse(raw) }.getOrNull()
+    }
+
+    /** Fallback bucket span when HA omits `end` (rare but defensive). */
+    private fun bucketSpanSeconds(period: String): Long = when (period) {
+        "5minute" -> 300L
+        "hour" -> 3600L
+        "day" -> 86_400L
+        "week" -> 7L * 86_400L
+        "month" -> 30L * 86_400L
+        else -> 3600L
+    }
+
     /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last

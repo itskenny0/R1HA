@@ -519,6 +519,29 @@ interface HaRepository {
         yaml: String,
         sourceUrl: String,
     ): Result<Unit>
+
+    /**
+     * List every statistic_id HA's recorder is collecting via
+     * `recorder/list_statistic_ids`. The reply tells us, per series, which
+     * aggregation columns (mean / sum) the recorder fills in: that hint
+     * drives the Statistics screen's aggregation chip availability so we
+     * don't offer SUM on a temperature sensor or MEAN on a kWh meter.
+     */
+    suspend fun listStatisticIds(): Result<List<StatisticId>>
+
+    /**
+     * Fetch long-term statistics buckets for [statisticIds] between [start]
+     * and [end] at the requested [period] resolution
+     * (`5minute` / `hour` / `day` / `week` / `month`). HA returns one bucket
+     * list per requested id; ids the recorder doesn't know about are
+     * omitted from the result map. Used by the Statistics screen.
+     */
+    suspend fun getStatisticsDuringPeriod(
+        statisticIds: List<String>,
+        start: java.time.Instant,
+        end: java.time.Instant,
+        period: String,
+    ): Result<Map<String, List<StatisticsBucket>>>
 }
 
 /**

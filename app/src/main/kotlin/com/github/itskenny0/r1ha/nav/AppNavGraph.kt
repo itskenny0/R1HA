@@ -608,6 +608,14 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.STATISTICS) {
+            com.github.itskenny0.r1ha.feature.statistics.StatisticsScreen(
+                haRepository = haRepository,
+                settings = settings,
+                wheelInput = wheelInput,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.DASHBOARD) { backStackEntry ->
             // canGoBack — true when Dashboard was reached via nav, false
             // when it's the start destination. previousBackStackEntry is
@@ -743,6 +751,7 @@ private fun SettingsRouteContent(
         onOpenUsers = { navController.navigate(Routes.USERS) { launchSingleTop = true } },
         onOpenTags = { navController.navigate(Routes.TAGS) { launchSingleTop = true } },
         onOpenBlueprints = { navController.navigate(Routes.BLUEPRINTS) { launchSingleTop = true } },
+        onOpenStatistics = { navController.navigate(Routes.STATISTICS) { launchSingleTop = true } },
         onSignedOut = {
             navController.navigate(Routes.ONBOARDING) {
                 popUpTo(0) { inclusive = true }

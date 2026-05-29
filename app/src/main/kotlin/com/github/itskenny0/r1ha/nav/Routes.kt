@@ -115,4 +115,11 @@ object Routes {
      *  with a two-stage IMPORT FROM URL flow that previews via
      *  `blueprint/import` and commits via `blueprint/save`. */
     const val BLUEPRINTS = "blueprints"
+
+    /** Long-term statistics chart: pick any series HA's recorder is
+     *  collecting (sensor.*, energy meters, integration-provided
+     *  trackers) and render its mean/min/max/sum/change over a chosen
+     *  window. Companion surface to HISTORY (which plots the raw
+     *  state-change stream over a short window). */
+    const val STATISTICS = "statistics"
 }

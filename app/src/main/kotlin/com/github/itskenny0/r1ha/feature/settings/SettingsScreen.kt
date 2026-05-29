@@ -185,6 +185,9 @@ fun SettingsScreen(
      *  `blueprint/import` + `blueprint/save`). Defaulted so older callers
      *  still compile. */
     onOpenBlueprints: () -> Unit = {},
+    /** Native long-term statistics chart: picks any recorder series and
+     *  plots mean/min/max/sum/change over a chosen window. */
+    onOpenStatistics: () -> Unit = {},
     onSignedOut: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -1851,6 +1854,13 @@ fun SettingsScreen(
                     label = "Tags",
                     value = "NFC / QR tag registry",
                     onClick = onOpenTags,
+                )
+            }
+            item {
+                NavRow(
+                    label = "Statistics",
+                    value = "Long-term sensor stats",
+                    onClick = onOpenStatistics,
                 )
             }
             // Create-backup action. Two-stage confirm because triggering a
