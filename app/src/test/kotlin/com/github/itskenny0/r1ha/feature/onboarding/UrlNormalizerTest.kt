@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.onboarding
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
+import java.util.Locale
 
 class UrlNormalizerTest {
 
@@ -166,5 +167,48 @@ class UrlNormalizerTest {
         // Public DNS + path → https on implicit :443, path preserved.
         assertThat(normalizeServerUrl("ha.example.com/dashboard"))
             .isEqualTo("https://ha.example.com/dashboard")
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────────
+    // Locale-invariant host folding (Turkish dotted-I)
+    //
+    // The protocol heuristic folds the host to lower case before comparing it against
+    // "localhost", ".local", etc. Under the Turkish locale the default lowercase()
+    // maps ASCII 'I' to the dotless 'ı', so a host whose dotted-I participates in a
+    // comparison could fold differently and flip http/https. UrlNormalizer pins the
+    // fold to Locale.ROOT; these tests lock in that the verdict is the same regardless
+    // of the JVM's default locale so a future-added literal containing 'i' stays safe.
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `mDNS host with a dotted-I folds the same under the Turkish locale`() {
+        // "HASSIO.local" contains an 'I'; the .local suffix must still route to http
+        // whether the JVM default locale lowercases with the Turkish or root rules.
+        val expected = normalizeServerUrl("HASSIO.local")
+        withDefaultLocale(Locale.forLanguageTag("tr-TR")) {
+            assertThat(normalizeServerUrl("HASSIO.local")).isEqualTo(expected)
+        }
+        assertThat(expected).isEqualTo("http://HASSIO.local:8123")
+    }
+
+    @Test
+    fun `public host with a dotted-I folds the same under the Turkish locale`() {
+        // A public DNS host carrying an 'I' must resolve to https identically under
+        // either locale; the fold is pinned to Locale.ROOT inside the normaliser.
+        val expected = normalizeServerUrl("ISP-PORTAL.example.com")
+        withDefaultLocale(Locale.forLanguageTag("tr-TR")) {
+            assertThat(normalizeServerUrl("ISP-PORTAL.example.com")).isEqualTo(expected)
+        }
+        assertThat(expected).isEqualTo("https://ISP-PORTAL.example.com")
+    }
+
+    private inline fun withDefaultLocale(locale: Locale, block: () -> Unit) {
+        val previous = Locale.getDefault()
+        Locale.setDefault(locale)
+        try {
+            block()
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 }
