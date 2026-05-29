@@ -9,8 +9,8 @@ import androidx.compose.runtime.Stable
  * itself); entities then point back to a device via `device_id`.
  *
  * Only the fields the browse surface renders are carried here. HA's
- * payload also includes `connections`, `identifiers`, `entry_type`,
- * `name_by_user`, `serial_number` etc.; pull them in as needed.
+ * payload also includes `entry_type`, `serial_number` etc.; pull them
+ * in as needed.
  */
 @Stable
 data class DeviceInfo(
@@ -38,6 +38,12 @@ data class DeviceInfo(
     /** Optional integration-provided link to the device's web admin UI
      *  (e.g. a router's local IP). Surfaced as a chip on the drill-in. */
     val configurationUrl: String?,
+    /** Integration identifiers as (domain, id) pairs, e.g.
+     *  ("zha", "00:11:22:33"). HA sends these as a JSON array of 2-tuples. */
+    val identifiers: List<Pair<String, String>> = emptyList(),
+    /** Physical connections as (type, value) pairs, e.g. ("mac", "aa:bb:..").
+     *  HA sends these as a JSON array of 2-tuples. */
+    val connections: List<Pair<String, String>> = emptyList(),
 ) {
     /** Display name; user override wins, otherwise integration name,
      *  otherwise the bare id as a last-resort label. */

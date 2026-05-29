@@ -562,4 +562,100 @@ class DefaultHaRepositoryTest {
         http.dispatcher.executorService.shutdown()
         http.connectionPool.evictAll()
     }
+
+    /**
+     * listDevices must parse HA's `identifiers` and `connections` arrays (each a
+     * JSON array of [domain, id] 2-tuples) into the DeviceInfo pair lists, while
+     * tolerating rows that carry neither field and entries that aren't well-formed
+     * 2-element tuples (dropped silently, leaving an empty list).
+     */
+    @Test fun `listDevices parses identifiers and connections and tolerates malformed`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl), favorites = listOf("light.kitchen")) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val wsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val ws = HaWebSocketClient(http = http, scope = wsScope)
+
+        val wsUrl = baseUrl.replace("http://", "ws://") + "/api/websocket"
+        ws.connect(wsUrl, "TOK")
+
+        val opened = recorder.awaitOpen(5_000)
+        opened.send("""{"type":"auth_required","ha_version":"2026.5.0"}""")
+        recorder.awaitTextMessage(5_000) // auth frame
+        opened.send("""{"type":"auth_ok","ha_version":"2026.5.0"}""")
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        repo.start()
+
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(300)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        val subFrame = recorder.awaitTextMessage(5_000)
+        assertThat(subFrame).contains("subscribe_trigger")
+
+        val callScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val deferred = callScope.async { repo.listDevices() }
+
+        var frame = recorder.awaitTextMessage(5_000)
+        while (!frame.contains("config/device_registry/list")) {
+            frame = recorder.awaitTextMessage(5_000)
+        }
+        val id = Regex("\"id\":(\\d+)").find(frame)!!.groupValues[1]
+
+        // dev1: well-formed identifiers + connections.
+        // dev2: neither field present.
+        // dev3: malformed entries (1-element, 3-element, non-array, non-primitive
+        //       members) must all be dropped, yielding empty lists.
+        opened.send(
+            """{"id":$id,"type":"result","success":true,"result":[""" +
+            """{"id":"dev1","identifiers":[["zha","00:11:22"],["mqtt","abc"]],""" +
+            """"connections":[["mac","aa:bb:cc:dd:ee:ff"]]},""" +
+            """{"id":"dev2"},""" +
+            """{"id":"dev3","identifiers":[["only_one"],["a","b","c"],"flat",[{"x":1},"y"]],""" +
+            """"connections":"not_an_array"}""" +
+            """]}"""
+        )
+
+        val result = deferred.await()
+        assertThat(result.isSuccess).isTrue()
+        val devices = result.getOrThrow().associateBy { it.id }
+
+        val dev1 = checkNotNull(devices["dev1"])
+        assertThat(dev1.identifiers).containsExactly("zha" to "00:11:22", "mqtt" to "abc").inOrder()
+        assertThat(dev1.connections).containsExactly("mac" to "aa:bb:cc:dd:ee:ff")
+
+        val dev2 = checkNotNull(devices["dev2"])
+        assertThat(dev2.identifiers).isEmpty()
+        assertThat(dev2.connections).isEmpty()
+
+        val dev3 = checkNotNull(devices["dev3"])
+        assertThat(dev3.identifiers).isEmpty()
+        assertThat(dev3.connections).isEmpty()
+
+        repo.stop()
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
 }

@@ -121,6 +121,12 @@ private fun DeviceMetadata(detail: DevicesViewModel.DetailState) {
             value = detail.parent?.displayName ?: device.viaDeviceId,
         )
         MetaRow(label = "CONFIG", value = device.configurationUrl)
+        device.identifiers.forEach { (domain, value) ->
+            MetaRow(label = "IDENT", value = "$domain:$value")
+        }
+        device.connections.forEach { (type, value) ->
+            MetaRow(label = "CONN", value = "$type:$value")
+        }
         MetaRow(label = "ID", value = device.id)
     }
 }

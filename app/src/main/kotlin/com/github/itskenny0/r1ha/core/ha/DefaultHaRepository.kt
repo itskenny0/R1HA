@@ -3112,6 +3112,18 @@ class DefaultHaRepository(
             arr.mapNotNull { el ->
                 val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
                 fun str(k: String): String? = (o[k] as? JsonPrimitive)?.content
+                // identifiers/connections are JSON arrays of [domain, id] 2-tuples.
+                // Skip anything that isn't exactly a 2-element array of primitives.
+                fun tuples(k: String): List<Pair<String, String>> {
+                    val outer = o[k] as? kotlinx.serialization.json.JsonArray ?: return emptyList()
+                    return outer.mapNotNull { entry ->
+                        val pair = entry as? kotlinx.serialization.json.JsonArray ?: return@mapNotNull null
+                        if (pair.size != 2) return@mapNotNull null
+                        val a = (pair[0] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                        val b = (pair[1] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                        a to b
+                    }
+                }
                 val id = str("id") ?: return@mapNotNull null
                 DeviceInfo(
                     id = id,
@@ -3125,6 +3137,8 @@ class DefaultHaRepository(
                     swVersion = str("sw_version"),
                     hwVersion = str("hw_version"),
                     configurationUrl = str("configuration_url"),
+                    identifiers = tuples("identifiers"),
+                    connections = tuples("connections"),
                 )
             }
         }.onFailure { t ->
