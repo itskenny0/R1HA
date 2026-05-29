@@ -15,7 +15,10 @@ import kotlinx.coroutines.launch
 /**
  * Drives the Repairs surface. Calls `repairs/list_issues` on entry + every refresh, sorts
  * the result with severity-first / created-newest-second / ignored-last, and exposes an
- * ignore action that flips the server-side ignore bit + re-fetches.
+ * ignore action that flips the server-side ignore bit + re-fetches. On first load it also
+ * resolves HA's web-UI base URL (from `/api/config`) so fixable issues can deep-link into
+ * HA's own multi-step fix flow, falling back to a plain "Fix in Home Assistant" hint when
+ * no usable URL is configured.
  */
 class RepairsViewModel(
     private val haRepository: HaRepository,
@@ -26,6 +29,8 @@ class RepairsViewModel(
         val loading: Boolean = true,
         val issues: List<RepairIssue> = emptyList(),
         val error: String? = null,
+        /** HA web-UI deep link to the repairs dashboard, null when no base URL is known. */
+        val repairsUrl: String? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -36,11 +41,7 @@ class RepairsViewModel(
             _ui.value = _ui.value.copy(loading = true, error = null)
             haRepository.listRepairs().fold(
                 onSuccess = { issues ->
-                    val sorted = issues.sortedWith(
-                        compareBy<RepairIssue> { if (it.ignored) 1 else 0 }
-                            .thenBy { severityRank(it.severity) }
-                            .thenByDescending { it.createdAt ?: "" },
-                    )
+                    val sorted = RepairsLogic.sortIssues(issues)
                     _ui.value = _ui.value.copy(loading = false, issues = sorted, error = null)
                     R1Log.i("Repairs", "fetched ${sorted.size} issue(s)")
                 },
@@ -49,6 +50,24 @@ class RepairsViewModel(
                     _ui.value = _ui.value.copy(loading = false, error = t.message)
                 },
             )
+        }
+        resolveRepairsUrl()
+    }
+
+    /**
+     * Best-effort resolve of HA's web-UI base URL for the fix-flow deep link.
+     * Runs alongside the list fetch and never blocks or surfaces an error: a
+     * missing URL just means rows fall back to plain "Fix in Home Assistant".
+     * Skips the round-trip once a URL is already cached.
+     */
+    private fun resolveRepairsUrl() {
+        if (_ui.value.repairsUrl != null) return
+        viewModelScope.launch {
+            haRepository.fetchHaConfig().onSuccess { config ->
+                val base = config.externalUrl?.takeIf { it.isNotBlank() } ?: config.internalUrl
+                val url = RepairsLogic.repairsDashboardUrl(base)
+                if (url != null) _ui.value = _ui.value.copy(repairsUrl = url)
+            }
         }
     }
 
@@ -70,14 +89,6 @@ class RepairsViewModel(
                 },
             )
         }
-    }
-
-    /** Sort key for severity — lower is shown first. critical → error → warning → unknown. */
-    private fun severityRank(s: String): Int = when (s.lowercase()) {
-        "critical" -> 0
-        "error" -> 1
-        "warning" -> 2
-        else -> 3
     }
 
     companion object {

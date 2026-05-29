@@ -25,12 +25,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.RepairIssue
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
@@ -143,26 +146,15 @@ fun RepairsScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         item {
-                            val active = ui.issues.filterNot { it.ignored }
-                            val critical = active.count { it.severity.equals("critical", ignoreCase = true) }
-                            val errors = active.count { it.severity.equals("error", ignoreCase = true) }
-                            val warnings = active.size - critical - errors
-                            val ignored = ui.issues.size - active.size
-                            // Compose a severity breakdown line — gives the user
+                            // Compose a severity breakdown line: gives the user
                             // a one-glance read on how alarming the list is
                             // before they scroll through individual rows.
-                            val parts = buildList {
-                                if (critical > 0) add("$critical CRITICAL")
-                                if (errors > 0) add("$errors ERROR${if (errors == 1) "" else "S"}")
-                                if (warnings > 0) add("$warnings WARNING${if (warnings == 1) "" else "S"}")
-                                if (ignored > 0) add("$ignored IGNORED")
-                            }
-                            val summary = if (parts.isEmpty()) "${ui.issues.size} ITEMS"
-                            else parts.joinToString(" · ")
+                            val b = RepairsLogic.breakdown(ui.issues)
+                            val summary = RepairsLogic.summaryLine(b)
                             val accent = when {
-                                critical > 0 -> R1.StatusRed
-                                errors > 0 -> R1.StatusAmber
-                                warnings > 0 -> R1.AccentWarm
+                                b.critical > 0 -> R1.StatusRed
+                                b.errors > 0 -> R1.StatusAmber
+                                b.warnings > 0 -> R1.AccentWarm
                                 else -> R1.AccentCool
                             }
                             Text(
@@ -175,6 +167,7 @@ fun RepairsScreen(
                         items(ui.issues, key = { it.domain + "/" + it.issueId }) { issue ->
                             RepairRow(
                                 issue = issue,
+                                repairsUrl = ui.repairsUrl,
                                 onToggleIgnore = { vm.ignore(issue) },
                             )
                         }
@@ -188,8 +181,10 @@ fun RepairsScreen(
 @Composable
 private fun RepairRow(
     issue: RepairIssue,
+    repairsUrl: String?,
     onToggleIgnore: () -> Unit,
 ) {
+    val context = LocalContext.current
     val tone = when (issue.severity.lowercase()) {
         "critical" -> R1.StatusRed
         "error" -> R1.StatusAmber
@@ -233,14 +228,15 @@ private fun RepairRow(
                     color = R1.InkMuted,
                 )
             }
-            if (issue.isFixable) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "FIXABLE",
-                    style = R1.labelMicro,
-                    color = R1.AccentCool,
-                )
-            }
+            // Fixable issues route through HA's multi-step fix flow; the rest
+            // are informational and can only be read or ignored. Labelling
+            // both makes the distinction explicit rather than implied.
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (issue.isFixable) "FIXABLE" else "INFO",
+                style = R1.labelMicro,
+                color = if (issue.isFixable) R1.AccentCool else R1.InkMuted,
+            )
         }
         Text(
             text = issue.translationKey ?: issue.issueId,
@@ -255,7 +251,35 @@ private fun RepairRow(
                 maxLines = 3,
             )
         }
+        val createdAt = RepairsLogic.parseCreatedAt(issue.createdAt)
+        if (createdAt != null) {
+            RelativeTimeLabel(
+                at = createdAt,
+                color = R1.InkMuted,
+                style = R1.labelMicro,
+            )
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // The full multi-step fix flow lives in HA's own frontend. When we
+            // know HA's web-UI URL we deep-link straight into the repairs
+            // dashboard; otherwise we still surface the entry point with copy
+            // telling the user where to finish the fix.
+            if (issue.isFixable && !issue.ignored) {
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.AccentCool.copy(alpha = 0.5f), R1.ShapeS)
+                        .r1Pressable(onClick = { openFixFlow(context, repairsUrl) })
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = if (repairsUrl != null) "FIX IN HA ↗" else "FIX IN HOME ASSISTANT",
+                        style = R1.labelMicro,
+                        color = R1.AccentCool,
+                    )
+                }
+            }
             Spacer(Modifier.weight(1f))
             Box(
                 modifier = Modifier
@@ -272,5 +296,27 @@ private fun RepairRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * Launch HA's repairs fix flow. With a resolved web-UI URL we hand off to the
+ * system browser at the repairs dashboard; without one we can't deep-link, so
+ * we tell the user to open Home Assistant and finish there.
+ */
+private fun openFixFlow(context: android.content.Context, repairsUrl: String?) {
+    if (repairsUrl == null) {
+        Toaster.show("Open Home Assistant to run this fix")
+        return
+    }
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(repairsUrl),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        Toaster.error("No browser to open Home Assistant")
     }
 }
