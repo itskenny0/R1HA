@@ -727,8 +727,12 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     Domain.REMOTE -> R1.AccentCool
     // Alarm — warm matches the cardstack's high-attention treatment.
     Domain.ALARM_CONTROL_PANEL -> R1.AccentWarm
-    // Person / weather — read-only info entities; cool matches the cardstack.
-    Domain.PERSON, Domain.WEATHER -> R1.AccentCool
+    // Person — green reads as "presence / who's home", matching the card-stack
+    // person treatment. Weather — cool, consistent with the sensor-style read-only
+    // info family. The picker only has the Domain (no live state), so these are the
+    // static at-rest accents; the card stack tints person by actual home/away state.
+    Domain.PERSON -> R1.AccentGreen
+    Domain.WEATHER -> R1.AccentCool
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
