@@ -413,6 +413,31 @@ data class EntityState(
     }
 
     /**
+     * Subset of HA's `CoverEntityFeature`. Drives the cover card's tilt controls —
+     * a cover that doesn't advertise any tilt bit gets no tilt row at all, so the
+     * user can't fire a `*_tilt` service the integration rejects.
+     */
+    object CoverFeature {
+        const val OPEN = 1
+        const val CLOSE = 2
+        const val SET_POSITION = 4
+        const val STOP = 8
+        const val OPEN_TILT = 16
+        const val CLOSE_TILT = 32
+        const val STOP_TILT = 64
+        const val SET_TILT_POSITION = 128
+    }
+
+    /**
+     * Subset of HA's `HumidifierEntityFeature`. The only bit is MODES — when set
+     * the humidifier exposes an `available_modes` list and `mode` attribute, which
+     * the HumidifierPanel surfaces as a chip row.
+     */
+    object HumidifierFeature {
+        const val MODES = 1
+    }
+
+    /**
      * Subset of HA's `WaterHeaterEntityFeature`. Drives the water heater card's
      * setpoint chip, mode picker, and away-mode toggle.
      */

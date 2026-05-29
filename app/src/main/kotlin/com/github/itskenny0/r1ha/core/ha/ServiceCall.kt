@@ -682,6 +682,40 @@ data class ServiceCall(
         fun valveStop(target: EntityId): ServiceCall =
             ServiceCall(target, "stop_valve", JsonObject(emptyMap()))
 
+        /** Cover `open_cover_tilt` — tilts the slats fully open. Gated on the
+         *  cover's OPEN_TILT supported_features bit. */
+        fun coverOpenTilt(target: EntityId): ServiceCall =
+            ServiceCall(target, "open_cover_tilt", JsonObject(emptyMap()))
+
+        /** Cover `close_cover_tilt` — tilts the slats fully closed. Gated on the
+         *  cover's CLOSE_TILT supported_features bit. */
+        fun coverCloseTilt(target: EntityId): ServiceCall =
+            ServiceCall(target, "close_cover_tilt", JsonObject(emptyMap()))
+
+        /** Cover `stop_cover_tilt` — halts tilt motion mid-travel. Gated on the
+         *  cover's STOP_TILT supported_features bit. */
+        fun coverStopTilt(target: EntityId): ServiceCall =
+            ServiceCall(target, "stop_cover_tilt", JsonObject(emptyMap()))
+
+        /** Cover `set_cover_tilt_position` (0..100, closed slats → open slats).
+         *  Gated on the cover's SET_TILT_POSITION supported_features bit. */
+        fun coverSetTiltPosition(target: EntityId, position: Int): ServiceCall =
+            ServiceCall(
+                target,
+                "set_cover_tilt_position",
+                buildJsonObject { put("tilt_position", JsonPrimitive(position.coerceIn(0, 100))) },
+            )
+
+        /** Humidifier `set_mode` — selects one of the strings from `available_modes`
+         *  (e.g. "normal" / "eco" / "away" / "boost" / "sleep"). Gated on the
+         *  humidifier's MODES supported_features bit. */
+        fun humidifierSetMode(target: EntityId, mode: String): ServiceCall =
+            ServiceCall(
+                target,
+                "set_mode",
+                buildJsonObject { put("mode", JsonPrimitive(mode)) },
+            )
+
         /** Media-player shuffle toggle. */
         fun mediaShuffleSet(target: EntityId, shuffle: Boolean): ServiceCall =
             ServiceCall(
