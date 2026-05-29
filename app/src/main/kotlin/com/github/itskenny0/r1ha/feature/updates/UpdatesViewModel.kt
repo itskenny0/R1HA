@@ -65,6 +65,11 @@ class UpdatesViewModel(
         val latestVersion: String?,
         val releaseSummary: String?,
         val releaseUrl: String?,
+        /** HA `entity_picture` attribute: a relative `/api/...` path or an
+         *  absolute URL pointing at the integration / brand icon. Rendered as
+         *  the row thumbnail via the shared AsyncBitmap loader; null falls back
+         *  to the bucket badge alone. */
+        val entityPicture: String?,
         /** Pre-install backup support — drives whether the install dialog
          *  offers the "Back up first" toggle. Derived from the
          *  supported_features bitmask (bit 3 / value 8). */
@@ -120,56 +125,31 @@ class UpdatesViewModel(
                 onSuccess = { rows ->
                     val entries = rows.map { row ->
                         val attrs = row.attributes
-                        val title = (attrs["title"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() }
-                            ?: row.friendlyName.takeIf { it.isNotBlank() }
-                            ?: row.entityId.substringAfter('.').replace('_', ' ')
-                        val installed = (attrs["installed_version"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() }
-                        val latest = (attrs["latest_version"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() }
-                        val summary = (attrs["release_summary"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() }
-                        val url = (attrs["release_url"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() }
-                        val features = (attrs["supported_features"] as? JsonPrimitive)?.content
-                            ?.toIntOrNull() ?: 0
-                        val inProgressRaw = attrs["in_progress"]
-                        val inProgress = when (val p = inProgressRaw) {
-                            is JsonPrimitive -> p.content == "true" || (p.content.toIntOrNull() ?: 0) > 0
-                            else -> false
-                        }
-                        // update_percentage is sometimes an int, sometimes the literal `null`
-                        // even when an install is running — only show the chip when we have
-                        // a real number. Negative values from broken integrations are clamped.
-                        val pct = (attrs["update_percentage"] as? JsonPrimitive)?.content?.toIntOrNull()
-                            ?.coerceIn(0, 100)
-                        val autoUpdate = (attrs["auto_update"] as? JsonPrimitive)?.content == "true"
-                        // HA marks a skipped update by stamping skipped_version with
-                        // the version that was skipped; it matches latest_version
-                        // until a newer release lands. Treat any non-blank
-                        // skipped_version that equals the offered latest as skipped.
-                        val skippedVersion = (attrs["skipped_version"] as? JsonPrimitive)?.content
-                            ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
-                        val skipped = skippedVersion != null &&
-                            (latest == null || skippedVersion == latest)
+                        val installed = UpdatesLogic.stringAttr(attrs, "installed_version")
+                        val latest = UpdatesLogic.stringAttr(attrs, "latest_version")
+                        val features = UpdatesLogic.supportedFeatures(attrs)
                         Entry(
                             id = EntityId(row.entityId),
-                            title = title,
-                            bucket = bucketFor(row.entityId),
-                            updateAvailable = row.state.equals("on", ignoreCase = true),
+                            title = UpdatesLogic.titleFor(
+                                titleAttr = UpdatesLogic.stringAttr(attrs, "title"),
+                                friendlyName = row.friendlyName,
+                                entityId = row.entityId,
+                            ),
+                            bucket = UpdatesLogic.bucketFor(row.entityId),
+                            updateAvailable = UpdatesLogic.updateAvailable(row.state, installed, latest),
                             installedVersion = installed,
                             latestVersion = latest,
-                            releaseSummary = summary,
-                            releaseUrl = url,
-                            // Bit 3 (value 8) in HA's update entity supported_features.
-                            // 0x01 install / 0x02 specific_version / 0x04 progress /
-                            // 0x08 backup / 0x10 release_notes.
-                            supportsBackup = (features and 0x08) != 0,
-                            inProgress = inProgress,
-                            progressPercent = pct,
-                            autoUpdate = autoUpdate,
-                            skipped = skipped,
+                            releaseSummary = UpdatesLogic.stringAttr(attrs, "release_summary"),
+                            releaseUrl = UpdatesLogic.stringAttr(attrs, "release_url"),
+                            entityPicture = UpdatesLogic.stringAttr(attrs, "entity_picture"),
+                            supportsBackup = UpdatesLogic.supportsBackup(features),
+                            inProgress = UpdatesLogic.inProgress(attrs["in_progress"]),
+                            progressPercent = UpdatesLogic.progressPercent(attrs),
+                            autoUpdate = (attrs["auto_update"] as? JsonPrimitive)?.content == "true",
+                            skipped = UpdatesLogic.isSkipped(
+                                skippedVersion = UpdatesLogic.stringAttr(attrs, "skipped_version"),
+                                latestVersion = latest,
+                            ),
                         )
                     }
                     R1Log.i("Updates", "loaded ${entries.size} update entities")
@@ -181,29 +161,6 @@ class UpdatesViewModel(
                     _ui.value = _ui.value.copy(loading = false, error = t.message)
                 },
             )
-        }
-    }
-
-    /**
-     * Classify an update entity into one of the three buckets by its entity_id
-     * prefix. HA's convention is reliable across recent versions; integrations
-     * that pre-date the convention land in INTEGRATION which is the right
-     * default. The list of CORE prefixes mirrors what `update.home_assistant_*`
-     * and `update.supervisor` install when present.
-     */
-    private fun bucketFor(entityId: String): Bucket {
-        val tail = entityId.substringAfter('.')
-        return when {
-            tail.startsWith("home_assistant_core") ||
-                tail.startsWith("home_assistant_supervisor") ||
-                tail.startsWith("home_assistant_operating_system") ||
-                tail == "supervisor" -> Bucket.CORE
-            // HA's add-on update entities all end in "_update"; the prefix is
-            // the add-on slug. Discriminate against integrations that happen to
-            // include "_update" by also requiring the prefix to NOT match any
-            // CORE pattern.
-            tail.endsWith("_update") -> Bucket.ADDON
-            else -> Bucket.INTEGRATION
         }
     }
 

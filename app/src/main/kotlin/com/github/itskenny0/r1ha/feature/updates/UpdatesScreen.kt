@@ -247,6 +247,21 @@ private fun UpdateRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Brand / integration icon from HA's entity_picture when present.
+            // Falls back to nothing (the bucket badge alone) when HA didn't
+            // attach one, which is the common case for Core / add-on entities.
+            if (!entry.entityPicture.isNullOrBlank()) {
+                com.github.itskenny0.r1ha.ui.components.AsyncBitmap(
+                    url = entry.entityPicture,
+                    serverUrl = com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl.current,
+                    bearerToken = com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken.current,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(R1.ShapeS),
+                    contentDescription = "${entry.title} icon",
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             // Bucket badge — at-a-glance category. CORE entries are coloured
             // to read as "system-level" (warm); ADD-ON is cool-blue to read
             // as third-party but managed; INTEGRATION is muted because it's
