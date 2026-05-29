@@ -120,11 +120,18 @@ class TemplateViewModel(
     override fun onCleared() {
         super.onCleared()
         // Best-effort teardown so a screen-exit doesn't leak the WS subscription.
-        // Using runBlocking inside onCleared is awkward but the suspend cancel is
-        // tiny (a single WS frame send), and we don't have a ViewModelScope that
-        // outlives onCleared.
-        runCatching {
-            kotlinx.coroutines.runBlocking { liveSubscription?.cancel() }
+        // viewModelScope is already cancelled by the time onCleared runs, so we
+        // fire the unsubscribe on a short-lived detached IO scope rather than
+        // runBlocking on the main thread: blocking here would stall the UI while
+        // a (possibly dead) WS round-trips. cancel() is safe to run detached
+        // because the subscription's inbound collector lives on the repository's
+        // own scope, not this ViewModel's, so it survives until the frame lands.
+        val sub = liveSubscription
+        liveSubscription = null
+        if (sub != null) {
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                runCatching { sub.cancel() }
+            }
         }
     }
 
