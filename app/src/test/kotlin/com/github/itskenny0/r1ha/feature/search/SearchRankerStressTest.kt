@@ -123,4 +123,44 @@ class SearchRankerStressTest {
         val out = SearchRanker.filter(all, "kitchen", SearchViewModel.Bucket.ALL, bucketOf, 10)
         assertThat(out.first().id.value).isEqualTo("light.kitchen_main")
     }
+
+    @Test
+    fun `query matches on area and is case-insensitive`() {
+        val all = listOf(
+            EntityState(
+                id = EntityId("light.lamp"),
+                friendlyName = "Lamp",
+                area = "Garage",
+                isOn = true,
+                percent = 50,
+                raw = null,
+                lastChanged = Instant.now(),
+                isAvailable = true,
+            ),
+            EntityState(
+                id = EntityId("switch.fountain"),
+                friendlyName = "Fountain",
+                area = "Garden",
+                isOn = false,
+                percent = null,
+                raw = null,
+                lastChanged = Instant.now(),
+                isAvailable = true,
+            ),
+        )
+        val bucketOf: (Domain) -> SearchViewModel.Bucket = { SearchViewModel.Bucket.CONTROLS }
+        // Mixed-case query still matches the "Garage" area on the lamp only.
+        val out = SearchRanker.filter(all, "GaRaGe", SearchViewModel.Bucket.ALL, bucketOf, 10)
+        assertThat(out.map { it.id.value }).containsExactly("light.lamp")
+    }
+
+    @Test
+    fun `empty query with ALL bucket returns nothing`() {
+        val all = synth(50)
+        val bucketOf: (Domain) -> SearchViewModel.Bucket = { SearchViewModel.Bucket.CONTROLS }
+        // Empty-query + ALL is the instructional-placeholder case: the screen shows a
+        // hint rather than dumping the whole registry, so the ranker returns empty.
+        val out = SearchRanker.filter(all, "", SearchViewModel.Bucket.ALL, bucketOf, 80)
+        assertThat(out).isEmpty()
+    }
 }
