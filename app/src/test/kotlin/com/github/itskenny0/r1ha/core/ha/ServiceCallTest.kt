@@ -67,4 +67,40 @@ class ServiceCallTest {
         val blank = ServiceCall.alarmAction(EntityId("alarm_control_panel.x"), AlarmAction.ARM_HOME, code = "")
         assertThat(blank.data).isEqualTo(JsonObject(emptyMap()))
     }
+
+    @Test fun `cover tilt open close stop map to tilt services`() {
+        val target = EntityId("cover.blind")
+        assertThat(ServiceCall.coverOpenTilt(target).service).isEqualTo("open_cover_tilt")
+        assertThat(ServiceCall.coverCloseTilt(target).service).isEqualTo("close_cover_tilt")
+        assertThat(ServiceCall.coverStopTilt(target).service).isEqualTo("stop_cover_tilt")
+    }
+    @Test fun `cover set tilt position carries clamped tilt_position`() {
+        val target = EntityId("cover.blind")
+        val call = ServiceCall.coverSetTiltPosition(target, 130)
+        assertThat(call.service).isEqualTo("set_cover_tilt_position")
+        assertThat(call.data["tilt_position"]).isEqualTo(JsonPrimitive(100))
+        val low = ServiceCall.coverSetTiltPosition(target, -5)
+        assertThat(low.data["tilt_position"]).isEqualTo(JsonPrimitive(0))
+    }
+    @Test fun `humidifier set mode maps to set_mode with mode`() {
+        val call = ServiceCall.humidifierSetMode(EntityId("humidifier.living"), "eco")
+        assertThat(call.service).isEqualTo("set_mode")
+        assertThat(call.data["mode"]).isEqualTo(JsonPrimitive("eco"))
+    }
+    @Test fun `fan oscillate and direction carry their payloads`() {
+        val target = EntityId("fan.bedroom")
+        assertThat(ServiceCall.fanOscillate(target, true).data["oscillating"]).isEqualTo(JsonPrimitive(true))
+        assertThat(ServiceCall.fanSetDirection(target, "reverse").data["direction"]).isEqualTo(JsonPrimitive("reverse"))
+    }
+    @Test fun `media extras map to their services`() {
+        val target = EntityId("media_player.kitchen")
+        assertThat(ServiceCall.mediaShuffleSet(target, true).data["shuffle"]).isEqualTo(JsonPrimitive(true))
+        assertThat(ServiceCall.mediaRepeatSet(target, "all").data["repeat"]).isEqualTo(JsonPrimitive("all"))
+        assertThat(ServiceCall.mediaSelectSource(target, "Spotify").data["source"]).isEqualTo(JsonPrimitive("Spotify"))
+    }
+    @Test fun `vacuum set fan speed carries fan_speed`() {
+        val call = ServiceCall.vacuumSetFanSpeed(EntityId("vacuum.robi"), "turbo")
+        assertThat(call.service).isEqualTo("set_fan_speed")
+        assertThat(call.data["fan_speed"]).isEqualTo(JsonPrimitive("turbo"))
+    }
 }
