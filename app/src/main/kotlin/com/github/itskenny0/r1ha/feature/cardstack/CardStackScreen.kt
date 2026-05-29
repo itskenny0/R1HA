@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -661,6 +662,20 @@ fun CardStackScreen(
                 // equal, but it's still N comparisons) and the
                 // rememberPagerState key() ran an equals check. Memoising
                 // makes both no-op when pages haven't changed.
+                // Peek-deck decision, resolved once per composition from the
+                // window tier + orientation + the user's CardPeekMode setting.
+                // Threaded into every PageDeck so the active deck and its
+                // peek-composed neighbours all agree on the layout. effectivePeek
+                // is a pure function (unit-tested) so this call site stays a thin
+                // read of three already-available inputs.
+                val windowTier = LocalWindowTier.current.tier
+                val isPortrait = androidx.compose.ui.platform.LocalConfiguration.current
+                    .orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+                val peekDeck = effectivePeek(
+                    mode = appSettings.ui.cardPeekMode,
+                    tier = windowTier,
+                    isPortrait = isPortrait,
+                )
                 val pageIds = androidx.compose.runtime.remember(state.pages) {
                     state.pages.map { it.id }
                 }
@@ -911,6 +926,7 @@ fun CardStackScreen(
                             cards = pageCards,
                             initialIndex = state.indexByPage[page.id] ?: 0,
                             isActive = isActive,
+                            peekDeck = peekDeck,
                             vm = vm,
                             appSettings = appSettings,
                             navRequests = pagerNavRequests,
@@ -1456,6 +1472,11 @@ private fun PageDeck(
     cards: List<com.github.itskenny0.r1ha.core.ha.EntityState>,
     initialIndex: Int,
     isActive: Boolean,
+    /** When true, render the half-height peek deck: the active card centred with
+     *  the previous and next cards peeking above and below it. Resolved by
+     *  [effectivePeek] at the screen scope and passed down so every deck (active
+     *  and its peek-composed neighbours) agrees on the page size + padding. */
+    peekDeck: Boolean,
     vm: CardStackViewModel,
     appSettings: AppSettings,
     navRequests: kotlinx.coroutines.flow.SharedFlow<Int>,
@@ -1614,14 +1635,54 @@ private fun PageDeck(
         val cardShape = androidx.compose.runtime.remember {
             androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
         }
+        // Scope for the peek-deck tap-to-navigate animation. Tapping a peeking
+        // neighbour animates the pager to that page rather than actuating the
+        // card's control.
+        val deckScope = androidx.compose.runtime.rememberCoroutineScope()
+        // Peek-deck layout. When [peekDeck] is on, each page is a fraction of the
+        // viewport height (PEEK_PAGE_FRACTION) so the previous and next cards peek
+        // above and below the centred active one. Centring is achieved with
+        // symmetric contentPadding: FractionPageSize measures pages against
+        // (viewport - contentPadding), so balancing the top and bottom padding
+        // around the chrome offset keeps the active page in the visual centre of
+        // the area below the chrome. The leftover space splits into the two peek
+        // slices (one above, one below).
+        //
+        // pageSpacing gives the half-height cards a clear gap so the peeking
+        // neighbours read as distinct cards rather than a continuous strip; full-
+        // viewport mode keeps the historical 0 dp (its overlap + shadow comes from
+        // the per-page graphicsLayer during a drag).
+        val deckPageSize = if (peekDeck) {
+            FractionPageSize(PEEK_PAGE_FRACTION)
+        } else {
+            PageSize.Fill
+        }
+        // Symmetric bottom padding in peek mode: the historical bottom padding
+        // (nav inset + 16 dp) is usually smaller than the chrome-driven top
+        // padding, which would push the active page off-centre and clip the
+        // bottom peek. Padding the bottom up to match the top keeps the centred
+        // page truly centred and gives both peek slices the same height. Falls
+        // back to the historical asymmetric padding when peek is off.
+        val deckBottomPadding = if (peekDeck) {
+            maxOf(pagerBottomPadding, pagerTopPadding)
+        } else {
+            pagerBottomPadding
+        }
+        val deckPageSpacing = if (peekDeck) 8.dp else 0.dp
         VerticalPager(
             state = pagerState,
-            // No peek — off-screen cards are hidden entirely until the user starts dragging.
-            // During the drag, each page's graphicsLayer (below) gives the deck an overlap
-            // with a big drop shadow.
-            contentPadding = PaddingValues(top = pagerTopPadding, bottom = pagerBottomPadding),
-            pageSize = PageSize.Fill,
-            pageSpacing = 0.dp,
+            // Full-viewport: no peek — off-screen cards are hidden until the user drags,
+            // and each page's graphicsLayer gives the deck an overlap + drop shadow.
+            // Peek deck: the fraction page size plus symmetric padding reveals the
+            // previous and next cards above and below the active one.
+            contentPadding = PaddingValues(top = pagerTopPadding, bottom = deckBottomPadding),
+            pageSize = deckPageSize,
+            // Compose the immediate neighbours in peek mode so the peeking slices
+            // render fully-laid-out cards (not blank placeholders) the moment the
+            // deck settles. Full-viewport mode keeps the default (0): neighbours
+            // compose lazily on drag, which is the cheaper path the R1 wants.
+            beyondViewportPageCount = if (peekDeck) 1 else 0,
+            pageSpacing = deckPageSpacing,
             // Stable per-card key in FINITE mode = the card's entity_id, so a deck
             // mutation (favourite added / removed / reordered) keeps each surviving
             // card's sub-composition instead of rebuilding positionally. In
@@ -1666,12 +1727,24 @@ private fun PageDeck(
                 val card = cards.getOrNull(cardIdx) ?: return@Box
                 val longPressTarget = appSettings.entityOverrides[card.id.value]?.longPressTarget
                 val pageLightMode = lightWheelModes[card.id]
+                // In peek mode a non-centred page is a peeking neighbour: its
+                // controls are inert and a tap navigates to it instead of
+                // actuating it. settledPage is the snapped page (not the live
+                // currentPage, which flips mid-fling) so a card only counts as
+                // "the active one" once the deck has come to rest on it — this
+                // keeps a tap during a settle from being read as an actuation.
+                val isPeekNeighbour = peekDeck && page != pagerState.settledPage
                 EntityCard(
                     state = card,
                     onTapToggle = { vm.tapToggle() },
-                    tapToToggleEnabled = appSettings.behavior.tapToToggle,
+                    // Peek neighbours never actuate on whole-card tap; the
+                    // tap-to-navigate overlay below owns their tap instead.
+                    tapToToggleEnabled = !isPeekNeighbour && appSettings.behavior.tapToToggle,
                     onSetOn = { on -> vm.setSwitchOn(on) },
-                    onLongPress = longPressTarget?.let { target -> { vm.fireLongPress(target) } },
+                    // Suppress the long-press action on peek neighbours so a hold
+                    // on a half-visible card can't fire its long-press target.
+                    onLongPress = if (isPeekNeighbour) null
+                        else longPressTarget?.let { target -> { vm.fireLongPress(target) } },
                     lightWheelMode = pageLightMode,
                     modifier = Modifier
                         .fillMaxSize()
@@ -1705,6 +1778,30 @@ private fun PageDeck(
                             clip = true
                         },
                 )
+                // Tap-to-navigate overlay for peeking neighbours. Drawn last so it
+                // sits on top of the card and intercepts every pointer event over
+                // the half-visible neighbour: a tap (or any press) animates the
+                // pager to that page rather than actuating the card's value bar /
+                // toggle underneath. Matched to the card's rounded corner + inset
+                // so the tap target lines up with the visible card body. A faint
+                // scrim reinforces that the neighbour is a navigation affordance,
+                // not the live card; it clears the instant the deck settles on it.
+                if (isPeekNeighbour) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(cardShape)
+                            .background(R1.Bg.copy(alpha = 0.28f))
+                            .r1Pressable(
+                                onClick = {
+                                    deckScope.launch {
+                                        runCatching { pagerState.animateScrollToPage(page) }
+                                    }
+                                },
+                                contentDescription = "Show ${card.friendlyName}",
+                            ),
+                    )
+                }
             }
         }
 
@@ -1904,6 +2001,13 @@ private fun EmptyState(
 }
 
 private const val STALLED_AFTER_MS = 10_000L
+
+/** Fraction of the (chrome-adjusted) viewport height each card occupies in the peek
+ *  deck. Just over half so the active card dominates while still leaving a clear slice
+ *  for the previous and next cards to peek above and below it. Tuned with the 8 dp
+ *  page spacing so the two peek slices read as distinct cards rather than a continuous
+ *  strip. */
+private const val PEEK_PAGE_FRACTION = 0.62f
 
 /** Virtual page count used by the pager when infinite-scroll is enabled. Big enough
  *  that even an entire afternoon of aggressive swiping doesn't run out of pages (200 k
