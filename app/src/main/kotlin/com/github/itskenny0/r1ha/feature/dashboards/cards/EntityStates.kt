@@ -105,6 +105,9 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<EntityId>) {
         is LovelaceCard.HistoryGraph -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.AlarmPanel -> sink.addEntity(card.entityId)
         is LovelaceCard.Map -> card.entities.forEach { sink.addEntity(it.entityId) }
+        is LovelaceCard.Thermostat -> sink.addEntity(card.entityId)
+        is LovelaceCard.MediaControl -> sink.addEntity(card.entityId)
+        is LovelaceCard.Humidifier -> sink.addEntity(card.entityId)
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> Unit
         is LovelaceCard.Unsupported -> Unit

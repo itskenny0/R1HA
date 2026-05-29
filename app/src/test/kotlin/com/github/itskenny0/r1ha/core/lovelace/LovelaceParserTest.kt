@@ -310,6 +310,40 @@ class LovelaceParserTest {
         assertTrue(cfg.isStrategyGenerated)
     }
 
+    @Test fun `parses thermostat media-control and humidifier cards`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {
+                  "views": [{
+                    "path": "p",
+                    "cards": [
+                      {"type": "thermostat", "entity": "climate.living_room", "name": "Lounge"},
+                      {"type": "media-control", "entity": "media_player.kitchen"},
+                      {"type": "humidifier", "entity": "humidifier.bedroom"}
+                    ]
+                  }]
+                }
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
+        assertEquals(3, cards.size)
+        val thermostat = cards[0] as LovelaceCard.Thermostat
+        assertEquals("climate.living_room", thermostat.entityId)
+        assertEquals("Lounge", thermostat.name)
+        val media = cards[1] as LovelaceCard.MediaControl
+        assertEquals("media_player.kitchen", media.entityId)
+        val humidifier = cards[2] as LovelaceCard.Humidifier
+        assertEquals("humidifier.bedroom", humidifier.entityId)
+    }
+
+    @Test fun `thermostat media-control and humidifier without entity fall to Unsupported`() {
+        assertTrue(LovelaceParser.parseCard(obj("""{"type":"thermostat"}""")) is LovelaceCard.Unsupported)
+        assertTrue(LovelaceParser.parseCard(obj("""{"type":"media-control"}""")) is LovelaceCard.Unsupported)
+        assertTrue(LovelaceParser.parseCard(obj("""{"type":"humidifier"}""")) is LovelaceCard.Unsupported)
+    }
+
     @Test fun `dashboard list parses entries and skips malformed rows`() {
         val arr = (Json.parseToJsonElement(
             """[{"id":"a","url_path":"lights","title":"Lights","mode":"storage"},

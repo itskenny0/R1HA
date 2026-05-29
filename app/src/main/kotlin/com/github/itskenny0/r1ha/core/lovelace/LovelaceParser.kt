@@ -301,6 +301,30 @@ object LovelaceParser {
                 entities = parseEntityRows(obj["entities"]),
                 hoursToShow = obj["hours_to_show"]?.asIntOrNull(),
             )
+            "thermostat" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Thermostat(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                )
+            }
+            "media-control" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.MediaControl(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                )
+            }
+            "humidifier" -> {
+                val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                LovelaceCard.Humidifier(
+                    raw = obj,
+                    entityId = entity,
+                    name = obj["name"]?.asStringOrNull(),
+                )
+            }
             else -> LovelaceCard.Unsupported(raw = obj, type = type)
         }
     }

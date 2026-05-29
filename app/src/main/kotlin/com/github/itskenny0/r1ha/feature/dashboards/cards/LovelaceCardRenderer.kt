@@ -72,6 +72,9 @@ fun LovelaceCardRenderer(
         is LovelaceCard.HistoryGraph -> HistoryGraphCard(card, stateMap, modifier)
         is LovelaceCard.AlarmPanel -> AlarmPanelCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Map -> MapCard(card, stateMap, modifier)
+        is LovelaceCard.Thermostat -> ThermostatCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.MediaControl -> MediaControlCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.Humidifier -> HumidifierCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Conditional -> {
             val passes = remember(card.conditions, stateMap) {
                 evaluateConditions(card.conditions, stateMap)

@@ -370,6 +370,53 @@ sealed class LovelaceCard {
         override val type: String = "map"
     }
 
+    /**
+     * Thermostat card bound to one `climate.*` entity. Surfaces the current
+     * temperature reading, a target-setpoint stepper, and the HVAC-mode chip
+     * row (gated on the entity's advertised `hvac_modes`). Mirrors the
+     * card-stack climate control idiom; service calls ride the standard
+     * [LovelaceAction.CallService] path.
+     */
+    @Immutable
+    data class Thermostat(
+        override val raw: JsonObject,
+        val entityId: String,
+        val name: String?,
+    ) : LovelaceCard() {
+        override val type: String = "thermostat"
+    }
+
+    /**
+     * Media-control card bound to one `media_player.*` entity. Shows the
+     * now-playing line, a transport row (previous / play-pause / next), and a
+     * volume stepper, each gated on the player's advertised
+     * `supported_features`. Service calls ride the standard
+     * [LovelaceAction.CallService] path.
+     */
+    @Immutable
+    data class MediaControl(
+        override val raw: JsonObject,
+        val entityId: String,
+        val name: String?,
+    ) : LovelaceCard() {
+        override val type: String = "media-control"
+    }
+
+    /**
+     * Humidifier card bound to one `humidifier.*` entity. Surfaces an on/off
+     * toggle, the target-humidity stepper, and the available-mode chip row
+     * (when the entity advertises `available_modes`). Service calls ride the
+     * standard [LovelaceAction.CallService] path.
+     */
+    @Immutable
+    data class Humidifier(
+        override val raw: JsonObject,
+        val entityId: String,
+        val name: String?,
+    ) : LovelaceCard() {
+        override val type: String = "humidifier"
+    }
+
     /** Any card type we don't natively render. The renderer surfaces a
      *  placeholder with the [type] label and a debug-only expander that
      *  shows the raw JSON. */

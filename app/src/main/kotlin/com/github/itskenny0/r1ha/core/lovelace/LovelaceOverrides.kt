@@ -344,6 +344,18 @@ val PICKER_TEMPLATES: List<Pair<String, JsonObject>> = listOf(
         put("type", kotlinx.serialization.json.JsonPrimitive("weather-forecast"))
         put("entity", kotlinx.serialization.json.JsonPrimitive(""))
     },
+    "thermostat" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("thermostat"))
+        put("entity", kotlinx.serialization.json.JsonPrimitive(""))
+    },
+    "media-control" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("media-control"))
+        put("entity", kotlinx.serialization.json.JsonPrimitive(""))
+    },
+    "humidifier" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("humidifier"))
+        put("entity", kotlinx.serialization.json.JsonPrimitive(""))
+    },
     "vertical-stack" to buildJsonObject {
         put("type", kotlinx.serialization.json.JsonPrimitive("vertical-stack"))
         put("cards", buildJsonArray { })
