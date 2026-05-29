@@ -28,8 +28,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -90,6 +97,15 @@ fun AutomationsScreen(
             ?.favorites?.toSet() ?: emptySet()
     }
     val ui by vm.ui.collectAsState()
+    // Transient per-row "RUN tapped" set, kept screen-local (the ViewModel has no
+    // per-row in-flight flag and editing it is out of slice). A tapped row flips
+    // its spoken label to "Running <name>" under a polite live region for a beat
+    // so a screen-reader user hears that the manual trigger registered; it clears
+    // itself shortly after, matching the ViewModel's post-trigger refresh delay.
+    val runningNow = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
+    }
+    val runScope = androidx.compose.runtime.rememberCoroutineScope()
     // entries is a getter that re-filters the full automation set on every read;
     // it's read for the empty-state branch and the items() call, and recompose
     // fires per search keystroke. Memoise against its inputs so the filter runs
@@ -124,7 +140,12 @@ fun AutomationsScreen(
         SearchBar(query = ui.query, onQueryChange = { vm.setQuery(it) })
         when {
             ui.loading && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading automations"
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
@@ -134,7 +155,10 @@ fun AutomationsScreen(
                 )
             }
             ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(R1.space.xl)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -144,7 +168,10 @@ fun AutomationsScreen(
                 )
             }
             ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(R1.space.xl)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -154,11 +181,14 @@ fun AutomationsScreen(
                 )
             }
             entries.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(R1.space.xl)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "No matches for '${ui.query}'.",
+                    text = "No matches for '${ui.query}'. Clear the search or try different terms.",
                     style = R1.body,
                     color = R1.InkMuted,
                 )
@@ -180,7 +210,15 @@ fun AutomationsScreen(
                             AutomationRow(
                                 entry = entry,
                                 isFavorite = entry.id.value in activeFavourites,
-                                onRun = { vm.trigger(entry) },
+                                running = runningNow[entry.id.value] == true,
+                                onRun = {
+                                    runningNow[entry.id.value] = true
+                                    runScope.launch {
+                                        kotlinx.coroutines.delay(1_500L)
+                                        runningNow.remove(entry.id.value)
+                                    }
+                                    vm.trigger(entry)
+                                },
                                 onToggleEnabled = { vm.setEnabled(entry, !entry.enabled) },
                                 onLongPress = { onOpenHistory(entry.id.value) },
                                 onFavorite = { vm.addToFavorites(entry) },
@@ -205,12 +243,17 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             text = "FIND",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = R1.space.s),
+            modifier = Modifier
+                .padding(end = R1.space.s)
+                .semantics { heading() },
         )
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
                 value = query,
                 onValueChange = onQueryChange,
+                modifier = Modifier.semantics {
+                    contentDescription = "Filter automations by name or entity id"
+                },
                 placeholder = "kitchen, away, sunset, ...",
                 monospace = false,
             )
@@ -233,11 +276,42 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
 private fun AutomationRow(
     entry: AutomationsViewModel.Entry,
     isFavorite: Boolean,
+    running: Boolean,
     onRun: () -> Unit,
     onToggleEnabled: () -> Unit,
     onLongPress: () -> Unit,
     onFavorite: () -> Unit,
 ) {
+    // Resolve the relative last-triggered phrase once so the visible label and the
+    // spoken row description stay in lockstep. Empty when the automation has never
+    // fired or the timestamp is unknown.
+    val relative = entry.lastTriggered?.let {
+        com.github.itskenny0.r1ha.ui.components.rememberRelativeTime(it)
+    }.orEmpty()
+    // Merged spoken label so TalkBack reads the row as one unit instead of
+    // announcing the ON/OFF glyph, name, entity id, mode badge, and timestamp as
+    // disconnected fragments. While a manual RUN is in flight the label flips to
+    // "Running <name>" and the row becomes a polite live region so the trigger is
+    // announced without re-focusing.
+    val rowLabel = if (running) {
+        automationRunInFlightLabel(entry.name)
+    } else {
+        automationRowLabel(
+            name = entry.name,
+            enabled = entry.enabled,
+            mode = entry.mode,
+            runningInstances = entry.currentRunning,
+            lastTriggeredSpoken = relative.ifBlank { null },
+        )
+    }
+    val rowSemantics = if (running) {
+        Modifier.semantics {
+            liveRegion = LiveRegionMode.Polite
+            contentDescription = rowLabel
+        }
+    } else {
+        Modifier
+    }
     // Bespoke control row: the body toggles enabled state, plus there are
     // independent star + RUN tap targets on the trailing edge, so it can't
     // collapse to a single-onClick R1Row. It does adopt the canonical boxed
@@ -249,12 +323,17 @@ private fun AutomationRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .then(rowSemantics)
             // Tap toggles enabled/disabled (state-change verb on the
             // row body), long-press drills into History so the user
             // can see when this automation last fired + how
             // frequently. Separate RUN affordance on the right edge
             // dispatches a manual trigger.
-            .r1RowPressable(onTap = onToggleEnabled, onLongPress = onLongPress)
+            .r1RowPressable(
+                onTap = onToggleEnabled,
+                onLongPress = onLongPress,
+                contentDescription = rowLabel,
+            )
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
@@ -312,10 +391,16 @@ private fun AutomationRow(
                         // enabled-toggle. Forward a tap to onToggleEnabled so
                         // tapping the badge behaves identically to tapping the
                         // rest of the row; long-press keeps the mode explainer.
-                        modifier = Modifier.r1RowPressable(
-                            onTap = onToggleEnabled,
-                            onLongPress = { modeExplain.value = true },
-                        ),
+                        // clearAndSetSemantics keeps the badge from registering as
+                        // a separate bare-text focus node: the run mode is already
+                        // spoken as part of the merged row description, so the
+                        // reader hears it once in context rather than twice.
+                        modifier = Modifier
+                            .clearAndSetSemantics {}
+                            .r1RowPressable(
+                                onTap = onToggleEnabled,
+                                onLongPress = { modeExplain.value = true },
+                            ),
                     )
                 }
                 if (entry.currentRunning > 0) {
@@ -340,7 +425,7 @@ private fun AutomationRow(
                 .size(R1.MinTarget)
                 .r1Pressable(
                     onClick = onFavorite,
-                    contentDescription = if (isFavorite) "Pinned to favourites" else "Pin to favourites",
+                    contentDescription = automationFavoriteLabel(entry.name, isFavorite),
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -360,7 +445,7 @@ private fun AutomationRow(
             selected = true,
             tone = R1.AccentGreen,
             onClick = onRun,
-            contentDescription = "Run ${entry.name}",
+            contentDescription = automationRunActionLabel(entry.name),
         )
     }
 }

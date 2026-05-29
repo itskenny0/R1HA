@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -32,6 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -181,6 +187,21 @@ fun MediaBrowseScreen(
     val ui by vm.ui.collectAsState()
     var entityInput by remember { mutableStateOf("") }
 
+    // Transient per-row "PLAY tapped" set, kept screen-local (the ViewModel has no
+    // per-row in-flight flag and editing it is out of slice). A tapped playable row
+    // flips its spoken label to "Playing <title>" under a polite live region for a
+    // beat so a screen-reader user hears that the play registered; it clears itself
+    // shortly after.
+    val playingNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    val playScope = androidx.compose.runtime.rememberCoroutineScope()
+    val markPlaying: (String) -> Unit = { key ->
+        playingNow[key] = true
+        playScope.launch {
+            kotlinx.coroutines.delay(1_500L)
+            playingNow.remove(key)
+        }
+    }
+
     // Server URL + bearer token drive the AsyncBitmap thumbnails. browse_media
     // returns proxied / relative thumbnail paths that need the configured HA
     // host prepended and the token attached. Sourced from the process graph so
@@ -213,6 +234,9 @@ fun MediaBrowseScreen(
                         R1TextField(
                             value = if (ui.entityId.isNullOrBlank()) entityInput else (ui.entityId ?: ""),
                             onValueChange = { entityInput = it },
+                            modifier = Modifier.semantics {
+                                contentDescription = "Media player entity id to browse"
+                            },
                             placeholder = "media_player.living_room",
                             monospace = true,
                         )
@@ -220,18 +244,23 @@ fun MediaBrowseScreen(
                     Spacer(Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
+                            .heightIn(min = R1.MinTarget)
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                val target = entityInput.trim()
-                                if (target.isBlank()) {
-                                    Toaster.error("Type a media_player.* entity_id first")
-                                } else {
-                                    vm.openRoot(target)
-                                }
-                            })
+                            .r1Pressable(
+                                onClick = {
+                                    val target = entityInput.trim()
+                                    if (target.isBlank()) {
+                                        Toaster.error("Type a media_player.* entity_id first")
+                                    } else {
+                                        vm.openRoot(target)
+                                    }
+                                },
+                                contentDescription = "Browse this media player",
+                            )
                             .padding(horizontal = 12.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "BROWSE", style = R1.labelMicro, color = R1.AccentWarm)
                     }
@@ -240,10 +269,20 @@ fun MediaBrowseScreen(
                 // Breadcrumb strip — horizontal scroll so deep paths don't
                 // truncate. Most recent on the right.
                 if (ui.crumbs.isNotEmpty()) {
+                    // Spoken as one path phrase ("Library, then Artists. Currently
+                    // in Artists.") and marked a heading so a reader can jump to it,
+                    // rather than announcing each crumb and the " / " separators as
+                    // separate fragments. Position + colour mark the current folder
+                    // visually; the merged label states it in words.
+                    val crumbLabel = mediaBreadcrumbLabel(ui.crumbs.map { it.title })
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                            .horizontalScroll(rememberScrollState())
+                            .semantics {
+                                heading()
+                                contentDescription = crumbLabel
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         ui.crumbs.forEachIndexed { i, c ->
@@ -259,11 +298,16 @@ fun MediaBrowseScreen(
                     if (ui.crumbs.size > 1) {
                         Box(
                             modifier = Modifier
+                                .heightIn(min = R1.MinTarget)
                                 .clip(R1.ShapeS)
                                 .background(R1.SurfaceMuted)
                                 .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable(onClick = { vm.back() })
+                                .r1Pressable(
+                                    onClick = { vm.back() },
+                                    contentDescription = "Go up one folder",
+                                )
                                 .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(text = "← UP", style = R1.labelMicro, color = R1.InkSoft)
                         }
@@ -276,7 +320,15 @@ fun MediaBrowseScreen(
                 // indicator instead of flashing the whole screen blank.
                 when {
                     ui.loading && ui.children.isEmpty() ->
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .semantics {
+                                    liveRegion = LiveRegionMode.Polite
+                                    contentDescription = "Loading media library"
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(22.dp),
                                 strokeWidth = 2.dp,
@@ -284,14 +336,16 @@ fun MediaBrowseScreen(
                             )
                         }
                     ui.error != null -> Text(
-                        text = ui.error ?: "",
+                        text = "Browse failed: ${ui.error}",
                         style = R1.body,
                         color = R1.StatusAmber,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                     ui.entityId == null -> Text(
                         text = "Pick a media_player entity above to browse its library.",
                         style = R1.body,
                         color = R1.InkMuted,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
                     ui.children.isEmpty() -> PullToRefreshBox(
                         isRefreshing = ui.loading,
@@ -303,9 +357,12 @@ fun MediaBrowseScreen(
                         LazyColumn(modifier = Modifier.fillMaxSize()) {
                             item {
                                 Text(
-                                    text = "(Empty)",
+                                    text = "This folder is empty.",
                                     style = R1.body,
                                     color = R1.InkMuted,
+                                    modifier = Modifier.semantics {
+                                        liveRegion = LiveRegionMode.Polite
+                                    },
                                 )
                             }
                         }
@@ -320,10 +377,12 @@ fun MediaBrowseScreen(
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             items(ui.children, key = { it.mediaContentId + "|" + it.mediaContentType }) { entry ->
+                                val playKey = entry.mediaContentId + "|" + entry.mediaContentType
                                 EntryRow(
                                     entry = entry,
                                     serverUrl = serverUrl,
                                     bearerToken = token,
+                                    playing = playingNow[playKey] == true,
                                     onTap = {
                                         when {
                                             entry.canExpand -> vm.navigate(
@@ -333,11 +392,17 @@ fun MediaBrowseScreen(
                                                     mediaContentType = entry.mediaContentType,
                                                 ),
                                             )
-                                            entry.canPlay -> vm.play(entry)
+                                            entry.canPlay -> {
+                                                markPlaying(playKey)
+                                                vm.play(entry)
+                                            }
                                             else -> Toaster.show("Item isn't playable or expandable")
                                         }
                                     },
-                                    onPlay = { vm.play(entry) },
+                                    onPlay = {
+                                        markPlaying(playKey)
+                                        vm.play(entry)
+                                    },
                                 )
                             }
                         }
@@ -353,16 +418,32 @@ private fun EntryRow(
     entry: MediaBrowseEntry,
     serverUrl: String?,
     bearerToken: String?,
+    playing: Boolean,
     onTap: () -> Unit,
     onPlay: () -> Unit,
 ) {
+    // Merged spoken label so TalkBack reads the row as one unit (title, kind,
+    // media class, and what a tap does) instead of announcing the glyph and the
+    // title separately. While a play_media is in flight the label flips to
+    // "Playing <title>" under a polite live region.
+    val rowLabel = if (playing) mediaPlayInFlightLabel(entry.title) else mediaEntryRowLabel(entry)
+    val rowSemantics = if (playing) {
+        Modifier.semantics {
+            liveRegion = LiveRegionMode.Polite
+            contentDescription = rowLabel
+        }
+    } else {
+        Modifier
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onTap)
+            .then(rowSemantics)
+            .r1Pressable(onClick = onTap, contentDescription = rowLabel)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -404,11 +485,16 @@ private fun EntryRow(
         if (entry.canPlay) {
             Box(
                 modifier = Modifier
+                    .heightIn(min = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.Bg)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = onPlay)
+                    .r1Pressable(
+                        onClick = onPlay,
+                        contentDescription = mediaPlayActionLabel(entry.title),
+                    )
                     .padding(horizontal = 10.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(text = "PLAY", style = R1.labelMicro, color = R1.AccentCool)
             }
