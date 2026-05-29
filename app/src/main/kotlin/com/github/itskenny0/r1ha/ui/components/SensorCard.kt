@@ -54,6 +54,8 @@ fun SensorCard(
     modifier: Modifier = Modifier,
 ) {
     val isBinary = state.id.domain == Domain.BINARY_SENSOR
+    val isPerson = state.id.domain == Domain.PERSON
+    val isWeather = state.id.domain == Domain.WEATHER
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -102,7 +104,65 @@ fun SensorCard(
         Spacer(Modifier.height(20.dp))
 
         // ── Body: big readout ──────────────────────────────────────────────────────
-        if (isBinary) {
+        if (isPerson) {
+            // Person presence — a big condition-style readout (HOME / AWAY / zone name)
+            // coloured by presence so the at-a-glance answer to "are they home?" is the
+            // colour as much as the word. Green = home, neutral = away / elsewhere.
+            val word = PersonWeatherCardModel.personPresenceLabel(state.rawState)
+            val (bodyStyle, _) = sensorReadoutStyle(word, textSizeSp)
+            Text(
+                text = word,
+                style = bodyStyle,
+                color = if (PersonWeatherCardModel.personIsHome(state.rawState)) accent else R1.InkSoft,
+                softWrap = true,
+            )
+        } else if (isWeather) {
+            // Weather — current temperature as the headline number with a condition
+            // glyph + label beside it. Temperature lives in the `temperature` attribute
+            // (the entity's own state string is the condition word, not a number), with
+            // the unit in `temperature_unit`.
+            val condition = state.rawState
+            val glyph = PersonWeatherCardModel.weatherConditionGlyph(condition)
+            val conditionLabel = PersonWeatherCardModel.weatherConditionLabel(condition)
+            val temp = weatherAttrNumber(state, "temperature")
+            val tempUnit = weatherAttrText(state, "temperature_unit") ?: "°"
+            Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
+                if (temp != null) {
+                    val tempStr = "%.0f".format(temp)
+                    val (bodyStyle, suffixStyle) = sensorReadoutStyle(tempStr, textSizeSp)
+                    Text(
+                        text = tempStr,
+                        style = bodyStyle,
+                        color = R1.Ink,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = tempUnit,
+                        style = suffixStyle,
+                        color = accent,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                } else {
+                    // No temperature reported (some integrations only publish condition).
+                    // Fall back to the condition word as the headline.
+                    val (bodyStyle, _) = sensorReadoutStyle(conditionLabel, textSizeSp)
+                    Text(
+                        text = conditionLabel,
+                        style = bodyStyle,
+                        color = R1.Ink,
+                        softWrap = true,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = glyph, style = R1.numeralM, color = accent)
+                Spacer(Modifier.width(8.dp))
+                Text(text = conditionLabel, style = R1.titleCard, color = R1.InkSoft, maxLines = 1)
+            }
+        } else if (isBinary) {
             // Binary sensors — render the state word itself (sized like our numeric
             // readouts so the visual weight matches a temperature display). We map a few
             // common device_class values to friendlier words; everything else falls back
@@ -291,6 +351,17 @@ private fun sensorReadoutStyle(
  * straight TRUE/FALSE for anything we don't recognise, which still reads better than the
  * raw "on" / "off" everywhere.
  */
+/** Read a numeric weather attribute (e.g. `temperature`) from the entity's raw HA
+ *  attributes JSON. Null when absent or non-numeric. */
+private fun weatherAttrNumber(state: EntityState, key: String): Double? =
+    (state.attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)
+        ?.content?.toDoubleOrNull()
+
+/** Read a string weather attribute (e.g. `temperature_unit`) from the entity's raw HA
+ *  attributes JSON. Null when absent. */
+private fun weatherAttrText(state: EntityState, key: String): String? =
+    (state.attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
+
 private fun friendlyBinaryWord(state: EntityState): String {
     val on = state.isOn
     return when (state.deviceClass) {

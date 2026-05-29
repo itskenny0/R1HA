@@ -87,9 +87,15 @@ fun EntityCard(
         // visual reads the same family as smart locks. The AlarmPanel below
         // surfaces the per-mode chips that distinguish an alarm from a lock.
         Domain.ALARM_CONTROL_PANEL -> CardRenderModel.Glyph.LOCK
-        // Person / weather are read-only — routed to SensorCard before the glyph
-        // is used, so the value only needs to keep the when exhaustive.
-        Domain.PERSON, Domain.WEATHER -> CardRenderModel.Glyph.SWITCH
+        // Person / weather are read-only and routed to SensorCard before this glyph is
+        // ever drawn, so the value only keeps the when exhaustive. There are no PERSON /
+        // WEATHER members in CardRenderModel.Glyph (that enum lives in core/theme, outside
+        // this card's slice) — the real person-presence and weather-condition treatments
+        // live in SensorCard, which keys off the domain directly rather than the glyph.
+        // We map to the closest existing members so the fallback is sensible: weather to
+        // CLIMATE (temperature family), person to SWITCH (generic).
+        Domain.PERSON -> CardRenderModel.Glyph.SWITCH
+        Domain.WEATHER -> CardRenderModel.Glyph.CLIMATE
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -141,10 +147,14 @@ fun EntityCard(
         // the "this is important, don't tap it accidentally" framing of the
         // disarmed → armed transitions.
         Domain.ALARM_CONTROL_PANEL -> CardRenderModel.AccentRole.WARM
-        // Person — cool accent reads as "presence / who's home"; weather — also
-        // cool, consistent with sensor-style read-only info. Both render via
-        // SensorCard so the accent is a defensive default.
-        Domain.PERSON, Domain.WEATHER -> CardRenderModel.AccentRole.COOL
+        // Person — accent reflects presence: green when home ("present"), neutral when
+        // away, so the colour answers "are they home?" before the user even reads the
+        // word. Weather — accent follows the condition (sunny warm, wet cool, storm
+        // warm, windy green). Both render via SensorCard, which reads the same helpers.
+        Domain.PERSON -> com.github.itskenny0.r1ha.ui.components.PersonWeatherCardModel
+            .personAccent(state.rawState)
+        Domain.WEATHER -> com.github.itskenny0.r1ha.ui.components.PersonWeatherCardModel
+            .weatherAccent(state.rawState)
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour
@@ -524,6 +534,11 @@ private fun computeMeterLabels(
 private fun sensorDomainLabel(domain: Domain): String = when (domain) {
     Domain.SENSOR -> "SENSOR"
     Domain.BINARY_SENSOR -> "DETECTOR"
+    // Person presence and weather render via SensorCard too — give them their own
+    // header labels so the card chip reads "PRESENCE" / "WEATHER" instead of a generic
+    // "SENSOR", matching the distinct body treatments in SensorCard.
+    Domain.PERSON -> "PRESENCE"
+    Domain.WEATHER -> "WEATHER"
     else -> domain.prefix.uppercase()
 }
 
