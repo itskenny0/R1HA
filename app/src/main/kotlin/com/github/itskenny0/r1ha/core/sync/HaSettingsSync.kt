@@ -397,10 +397,20 @@ private fun AppSettings.excludedSyncCategories(): Set<SyncCategory> =
  * backup. The remote's server URL / iBeacon / webhook / MQTT values are
  * the sanitized defaults from [toSyncBackup], so we restore the prior
  * local values verbatim instead of letting the defaults clobber them.
+ *
+ * [Behavior.wheelTutorialSeen] is restored here too: it is per-device
+ * onboarding state (flipped true after the first wheel event on THIS device),
+ * not a synced preference. It rides inside `behavior`, so without this a pull
+ * that includes the Behaviour category would reset the flag to a remote value
+ * and re-show the one-shot "wheel to adjust" hint after every sync. Preserved
+ * unconditionally, independent of the Behaviour category opt-in.
  */
-private fun preserveDeviceLocal(applied: AppSettings, prev: AppSettings): AppSettings {
+internal fun preserveDeviceLocal(applied: AppSettings, prev: AppSettings): AppSettings {
     return applied.copy(
         server = prev.server,
+        behavior = applied.behavior.copy(
+            wheelTutorialSeen = prev.behavior.wheelTutorialSeen,
+        ),
         advanced = applied.advanced.copy(
             iBeaconUuid = prev.advanced.iBeaconUuid,
             iBeaconMajor = prev.advanced.iBeaconMajor,
