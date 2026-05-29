@@ -27,6 +27,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -100,7 +104,12 @@ fun ScenesScreen(
         )
             when {
                 ui.loading -> Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = "Loading scenes and scripts"
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(
@@ -110,7 +119,10 @@ fun ScenesScreen(
                     )
                 }
                 entries.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(R1.space.xl)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
                     contentAlignment = Alignment.Center,
                 ) {
                     // Distinguish "the install has no scenes" from "the search /
@@ -170,6 +182,29 @@ private fun SceneRow(
         ScenesViewModel.Kind.SCENE -> R1.AccentWarm
         ScenesViewModel.Kind.SCRIPT -> R1.AccentCool
     }
+    // Resolve the last-activated phrase once so both the visible trailing label
+    // and the spoken row description stay in lockstep. Empty when the entity has
+    // never run or the timestamp is unknown.
+    val relative = entry.lastActivated?.let { rememberRelativeTime(it) }.orEmpty()
+    // Full spoken label: fold name, kind, in-flight status, and the freshness
+    // hint into one phrase so TalkBack reads the card as a single unit. While the
+    // turn_on is in flight the label flips to "Activating <name>" / "Running
+    // <name>" and the row becomes a polite live region so the change is
+    // announced without the user re-focusing the row.
+    val rowLabel = sceneRowLabel(
+        name = entry.name,
+        kind = entry.kind,
+        firing = firing,
+        lastActivatedSpoken = relative,
+    )
+    val rowSemantics = if (firing) {
+        Modifier.semantics {
+            liveRegion = LiveRegionMode.Polite
+            contentDescription = rowLabel
+        }
+    } else {
+        Modifier
+    }
     // Canonical row: friendly name primary, entity_id secondary, kind shown as a
     // leading Pill chip. Tap fires the scene/script; long-press surfaces the
     // detail toast (entity_id + service) since it's the non-destructive gesture,
@@ -193,23 +228,24 @@ private fun SceneRow(
                     color = kindTone,
                 )
             }
-        } else entry.lastActivated?.let { at ->
+        } else if (relative.isNotEmpty()) {
             {
-                val rel = rememberRelativeTime(at)
-                if (rel.isNotEmpty()) {
-                    Text(
-                        text = "activated $rel",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                    )
-                }
+                Text(
+                    text = "activated $relative",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
             }
+        } else {
+            null
         },
-        modifier = Modifier.r1RowPressable(
-            onTap = onFire,
-            onLongPress = onLongPress,
-            contentDescription = "Fire $kindLabel ${entry.name}",
-        ),
+        modifier = Modifier
+            .then(rowSemantics)
+            .r1RowPressable(
+                onTap = onFire,
+                onLongPress = onLongPress,
+                contentDescription = rowLabel,
+            ),
     )
 }
 
@@ -315,13 +351,25 @@ private fun MasterActionPill(
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
 ) {
+    // Spoken label tracks the pill's three visual states so the icon-free pill is
+    // never announced as a bare word. Armed and in-flight are the states a sighted
+    // user reads from the fill change; mirror them for screen readers.
+    val actionLabel = when {
+        inFlight -> "$label action in progress"
+        armed -> "Confirm $label action"
+        else -> "$label master action"
+    }
     val pressable = if (onLongClick != null) {
         Modifier.r1RowPressable(
             onTap = { if (!inFlight) onClick() },
             onLongPress = { if (!inFlight) onLongClick() },
+            contentDescription = actionLabel,
         )
     } else {
-        Modifier.r1Pressable(onClick = { if (!inFlight) onClick() })
+        Modifier.r1Pressable(
+            onClick = { if (!inFlight) onClick() },
+            contentDescription = actionLabel,
+        )
     }
     val fill = when {
         inFlight -> R1.SurfaceMuted
@@ -379,6 +427,9 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             R1TextField(
                 value = query,
                 onValueChange = onQueryChange,
+                modifier = Modifier.semantics {
+                    contentDescription = "Filter scenes and scripts"
+                },
                 placeholder = "bedroom, scene, movie, ...",
                 monospace = false,
             )
