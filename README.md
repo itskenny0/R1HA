@@ -2,9 +2,9 @@
 
 ![R1HA: native Kotlin Home Assistant client](r1ha.png)
 
-A native Home Assistant client originally built for the Rabbit R1, and equally at home on any Android 11+ phone or tablet. On the R1 the physical scroll wheel adjusts every scalar HA entity (light brightness, fan speed, cover position, media volume); on touch devices the same controls respond to drag and tap.
+A native Home Assistant client originally built for the Rabbit R1, and equally at home on any Android 8.0+ phone or tablet. On the R1 the physical scroll wheel adjusts every scalar HA entity (light brightness, fan speed, cover position, media volume); on touch devices the same controls respond to drag and tap.
 
-Where the official [Home Assistant Companion app](https://github.com/home-assistant/android) is fundamentally a WebView wrapped around HA's Lovelace frontend, this client renders everything natively in a Compose-first idiom and falls back to a Lovelace WebView only for the long tail that doesn't fit (HACS cards, automation editor, configuration panel). The card stack + scroll-wheel idiom is tuned for the R1's portrait display, but the layout adapts cleanly to handheld phones, wall-mounted tablets, and kiosk installs; touch replaces the wheel without the UI feeling like an afterthought. The trade-off: this client requires Android 11 or newer, where the official Companion app reaches back to Android 8.
+Where the official [Home Assistant Companion app](https://github.com/home-assistant/android) is fundamentally a WebView wrapped around HA's Lovelace frontend, this client renders everything natively in a Compose-first idiom and falls back to a Lovelace WebView only for the long tail that doesn't fit (HACS cards, automation editor, configuration panel). The card stack + scroll-wheel idiom is tuned for the R1's portrait display, but the layout adapts cleanly to handheld phones, wall-mounted tablets, and kiosk installs; touch replaces the wheel without the UI feeling like an afterthought. It runs on Android 8.0 or newer; a handful of polish features (Quick Settings tile subtitles, predefined haptic effects) light up on later releases and degrade quietly on older ones.
 
 ---
 
@@ -81,7 +81,7 @@ Where the official [Home Assistant Companion app](https://github.com/home-assist
 
 ## Requirements
 
-- **Android 11 or newer** on any phone, tablet, or wall-mounted kiosk display.
+- **Android 8.0 (Oreo) or newer** on any phone, tablet, or wall-mounted kiosk display.
 - The **Rabbit R1** (primary target) running **LineageOS 21 GSI** (Android 14) or **CipherOS** (Android 16).
 - A reachable **Home Assistant** instance (local network or remote URL).
 - For sane UI scaling on R1 LineageOS GSI: `adb shell wm density 180`.
