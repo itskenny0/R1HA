@@ -39,6 +39,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -79,20 +81,12 @@ fun DevicesScreen(
             title = "DEVICES",
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "..." else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                R1Chip(
+                    text = if (ui.loading) "..." else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh devices",
+                )
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -221,14 +215,16 @@ private fun SearchAndGroupBar(
                 color = R1.InkMuted,
                 modifier = Modifier.padding(end = 8.dp),
             )
-            GroupChip(
-                label = "AREA",
+            R1Chip(
+                text = "AREA",
+                variant = R1ChipVariant.Filter,
                 selected = grouping == DevicesViewModel.Grouping.AREA,
                 onClick = { onGrouping(DevicesViewModel.Grouping.AREA) },
             )
-            Spacer(Modifier.width(6.dp))
-            GroupChip(
-                label = "MAKER",
+            Spacer(Modifier.width(R1.space.s))
+            R1Chip(
+                text = "MAKER",
+                variant = R1ChipVariant.Filter,
                 selected = grouping == DevicesViewModel.Grouping.MANUFACTURER,
                 onClick = { onGrouping(DevicesViewModel.Grouping.MANUFACTURER) },
             )
@@ -237,35 +233,30 @@ private fun SearchAndGroupBar(
 }
 
 @Composable
-private fun GroupChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val tone = if (selected) R1.AccentWarm else R1.InkSoft
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(if (selected) tone.copy(alpha = 0.18f) else R1.SurfaceMuted)
-            .border(1.dp, if (selected) tone.copy(alpha = 0.6f) else R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(text = label, style = R1.labelMicro, color = tone)
-    }
-}
-
-@Composable
 private fun SectionHeader(label: String, count: Int) {
+    // Canonical group-header treatment (matches R1Section's title line): uppercase
+    // section-header type in the accent colour, a hairline rule filling the gap, and a
+    // count rendered as an R1Chip Pill at the right edge.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = label.uppercase(),
-            style = R1.labelMicro,
+            style = R1.sectionHeader,
             color = R1.AccentWarm,
-            modifier = Modifier.weight(1f),
         )
-        Text(text = "$count", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.width(R1.space.m))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        R1Chip(text = "$count", variant = R1ChipVariant.Pill, tone = R1.InkSoft)
     }
 }
 
@@ -327,9 +318,10 @@ private fun DeviceRow(
                 Spacer(Modifier.weight(1f))
             }
             if (disabled) {
-                Spacer(Modifier.width(8.dp))
-                MicroChip(
+                Spacer(Modifier.width(R1.space.s))
+                R1Chip(
                     text = "DISABLED",
+                    variant = R1ChipVariant.Pill,
                     tone = R1.StatusAmber,
                 )
             }
@@ -402,19 +394,6 @@ private fun EntityRow(entity: EntityRegistryEntry) {
             color = R1.InkSoft,
             maxLines = 1,
         )
-    }
-}
-
-@Composable
-private fun MicroChip(text: String, tone: androidx.compose.ui.graphics.Color) {
-    Box(
-        modifier = Modifier
-            .clip(R1.ShapeS)
-            .background(tone.copy(alpha = 0.18f))
-            .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    ) {
-        Text(text = text, style = R1.labelMicro, color = tone)
     }
 }
 
