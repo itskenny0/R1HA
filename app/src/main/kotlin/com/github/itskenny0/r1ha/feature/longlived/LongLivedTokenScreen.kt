@@ -200,9 +200,12 @@ fun LongLivedTokenScreen(
             // Light-touch paste validation: real HA long-lived tokens are JWTs
             // (three base64url segments separated by dots, ~200 chars long). When the
             // user pastes something that obviously isn't, surface a one-line hint so
-            // they don't try to sign in with a garbage value.
+            // they don't try to sign in with a garbage value. Validate the whitespace-
+            // stripped form so a token pasted with a trailing newline (the usual result
+            // of copying from HA's profile page) isn't flagged as malformed.
             val looksLikeJwt = remember(token) {
-                token.isBlank() || (token.count { it == '.' } == 2 && token.length in 50..2000)
+                val cleaned = token.filterNot { it.isWhitespace() }
+                cleaned.isBlank() || (cleaned.count { it == '.' } == 2 && cleaned.length in 50..2000)
             }
             if (!looksLikeJwt) {
                 Spacer(Modifier.height(2.dp))
@@ -232,11 +235,20 @@ fun LongLivedTokenScreen(
                                     com.github.itskenny0.r1ha.feature.onboarding
                                         .normalizeServerUrl(url)
                                 require(normalisedUrl.isNotBlank()) { "Empty URL" }
+                                // Strip ALL whitespace, not just the ends: a JWT's
+                                // alphabet is base64url (no spaces or newlines), so any
+                                // whitespace came from the clipboard (trailing newline,
+                                // a line-wrap injected by a clipboard manager). Leaving
+                                // an embedded newline in would produce a malformed
+                                // "Authorization: Bearer <broken>" header and a confusing
+                                // 401 that looks like a bad token rather than a paste glitch.
+                                val cleanedToken = token.filterNot { it.isWhitespace() }
+                                require(cleanedToken.isNotBlank()) { "Empty token" }
                                 val newServer = ServerConfig(url = normalisedUrl, haVersion = null)
                                 settings.update { it.copy(server = newServer) }
                                 tokens.save(
                                     Tokens(
-                                        accessToken = token.trim(),
+                                        accessToken = cleanedToken,
                                         refreshToken = "",
                                         // Far-future expiry so ensureFresh's
                                         // skew check is always satisfied — the
