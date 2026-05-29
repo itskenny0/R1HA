@@ -76,6 +76,13 @@ fun DashboardViewScreen(
     dashboardUrlPath: String?,
     viewPath: String,
     onBack: () -> Unit,
+    /** HA server base URL (e.g. `http://homeassistant.local:8123`), sourced
+     *  from settings the same way the cameras / history screens do. Provided
+     *  to the card renderers via [LocalHaServerUrl] so picture / area / camera
+     *  cards can resolve relative `entity_picture` / `image` paths and fetch
+     *  them authenticated. Null when no server is configured; the image cards
+     *  then fall back to their muted placeholder. */
+    serverUrl: String? = null,
     /** Routes to the Lovelace WebView (Routes.LOVELACE). Used by the
      *  strategy-dashboard fallback when R1HA can't resolve the layout
      *  natively. No-op default keeps the screen renderable in isolation. */
@@ -126,6 +133,7 @@ fun DashboardViewScreen(
 
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
+        com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides serverUrl,
     ) {
     Column(
         modifier = Modifier
