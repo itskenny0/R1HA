@@ -135,6 +135,10 @@ class SettingsRepository private constructor(
          *  [PositionDotLocation] enum name. Absent → migrate from the
          *  legacy boolean above, otherwise default to TOP_CENTER. */
         val uiPositionDotLocation = stringPreferencesKey("ui.position_dot_location")
+        /** Where the main value bar (brightness / volume / setpoint slider)
+         *  sits on every card. Stored as the [ValueBarLocation] enum name.
+         *  Absent → default RIGHT (the historical right-edge layout). */
+        val uiValueBarLocation = stringPreferencesKey("ui.value_bar_location")
 
         val behaviorHaptics = booleanPreferencesKey("behavior.haptics")
         val behaviorKeepOn = booleanPreferencesKey("behavior.keep_on")
@@ -265,6 +269,12 @@ class SettingsRepository private constructor(
                             false -> PositionDotLocation.HIDDEN
                             else -> PositionDotLocation.TOP_CENTER
                         },
+                    // Where the main value bar sits. Absent / unknown name
+                    // falls back to RIGHT (the historical right-edge layout)
+                    // so pre-feature installs see no change.
+                    valueBarLocation = p[K.uiValueBarLocation]
+                        ?.let { runCatching { ValueBarLocation.valueOf(it) }.getOrNull() }
+                        ?: ValueBarLocation.RIGHT,
                     textHistoryLength = (p[K.uiTextHistoryLen] ?: 20).coerceIn(5, 100),
                     hideCardTailAbove = p[K.uiHideCardTail] ?: true,
                     maxDecimalPlaces = (p[K.uiMaxDecimals] ?: 2).coerceIn(0, 6),
@@ -425,6 +435,7 @@ class SettingsRepository private constructor(
                 // HIDDEN counts as "show somewhere".
                 p[K.uiPositionDotLocation] = next.ui.positionDotLocation.name
                 p[K.uiShowDots] = next.ui.positionDotLocation != PositionDotLocation.HIDDEN
+                p[K.uiValueBarLocation] = next.ui.valueBarLocation.name
                 p[K.behaviorHaptics] = next.behavior.haptics
                 p[K.behaviorKeepOn] = next.behavior.keepScreenOn
                 p[K.behaviorTapToggle] = next.behavior.tapToToggle
@@ -873,7 +884,10 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         // code, "?" = inherit the card's default behaviour for that surface.
         val tapActionStr = o.actionOnTap?.code?.toString() ?: "?"
         val wheelPressStr = o.actionOnWheelPress?.code?.toString() ?: "?"
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr"
+        // Per-card value-bar slot — single-char ValueBarLocation code,
+        // "?" = inherit the global setting.
+        val valueBarStr = o.valueBarLocation?.code?.toString() ?: "?"
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr"
     }
 }
 
@@ -960,6 +974,14 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             val wheelPress = wheelPressChar?.takeIf { it != '?' }?.let {
                 com.github.itskenny0.r1ha.core.prefs.TapAction.fromCode(it)
             }
+            // Slot 18 — per-card value-bar location. Single-char
+            // ValueBarLocation code; unknown / blank / "?" = inherit.
+            // Older saves without slot 18 decode as null and keep the
+            // inherit-global behaviour.
+            val valueBarChar = parts.getOrNull(18)?.firstOrNull()
+            val valueBar = valueBarChar?.takeIf { it != '?' }?.let {
+                com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.fromCode(it)
+            }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -979,6 +1001,7 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 glyphOverride = glyph,
                 actionOnTap = tapAction,
                 actionOnWheelPress = wheelPress,
+                valueBarLocation = valueBar,
             )
         }.getOrNull()
     }.toMap()

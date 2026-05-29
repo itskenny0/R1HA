@@ -177,6 +177,19 @@ data class EntityOverride(
      * (e.g. wheel-press the front-door lock card to fire `script.away`).
      */
     val actionOnWheelPress: TapAction? = null,
+    /**
+     * Per-card override for where the main value bar (the brightness /
+     * volume / cover-position / setpoint slider) sits on the card. Null =
+     * inherit the global [UiOptions.valueBarLocation]; an explicit value
+     * pins the bar to that edge (or hides it) for this card only.
+     *
+     * Useful when one card's content needs the full width / height the
+     * default right-edge bar would otherwise eat, or when a card is
+     * controlled purely by the wheel and the visible bar is just noise:
+     * the user can move or hide the bar on that one card without changing
+     * the deck-wide default. Inherit is the common case.
+     */
+    val valueBarLocation: ValueBarLocation? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
@@ -320,6 +333,42 @@ enum class PositionDotLocation(val code: Char) {
     ;
     companion object {
         fun fromCode(code: Char): PositionDotLocation? = entries.firstOrNull { it.code == code }
+    }
+}
+
+/**
+ * Where the main value bar (the brightness / volume / cover-position /
+ * setpoint slider) sits on a card. Used both as a global default
+ * ([UiOptions.valueBarLocation]) and as a per-card override
+ * ([EntityOverride.valueBarLocation]) — the per-card value wins when
+ * present, so a single card can move or hide the bar without changing the
+ * deck-wide default.
+ *
+ * RIGHT is the historical default (the bar ran flush against the card's
+ * right edge). LEFT / TOP / BOTTOM place the bar on the matching edge;
+ * HIDDEN drops the bar entirely (the wheel and tap-to-toggle still work).
+ *
+ * Encoded by [code] in the per-card preferences blob to match the same
+ * single-character convention [PositionDotLocation] / [LightCardButton]
+ * use, keeping the pipe-separated row compact. The full enum name is used
+ * in the global [UiOptions.valueBarLocation] slot because that one is
+ * JSON-shaped and doesn't pay the per-row cost.
+ */
+@kotlinx.serialization.Serializable
+enum class ValueBarLocation(val code: Char) {
+    /** Left edge of the card, full height. */
+    LEFT('L'),
+    /** Right edge of the card, full height (default). */
+    RIGHT('R'),
+    /** Top edge of the card, full width. */
+    TOP('T'),
+    /** Bottom edge of the card, full width. */
+    BOTTOM('B'),
+    /** Hide the value bar entirely. */
+    HIDDEN('0'),
+    ;
+    companion object {
+        fun fromCode(code: Char): ValueBarLocation? = entries.firstOrNull { it.code == code }
     }
 }
 

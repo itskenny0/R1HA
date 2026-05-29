@@ -241,10 +241,58 @@ class EntityOverrideCodecTest {
                 glyphOverride = "🔥",
                 actionOnTap = TapAction.TOGGLE,
                 actionOnWheelPress = TapAction.FIRE,
+                valueBarLocation = ValueBarLocation.TOP,
             ),
         )
         val encoded = encodeEntityOverrides_visibleForTesting(map)
         val decoded = decodeEntityOverrides_visibleForTesting(encoded)
         assertThat(decoded).isEqualTo(map)
+    }
+
+    @Test fun `value bar location override round-trips through codec`() {
+        val map = mapOf(
+            "light.kitchen" to EntityOverride(valueBarLocation = ValueBarLocation.BOTTOM),
+        )
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        // Codec slot 18 — the value-bar code char. BOTTOM = 'B'.
+        val barSlot = encoded.substringAfter('=').split('|').getOrNull(18)
+        assertThat(barSlot).isEqualTo("B")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.valueBarLocation)
+            .isEqualTo(ValueBarLocation.BOTTOM)
+    }
+
+    @Test fun `null value bar location encodes as inherit and round-trips as null`() {
+        val map = mapOf("light.kitchen" to EntityOverride(showOnOffPill = true))
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val barSlot = encoded.substringAfter('=').split('|').getOrNull(18)
+        assertThat(barSlot).isEqualTo("?")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.valueBarLocation).isNull()
+    }
+
+    @Test fun `decoder ignores unknown value-bar codes`() {
+        // Defensive: a future build that ships a new value-bar code (e.g. 'Z')
+        // should not crash older builds. Unknown code = inherit (null).
+        val encoded = "light.kitchen=?|?|?||?|?|?||?|?|?||?||?||?|?|Z"
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.valueBarLocation).isNull()
+    }
+
+    @Test fun `older save without slot 18 still decodes value bar as null`() {
+        // Synthesize a save predating the value-bar field (18 slots, the last
+        // being the wheel-press action). The new field should land as null /
+        // inherit so existing customizations are preserved.
+        // Slots 0..17: size|pill|area|lp|dec|accent|ct|btns|tap|wheel|hide|
+        // custom|pinReq|pinHash|pip|glyph|tapAction|wheelPress. No slot 18.
+        val legacy = "light.kitchen=28|1|0|scene.foo|2|" + 0xFFF36F21.toInt() +
+            "|2700|F||1|?|?|||?||T|F"
+        val decoded = decodeEntityOverrides_visibleForTesting(legacy)
+        val o = decoded["light.kitchen"]
+        assertThat(o).isNotNull()
+        assertThat(o!!.textSizeSp).isEqualTo(28)
+        assertThat(o.actionOnTap).isEqualTo(TapAction.TOGGLE)
+        assertThat(o.actionOnWheelPress).isEqualTo(TapAction.FIRE)
+        assertThat(o.valueBarLocation).isNull()
     }
 }

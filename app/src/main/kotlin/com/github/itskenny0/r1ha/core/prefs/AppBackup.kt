@@ -65,6 +65,9 @@ data class AppBackup(
      *  restore. Older backup files without this field decode as TOP_CENTER
      *  / HIDDEN based on the legacy boolean above. */
     val uiPositionDotLocation: PositionDotLocation = PositionDotLocation.TOP_CENTER,
+    /** Where the main value bar sits. Older backup files without this field
+     *  decode as RIGHT (the historical right-edge layout). */
+    val uiValueBarLocation: ValueBarLocation = ValueBarLocation.RIGHT,
     val uiTextHistoryLength: Int = 20,
     val uiHideCardTailAbove: Boolean = true,
     val uiMaxDecimalPlaces: Int = 2,
@@ -134,6 +137,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiShowAreaLabel = ui.showAreaLabel,
     uiShowPositionDots = ui.positionDotLocation != PositionDotLocation.HIDDEN,
     uiPositionDotLocation = ui.positionDotLocation,
+    uiValueBarLocation = ui.valueBarLocation,
     uiTextHistoryLength = ui.textHistoryLength,
     uiHideCardTailAbove = ui.hideCardTailAbove,
     uiMaxDecimalPlaces = ui.maxDecimalPlaces,
@@ -197,6 +201,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
                 .takeIf { it != PositionDotLocation.TOP_CENTER || uiShowPositionDots }
                 ?: if (uiShowPositionDots) PositionDotLocation.TOP_CENTER
                    else PositionDotLocation.HIDDEN,
+            valueBarLocation = uiValueBarLocation,
             textHistoryLength = uiTextHistoryLength,
             hideCardTailAbove = uiHideCardTailAbove,
             maxDecimalPlaces = uiMaxDecimalPlaces,

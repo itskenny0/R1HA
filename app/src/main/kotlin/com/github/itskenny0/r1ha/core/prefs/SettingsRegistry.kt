@@ -200,6 +200,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { positionDotLocationLabel(it.ui.positionDotLocation) },
     ),
     SettingEntry(
+        id = "ui.valueBarLocation",
+        category = SettingCategory.CARD_UI,
+        label = "Value bar location",
+        description = "Which edge the brightness / volume / setpoint slider sits on",
+        isDefault = { it.ui.valueBarLocation == defaults.ui.valueBarLocation },
+        currentDisplay = { valueBarLocationLabel(it.ui.valueBarLocation) },
+    ),
+    SettingEntry(
         id = "ui.hideCardTailAbove",
         category = SettingCategory.CARD_UI,
         label = "Hide card tail above current",
@@ -541,6 +549,20 @@ fun positionDotLocationLabel(loc: PositionDotLocation): String = when (loc) {
     PositionDotLocation.BOTTOM_CENTER -> "BOTTOM"
     PositionDotLocation.BOTTOM_RIGHT -> "BOTTOM RIGHT"
     PositionDotLocation.HIDDEN -> "HIDDEN"
+}
+
+/**
+ * Compact human label for a [ValueBarLocation] value. Used by the
+ * Settings → Appearance value-bar row, the per-card customize panel, and
+ * the registry's `currentDisplay` so the diff screen shows the same words
+ * the user picked.
+ */
+fun valueBarLocationLabel(loc: ValueBarLocation): String = when (loc) {
+    ValueBarLocation.LEFT -> "LEFT"
+    ValueBarLocation.RIGHT -> "RIGHT"
+    ValueBarLocation.TOP -> "TOP"
+    ValueBarLocation.BOTTOM -> "BOTTOM"
+    ValueBarLocation.HIDDEN -> "HIDDEN"
 }
 
 fun searchSettings(query: String): List<SettingEntry> {

@@ -92,6 +92,15 @@ data class UiOptions(
      * migrates to HIDDEN, so existing users see no visual change.
      */
     val positionDotLocation: PositionDotLocation = PositionDotLocation.TOP_CENTER,
+    /**
+     * Where the main value bar (the brightness / volume / cover-position /
+     * setpoint slider) sits on every card. Default RIGHT matches the
+     * historical layout where the bar ran flush against the card's right
+     * edge. LEFT / TOP / BOTTOM move it to the matching edge; HIDDEN drops
+     * it entirely (the wheel and tap-to-toggle still work). Per-card
+     * overrides via [EntityOverride.valueBarLocation] win when set.
+     */
+    val valueBarLocation: ValueBarLocation = ValueBarLocation.RIGHT,
     /** Number of recent state-change entries shown on text/categorical SensorCard history. */
     val textHistoryLength: Int = 20,
     /**
