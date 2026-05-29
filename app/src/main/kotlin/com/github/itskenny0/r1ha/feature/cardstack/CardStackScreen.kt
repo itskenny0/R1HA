@@ -2649,7 +2649,7 @@ private fun QuickActionsSheet(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -2660,16 +2660,16 @@ private fun QuickActionsSheet(
                 // No-op when content fits — Column doesn't scroll
                 // when its height is unconstrained.
                 .verticalScroll(androidx.compose.foundation.rememberScrollState())
-                .padding(16.dp),
+                .padding(R1.space.l),
         ) {
             Text(text = "QUICK ACTIONS", style = R1.sectionHeader, color = R1.AccentWarm)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             Text(
                 text = activePageName.uppercase(),
                 style = R1.body,
                 color = R1.InkSoft,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(R1.space.m))
 
             // ── BROWSE row — 2×4 grid of icon-glyph nav shortcuts ──
             // These doubles as the HA-Companion-style 'drawer'
