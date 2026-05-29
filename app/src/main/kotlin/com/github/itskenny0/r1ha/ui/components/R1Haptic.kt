@@ -59,11 +59,14 @@ class R1Haptic internal constructor(
         runCatching {
             val v = vibrator ?: return@runCatching
             if (!v.hasVibrator()) return@runCatching
-            val predefined = if (tick) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
-            val supported = v.areEffectsSupported(predefined).firstOrNull() ==
-                Vibrator.VIBRATION_EFFECT_SUPPORT_YES
-            val effect = if (supported) {
-                VibrationEffect.createPredefined(predefined)
+            // Predefined effects (EFFECT_TICK / EFFECT_CLICK) plus the
+            // areEffectsSupported() query that backs them land in API 29/30.
+            // On 26-29 we skip straight to the createOneShot fallback, which
+            // has been available since API 26 and produces a comparable
+            // short buzz. Gated at 30 so the single guard covers both the
+            // API-29 createPredefined and the API-30 areEffectsSupported call.
+            val effect = if (Build.VERSION.SDK_INT >= 30 && predefinedSupported(v, tick)) {
+                createPredefinedEffect(tick)
             } else if (tick) {
                 VibrationEffect.createOneShot(20L, VibrationEffect.DEFAULT_AMPLITUDE)
             } else {
@@ -119,6 +122,24 @@ private fun vibratorFromManager(context: Context): Vibrator? {
     val mgr = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE)
         as? android.os.VibratorManager
     return mgr?.defaultVibrator
+}
+
+// Vibrator.areEffectsSupported is API 30. Isolated in a @RequiresApi helper
+// (called only behind the SDK_INT >= 30 guard in fire()) so the verifier
+// doesn't touch it on 26-29.
+@RequiresApi(30)
+private fun predefinedSupported(v: Vibrator, tick: Boolean): Boolean {
+    val predefined = if (tick) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
+    return v.areEffectsSupported(predefined).firstOrNull() ==
+        Vibrator.VIBRATION_EFFECT_SUPPORT_YES
+}
+
+// VibrationEffect.createPredefined is API 29; reachable only behind the
+// SDK_INT >= 30 guard, so an API-29 minimum here is comfortably satisfied.
+@RequiresApi(29)
+private fun createPredefinedEffect(tick: Boolean): VibrationEffect {
+    val predefined = if (tick) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
+    return VibrationEffect.createPredefined(predefined)
 }
 
 @RequiresApi(33)

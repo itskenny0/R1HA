@@ -31,7 +31,6 @@ import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.theme.R1
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -227,7 +226,9 @@ private fun ChartHint(text: String, modifier: Modifier = Modifier) {
 private val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun formatTime(instant: Instant): String =
-    LocalTime.ofInstant(instant, ZoneId.systemDefault()).format(timeFmt)
+    // LocalTime.ofInstant is API 31; the atZone().toLocalTime() form is the
+    // equivalent available since API 26 (java.time landed whole in Android 8).
+    instant.atZone(ZoneId.systemDefault()).toLocalTime().format(timeFmt)
 
 private fun formatSpan(millis: Long): String {
     val hours = millis / 3_600_000L

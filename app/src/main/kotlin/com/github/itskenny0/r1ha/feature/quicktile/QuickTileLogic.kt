@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.quicktile
 
 import android.content.Context
 import android.graphics.drawable.Icon
+import android.os.Build
 import android.service.quicksettings.Tile
 import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.R
@@ -28,6 +29,19 @@ import kotlinx.serialization.json.JsonObject
 internal object QuickTileLogic {
 
     /**
+     * Set the tile subtitle (the small secondary line under the label) only on
+     * API 29+, where `Tile.setSubtitle` exists. On API 26-28 the call is a no-op:
+     * those devices show just the label, which already carries the entity name,
+     * and the active/inactive tint conveys on/off state, so nothing functional is
+     * lost. Keeps the tile feature usable down to the minSdk floor.
+     */
+    private fun Tile.setSubtitleCompat(text: CharSequence) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            subtitle = text
+        }
+    }
+
+    /**
      * Refresh the visible label/state of a tile from the live entity cache. Safe to
      * call from any TileService callback that has access to its `qsTile`.
      */
@@ -46,7 +60,7 @@ internal object QuickTileLogic {
                 if (rawId.isNullOrBlank()) {
                     tile.state = Tile.STATE_INACTIVE
                     tile.label = "HA. Set entity"
-                    tile.subtitle = "Tap to open app"
+                    tile.setSubtitleCompat("Tap to open app")
                     tile.icon = Icon.createWithResource(context, R.mipmap.ic_launcher)
                     tile.updateTile()
                     return@launch
@@ -64,13 +78,13 @@ internal object QuickTileLogic {
                 if (live == null) {
                     tile.state = Tile.STATE_UNAVAILABLE
                     tile.label = entityId.value
-                    tile.subtitle = "not loaded yet"
+                    tile.setSubtitleCompat("not loaded yet")
                     tile.icon = Icon.createWithResource(context, R.mipmap.ic_launcher)
                     tile.updateTile()
                     return@launch
                 }
                 tile.label = live.friendlyName
-                tile.subtitle = if (live.isOn) "ON" else "OFF"
+                tile.setSubtitleCompat(if (live.isOn) "ON" else "OFF")
                 tile.state = if (live.isOn) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
                 tile.icon = Icon.createWithResource(context, R.mipmap.ic_launcher)
                 tile.updateTile()
