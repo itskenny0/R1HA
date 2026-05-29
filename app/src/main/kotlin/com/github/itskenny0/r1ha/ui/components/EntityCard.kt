@@ -88,14 +88,10 @@ fun EntityCard(
         // surfaces the per-mode chips that distinguish an alarm from a lock.
         Domain.ALARM_CONTROL_PANEL -> CardRenderModel.Glyph.LOCK
         // Person / weather are read-only and routed to SensorCard before this glyph is
-        // ever drawn, so the value only keeps the when exhaustive. There are no PERSON /
-        // WEATHER members in CardRenderModel.Glyph (that enum lives in core/theme, outside
-        // this card's slice) — the real person-presence and weather-condition treatments
-        // live in SensorCard, which keys off the domain directly rather than the glyph.
-        // We map to the closest existing members so the fallback is sensible: weather to
-        // CLIMATE (temperature family), person to SWITCH (generic).
-        Domain.PERSON -> CardRenderModel.Glyph.SWITCH
-        Domain.WEATHER -> CardRenderModel.Glyph.CLIMATE
+        // ever drawn, but the themed/glyph path now has first-class members so the
+        // fallback (and any future themed rendering) carries the right domain identity.
+        Domain.PERSON -> CardRenderModel.Glyph.PERSON
+        Domain.WEATHER -> CardRenderModel.Glyph.WEATHER
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -445,6 +441,8 @@ private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
     CardRenderModel.Glyph.VACUUM -> "VACUUM"
     CardRenderModel.Glyph.LAWN_MOWER -> "MOWER"
     CardRenderModel.Glyph.WATER_HEATER -> "WATER HEATER"
+    CardRenderModel.Glyph.PERSON -> "PRESENCE"
+    CardRenderModel.Glyph.WEATHER -> "WEATHER"
 }
 
 /** Action-card label — bypasses the Glyph-based mapping above because action entities
