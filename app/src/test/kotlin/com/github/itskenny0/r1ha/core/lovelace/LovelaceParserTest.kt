@@ -88,7 +88,8 @@ class LovelaceParserTest {
         cards[7] as LovelaceCard.Heading
         val cond = cards[8] as LovelaceCard.Conditional
         val condition = cond.conditions.first() as LovelaceCondition.StateEquals
-        assertEquals("below_horizon", condition.state)
+        assertEquals(listOf("below_horizon"), condition.states)
+        assertEquals(false, condition.negate)
     }
 
     @Test fun `unknown card types preserve raw JSON in Unsupported`() {
@@ -98,6 +99,50 @@ class LovelaceParserTest {
         val card = cfg.views.first().cards.first() as LovelaceCard.Unsupported
         assertEquals("custom:foo", card.type)
         assertEquals("42", card.raw["wibble"].toString())
+    }
+
+    @Test fun `unknown condition type fails closed to Never`() {
+        // A `screen` condition (media-query breakpoint) can't be evaluated on the
+        // R1; it must hide the card, not leak it.
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"conditional",
+                 "conditions":[{"condition":"screen","media_query":"(min-width: 600px)"}],
+                 "card":{"type":"button","name":"A"}}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Conditional
+        assertEquals(LovelaceCondition.Never, card.conditions.first())
+    }
+
+    @Test fun `state_not condition parses as a negated state-equals`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"conditional",
+                 "conditions":[{"condition":"state_not","entity":"light.k","state_not":"off"}],
+                 "card":{"type":"button","name":"A"}}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Conditional
+        val cond = card.conditions.first() as LovelaceCondition.StateEquals
+        assertEquals(listOf("off"), cond.states)
+        assertTrue(cond.negate)
+    }
+
+    @Test fun `state condition accepts a list of states`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"conditional",
+                 "conditions":[{"condition":"state","entity":"alarm.x","state":["armed_home","armed_away"]}],
+                 "card":{"type":"button","name":"A"}}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Conditional
+        val cond = card.conditions.first() as LovelaceCondition.StateEquals
+        assertEquals(listOf("armed_home", "armed_away"), cond.states)
     }
 
     @Test fun `bare entity_id string in glance entities resolves to a row`() {

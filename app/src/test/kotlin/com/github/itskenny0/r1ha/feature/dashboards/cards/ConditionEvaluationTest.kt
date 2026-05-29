@@ -27,7 +27,7 @@ class ConditionEvaluationTest {
     }
 
     private fun states(vararg pairs: Pair<EntityId, EntityState>): EntityStates =
-        EntityStates(pairs.toMap())
+        EntityStates.of(pairs.toMap())
 
     @Test fun `empty conditions always pass`() {
         assertTrue(evaluateConditions(emptyList(), EntityStates.EMPTY))
@@ -79,6 +79,56 @@ class ConditionEvaluationTest {
             LovelaceCondition.NumericState("sensor.temp", above = 18.0, below = 25.0),
         )
         assertFalse(evaluateConditions(fail, map))
+    }
+
+    @Test fun `state-not condition passes when state differs`() {
+        val map = states(state("light.kitchen", "off"))
+        val conds = listOf(LovelaceCondition.StateEquals("light.kitchen", "on", negate = true))
+        assertTrue(evaluateConditions(conds, map))
+    }
+
+    @Test fun `state-not condition fails when state matches`() {
+        val map = states(state("light.kitchen", "on"))
+        val conds = listOf(LovelaceCondition.StateEquals("light.kitchen", "on", negate = true))
+        assertFalse(evaluateConditions(conds, map))
+    }
+
+    @Test fun `state list matches any member`() {
+        val map = states(state("alarm_control_panel.home", "armed_away"))
+        val conds = listOf(
+            LovelaceCondition.StateEquals(
+                "alarm_control_panel.home",
+                listOf("armed_home", "armed_away", "armed_night"),
+            ),
+        )
+        assertTrue(evaluateConditions(conds, map))
+    }
+
+    @Test fun `state list with no member matching hides`() {
+        val map = states(state("alarm_control_panel.home", "disarmed"))
+        val conds = listOf(
+            LovelaceCondition.StateEquals(
+                "alarm_control_panel.home",
+                listOf("armed_home", "armed_away"),
+            ),
+        )
+        assertFalse(evaluateConditions(conds, map))
+    }
+
+    @Test fun `Never condition always hides`() {
+        // A condition we couldn't model (screen / user / template) fails closed,
+        // so the wrapped card is hidden even when everything else would pass.
+        assertFalse(evaluateConditions(listOf(LovelaceCondition.Never), EntityStates.EMPTY))
+        val map = states(state("light.kitchen", "on"))
+        assertFalse(
+            evaluateConditions(
+                listOf(
+                    LovelaceCondition.StateEquals("light.kitchen", "on"),
+                    LovelaceCondition.Never,
+                ),
+                map,
+            ),
+        )
     }
 
     @Test fun `aspect ratio parses common shapes`() {
