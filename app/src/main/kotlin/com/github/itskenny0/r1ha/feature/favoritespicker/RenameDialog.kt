@@ -44,6 +44,9 @@ import com.github.itskenny0.r1ha.core.prefs.valueBarLocationLabel
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
@@ -106,7 +109,7 @@ fun RenameDialog(
             modifier = Modifier
                 .widthIn(max = 560.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -171,7 +174,7 @@ private fun CustomizeHub(
     // Header — title + entity_id reminder so the user is sure they're editing
     // the right entity (critical when several have similar friendly names).
     Text(text = "CUSTOMIZE", style = R1.sectionHeader, color = R1.AccentWarm)
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
     Text(
         text = entity.id.value,
         style = R1.body.copy(fontFamily = FontFamily.Monospace),
@@ -184,7 +187,7 @@ private fun CustomizeHub(
     // applied so the user sees changes before committing. The name + override
     // map are local CompositionLocals here so the preview reflects the
     // dialog's state, not whatever's in settings.
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(R1.space.m))
     val previewState = remember(entity, name) {
         val effectiveName = name.trim().ifBlank { entity.friendlyName }
         entity.copy(friendlyName = effectiveName)
@@ -287,7 +290,7 @@ private fun CustomizeHub(
         )
         Spacer(Modifier.weight(1f))
         R1Button(text = "CANCEL", onClick = onCancel, variant = R1ButtonVariant.Outlined)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         R1Button(text = "SAVE", onClick = onSave)
     }
 
@@ -306,7 +309,7 @@ private fun CustomizeHub(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions.Default,
     )
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(R1.space.xs))
     Text(
         text = "Local-only. Clear to revert to HA's friendly_name.",
         style = R1.body,
@@ -386,12 +389,12 @@ private fun IdentitySubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     GlyphPickerRow(
         selected = override.glyphOverride,
         onSelect = { onChange(override.copy(glyphOverride = it)) },
     )
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(R1.space.xs))
     R1TextField(
         value = override.glyphOverride.orEmpty(),
         onValueChange = { v -> onChange(override.copy(glyphOverride = v.takeIf { it.isNotBlank() })) },
@@ -405,7 +408,7 @@ private fun IdentitySubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     ColourSwatchRow(
         selected = override.accentColor,
         onSelect = { onChange(override.copy(accentColor = it)) },
@@ -440,7 +443,7 @@ private fun LayoutSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     PositionDotOverridePicker(
         selected = override.positionDotLocation,
         onSelect = { onChange(override.copy(positionDotLocation = it)) },
@@ -452,7 +455,7 @@ private fun LayoutSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     ValueBarOverridePicker(
         selected = override.valueBarLocation,
         onSelect = { onChange(override.copy(valueBarLocation = it)) },
@@ -464,7 +467,7 @@ private fun LayoutSubscreen(
         value = override.showOnOffPill,
         onChange = { onChange(override.copy(showOnOffPill = it)) },
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(R1.space.s))
     TristateRow(
         label = "Show area label",
         value = override.showAreaLabel,
@@ -477,7 +480,7 @@ private fun LayoutSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TextSizeRow(
         selected = override.textSizeSp,
         onSelect = { onChange(override.copy(textSizeSp = it)) },
@@ -490,7 +493,7 @@ private fun LayoutSubscreen(
             style = R1.body,
             color = R1.InkMuted,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         DecimalSegmentedRow(
             selected = override.maxDecimalPlaces,
             onSelect = { onChange(override.copy(maxDecimalPlaces = it)) },
@@ -529,7 +532,7 @@ private fun ActionsSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapActionPicker(
         selected = override.actionOnTap,
         onSelect = { onChange(override.copy(actionOnTap = it)) },
@@ -541,7 +544,7 @@ private fun ActionsSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     R1TextField(
         value = override.longPressTarget.orEmpty(),
         onValueChange = { v ->
@@ -559,7 +562,7 @@ private fun ActionsSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapActionPicker(
         selected = override.actionOnWheelPress,
         onSelect = { onChange(override.copy(actionOnWheelPress = it)) },
@@ -571,7 +574,7 @@ private fun ActionsSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     CustomActionsEditor(
         actions = override.customActions,
         onChange = { next -> onChange(override.copy(customActions = next)) },
@@ -608,7 +611,7 @@ private fun BehaviourSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapToToggleRow(
         selected = override.tapToToggle,
         onSelect = { onChange(override.copy(tapToToggle = it)) },
@@ -620,7 +623,7 @@ private fun BehaviourSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapToToggleRow(
         selected = override.wheelEnabled,
         onSelect = { onChange(override.copy(wheelEnabled = it)) },
@@ -632,7 +635,7 @@ private fun BehaviourSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapToToggleRow(
         selected = override.hideWhenUnavailable,
         onSelect = { onChange(override.copy(hideWhenUnavailable = it)) },
@@ -664,21 +667,21 @@ private fun LockSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     TapToToggleRow(
         selected = override.requirePinToUnlock,
         onSelect = { onChange(override.copy(requirePinToUnlock = it)) },
     )
     if (override.requirePinToUnlock == true) {
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         Text(
             text = if (override.requirePinHash.isNullOrBlank()) "PIN NOT SET (any digits accepted)"
                    else "PIN SET",
             style = R1.labelMicro,
             color = if (override.requirePinHash.isNullOrBlank()) R1.StatusAmber else R1.AccentGreen,
         )
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Spacer(Modifier.height(R1.space.s))
+        Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
             var newPin by remember(entity.id.value) { mutableStateOf("") }
             Box(modifier = Modifier.width(140.dp)) {
                 R1TextField(
@@ -700,7 +703,7 @@ private fun LockSubscreen(
                             newPin = ""
                         }
                     })
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
             ) {
                 Text(text = "SET PIN", style = R1.labelMicro, color = R1.AccentWarm)
             }
@@ -713,7 +716,7 @@ private fun LockSubscreen(
                         .r1Pressable(onClick = {
                             onChange(override.copy(requirePinHash = null))
                         })
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
                 ) {
                     Text(text = "CLEAR PIN", style = R1.labelMicro, color = R1.StatusRed)
                 }
@@ -745,7 +748,7 @@ private fun LightingSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     CTRow(
         selected = override.lightColorTempK,
         onSelect = { onChange(override.copy(lightColorTempK = it)) },
@@ -757,7 +760,7 @@ private fun LightingSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     LightButtonsRow(
         hidden = override.lightButtonsHidden,
         onToggle = { button ->
@@ -795,7 +798,7 @@ private fun AdvancedSubscreen(
         style = R1.body.copy(fontFamily = FontFamily.Monospace),
         color = R1.Ink,
     )
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
     Text(
         text = "Read-only. Renames live in HA; use the entity-config sheet to change the entity_id itself.",
         style = R1.body,
@@ -815,7 +818,7 @@ private fun AdvancedSubscreen(
         )
     }
     if (detailsOpen) {
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         DetailRow(label = "state", value = entity.rawState ?: "—")
         DetailRow(label = "last_changed", value = entity.lastChanged.toString())
         entity.attributesJson?.let { attrs ->
@@ -833,7 +836,7 @@ private fun AdvancedSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     ActiveOverridesList(override = override, onChange = onChange)
 
     SectionHeader("RESET")
@@ -842,7 +845,7 @@ private fun AdvancedSubscreen(
         style = R1.body,
         color = R1.InkMuted,
     )
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     R1Button(
         text = "RESET ALL OVERRIDES",
         onClick = { onChange(EntityOverride.NONE) },
@@ -874,10 +877,10 @@ private fun SubscreenHeader(title: String, entityId: String, onBack: () -> Unit)
                 tint = R1.InkSoft,
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(text = title, style = R1.sectionHeader, color = R1.AccentWarm)
     }
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
     Text(
         text = entityId,
         style = R1.body.copy(fontFamily = FontFamily.Monospace),
@@ -885,7 +888,7 @@ private fun SubscreenHeader(title: String, entityId: String, onBack: () -> Unit)
         maxLines = 1,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(R1.space.s))
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(R1.Hairline))
 }
 
@@ -915,10 +918,10 @@ private fun CustomizeNavRow(
         // aligned across rows.
         Box(
             modifier = Modifier
-                .size(6.dp)
+                .size(R1.space.s)
                 .background(if (modified) R1.AccentWarm else androidx.compose.ui.graphics.Color.Transparent),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = label.uppercase(),
             style = R1.bodyEmph,
@@ -935,7 +938,7 @@ private fun CustomizeNavRow(
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                modifier = Modifier.padding(end = 8.dp).widthIn(max = 220.dp),
+                modifier = Modifier.padding(end = R1.space.s).widthIn(max = 220.dp),
             )
         }
         com.github.itskenny0.r1ha.ui.components.Chevron(
@@ -951,19 +954,17 @@ private fun CustomizeNavRow(
  *  the hub-level RESET uses so the destructive intent reads consistently. */
 @Composable
 private fun RowResetChip(onReset: () -> Unit) {
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(R1.space.l))
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.StatusRed.copy(alpha = 0.14f))
-                .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
-                .r1Pressable(onClick = onReset)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Text(text = "RESET THIS SECTION", style = R1.labelMicro, color = R1.StatusRed)
-        }
+        R1Chip(
+            text = "RESET THIS SECTION",
+            variant = R1ChipVariant.Action,
+            tone = R1.StatusRed,
+            selected = true,
+            onClick = onReset,
+            contentDescription = "Reset this section",
+        )
     }
 }
 
@@ -1063,7 +1064,7 @@ private fun GlyphPickerRow(
                 .background(if (selected == null) R1.AccentWarm else R1.Bg)
                 .let { m -> if (selected == null) m else m.border(1.dp, R1.Hairline, R1.ShapeS) }
                 .r1Pressable({ onSelect(null) })
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(
                 text = "DEFAULT",
@@ -1123,12 +1124,12 @@ private fun PositionDotOverridePicker(
                     R1.ShapeS,
                 )
                 .r1Pressable({ onSelect(null) })
-                .padding(vertical = 8.dp),
+                .padding(vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = "INHERIT", style = R1.labelMicro, color = if (selected == null) R1.Bg else R1.InkSoft)
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(R1.space.xs))
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1140,7 +1141,7 @@ private fun PositionDotOverridePicker(
                     R1.ShapeS,
                 )
                 .r1Pressable({ onSelect(PositionDotLocation.HIDDEN) })
-                .padding(vertical = 8.dp),
+                .padding(vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -1150,7 +1151,7 @@ private fun PositionDotOverridePicker(
             )
         }
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     val rows: List<List<Pair<String, PositionDotLocation>>> = listOf(
         listOf(
             "↖" to PositionDotLocation.TOP_LEFT,
@@ -1205,7 +1206,7 @@ private fun PositionDotOverridePicker(
             }
         }
     }
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(R1.space.xs))
     Text(
         text = "Current: ${
             when (selected) {
@@ -1242,12 +1243,12 @@ private fun ValueBarOverridePicker(
                     R1.ShapeS,
                 )
                 .r1Pressable({ onSelect(null) })
-                .padding(vertical = 8.dp),
+                .padding(vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = "INHERIT", style = R1.labelMicro, color = if (selected == null) R1.Bg else R1.InkSoft)
         }
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(R1.space.xs))
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1259,7 +1260,7 @@ private fun ValueBarOverridePicker(
                     R1.ShapeS,
                 )
                 .r1Pressable({ onSelect(ValueBarLocation.HIDDEN) })
-                .padding(vertical = 8.dp),
+                .padding(vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -1269,7 +1270,7 @@ private fun ValueBarOverridePicker(
             )
         }
     }
-    Spacer(Modifier.height(6.dp))
+    Spacer(Modifier.height(R1.space.s))
     val rows: List<List<Pair<String, ValueBarLocation>?>> = listOf(
         listOf(null, "↑" to ValueBarLocation.TOP, null),
         listOf(
@@ -1321,7 +1322,7 @@ private fun ValueBarOverridePicker(
             }
         }
     }
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(R1.space.xs))
     Text(
         text = "Current: ${
             when (selected) {
@@ -1509,7 +1510,7 @@ private fun ActiveOverridesList(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
@@ -1530,11 +1531,11 @@ private fun ActiveOverridesList(
 
 @Composable
 private fun SectionHeader(title: String) {
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(R1.space.l))
     Text(text = title, style = R1.sectionHeader, color = R1.InkSoft)
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(R1.Hairline))
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(R1.space.s))
 }
 
 /**
@@ -1550,7 +1551,7 @@ private fun TristateRow(
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(text = label, style = R1.bodyEmph, color = R1.Ink)
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Row(modifier = Modifier.fillMaxWidth().clip(R1.ShapeS).background(R1.SurfaceMuted)) {
             TristateCell(text = "DEFAULT", selected = value == null, onClick = { onChange(null) })
             CellDivider()
@@ -1595,7 +1596,7 @@ private fun CellDivider() {
  */
 @Composable
 private fun DetailRow(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xxs)) {
         Text(
             text = label,
             style = R1.labelMicro,
@@ -1650,7 +1651,7 @@ private fun ColourSwatchRow(
                 .background(if (selected == null) R1.AccentWarm else R1.Bg)
                 .let { m -> if (selected == null) m else m.border(1.dp, R1.Hairline, R1.ShapeS) }
                 .r1Pressable({ onSelect(null) })
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(
                 text = "DEFAULT",
@@ -1696,7 +1697,7 @@ private fun CTRow(
                 .background(if (selected == null) R1.AccentWarm else R1.Bg)
                 .let { m -> if (selected == null) m else m.border(1.dp, R1.Hairline, R1.ShapeS) }
                 .r1Pressable({ onSelect(null) })
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(
                 text = "DEFAULT",
@@ -1714,7 +1715,7 @@ private fun CTRow(
                     .background(if (isSelected) tint else R1.Bg)
                     .border(1.dp, if (isSelected) tint else R1.Hairline, R1.ShapeS)
                     .r1Pressable({ onSelect(kelvin) })
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
             ) {
                 Text(
                     text = "$label · ${kelvin}K",
@@ -1765,7 +1766,7 @@ private fun TapToToggleRow(
                         if (active) m else m.border(1.dp, R1.Hairline, R1.ShapeS)
                     }
                     .r1Pressable({ onSelect(value) })
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = R1.space.s),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -1774,7 +1775,7 @@ private fun TapToToggleRow(
                     color = if (active) R1.Bg else R1.InkSoft,
                 )
             }
-            if (idx < options.lastIndex) Spacer(Modifier.width(4.dp))
+            if (idx < options.lastIndex) Spacer(Modifier.width(R1.space.xs))
         }
     }
 }
@@ -1807,7 +1808,7 @@ private fun LightButtonsRow(
                         if (visible) m else m.border(1.dp, R1.Hairline, R1.ShapeS)
                     }
                     .r1Pressable({ onToggle(btn) })
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = R1.space.s),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -1816,7 +1817,7 @@ private fun LightButtonsRow(
                     color = if (visible) R1.Bg else R1.InkSoft,
                 )
             }
-            if (idx < all.lastIndex) Spacer(Modifier.width(4.dp))
+            if (idx < all.lastIndex) Spacer(Modifier.width(R1.space.xs))
         }
     }
 }
@@ -1841,7 +1842,7 @@ private fun TextSizeRow(
                     if (defaultSelected) m else m.border(1.dp, R1.Hairline, R1.ShapeS)
                 }
                 .r1Pressable({ onSelect(null) })
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(
                 text = "DEFAULT",
@@ -1860,7 +1861,7 @@ private fun TextSizeRow(
                         if (isSelected) m else m.border(1.dp, R1.Hairline, R1.ShapeS)
                     }
                     .r1Pressable({ onSelect(sp) })
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
             ) {
                 Text(
                     text = "${sp}sp",
@@ -1922,7 +1923,7 @@ private fun CustomActionsEditor(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Box(
                     modifier = Modifier
                         .clip(R1.ShapeS)
@@ -1939,7 +1940,7 @@ private fun CustomActionsEditor(
         }
         if (actions.isNotEmpty()) {
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(R1.Hairline))
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
         }
         R1TextField(
             value = newLabel,
@@ -1947,14 +1948,14 @@ private fun CustomActionsEditor(
             placeholder = "Label (e.g. Natural mode)",
             monospace = false,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         R1TextField(
             value = newService,
             onValueChange = { newService = it.trim() },
             placeholder = "domain.service (e.g. xiaomi_miio_fan.fan_set_natural_mode_on)",
             monospace = true,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         R1TextField(
             value = newData,
             onValueChange = { newData = it },
@@ -1962,7 +1963,7 @@ private fun CustomActionsEditor(
             monospace = true,
             singleLine = false,
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.s))
         R1Button(
             text = "ADD",
             onClick = {
