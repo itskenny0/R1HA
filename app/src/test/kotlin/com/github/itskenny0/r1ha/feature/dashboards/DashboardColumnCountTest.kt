@@ -36,42 +36,42 @@ class DashboardColumnCountTest {
 
     @Test
     fun `compact phone collapses to a single column even when more is requested`() {
-        assertThat(dashboardColumnCount(WindowTier.Compact, requestedColumns = null)).isEqualTo(1)
-        assertThat(dashboardColumnCount(WindowTier.Compact, requestedColumns = 3)).isEqualTo(1)
-        assertThat(dashboardColumnCount(WindowTier.Compact, requestedColumns = 99)).isEqualTo(1)
+        assertThat(dashboardColumnCount(WindowTier.COMPACT, requestedColumns = null)).isEqualTo(1)
+        assertThat(dashboardColumnCount(WindowTier.COMPACT, requestedColumns = 3)).isEqualTo(1)
+        assertThat(dashboardColumnCount(WindowTier.COMPACT, requestedColumns = 99)).isEqualTo(1)
     }
 
     @Test
     fun `medium width defaults to two columns`() {
-        assertThat(dashboardColumnCount(WindowTier.Medium, requestedColumns = null)).isEqualTo(2)
+        assertThat(dashboardColumnCount(WindowTier.MEDIUM, requestedColumns = null)).isEqualTo(2)
     }
 
     @Test
     fun `medium width clamps a larger request down to two`() {
-        assertThat(dashboardColumnCount(WindowTier.Medium, requestedColumns = 4)).isEqualTo(2)
+        assertThat(dashboardColumnCount(WindowTier.MEDIUM, requestedColumns = 4)).isEqualTo(2)
     }
 
     @Test
     fun `medium width honours a smaller request`() {
-        assertThat(dashboardColumnCount(WindowTier.Medium, requestedColumns = 1)).isEqualTo(1)
+        assertThat(dashboardColumnCount(WindowTier.MEDIUM, requestedColumns = 1)).isEqualTo(1)
     }
 
     @Test
     fun `expanded width defaults to three columns`() {
-        assertThat(dashboardColumnCount(WindowTier.Expanded, requestedColumns = null)).isEqualTo(3)
+        assertThat(dashboardColumnCount(WindowTier.EXPANDED, requestedColumns = null)).isEqualTo(3)
     }
 
     @Test
     fun `expanded width honours a four column request up to its ceiling`() {
-        assertThat(dashboardColumnCount(WindowTier.Expanded, requestedColumns = 4)).isEqualTo(4)
-        assertThat(dashboardColumnCount(WindowTier.Expanded, requestedColumns = 8)).isEqualTo(4)
+        assertThat(dashboardColumnCount(WindowTier.EXPANDED, requestedColumns = 4)).isEqualTo(4)
+        assertThat(dashboardColumnCount(WindowTier.EXPANDED, requestedColumns = 8)).isEqualTo(4)
     }
 
     @Test
     fun `non positive requests fall back to the tier default`() {
-        assertThat(dashboardColumnCount(WindowTier.Expanded, requestedColumns = 0)).isEqualTo(3)
-        assertThat(dashboardColumnCount(WindowTier.Expanded, requestedColumns = -2)).isEqualTo(3)
-        assertThat(dashboardColumnCount(WindowTier.Medium, requestedColumns = 0)).isEqualTo(2)
+        assertThat(dashboardColumnCount(WindowTier.EXPANDED, requestedColumns = 0)).isEqualTo(3)
+        assertThat(dashboardColumnCount(WindowTier.EXPANDED, requestedColumns = -2)).isEqualTo(3)
+        assertThat(dashboardColumnCount(WindowTier.MEDIUM, requestedColumns = 0)).isEqualTo(2)
     }
 
     @Test

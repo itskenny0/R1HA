@@ -186,12 +186,11 @@ fun DashboardViewScreen(
             else -> ViewModeBody(
                 cards = renderedCards,
                 stateMap = entities,
-                // A "sections" view is authored as a multi-column grid (HA
-                // defaults to up to four section columns); ask for that and
-                // let dashboardColumnCount() clamp it down per screen width.
-                // A legacy "masonry" / null view expresses no preference, so
-                // it follows the tier's natural column count.
-                requestedColumns = if (view.type == "sections") 4 else null,
+                // The view model carries no masonry-vs-sections distinction, so
+                // express no column preference and let dashboardColumnCount()
+                // pick the tier's natural count (clamped per screen width). This
+                // keeps narrow screens single-column and only widens on tablets.
+                requestedColumns = null,
                 onAction = { action ->
                     scope.launch {
                         dispatchLovelaceAction(
@@ -275,7 +274,7 @@ private fun ViewModeBody(
     val states = remember(stateMap) {
         com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(stateMap ?: emptyMap())
     }
-    val tier = LocalWindowTier.current
+    val tier = LocalWindowTier.current.tier
     val columns = dashboardColumnCount(tier, requestedColumns)
     val scroll = rememberScrollState()
     Column(
@@ -355,15 +354,17 @@ private fun ViewModeBody(
 internal fun dashboardColumnCount(tier: WindowTier, requestedColumns: Int?): Int {
     val ceiling = when (tier) {
         WindowTier.R1 -> 1
-        WindowTier.Compact -> 1
-        WindowTier.Medium -> 2
-        WindowTier.Expanded -> 4
+        WindowTier.COMPACT -> 1
+        WindowTier.MEDIUM -> 2
+        WindowTier.EXPANDED -> 4
+        WindowTier.EXTRA_LARGE -> 4
     }
     val natural = when (tier) {
         WindowTier.R1 -> 1
-        WindowTier.Compact -> 1
-        WindowTier.Medium -> 2
-        WindowTier.Expanded -> 3
+        WindowTier.COMPACT -> 1
+        WindowTier.MEDIUM -> 2
+        WindowTier.EXPANDED -> 3
+        WindowTier.EXTRA_LARGE -> 4
     }
     val desired = requestedColumns?.takeIf { it > 0 } ?: natural
     return desired.coerceIn(1, ceiling)

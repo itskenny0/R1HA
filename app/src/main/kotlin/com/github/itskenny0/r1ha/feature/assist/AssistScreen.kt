@@ -568,8 +568,14 @@ fun AssistScreen(
                 text = if (ui.inFlight) "STOP" else "SEND",
                 onClick = { if (ui.inFlight) vm.cancel() else vm.send() },
                 enabled = ui.inFlight || ui.draft.isNotBlank(),
-                contentDescription = AssistA11y.sendControlLabel(ui.inFlight),
-                modifier = Modifier.widthIn(min = 64.dp),
+                // R1Button has no contentDescription parameter, so apply the
+                // spoken label through a semantics modifier. mergeDescendants
+                // folds the inner "SEND"/"STOP" text into this single node.
+                modifier = Modifier
+                    .widthIn(min = 64.dp)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = AssistA11y.sendControlLabel(ui.inFlight)
+                    },
             )
         }
         } // inner Column (transcript + input)
