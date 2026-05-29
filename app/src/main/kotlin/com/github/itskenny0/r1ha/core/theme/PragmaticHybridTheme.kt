@@ -111,6 +111,7 @@ object PragmaticHybridTheme : R1Theme {
                     style = R1.titleCard,
                     color = R1.Ink,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 // Auto-ticking 'last changed' label, isolated into its own
                 // composable (RelativeTimeLabel) so the 5-second tick
@@ -566,8 +567,8 @@ internal fun VerticalTapeMeter(
             labels.forEachIndexed { idx, tick ->
                 // Convert the label index into a target percent. Top label = 100, bottom
                 // = 0; evenly spaced.
-                val targetPct = if (labels.size <= 1) 100
-                    else (100f * (labels.size - 1 - idx) / (labels.size - 1)).toInt()
+                val targetPct = com.github.itskenny0.r1ha.feature.cardstack.TapeMeterGeometry
+                    .verticalTickPercent(idx, labels.size)
                 val labelMod = if (interactive) {
                     Modifier
                         .clip(R1.ShapeS)
@@ -791,8 +792,8 @@ internal fun HorizontalTapeMeter(
         ) {
             labels.forEachIndexed { idx, tick ->
                 // Left label = 0, right = 100; evenly spaced.
-                val targetPct = if (labels.size <= 1) 100
-                    else (100f * idx / (labels.size - 1)).toInt()
+                val targetPct = com.github.itskenny0.r1ha.feature.cardstack.TapeMeterGeometry
+                    .horizontalTickPercent(idx, labels.size)
                 val labelMod = if (interactive) {
                     Modifier
                         .clip(R1.ShapeS)
