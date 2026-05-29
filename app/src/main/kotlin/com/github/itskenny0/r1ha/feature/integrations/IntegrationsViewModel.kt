@@ -109,6 +109,13 @@ class IntegrationsViewModel(
             haRepository.reloadConfigEntry(entry.entryId).fold(
                 onSuccess = {
                     Toaster.show("Reloaded ${entry.title}")
+                    // Clear the in-flight marker before refreshing; refresh()
+                    // preserves reloadingIds across its state copies, so without
+                    // this the row's spinner would never stop after a successful
+                    // reload.
+                    _ui.value = _ui.value.copy(
+                        reloadingIds = _ui.value.reloadingIds - entry.entryId,
+                    )
                     refresh()
                 },
                 onFailure = { t ->
