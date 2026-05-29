@@ -276,11 +276,10 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            if (blueprint.inputCount > 0) {
+            BlueprintGrouping.inputChipLabel(blueprint.inputCount)?.let { label ->
                 Spacer(Modifier.width(R1.space.s))
                 R1Chip(
-                    text = "${blueprint.inputCount} INPUT" +
-                        if (blueprint.inputCount == 1) "" else "S",
+                    text = label,
                     variant = R1ChipVariant.Pill,
                     tone = R1.AccentCool,
                 )
@@ -448,10 +447,7 @@ private fun ImportFlowDialog(
                             maxLines = 6,
                         )
                     }
-                    val canInstall = preview != null &&
-                        !preview.rawYaml.isNullOrBlank() &&
-                        preview.path.isNotBlank() &&
-                        preview.validationErrors.isNullOrBlank() &&
+                    val canInstall = BlueprintGrouping.canInstall(preview) &&
                         phase == BlueprintsViewModel.ImportPhase.PREVIEW
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -512,10 +508,9 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 maxLines = 1,
             )
         }
-        if (preview.inputCount > 0) {
+        BlueprintGrouping.inputChipLabel(preview.inputCount)?.let { label ->
             R1Chip(
-                text = "${preview.inputCount} INPUT" +
-                    if (preview.inputCount == 1) "" else "S",
+                text = label,
                 variant = R1ChipVariant.Pill,
                 tone = R1.AccentCool,
             )

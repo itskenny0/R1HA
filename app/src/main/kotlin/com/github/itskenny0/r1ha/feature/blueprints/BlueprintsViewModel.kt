@@ -84,27 +84,24 @@ class BlueprintsViewModel(
             @Suppress("UNCHECKED_CAST")
             val scriptRes = results[1] as Result<List<BlueprintInfo>>
 
-            val autos = autoRes.getOrNull().orEmpty()
-            val scripts = scriptRes.getOrNull().orEmpty()
-            val firstError = listOf(autoRes, scriptRes)
-                .firstOrNull { it.isFailure }?.exceptionOrNull()
-            // Only treat as a hard error when BOTH calls failed; a
-            // partial result (e.g. HA refuses the script bucket on an
-            // old install) should still render whatever we did get.
-            val bothFailed = autoRes.isFailure && scriptRes.isFailure
-            if (bothFailed && firstError != null) {
-                R1Log.w("Blueprints", "load failed: ${firstError.message}")
-                Toaster.error("Blueprints load failed: ${firstError.message ?: "unknown"}")
-                _ui.value = _ui.value.copy(loading = false, error = firstError.message)
+            // Fold the two domain results into the sectioned state. The pure
+            // helper owns partial-failure tolerance + stable ordering so the
+            // viewmodel only deals with the side-effects (log / toast / emit).
+            val grouped = BlueprintGrouping.group(autoRes, scriptRes)
+            if (grouped.error != null) {
+                R1Log.w("Blueprints", "load failed: ${grouped.error}")
+                Toaster.error("Blueprints load failed: ${grouped.error}")
+                _ui.value = _ui.value.copy(loading = false, error = grouped.error)
             } else {
                 R1Log.i(
                     "Blueprints",
-                    "loaded ${autos.size} automation + ${scripts.size} script blueprint(s)",
+                    "loaded ${grouped.automations.size} automation + " +
+                        "${grouped.scripts.size} script blueprint(s)",
                 )
                 _ui.value = _ui.value.copy(
                     loading = false,
-                    automations = autos,
-                    scripts = scripts,
+                    automations = grouped.automations,
+                    scripts = grouped.scripts,
                     error = null,
                 )
             }
