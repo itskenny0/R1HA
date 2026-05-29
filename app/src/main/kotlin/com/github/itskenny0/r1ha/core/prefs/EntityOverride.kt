@@ -127,6 +127,53 @@ data class EntityOverride(
      * always fill the PIN in later from the customize sheet to upgrade.
      */
     val requirePinHash: String? = null,
+    /**
+     * Per-card override for the small "you are here" position indicator
+     * the chrome / overlay surfaces draw. Null = inherit the global
+     * [UiOptions.positionDotLocation]; an explicit value pins the pip to
+     * that corner whenever this card is the active one in the deck.
+     *
+     * Useful when one specific card has a bottom-right element (a tape
+     * meter readout, a media transport row) that the global pip position
+     * would collide with: the user can move the pip out of the way on
+     * that one card without changing the global. Inherit is the common
+     * case; the override should be reached for sparingly.
+     */
+    val positionDotLocation: PositionDotLocation? = null,
+    /**
+     * Per-card glyph override — a single emoji, Unicode character or
+     * short symbol that replaces the domain-derived glyph on this card.
+     * Null = use whatever glyph the card's domain renders by default
+     * (the LIGHT / FAN / COVER / MEDIA / SWITCH families). Stored as a
+     * free-form String rather than a constrained enum so users can pick
+     * any Unicode codepoint without us having to ship a curated set.
+     *
+     * Reading composables that don't yet honour the override fall through
+     * to the domain default; the field is additive and harmless to ignore.
+     */
+    val glyphOverride: String? = null,
+    /**
+     * Per-card override for the action that fires on a single tap of the
+     * card body. Null = inherit (the historical behaviour: TOGGLE when
+     * the global [Behavior.tapToToggle] is on and the card is a scalar
+     * or boolean entity, NOOP otherwise). Explicit values let the user
+     * repurpose the tap surface — e.g. a `light.kitchen` card whose tap
+     * fires a `script.scene_pick` instead of toggling the light.
+     *
+     * See [TapAction] for the full list of supported targets. Routed
+     * through the same dispatch path the long-press action uses, so an
+     * "INHERIT" override still pays the existing card-level gesture
+     * cost — there's no performance trade-off in setting this.
+     */
+    val actionOnTap: TapAction? = null,
+    /**
+     * Per-card override for the wheel-press (centre push of the scroll
+     * wheel on R1 hardware; equivalent to the configurable hardware key
+     * on other devices). Null = inherit the per-device default of NOOP.
+     * Useful for one-tap shortcuts on a card the user looks at often
+     * (e.g. wheel-press the front-door lock card to fire `script.away`).
+     */
+    val actionOnWheelPress: TapAction? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
@@ -228,5 +275,77 @@ enum class LightCardButton(val code: Char) {
     ;
     companion object {
         fun fromCode(code: Char): LightCardButton? = entries.firstOrNull { it.code == code }
+    }
+}
+
+/**
+ * Where the "you are here" position indicator (the vertical pip plus the
+ * "N/M" counter) sits on the card deck. Used both as a global default
+ * ([UiOptions.positionDotLocation]) and as a per-card override
+ * ([EntityOverride.positionDotLocation]) — the per-card value wins when
+ * present, so a single card whose layout collides with the pip can move
+ * it elsewhere without changing the global.
+ *
+ * Encoded by [code] in the per-card preferences blob to match the same
+ * single-character convention [LightCardButton] uses, keeping the
+ * pipe-separated row compact even on installs with hundreds of
+ * customised cards. The full enum name is used in the global
+ * [UiOptions.positionDotLocation] slot because that one is JSON-shaped
+ * and doesn't pay the per-row cost.
+ */
+@kotlinx.serialization.Serializable
+enum class PositionDotLocation(val code: Char) {
+    /** Top-left corner. */
+    TOP_LEFT('1'),
+    /** Top-centre — the canonical chrome-row position (default global). */
+    TOP_CENTER('2'),
+    /** Top-right corner. */
+    TOP_RIGHT('3'),
+    /** Left edge, vertically centred. */
+    LEFT_CENTER('4'),
+    /** Right edge, vertically centred. */
+    RIGHT_CENTER('5'),
+    /** Bottom-left corner. */
+    BOTTOM_LEFT('6'),
+    /** Bottom-centre. */
+    BOTTOM_CENTER('7'),
+    /** Bottom-right corner. */
+    BOTTOM_RIGHT('8'),
+    /** Hide the indicator entirely. */
+    HIDDEN('0'),
+    ;
+    companion object {
+        fun fromCode(code: Char): PositionDotLocation? = entries.firstOrNull { it.code == code }
+    }
+}
+
+/**
+ * What happens when the user invokes one of the per-card action surfaces
+ * — tap, long-press, wheel-press. Inherit semantics live on the
+ * containing field (a null override means "use the card's default
+ * behaviour for this surface"); the explicit values below pick a
+ * specific behaviour regardless of what the global setting would say.
+ *
+ * NOOP is included so the user can disarm a surface entirely — useful
+ * for cards next to sensitive controls (e.g. a `lock.front_door` card
+ * whose long-press would otherwise fire an unintended scene). FIRE
+ * targets the card's own entity (toggle for booleans, activate for
+ * actions); TOGGLE is the explicit "tap-to-toggle" intent; NAVIGATE_HISTORY
+ * opens the sensor history overlay even on non-sensor entities (handy
+ * for diagnosing a switch that flips itself).
+ */
+@kotlinx.serialization.Serializable
+enum class TapAction(val code: Char) {
+    /** Toggle the card's own entity (lights, switches, locks, etc.). */
+    TOGGLE('T'),
+    /** Fire the card's own entity service (activate scenes / scripts / buttons). */
+    FIRE('F'),
+    /** Open the sensor-history overlay for this entity. */
+    NAVIGATE_HISTORY('H'),
+    /** Do nothing — explicitly disarm this surface. */
+    NOOP('0'),
+    ;
+    companion object {
+        fun fromCode(code: Char): TapAction? = entries.firstOrNull { it.code == code }
     }
 }

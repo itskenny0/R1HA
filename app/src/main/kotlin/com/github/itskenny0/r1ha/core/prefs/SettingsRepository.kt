@@ -127,7 +127,14 @@ class SettingsRepository private constructor(
         val uiDisplayMode = stringPreferencesKey("ui.display_mode")
         val uiShowPill = booleanPreferencesKey("ui.show_pill")
         val uiShowArea = booleanPreferencesKey("ui.show_area")
+        /** Legacy boolean for the position pip — preserved for back-compat
+         *  reads only. Writes go to [uiPositionDotLocation] now. true →
+         *  TOP_CENTER, false → HIDDEN at the migration site. */
         val uiShowDots = booleanPreferencesKey("ui.show_dots")
+        /** Current preference: where the position pip sits. Stored as the
+         *  [PositionDotLocation] enum name. Absent → migrate from the
+         *  legacy boolean above, otherwise default to TOP_CENTER. */
+        val uiPositionDotLocation = stringPreferencesKey("ui.position_dot_location")
 
         val behaviorHaptics = booleanPreferencesKey("behavior.haptics")
         val behaviorKeepOn = booleanPreferencesKey("behavior.keep_on")
@@ -249,7 +256,15 @@ class SettingsRepository private constructor(
                     displayMode = p[K.uiDisplayMode]?.let { runCatching { DisplayMode.valueOf(it) }.getOrNull() } ?: DisplayMode.PERCENT,
                     showOnOffPill = p[K.uiShowPill] ?: true,
                     showAreaLabel = p[K.uiShowArea] ?: true,
-                    showPositionDots = p[K.uiShowDots] ?: true,
+                    // New enum slot wins; legacy boolean is consulted only as
+                    // a migration path. true → TOP_CENTER (the historical
+                    // chrome-row position), false → HIDDEN.
+                    positionDotLocation = p[K.uiPositionDotLocation]
+                        ?.let { runCatching { PositionDotLocation.valueOf(it) }.getOrNull() }
+                        ?: when (p[K.uiShowDots]) {
+                            false -> PositionDotLocation.HIDDEN
+                            else -> PositionDotLocation.TOP_CENTER
+                        },
                     textHistoryLength = (p[K.uiTextHistoryLen] ?: 20).coerceIn(5, 100),
                     hideCardTailAbove = p[K.uiHideCardTail] ?: true,
                     maxDecimalPlaces = (p[K.uiMaxDecimals] ?: 2).coerceIn(0, 6),
@@ -404,7 +419,12 @@ class SettingsRepository private constructor(
                 p[K.uiDisplayMode] = next.ui.displayMode.name
                 p[K.uiShowPill] = next.ui.showOnOffPill
                 p[K.uiShowArea] = next.ui.showAreaLabel
-                p[K.uiShowDots] = next.ui.showPositionDots
+                // Write the new enum slot; also mirror to the legacy
+                // boolean so an older build that ever rolls back can still
+                // read a sane "show / hide" intent. true = anything except
+                // HIDDEN counts as "show somewhere".
+                p[K.uiPositionDotLocation] = next.ui.positionDotLocation.name
+                p[K.uiShowDots] = next.ui.positionDotLocation != PositionDotLocation.HIDDEN
                 p[K.behaviorHaptics] = next.behavior.haptics
                 p[K.behaviorKeepOn] = next.behavior.keepScreenOn
                 p[K.behaviorTapToggle] = next.behavior.tapToToggle
@@ -840,7 +860,20 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         // be blank to mean "any non-empty digit sequence accepted".
         val pinReqStr = when (o.requirePinToUnlock) { true -> "1"; false -> "0"; null -> "?" }
         val pinHashStr = o.requirePinHash.orEmpty()
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr"
+        // Per-card position-pip slot — single-char code from PositionDotLocation
+        // (same compactness trick LightCardButton uses), "?" = inherit global.
+        val pipStr = o.positionDotLocation?.code?.toString() ?: "?"
+        // Per-card glyph override — URL-encoded so emoji / spaces / pipes can't
+        // break the row separator. Empty = inherit the domain default glyph.
+        val glyphStr = o.glyphOverride
+            ?.takeIf { it.isNotBlank() }
+            ?.let { java.net.URLEncoder.encode(it, "UTF-8") }
+            .orEmpty()
+        // Per-card tap / wheel-press action overrides — single-char TapAction
+        // code, "?" = inherit the card's default behaviour for that surface.
+        val tapActionStr = o.actionOnTap?.code?.toString() ?: "?"
+        val wheelPressStr = o.actionOnWheelPress?.code?.toString() ?: "?"
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr"
     }
 }
 
@@ -902,6 +935,31 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             // direct-toggle behaviour.
             val pinReq = when (parts.getOrNull(12)) { "1" -> true; "0" -> false; else -> null }
             val pinHash = parts.getOrNull(13)?.takeIf { it.isNotBlank() }
+            // Per-card position-pip override. Slot 14 — single-char
+            // PositionDotLocation code; unknown / blank / "?" = inherit.
+            // Defensive: older saves without slot 14 decode as null and
+            // keep the inherit-global behaviour.
+            val pipChar = parts.getOrNull(14)?.firstOrNull()
+            val pip = pipChar?.takeIf { it != '?' }?.let {
+                com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.fromCode(it)
+            }
+            // Slot 15 — URL-encoded glyph override. Blank = inherit
+            // domain default. Decode failures fall back to null so a
+            // garbled save doesn't kill the rest of the row.
+            val glyphRaw = parts.getOrNull(15)?.takeIf { it.isNotBlank() }
+            val glyph = glyphRaw?.let {
+                runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrNull()
+            }?.takeIf { it.isNotBlank() }
+            // Slot 16 / 17 — per-card tap and wheel-press action codes.
+            // Single-char TapAction codes; unknown / blank / "?" = inherit.
+            val tapActionChar = parts.getOrNull(16)?.firstOrNull()
+            val tapAction = tapActionChar?.takeIf { it != '?' }?.let {
+                com.github.itskenny0.r1ha.core.prefs.TapAction.fromCode(it)
+            }
+            val wheelPressChar = parts.getOrNull(17)?.firstOrNull()
+            val wheelPress = wheelPressChar?.takeIf { it != '?' }?.let {
+                com.github.itskenny0.r1ha.core.prefs.TapAction.fromCode(it)
+            }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -917,6 +975,10 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 customActions = customActions,
                 requirePinToUnlock = pinReq,
                 requirePinHash = pinHash,
+                positionDotLocation = pip,
+                glyphOverride = glyph,
+                actionOnTap = tapAction,
+                actionOnWheelPress = wheelPress,
             )
         }.getOrNull()
     }.toMap()

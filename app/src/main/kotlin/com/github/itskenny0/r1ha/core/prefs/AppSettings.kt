@@ -79,7 +79,19 @@ data class UiOptions(
     val displayMode: DisplayMode = DisplayMode.PERCENT,
     val showOnOffPill: Boolean = true,
     val showAreaLabel: Boolean = true,
-    val showPositionDots: Boolean = true,
+    /**
+     * Where the "you are here" position pip and counter sit on the card
+     * deck. Default TOP_CENTER matches the historical chrome-row layout;
+     * HIDDEN suppresses the indicator entirely. Per-card overrides via
+     * [EntityOverride.positionDotLocation] win when set, so a single card
+     * whose layout collides with the global slot can move the pip out
+     * of the way without changing the deck-wide default.
+     *
+     * Migration: pre-enum installs stored this as a boolean
+     * `showPositionDots`; `true` migrates to TOP_CENTER and `false`
+     * migrates to HIDDEN, so existing users see no visual change.
+     */
+    val positionDotLocation: PositionDotLocation = PositionDotLocation.TOP_CENTER,
     /** Number of recent state-change entries shown on text/categorical SensorCard history. */
     val textHistoryLength: Int = 20,
     /**
