@@ -164,6 +164,11 @@ class VoiceSatelliteEngine(
         recorderJob = scope.launch {
             runCatching { rec.startRecording() }.onFailure { t ->
                 _state.value = State.Error("Couldn't start mic: ${t.message}")
+                // startRecording failed but the AudioRecord still holds the
+                // native mic resource; release it so a failed start doesn't
+                // leave the microphone claimed until the next GC.
+                runCatching { rec.release() }
+                if (audioRecord === rec) audioRecord = null
                 return@launch
             }
             val buf = ByteArray(frameBytes)
