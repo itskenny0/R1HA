@@ -1214,8 +1214,7 @@ private fun LazyListScope.dashboardRoot(
     // tapping first asks for confirmation rather than hiding the entry (which also
     // wrongly hid it on phones reporting exactly 360 dp).
     item {
-        val isR1Width = com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
-            com.github.itskenny0.r1ha.ui.layout.WidthTier.R1
+        val isR1Width = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.widthDp <= 360
         val showDashboardsPrompt = androidx.compose.runtime.remember {
             androidx.compose.runtime.mutableStateOf(false)
         }

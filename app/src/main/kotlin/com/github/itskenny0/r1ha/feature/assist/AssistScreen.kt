@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -265,8 +265,7 @@ fun AssistScreen(
                         "Run the dinner scene",
                         "Is anyone home?",
                     )
-                    val isTablet = com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
-                        com.github.itskenny0.r1ha.ui.layout.WidthTier.TABLET
+                    val isTablet = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.isAtLeastMedium
                     // 2-column grid on tablets (more horizontal room), single
                     // column on phones and R1.
                     if (isTablet) {
@@ -610,8 +609,8 @@ private fun AssistBubble(msg: AssistMessage) {
     // so bubbles don't fill the whole width; wider on tablets (the chat is inside
     // an 800 dp AdaptiveContent island) so longer responses don't word-wrap
     // into single-word lines.
-    val bubbleMaxWidth = if (com.github.itskenny0.r1ha.ui.layout.currentWidthTier() ==
-        com.github.itskenny0.r1ha.ui.layout.WidthTier.TABLET) 540.dp else 240.dp
+    val bubbleMaxWidth =
+        if (com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.isAtLeastMedium) 540.dp else 240.dp
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,

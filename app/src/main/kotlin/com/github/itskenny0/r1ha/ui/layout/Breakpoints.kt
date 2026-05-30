@@ -11,67 +11,46 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Width-based responsive tier the current composition is rendering in.
+ * Column math for the dashboard's camera grid, the one surface that wants a flat 2/2/3/4
+ * column progression keyed off raw width rather than the structural decisions the rest of
+ * the app makes through [com.github.itskenny0.r1ha.ui.components.WindowTier].
  *
- * The R1's native screen reports ~320–340 dp wide depending on the active
- * `wm density`, so anything ≤ 360 dp is treated as **R1** and rendered
- * exactly as before (no regressions on the R1's small portrait display).
- *
- * `PHONE` covers most modern phones (typically 360–500 dp portrait); the
- * layout stays single-column but gets a small breathing-room cap so a
- * landscape phone or a tall narrow tablet column doesn't stretch tiles
- * absurdly wide. `TABLET` is everything above — centred narrow column
- * (or a 2-column dashboard) so an 8″ tablet doesn't render a single card
- * across 1200 dp.
- *
- * Thresholds match the Material 3 window-size-class breakpoints loosely
- * — but we keep the lower one at 360 dp so the R1 sits squarely in the
- * smallest bucket regardless of LineageOS GSI density tweaks.
+ * The progression is intentionally width-driven (not tier-driven) so the boundaries stay
+ * exactly where the camera grid has always placed them, independent of the WindowTier
+ * thresholds used elsewhere.
  */
-enum class WidthTier {
-    /** ≤ 360 dp — R1 native portrait. Layout is rendered exactly as
-     *  written; no max-width clamp, no extra padding. */
-    R1,
-    /** 361–599 dp — most phones in portrait. Single column with a
-     *  light max-width cap so a held landscape phone doesn't get
-     *  overstretched rows. */
-    PHONE,
-    /** ≥ 600 dp — tablets, foldables, large landscape phones. Content
-     *  is centred with a tighter max-width cap. Some screens (Cameras
-     *  GRID, Dashboard tile row) can also opt into a wider grid. */
-    TABLET,
-}
-
-/** Reads the current screen width and maps it to a [WidthTier]. Cheap —
- *  pulls from [LocalConfiguration] which is already part of every Compose
- *  call site. */
-@Composable
-@ReadOnlyComposable
-fun currentWidthTier(): WidthTier {
-    val w = LocalConfiguration.current.screenWidthDp
-    return when {
-        w <= 360 -> WidthTier.R1
-        w < 600 -> WidthTier.PHONE
-        else -> WidthTier.TABLET
-    }
-}
-
-/** Convenience — `true` when the host is bigger than an R1. Use sparingly;
- *  most screens should route through [currentWidthTier] for the actual
- *  layout decision. */
-@Composable
-@ReadOnlyComposable
-fun isWiderThanR1(): Boolean = currentWidthTier() != WidthTier.R1
 
 /**
- * Passthrough wrapper — all tiers fill the available width without a
- * max-width cap. The card-based UI adapts naturally to any screen width;
- * applying a fixed narrow cap caused the content to occupy only ~1/3 of
- * a large tablet screen in landscape.
+ * Pure width to camera-grid-column mapping. The single place the column breakpoints live, so
+ * the composable reader and the unit tests both route through here.
  *
- * The function still exists so call sites don't need changing, and the
- * [WidthTier] / [currentWidthTier] helpers remain for the cameras grid
- * which uses them to decide column count.
+ *  - `<= 360 dp` (Rabbit R1 + tiny phones): 2 columns
+ *  - `361 .. 599 dp` (ordinary phones): 2 columns
+ *  - `600 .. 959 dp` (tablets / large landscape): 3 columns
+ *  - `>= 960 dp` (very wide windows): 4 columns
+ */
+fun cameraGridColumnsForWidthDp(widthDp: Int): Int = when {
+    widthDp >= 960 -> 4
+    widthDp >= 600 -> 3
+    else -> 2
+}
+
+/**
+ * Column count for the cameras grid at the current width. Reads [LocalConfiguration] and
+ * delegates to [cameraGridColumnsForWidthDp]; cheap, configuration is already part of every
+ * composition.
+ */
+@Composable
+@ReadOnlyComposable
+fun gridColumnsFor(): Int = cameraGridColumnsForWidthDp(LocalConfiguration.current.screenWidthDp)
+
+/**
+ * Passthrough wrapper: all widths fill the available space without a max-width cap. The
+ * card-based UI adapts naturally to any screen width; applying a fixed narrow cap caused the
+ * content to occupy only about a third of a large tablet screen in landscape.
+ *
+ * The function still exists so call sites stay unchanged and future width-specific behaviour
+ * can re-land here without touching every screen.
  */
 @Composable
 fun ResponsiveColumn(
@@ -83,14 +62,12 @@ fun ResponsiveColumn(
 }
 
 /**
- * Wraps screen content in a [Column] that fills the available space on
- * every tier — no max-width cap. An earlier version capped tablet content
- * at 800 dp, but that letterboxed list / form screens on wide displays
- * (roughly half the screen on a 1920 dp panel), and the card-based UI
- * already adapts naturally to any width via weight-based and fillMaxWidth
- * interior layouts. Now a pure passthrough — call sites stay unchanged so
- * future tier-specific behaviour can re-land here without touching every
- * screen.
+ * Wraps screen content in a [Column] that fills the available space on every width, with no
+ * max-width cap. An earlier version capped tablet content at 800 dp, but that letterboxed
+ * list / form screens on wide displays (roughly half the screen on a 1920 dp panel), and the
+ * card-based UI already adapts naturally to any width via weight-based and fillMaxWidth
+ * interior layouts. Now a pure passthrough so call sites stay unchanged and future
+ * width-specific behaviour can re-land here without touching every screen.
  *
  * The [maxWidth] parameter is retained for API compatibility but ignored.
  */
@@ -101,20 +78,4 @@ fun AdaptiveContent(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Column(modifier = modifier.fillMaxSize()) { content() }
-}
-
-/** Column count for grid surfaces (Cameras GRID, future favourites
- *  picker grid, etc.). R1 stays at 2 columns; phones widen to 2; tablets
- *  go to 3 so the extra horizontal space is actually used; very wide
- *  screens (≥ 960 dp — 12" tablets in landscape) bump to 4. Returning an
- *  Int keeps call sites pleasingly terse: `columns = GridCells.Fixed(gridColumnsFor(tier))`. */
-@Composable
-@ReadOnlyComposable
-fun gridColumnsFor(tier: WidthTier = currentWidthTier()): Int {
-    if (tier == WidthTier.TABLET && LocalConfiguration.current.screenWidthDp >= 960) return 4
-    return when (tier) {
-        WidthTier.R1 -> 2
-        WidthTier.PHONE -> 2
-        WidthTier.TABLET -> 3
-    }
 }

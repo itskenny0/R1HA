@@ -247,16 +247,13 @@ class MainActivity : ComponentActivity() {
                     // scoped (see R1Toast); the host just renders whatever event
                     // it last received as long as the toast feature is enabled.
                     //
-                    // On the R1 (≤ 360 dp wide) the ResponsiveColumn wrapper is
-                    // a passthrough — every screen renders bit-for-bit
-                    // identical to before. On larger displays (phones,
-                    // tablets) the wrapper paints the bezel area with the
-                    // theme background and centres each screen inside a
-                    // bounded column so the layout stays legible instead of
-                    // stretching widgets across a 1200 dp panel. Per-screen
-                    // exceptions can opt out by reading currentWidthTier()
-                    // directly (Cameras GRID does this to keep its grid
-                    // column count adaptive without losing the centering).
+                    // The shell paints the bezel area with the theme background
+                    // so every screen renders bit-for-bit identical to before on
+                    // the R1 while larger displays get a clean backdrop instead
+                    // of bare window edges. Structural width decisions read
+                    // LocalWindowTier; the few raw-width exceptions opt out via
+                    // the helpers in ui/layout/Breakpoints (Cameras GRID uses
+                    // gridColumnsFor to keep its column count adaptive).
                     Box(
                         modifier = androidx.compose.ui.Modifier
                             .fillMaxSize()
