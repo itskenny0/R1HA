@@ -104,13 +104,14 @@ class LovelaceParserTest {
     }
 
     @Test fun `unknown condition type fails closed to Never`() {
-        // A `screen` condition (media-query breakpoint) can't be evaluated on the
-        // R1; it must hide the card, not leak it.
+        // A `template` condition can't be evaluated locally (no Jinja engine), so it
+        // must hide the card, not leak it. (`screen` is handled separately and fails
+        // open to AlwaysTrue, matching single-window semantics.)
         val card = LovelaceParser.parseCard(
             obj(
                 """
                 {"type":"conditional",
-                 "conditions":[{"condition":"screen","media_query":"(min-width: 600px)"}],
+                 "conditions":[{"condition":"template","value_template":"{{ true }}"}],
                  "card":{"type":"button","name":"A"}}
                 """.trimIndent(),
             ),
