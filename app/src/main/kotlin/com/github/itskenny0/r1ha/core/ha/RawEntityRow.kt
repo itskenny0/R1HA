@@ -36,3 +36,48 @@ data class RawEntityRow(
      *  relative timestamps. */
     val lastChanged: Instant? = null,
 )
+
+private val rawStatesJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+/**
+ * Domain-agnostic decode of a single `/api/states`-shaped row (also the shape of
+ * a `state_changed` event's `new_state` / a `subscribe_trigger`'s `to_state`)
+ * into a [RawEntityRow]. Unlike the typed `decodeStatesBody` path, this keeps
+ * entities of EVERY domain, including ones not in the [Domain] enum (`sun.sun`,
+ * custom integration sensors, `device_tracker.*`), so the dashboards renderer can
+ * show their last-known value instead of a blank box.
+ *
+ * Returns null only when the row is structurally unusable: no `entity_id`, no
+ * `domain.object_id` separator, or no `state` field. The `state` string is kept
+ * verbatim, including `"unavailable"` / `"unknown"`, so the renderer can surface
+ * those too.
+ */
+fun decodeRawRow(row: JsonObject): RawEntityRow? {
+    val eid = (row["entity_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return null
+    if (eid.isBlank() || !eid.contains('.')) return null
+    val stateStr = (row["state"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: return null
+    val attrs = row["attributes"] as? JsonObject ?: JsonObject(emptyMap())
+    val friendly = (attrs["friendly_name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: eid
+    val lastChanged = (row["last_changed"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.let {
+        runCatching { Instant.parse(it) }.getOrNull()
+    }
+    return RawEntityRow(
+        entityId = eid,
+        friendlyName = friendly,
+        state = stateStr,
+        attributes = attrs,
+        lastChanged = lastChanged,
+    )
+}
+
+/**
+ * Parses a full `/api/states` response body into [RawEntityRow]s for ALL domains
+ * (no supported-domain filter). Resilient per-row: one malformed entry is skipped
+ * rather than blanking the whole list. Shared by the dashboards raw-state seed and
+ * the per-domain REST listing.
+ */
+fun decodeRawStatesBody(body: String): List<RawEntityRow> {
+    val rows = rawStatesJson
+        .decodeFromString<List<kotlinx.serialization.json.JsonElement>>(body)
+    return rows.mapNotNull { (it as? JsonObject)?.let { obj -> decodeRawRow(obj) } }
+}

@@ -381,6 +381,18 @@ class DefaultHaRepository(
     private val cache = MutableStateFlow<Map<EntityId, EntityState>>(emptyMap())
 
     /**
+     * Domain-agnostic last-known-state cache keyed by the raw `domain.object_id`
+     * string. Populated from the SAME WS `subscribe_trigger` / `state_changed`
+     * stream (see [applyEvent]) and the REST `/api/states` seed (see
+     * [seedCacheFromHa]) as [cache], but WITHOUT the supported-domain filter, so
+     * [observeRawRows] can surface a value for an entity whose domain isn't in the
+     * [Domain] enum (`sun.sun`, a custom integration sensor, `device_tracker.*`)
+     * instead of a blank box. Bounded by the dashboard's subscribed ids plus the
+     * user's favourites, itself bounded by the HA install's entity count.
+     */
+    private val rawCache = MutableStateFlow<Map<String, RawEntityRow>>(emptyMap())
+
+    /**
      * Raw entity ids the dashboards renderer is currently displaying. These are
      * subscribed + REST-seeded ALONGSIDE the user's favourites so a card shows
      * live state for an entity the user never pinned. Kept as raw strings (not
@@ -983,6 +995,22 @@ class DefaultHaRepository(
         val stateStr = raw.state ?: return
         val idStr = raw.entityId ?: ev.event.variables.trigger.entityId
         val prefix = idStr.substringBefore('.', missingDelimiterValue = "")
+        // Mirror EVERY live trigger into the domain-agnostic raw cache BEFORE the
+        // supported-domain guard below drops unmodelled domains from the typed
+        // cache. This is what keeps a sun.sun / custom-domain dashboard card live:
+        // the WS already delivers these events because subscribe_trigger registers
+        // the raw dashboard ids verbatim; only the receive side filtered them out.
+        if (idStr.contains('.')) {
+            val rawRow = RawEntityRow(
+                entityId = idStr,
+                friendlyName = raw.attributes["friendly_name"].asString() ?: idStr,
+                state = stateStr,
+                attributes = raw.attributes,
+                lastChanged = runCatching { Instant.parse(raw.lastChanged ?: "") }.getOrNull(),
+            )
+            rawCache.update { it + (idStr to rawRow) }
+            _lastEventAt.value = System.currentTimeMillis()
+        }
         if (!Domain.isSupportedPrefix(prefix)) return
         // The prefix check above accepts a supported domain, but EntityId's init also
         // rejects malformed ids (empty object_id, e.g. "sensor."). A throw here would
@@ -1247,6 +1275,19 @@ class DefaultHaRepository(
                 else current.entries
                     .filter { it.key.value in entityIds }
                     .associate { it.key.value to it.value }
+            }
+            .distinctUntilChanged()
+    }
+
+    override fun observeRawRows(entityIds: Set<String>): Flow<Map<String, RawEntityRow>> {
+        // Same side effect as observeRaw: register the set for WS subscription +
+        // REST seeding. Reads the domain-agnostic [rawCache] so unmodelled-domain
+        // entities aren't dropped.
+        _dashboardEntityIds.value = entityIds
+        return rawCache
+            .map { current ->
+                if (entityIds.isEmpty()) emptyMap()
+                else current.filterKeys { it in entityIds }
             }
             .distinctUntilChanged()
     }

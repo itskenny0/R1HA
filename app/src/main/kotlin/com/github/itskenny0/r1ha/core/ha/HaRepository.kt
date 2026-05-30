@@ -22,6 +22,21 @@ interface HaRepository {
      * which the renderer treats the same as "not yet loaded".
      */
     fun observeRaw(entityIds: Set<String>): Flow<Map<String, EntityState>>
+
+    /**
+     * Domain-agnostic observe that, unlike [observeRaw], NEVER drops an entity for
+     * having an unmodelled domain. Backed by a raw last-known-state cache keyed by
+     * the raw `domain.object_id` string and populated from the SAME WS
+     * `subscribe_trigger` / `state_changed` stream and REST `/api/states` seed, so
+     * a dashboard card for `sun.sun`, a custom integration sensor, or a
+     * `device_tracker.*` shows its current value instead of a blank box.
+     *
+     * Registers [entityIds] for WS subscription + REST seeding as a side effect,
+     * exactly like [observeRaw] (both write the same dashboard-id set). Emits a map
+     * keyed by the raw id string; ids HA hasn't reported yet are simply absent,
+     * which the renderer treats as "not yet loaded".
+     */
+    fun observeRawRows(entityIds: Set<String>): Flow<Map<String, RawEntityRow>>
     /**
      * Fires once per service call the repository couldn't deliver — timeout, WS dropped,
      * HA returned an error, etc. The ViewModel watches this so it can roll back its
