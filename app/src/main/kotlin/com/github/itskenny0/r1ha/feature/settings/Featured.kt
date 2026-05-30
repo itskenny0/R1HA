@@ -42,54 +42,49 @@ data class FeaturedItem(
 )
 
 /**
- * Deterministic selection window over a curated [pool]. Given a rotation [index]
- * that advances by one each cold start, returns [count] consecutive items
- * starting at `index % pool.size`, wrapping around the end. The window is:
- *  - deterministic: same (pool, index) always yields the same trio,
- *  - cycling: as [index] grows the start walks the whole pool before repeating,
- *  - duplicate-free within the trio whenever the pool is at least [count] long
+ * Deterministic selection window over a curated [catalogue]. Given a rotation
+ * [index] that advances by one each launch, returns [count] consecutive items
+ * starting at `index % catalogue.size`, wrapping around the end. The window is:
+ *  - deterministic: same (catalogue, index) always yields the same trio,
+ *  - cycling: as [index] grows the start walks the whole catalogue before repeating,
+ *  - duplicate-free within the trio whenever the catalogue is at least [count] long
  *    (we never read the same slot twice in one window),
- *  - graceful for a short pool: a pool smaller than [count] simply returns every
- *    item once (no padding, no repeats), and an empty pool returns empty.
+ *  - graceful for a short catalogue: a catalogue smaller than [count] simply
+ *    returns every item once (no padding, no repeats), and an empty catalogue
+ *    returns empty.
  *
  * Pure and Compose-free so it unit-tests without a runtime.
  */
-fun featuredFor(
-    pool: List<FeaturedItem>,
+fun featuredSlice(
+    catalogue: List<FeaturedItem>,
     index: Int,
     count: Int = 3,
 ): List<FeaturedItem> {
-    if (pool.isEmpty() || count <= 0) return emptyList()
-    val size = pool.size
+    if (catalogue.isEmpty() || count <= 0) return emptyList()
+    val size = catalogue.size
     val take = if (count < size) count else size
     // Normalise the index into [0, size) without letting a negative value (e.g. a
     // wrapped Int) produce a negative modulus.
     val start = ((index % size) + size) % size
-    return (0 until take).map { offset -> pool[(start + offset) % size] }
+    return (0 until take).map { offset -> catalogue[(start + offset) % size] }
 }
 
 /**
- * Per-process rotation seed for the Featured spotlight. The cleanest place for a
- * "cold starts so far" counter is the prefs DataStore, but that lives outside this
- * slice; until a real `featuredRotationIndex` is added there (see the agent
- * report), this captures a seed ONCE per process from the launch wall-clock and
- * caches it for the whole session. That keeps the trio:
- *  - stable within a session (the value is read on first access and never changes,
- *    so recomposition / navigation / back-stack churn never reshuffles it), and
- *  - varied across cold starts (a fresh process samples a fresh millisecond).
+ * Advance the persisted rotation index by one group of [count] so the next launch
+ * shows the next round-robin window over a catalogue of [catalogueSize] items.
+ * Returns the index to persist (and to feed straight back into [featuredSlice]),
+ * always normalised into `[0, catalogueSize)` so the stored value never grows
+ * unbounded and never goes negative even if a wrapped / corrupt value comes in.
  *
- * It does NOT cycle the pool in strict order the way a persisted +1 counter would;
- * that ordering guarantee is what the prefs field unlocks. The math is funneled
- * through [featuredFor] either way, so swapping the source to a persisted index is
- * a one-line change at the call site.
+ * A non-positive [catalogueSize] (empty catalogue) clamps to 0: there is nothing
+ * to rotate, so the index stays at the migration-safe default.
+ *
+ * Pure and Compose-free so it unit-tests without a runtime.
  */
-object FeaturedRotation {
-    /** Sampled lazily on first read, then frozen for the life of the process. */
-    val sessionIndex: Int by lazy {
-        // Fold the launch time down to a small non-negative Int. The absolute value
-        // is irrelevant; only that it differs run-to-run and is constant per run.
-        (System.currentTimeMillis() / 1000L).toInt() and 0x7FFFFFFF
-    }
+fun nextRotationIndex(current: Int, count: Int, catalogueSize: Int): Int {
+    if (catalogueSize <= 0) return 0
+    val step = if (count > 0) count else 1
+    return (((current + step) % catalogueSize) + catalogueSize) % catalogueSize
 }
 
 // ── Render ──────────────────────────────────────────────────────────────────
@@ -97,7 +92,7 @@ object FeaturedRotation {
 /**
  * Emit the Featured spotlight at the very top of the Settings ROOT list: a header
  * label, the lead (tier-1) card full width, then a row of two secondary cards.
- * [items] is the already-selected trio (see [featuredFor]); shorter lists degrade
+ * [items] is the already-selected trio (see [featuredSlice]); shorter lists degrade
  * gracefully (lead-only, or nothing). Lives as a [LazyListScope] extension so it
  * slots in as the first items of the ROOT body alongside the category rows.
  */

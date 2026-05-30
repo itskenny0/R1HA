@@ -168,6 +168,13 @@ class SettingsRepository private constructor(
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
         /**
+         * Round-robin cursor for the Settings "Featured" spotlight. Each app launch
+         * advances it by the featured-group size (modulo the catalogue size) so the
+         * trio cycles deterministically launch-to-launch. Absent → 0 (the same trio a
+         * fresh install would show), so pre-feature installs see no surprise jump.
+         */
+        val featuredRotationIndex = intPreferencesKey("featured.rotation_index")
+        /**
          * User-configurable hardware key bindings. JSON map of
          * `KeyAction.name -> [keycode]`. Empty / missing falls back to
          * [com.github.itskenny0.r1ha.core.input.DEFAULT_KEY_BINDINGS]; presence
@@ -360,6 +367,10 @@ class SettingsRepository private constructor(
                     ?: IntegrationsSettings(),
                 pages = decodePages(p[K.pagesJson], favorites),
                 activePageId = p[K.activePageId].orEmpty(),
+                // Absent → 0: a fresh install (or a pre-feature upgrade) starts the
+                // rotation at the first group. Coerced non-negative so a corrupt
+                // value can't break the modulo selection downstream.
+                featuredRotationIndex = (p[K.featuredRotationIndex] ?: 0).coerceAtLeast(0),
                 keyBindings = decodeKeyBindings(p[K.keyBindingsJson]),
                 iotCamera = p[K.iotCameraJson]
                     ?.let {
@@ -518,6 +529,7 @@ class SettingsRepository private constructor(
                     next.pages,
                 )
                 p[K.activePageId] = next.activePageId
+                p[K.featuredRotationIndex] = next.featuredRotationIndex
                 p[K.keyBindingsJson] = encodeKeyBindings(next.keyBindings)
                 p[K.iotCameraJson] = advancedJson.encodeToString(
                     IotCameraSettings.serializer(),

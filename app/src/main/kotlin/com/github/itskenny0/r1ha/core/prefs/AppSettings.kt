@@ -939,6 +939,14 @@ data class AppSettings(
      * the same broker.
      */
     val iotSensors: IotSensorsSettings = IotSensorsSettings(),
+    /**
+     * Round-robin cursor for the Settings "Featured" spotlight. The Settings root
+     * advances it by the featured-group size (modulo the catalogue size) once per
+     * launch and persists the result, so each launch deterministically shows the
+     * next group. Absent defaults to 0 (migration-safe: a fresh install or a
+     * pre-feature upgrade starts at the first group).
+     */
+    val featuredRotationIndex: Int = 0,
 )
 
 /**

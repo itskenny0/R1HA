@@ -12,8 +12,10 @@ import com.github.itskenny0.r1ha.core.prefs.ThemeId
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -377,6 +379,39 @@ class SettingsViewModel(
 
     private fun update(transform: (AppSettings) -> AppSettings) {
         viewModelScope.launch { settings.update(transform) }
+    }
+
+    // ── Featured rotation ─────────────────────────────────────────────────────
+
+    // Resolved Featured rotation index for this launch. null until the one-shot
+    // advance below has read the persisted cursor, bumped it and persisted the new
+    // value. The Settings root selects its spotlight group from this once it turns
+    // non-null, so the shown group always matches the cursor it just persisted.
+    private val _featuredRotationIndex = MutableStateFlow<Int?>(null)
+    val featuredRotationIndex: StateFlow<Int?> = _featuredRotationIndex.asStateFlow()
+
+    /**
+     * Advance the persisted Featured rotation cursor by one group and resolve
+     * [featuredRotationIndex] to the new value. Idempotent per VM instance: the
+     * cursor advances exactly once per launch (the VM outlives Settings
+     * recompositions / re-entries), so re-opening Settings in the same process does
+     * not re-rotate.
+     *
+     * The advance runs inside [SettingsRepository.update], whose transform receives
+     * the freshly-read persisted snapshot (a direct cold-flow read, not the cached
+     * [state] StateFlow), so the bump is computed from the true stored cursor and
+     * never from a stale read-after-write cache value.
+     */
+    fun advanceFeaturedRotation(count: Int, catalogueSize: Int) {
+        if (_featuredRotationIndex.value != null) return
+        viewModelScope.launch {
+            var resolved = 0
+            settings.update { current ->
+                resolved = nextRotationIndex(current.featuredRotationIndex, count, catalogueSize)
+                current.copy(featuredRotationIndex = resolved)
+            }
+            _featuredRotationIndex.value = resolved
+        }
     }
 
     companion object {

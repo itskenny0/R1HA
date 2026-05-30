@@ -253,14 +253,10 @@ fun SettingsScreen(
     // the picker renders above the page body.
     val tilePickerOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
-    // Featured spotlight trio for the ROOT list. The pool is built only from
-    // features whose deep-link callback is actually wired, then [featuredFor]
-    // picks a rotating window. The selection is computed once (remembered with no
-    // recomposing keys) so it stays stable for the whole Settings session and
-    // never reshuffles on navigation / back-stack changes; it advances per cold
-    // start because [FeaturedRotation.sessionIndex] is sampled fresh each process.
-    val featuredTrio = androidx.compose.runtime.remember {
-        val pool = listOf(
+    // Featured spotlight catalogue for the ROOT list. Built only from features whose
+    // deep-link callback is actually wired, so a tap always lands somewhere.
+    val featuredCatalogue = androidx.compose.runtime.remember {
+        listOf(
             FeaturedItem("⊞", "Dashboards", "Browse every native Lovelace dashboard", onOpenDashboards),
             FeaturedItem("⚡", "Energy", "Live power flow and consumption totals", onOpenEnergy),
             FeaturedItem("◎", "Assist", "Talk to Home Assistant from the wheel", onOpenAssist),
@@ -272,7 +268,20 @@ fun SettingsScreen(
             FeaturedItem("☀", "Weather", "Forecast and conditions for your zone", onOpenWeather),
             FeaturedItem("▦", "Media", "Browse media sources and libraries", onOpenMediaBrowse),
         )
-        featuredFor(pool, FeaturedRotation.sessionIndex, count = 3)
+    }
+    // Strict per-launch round-robin: advance the persisted rotation cursor by the
+    // featured-group size exactly once per launch (the VM advance is idempotent and
+    // outlives Settings recompositions / re-entries), then select that group. The
+    // advance reads the cursor straight from the cold prefs flow inside the repo's
+    // atomic update, so the shown group always matches the value just persisted.
+    val resolvedRotation by vm.featuredRotationIndex.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        vm.advanceFeaturedRotation(count = 3, catalogueSize = featuredCatalogue.size)
+    }
+    val featuredTrio = androidx.compose.runtime.remember(resolvedRotation, featuredCatalogue) {
+        // Until the cursor resolves, show the first group so the section never flashes
+        // empty; once resolved we select the rotated group.
+        featuredSlice(featuredCatalogue, resolvedRotation ?: 0, count = 3)
     }
 
     // SAF launchers for backup export / import (Connection > Backup & restore).
