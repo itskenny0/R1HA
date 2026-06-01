@@ -120,6 +120,25 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         },
         currentDisplay = { "${it.nightStartHour}:00 → ${it.nightEndHour}:00" },
     ),
+    SettingEntry(
+        id = "navpanel.sidePanelEnabled",
+        category = SettingCategory.APPEARANCE,
+        label = "Show side navigation panel",
+        description = "Tablet / large-screen rail or drawer",
+        isDefault = { it.navPanel.sidePanelEnabled == defaults.navPanel.sidePanelEnabled },
+        currentDisplay = { if (it.navPanel.sidePanelEnabled) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "navpanel.hiddenNavItems",
+        category = SettingCategory.APPEARANCE,
+        label = "Hidden navigation items",
+        description = "Items removed from the side panel (Today / Search / Assist)",
+        isDefault = { it.navPanel.hiddenNavItems == defaults.navPanel.hiddenNavItems },
+        currentDisplay = {
+            val hidden = NavItemId.HIDEABLE.filter { id -> id in it.navPanel.hiddenNavItems }
+            if (hidden.isEmpty()) "none" else hidden.joinToString(", ")
+        },
+    ),
 
     // ── Scroll wheel ────────────────────────────────────────────────────
     SettingEntry(
