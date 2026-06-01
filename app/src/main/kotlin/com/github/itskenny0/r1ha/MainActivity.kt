@@ -35,6 +35,20 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.nav.AppNavGraph
 import com.github.itskenny0.r1ha.nav.Routes
 
+/**
+ * Pure decision for the locked start destination. Kept separate from the Activity
+ * so it can be unit-tested without an Activity / Compose. "Today" is refused as a
+ * landing screen when the user has hidden it (even with startOnDashboard on) so a
+ * hidden Today never loads or polls.
+ */
+fun resolveStartDestination(settings: AppSettings): String = when {
+    settings.server == null -> Routes.ONBOARDING
+    settings.behavior.startOnDashboard &&
+        com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY !in settings.navPanel.hiddenNavItems ->
+        Routes.DASHBOARD
+    else -> Routes.CARD_STACK
+}
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var graph: AppGraph
@@ -102,13 +116,7 @@ class MainActivity : ComponentActivity() {
             //   - server == null         → ONBOARDING
             //   - server + startOnDashboard → DASHBOARD (wall-mounted / kiosk R1 path)
             //   - server + default        → CARD_STACK (handheld R1 path)
-            val startDestination = remember(initial) {
-                when {
-                    initial.server == null -> Routes.ONBOARDING
-                    initial.behavior.startOnDashboard -> Routes.DASHBOARD
-                    else -> Routes.CARD_STACK
-                }
-            }
+            val startDestination = remember(initial) { resolveStartDestination(initial) }
             val navController = rememberNavController()
             R1Log.d("MainActivity.setContent", "startDestination=$startDestination server=${initial.server?.url ?: "null"}")
 
