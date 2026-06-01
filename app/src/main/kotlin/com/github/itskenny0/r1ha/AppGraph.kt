@@ -1,6 +1,8 @@
 package com.github.itskenny0.r1ha
 
 import android.content.Context
+import com.github.itskenny0.r1ha.core.ha.AuthThrottle
+import com.github.itskenny0.r1ha.core.ha.AuthThrottleInterceptor
 import com.github.itskenny0.r1ha.core.ha.DefaultHaRepository
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HaWebSocketClient
@@ -34,6 +36,11 @@ class AppGraph(context: Context) {
      *  surfaces to the user. */
     val securityPolicy: SecurityPolicyStore by lazy { SecurityPolicyStore(appContext) }
 
+    /** Rolling-window circuit breaker shared between the OkHttp interceptor (which feeds it
+     *  REST auth outcomes) and [haRepository] (which resets it on manual retry / server
+     *  change). One instance so both sides see the same breaker state. */
+    val authThrottle: AuthThrottle by lazy { AuthThrottle() }
+
     val okHttp: OkHttpClient by lazy {
         val builder = OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -44,6 +51,10 @@ class AppGraph(context: Context) {
             // OkHttp surfaces a missing PONG as onFailure, which our state machine treats as
             // a Disconnected and schedules a backoff reconnect.
             .pingInterval(30, TimeUnit.SECONDS)
+        // Application interceptor: gates the REST /api/ fan-out when the refresh token is
+        // permanently broken so a revoked token can't trip HA's failed-login IP ban. The
+        // WS handshake and /auth/ refresh are exempt inside the interceptor.
+        builder.addInterceptor(AuthThrottleInterceptor(authThrottle))
         attachCertificatePinner(builder)
         attachMtlsKeystore(builder)
         builder.build()
