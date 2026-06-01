@@ -204,6 +204,12 @@ class SettingsViewModel(
     fun updateDashboard(transform: (com.github.itskenny0.r1ha.core.prefs.DashboardSettings) -> com.github.itskenny0.r1ha.core.prefs.DashboardSettings) =
         update { it.copy(dashboard = transform(it.dashboard)) }
 
+    /** Generic mutator for the side navigation-panel settings (master enable
+     *  + per-item visibility). Used by the NAVIGATION PANEL section in
+     *  SettingsScreen. */
+    fun updateNavPanel(transform: (com.github.itskenny0.r1ha.core.prefs.NavPanelSettings) -> com.github.itskenny0.r1ha.core.prefs.NavPanelSettings) =
+        update { it.copy(navPanel = transform(it.navPanel)) }
+
     /** Generic mutator for the per-surface refresh intervals +
      *  integration tweaks. Used by the INTEGRATIONS section in
      *  SettingsScreen. */
