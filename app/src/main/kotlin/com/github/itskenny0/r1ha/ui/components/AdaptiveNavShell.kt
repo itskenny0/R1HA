@@ -41,6 +41,11 @@ data class NavDestination(
     val label: String,
     val glyph: String,
     val matchRoutes: Set<String> = setOf(route),
+    /** Stable id used to filter the destination out of the panel via the user's
+     *  [com.github.itskenny0.r1ha.core.prefs.NavPanelSettings.hiddenNavItems].
+     *  Defaults to [route] so call sites that don't set it (Home, Settings) keep a
+     *  unique, never-hidden id. */
+    val id: String = route,
 )
 
 /**
@@ -291,8 +296,8 @@ fun defaultNavDestinations(
         glyph = "▣",
         matchRoutes = setOf(homeRoute, dashboardRoute),
     ),
-    NavDestination(route = dashboardRoute, label = "Today", glyph = "◴"),
-    NavDestination(route = searchRoute, label = "Search", glyph = "⌕"),
-    NavDestination(route = assistRoute, label = "Assist", glyph = "◌"),
+    NavDestination(route = dashboardRoute, label = "Today", glyph = "◴", id = "today"),
+    NavDestination(route = searchRoute, label = "Search", glyph = "⌕", id = "search"),
+    NavDestination(route = assistRoute, label = "Assist", glyph = "◌", id = "assist"),
     NavDestination(route = settingsRoute, label = "Settings", glyph = "⚙"),
 )

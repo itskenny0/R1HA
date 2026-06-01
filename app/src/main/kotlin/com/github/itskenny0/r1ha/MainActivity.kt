@@ -270,21 +270,29 @@ class MainActivity : ComponentActivity() {
                         com.github.itskenny0.r1ha.ui.components.ProvideWindowTier {
                             val currentRoute = navController
                                 .currentBackStackEntryAsState().value?.destination?.route
-                            val navDestinations = androidx.compose.runtime.remember {
+                            // User control over the side panel: master enable + per-item
+                            // visibility. Collected as its own slice so panel edits don't
+                            // recompose on every unrelated settings change.
+                            val navPanel by graph.settings.settings
+                                .map { it.navPanel }
+                                .distinctUntilChanged()
+                                .collectAsStateWithLifecycle(initialValue = settings.navPanel)
+                            val navDestinations = androidx.compose.runtime.remember(navPanel.hiddenNavItems) {
                                 com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
                                     homeRoute = Routes.CARD_STACK,
                                     dashboardRoute = Routes.DASHBOARD,
                                     searchRoute = Routes.SEARCH,
                                     assistRoute = Routes.ASSIST,
                                     settingsRoute = Routes.SETTINGS,
-                                )
+                                ).filter { it.id !in navPanel.hiddenNavItems }
                             }
                             // Suppress the rail / drawer on full-bleed flows where there's
                             // no app to navigate yet (onboarding, the long-lived-token
-                            // setup). Everywhere else the shell decides chrome by tier.
+                            // setup), and whenever the user has turned the side panel off.
+                            // Everywhere else the shell decides chrome by tier.
                             val showShellChrome = when (currentRoute) {
                                 Routes.ONBOARDING, Routes.LONG_LIVED_TOKEN -> false
-                                else -> true
+                                else -> navPanel.sidePanelEnabled
                             }
                             com.github.itskenny0.r1ha.ui.components.AdaptiveNavShell(
                                 destinations = navDestinations,
