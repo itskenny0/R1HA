@@ -100,6 +100,54 @@ class AuthThrottleInterceptorTest {
         assertEquals(1, hits[0])
     }
 
+    @Test fun caps_concurrent_gated_requests() {
+        // The throttle stays closed (every call returns 200), so this isolates the
+        // concurrency cap: at most maxConcurrentGated requests may be in flight at once,
+        // which is what keeps a bad poll tick from landing 5 simultaneous 401s.
+        val t = AuthThrottle(clock = Clock()::millis)
+        val itc = AuthThrottleInterceptor(t, maxConcurrentGated = 2)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val inFlight = java.util.concurrent.atomic.AtomicInteger(0)
+        val maxSeen = java.util.concurrent.atomic.AtomicInteger(0)
+        val completed = java.util.concurrent.atomic.AtomicInteger(0)
+
+        val itClass = itc
+
+        class BlockingChain(private val r: Request) : Interceptor.Chain {
+            override fun request() = r
+            override fun proceed(request: Request): Response {
+                val now = inFlight.incrementAndGet()
+                maxSeen.updateAndGet { m -> if (now > m) now else m }
+                release.await()
+                inFlight.decrementAndGet()
+                return Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
+                    .code(200).message("x").body("".toResponseBody(null)).build()
+            }
+            override fun connection() = null
+            override fun call() = throw UnsupportedOperationException()
+            override fun connectTimeoutMillis() = 0
+            override fun withConnectTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit) = this
+            override fun readTimeoutMillis() = 0
+            override fun withReadTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit) = this
+            override fun writeTimeoutMillis() = 0
+            override fun withWriteTimeout(timeout: Int, unit: java.util.concurrent.TimeUnit) = this
+        }
+
+        val threads = (1..6).map {
+            Thread {
+                itClass.intercept(BlockingChain(req("/api/states")))
+                completed.incrementAndGet()
+            }.also { it.start() }
+        }
+        Thread.sleep(300) // let all six pile up against the semaphore
+        assertEquals(2, inFlight.get()) // only the cap is admitted; the other four block
+        assertEquals(2, maxSeen.get())
+        release.countDown() // drain everyone
+        threads.forEach { it.join(2000) }
+        assertEquals(6, completed.get()) // all eventually proceed once slots free
+        assertEquals(2, maxSeen.get())   // never more than the cap in flight at once
+    }
+
     @Test fun websocket_path_exempt() {
         val c = Clock()
         val t = AuthThrottle(failureThreshold = 1, clock = c::millis)

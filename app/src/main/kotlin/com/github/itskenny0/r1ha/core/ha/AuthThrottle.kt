@@ -19,8 +19,14 @@ package com.github.itskenny0.r1ha.core.ha
  */
 class AuthThrottle(
     private val windowMillis: Long = 60_000L,
-    private val failureThreshold: Int = 4,
-    private val baseBackoffMillis: Long = 30_000L,
+    // Open after just a couple of 401s. Healthy auth produces ~0 sustained 401s (the token
+    // is refreshed proactively and any success clears the window), so a low threshold rarely
+    // false-trips, while a strict HA that bans after a handful of failed logins needs the
+    // breaker to engage before that handful accumulates.
+    private val failureThreshold: Int = 2,
+    // Short first backoff so a transient blip recovers quickly via the half-open probe; the
+    // exponential growth still pulls genuinely-broken auth out to long, sparse retries.
+    private val baseBackoffMillis: Long = 15_000L,
     private val maxBackoffMillis: Long = 900_000L,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -50,6 +56,15 @@ class AuthThrottle(
                 }
             }
         }
+    }
+
+    /** Non-mutating check: is the breaker currently tripped (OPEN and still inside its
+     *  backoff window)? Used for the interceptor's re-check after it has acquired a
+     *  concurrency slot, so a request that queued while an earlier one in the same burst
+     *  opened the breaker bails without hitting the network. Unlike [shouldShortCircuit]
+     *  this has no side effect, so it never consumes the single half-open probe. */
+    fun isOpenNow(): Boolean = synchronized(lock) {
+        state == State.OPEN && clock() < openUntil
     }
 
     /** Record a 401 (or a failed half-open probe). */
