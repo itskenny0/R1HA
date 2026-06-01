@@ -95,6 +95,8 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(showZeroPercentWhenOff = enabled)) }
     fun setCardPeekMode(mode: com.github.itskenny0.r1ha.core.prefs.CardPeekMode) =
         update { it.copy(ui = it.ui.copy(cardPeekMode = mode)) }
+    fun setCardScrollSensitivity(percent: Int) =
+        update { it.copy(ui = it.ui.copy(cardScrollSensitivity = percent.coerceIn(0, 100))) }
 
     /** Toggle a chrome-row button's visibility. The persistence layer force-
      *  enables GEAR regardless of what's passed here (so a hostile manual edit

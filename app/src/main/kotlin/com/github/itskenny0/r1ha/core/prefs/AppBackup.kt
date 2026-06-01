@@ -76,6 +76,9 @@ data class AppBackup(
     /** Card-stack peek-deck mode. Older backup files without this field decode
      *  as AUTO (peek only on phone-portrait), matching the live default. */
     val uiCardPeekMode: CardPeekMode = CardPeekMode.AUTO,
+    /** Card-stack scroll sensitivity (0..100). Older backups without this field
+     *  decode as 80, the default that reproduces the stock fling feel. */
+    val uiCardScrollSensitivity: Int = 80,
 
     val behaviorHaptics: Boolean = true,
     val behaviorKeepScreenOn: Boolean = true,
@@ -153,6 +156,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiTempUnit = ui.tempUnit,
     uiInfiniteScroll = ui.infiniteScroll,
     uiCardPeekMode = ui.cardPeekMode,
+    uiCardScrollSensitivity = ui.cardScrollSensitivity,
     behaviorHaptics = behavior.haptics,
     behaviorKeepScreenOn = behavior.keepScreenOn,
     behaviorTapToToggle = behavior.tapToToggle,
@@ -228,6 +232,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             tempUnit = uiTempUnit,
             infiniteScroll = uiInfiniteScroll,
             cardPeekMode = uiCardPeekMode,
+            cardScrollSensitivity = uiCardScrollSensitivity,
         ),
         behavior = Behavior(
             haptics = behaviorHaptics,

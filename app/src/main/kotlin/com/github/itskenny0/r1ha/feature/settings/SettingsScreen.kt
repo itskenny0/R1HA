@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -1002,6 +1004,17 @@ private fun LazyListScope.appearanceCards(
                 color = R1.InkMuted,
             )
         }
+    }
+    item {
+        SliderRow(
+            label = "Card stack scroll sensitivity",
+            subtitle = "How far a flick coasts when scrolling the card stack. Higher = more " +
+                "momentum, the deck glides further and faster. Lower = the deck brakes " +
+                "sooner. The default (80%) matches the standard feel.",
+            value = s.ui.cardScrollSensitivity,
+            valueLabel = "${s.ui.cardScrollSensitivity}%",
+            onChange = { vm.setCardScrollSensitivity(it) },
+        )
     }
     item {
         LabeledControl(label = "Sensor decimals") {
@@ -2324,6 +2337,49 @@ private fun NumberStepperRow(
             ) {
                 Text(text = "+", style = R1.body, color = if (canInc) R1.Ink else R1.InkMuted)
             }
+        }
+    }
+}
+
+/**
+ * SliderRow — label + current-value pill on one line, a Material3 slider beneath,
+ * then an optional subtitle. Used for the continuous 0..100 settings (card-stack
+ * scroll sensitivity) where a stepper would be too coarse and a segmented picker
+ * has too many stops. The slider quantises to whole integers via toInt().
+ */
+@Composable
+private fun SliderRow(
+    label: String,
+    subtitle: String? = null,
+    value: Int,
+    valueLabel: String,
+    min: Int = 0,
+    max: Int = 100,
+    onChange: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = R1.bodyEmph, color = R1.Ink, modifier = Modifier.weight(1f))
+            Text(valueLabel, style = R1.bodyEmph, color = R1.AccentWarm)
+        }
+        Spacer(Modifier.height(R1.space.s))
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onChange(it.toInt()) },
+            valueRange = min.toFloat()..max.toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = R1.AccentWarm,
+                activeTrackColor = R1.AccentWarm,
+                inactiveTrackColor = R1.Hairline,
+            ),
+        )
+        if (subtitle != null) {
+            Spacer(Modifier.height(R1.space.xxs))
+            Text(subtitle, style = R1.labelMicro, color = R1.InkMuted)
         }
     }
 }

@@ -259,6 +259,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { cardPeekModeLabel(it.ui.cardPeekMode) },
     ),
     SettingEntry(
+        id = "ui.cardScrollSensitivity",
+        category = SettingCategory.CARD_UI,
+        label = "Card stack scroll sensitivity",
+        description = "How far a flick coasts when scrolling the card stack; higher = more momentum",
+        isDefault = { it.ui.cardScrollSensitivity == defaults.ui.cardScrollSensitivity },
+        currentDisplay = { "${it.ui.cardScrollSensitivity}%" },
+    ),
+    SettingEntry(
         id = "ui.textHistoryLength",
         category = SettingCategory.CARD_UI,
         label = "Sensor history length",

@@ -1705,9 +1705,27 @@ private fun PageDeck(
         // phone as cleanly as a 120 Hz flagship. Programmatic moves (wheel / hardware keys /
         // jump-to-card / tap-to-navigate) go through animateScrollToPage, which bypasses the
         // fling behaviour, so a detent or tap still advances exactly one card / to its target.
+        //
+        // Scroll sensitivity. The user-tunable [UiOptions.cardScrollSensitivity] (0..100,
+        // default 80) feeds the decay's friction multiplier. Compose's stock exponential
+        // decay uses friction 1.0; we anchor the default 80 to exactly that, so the
+        // out-of-the-box feel is unchanged. The mapping is inverse-proportional:
+        //
+        //     friction = 0.8 / (sensitivity / 100)        // == 80 / sensitivity
+        //
+        // 80 → 1.0 (stock feel), 100 → 0.8 (less friction, the flick coasts further and
+        // faster = more inertia), 40 → 2.0 (more friction, the deck brakes sooner = less
+        // inertia). Sensitivity is coerced to 1..100 here so a stored 0 can't divide-by-
+        // zero; the friction is clamped to a sane band so neither extreme makes the deck
+        // unusable (never overshoots the whole stack, never freezes mid-card).
+        val sensitivity = appSettings.ui.cardScrollSensitivity.coerceIn(1, 100)
+        val flingFriction = (0.8f / (sensitivity / 100f)).coerceIn(0.5f, 4f)
         val deckFling = PagerDefaults.flingBehavior(
             state = pagerState,
             pagerSnapDistance = PagerSnapDistance.atMost(maxOf(1, cards.size - 1)),
+            decayAnimationSpec = androidx.compose.animation.core.exponentialDecay(
+                frictionMultiplier = flingFriction,
+            ),
             snapAnimationSpec = androidx.compose.animation.core.spring<Float>(
                 dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
                 stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,

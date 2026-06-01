@@ -202,6 +202,9 @@ class SettingsRepository private constructor(
          *  enum name. Absent / unknown → AUTO (peek only on phone-portrait),
          *  so existing installs on the R1 / sub-compact tier see no change. */
         val uiCardPeekMode = stringPreferencesKey("ui.card_peek_mode")
+        /** Card-stack scroll sensitivity as a 0..100 percentage; 80 is the
+         *  default and reproduces the stock fling feel. Absent → 80. */
+        val uiCardScrollSensitivity = intPreferencesKey("ui.card_scroll_sensitivity")
 
         val theme = stringPreferencesKey("theme")
         val autoThemeEnabled = booleanPreferencesKey("theme.auto_enabled")
@@ -303,6 +306,7 @@ class SettingsRepository private constructor(
                     cardPeekMode = p[K.uiCardPeekMode]
                         ?.let { runCatching { CardPeekMode.valueOf(it) }.getOrNull() }
                         ?: CardPeekMode.AUTO,
+                    cardScrollSensitivity = (p[K.uiCardScrollSensitivity] ?: 80).coerceIn(0, 100),
                 ),
                 behavior = Behavior(
                     haptics = p[K.behaviorHaptics] ?: true,
@@ -515,6 +519,7 @@ class SettingsRepository private constructor(
                 p[K.uiChromeButtons] = encodeChromeButtons(next.ui.chromeButtons)
                 p[K.uiShowZeroPercentWhenOff] = next.ui.showZeroPercentWhenOff
                 p[K.uiCardPeekMode] = next.ui.cardPeekMode.name
+                p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
                 p[K.theme] = next.theme.name
                 p[K.autoThemeEnabled] = next.autoThemeEnabled
                 p[K.nightTheme] = next.nightTheme.name

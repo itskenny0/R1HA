@@ -173,6 +173,26 @@ data class UiOptions(
      * Default AUTO so existing installs see no change on the R1 / sub-compact tier.
      */
     val cardPeekMode: CardPeekMode = CardPeekMode.AUTO,
+    /**
+     * Card-stack scroll sensitivity, expressed as a 0..100 percentage that scales the
+     * fling inertia (momentum / coast distance) when touch-scrolling the vertical deck.
+     *
+     * The card stack folds this into the pager's fling decay friction. Higher friction
+     * stops the coast sooner (less inertia); lower friction lets a flick glide further
+     * and faster (more inertia). The mapping is inverse-proportional and anchored so
+     * the DEFAULT of 80 reproduces Compose's stock fling feel exactly:
+     *
+     *     frictionMultiplier = 0.8 / (sensitivity / 100)   // == 80 / sensitivity
+     *
+     * At 80 → friction 1.0 (the Compose ExponentialDecay default, i.e. today's feel).
+     * Below 80 the friction climbs (e.g. 40 → 2.0) so the deck brakes harder and the
+     * coast is shorter; above 80 it drops (e.g. 100 → 0.8) so a flick carries further
+     * and faster. Anchoring the default at 80 rather than 100 leaves deliberate
+     * head-room for users who want MORE inertia than the stock behaviour, while still
+     * allowing meaningfully slower. See [com.github.itskenny0.r1ha.feature.cardstack]'s
+     * PageDeck for the consuming code. Coerced to 0..100 on load.
+     */
+    val cardScrollSensitivity: Int = 80,
 )
 
 @Immutable
