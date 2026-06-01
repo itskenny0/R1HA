@@ -26,7 +26,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.pager.PageSize
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
@@ -1639,49 +1642,66 @@ private fun PageDeck(
         // neighbour animates the pager to that page rather than actuating the
         // card's control.
         val deckScope = androidx.compose.runtime.rememberCoroutineScope()
-        // Peek-deck layout. When [peekDeck] is on, each page is a fraction of the
-        // viewport height (PEEK_PAGE_FRACTION) so the previous and next cards peek
-        // above and below the centred active one. Centring is achieved with
-        // symmetric contentPadding: FractionPageSize measures pages against
-        // (viewport - contentPadding), so balancing the top and bottom padding
-        // around the chrome offset keeps the active page in the visual centre of
-        // the area below the chrome. The leftover space splits into the two peek
-        // slices (one above, one below).
+        // Peek-deck layout. When [peek] is on (a phone-portrait deck of at least two
+        // cards) the pager is inset BELOW the chrome via its modifier and given zero
+        // content padding, then snapped with SnapPosition.Center. Center settles a card
+        // by centring it in the inset band, so the FIRST and LAST cards clamp flush to
+        // the band's top and bottom (there is no card to scroll past on the outer side)
+        // while every card in between rests centred: the topmost card snaps to the top,
+        // the bottommost to the bottom, the rest to the middle. Each page is a fraction
+        // (PEEK_PAGE_FRACTION) of the band so the neighbours peek into the leftover
+        // space; the 8 dp spacing keeps the peeking slices reading as distinct cards.
         //
-        // pageSpacing gives the half-height cards a clear gap so the peeking
-        // neighbours read as distinct cards rather than a continuous strip; full-
-        // viewport mode keeps the historical 0 dp (its overlap + shadow comes from
-        // the per-page graphicsLayer during a drag).
-        val deckPageSize = if (peekDeck) {
-            FractionPageSize(PEEK_PAGE_FRACTION)
-        } else {
-            PageSize.Fill
-        }
-        // Symmetric bottom padding in peek mode: the historical bottom padding
-        // (nav inset + 16 dp) is usually smaller than the chrome-driven top
-        // padding, which would push the active page off-centre and clip the
-        // bottom peek. Padding the bottom up to match the top keeps the centred
-        // page truly centred and gives both peek slices the same height. Falls
-        // back to the historical asymmetric padding when peek is off.
-        val deckBottomPadding = if (peekDeck) {
-            maxOf(pagerBottomPadding, pagerTopPadding)
-        } else {
-            pagerBottomPadding
-        }
-        val deckPageSpacing = if (peekDeck) 8.dp else 0.dp
+        // Why the modifier inset rather than contentPadding for the chrome clearance:
+        // Center positions a card at available-space/2, and the pager lets an edge card
+        // scroll into the leading / trailing CONTENT padding to reach that centre. A
+        // chrome-sized top content padding would therefore let the first card slide down
+        // into it and near-centre with dead space above it — the opposite of "the
+        // topmost card snaps to the top". Insetting the pager itself (content padding 0)
+        // removes that slack so the first card stays flush under the chrome. Center also
+        // fixes a short-deck bug: under the default Start snap a fractional two-card deck
+        // can never scroll its last card to the top snap, so the second card never
+        // settled and could never be activated; Center makes every index the
+        // nearest-snap page at some reachable scroll offset.
+        val peek = peekActiveForDeck(peekDeck, cards.size)
+        val deckPageSize = if (peek) FractionPageSize(PEEK_PAGE_FRACTION) else PageSize.Fill
+        val deckPageSpacing = if (peek) 8.dp else 0.dp
+        // Velocity: the pager's default fling caps at one page no matter how hard the
+        // flick. atMost(N) lets the spline decay carry a fast flick through up to N cards
+        // before snapping, giving the deck momentum. Full-viewport mode keeps the
+        // one-page default. Programmatic moves (wheel / hardware keys / jump-to-card /
+        // tap-to-navigate) all go through animateScrollToPage, which bypasses the fling
+        // behaviour, so a single detent or tap still advances exactly one card / to its
+        // target.
+        val deckFling = PagerDefaults.flingBehavior(
+            state = pagerState,
+            pagerSnapDistance = PagerSnapDistance.atMost(if (peek) PEEK_FLING_MAX_PAGES else 1),
+        )
         VerticalPager(
             state = pagerState,
-            // Full-viewport: no peek — off-screen cards are hidden until the user drags,
-            // and each page's graphicsLayer gives the deck an overlap + drop shadow.
-            // Peek deck: the fraction page size plus symmetric padding reveals the
-            // previous and next cards above and below the active one.
-            contentPadding = PaddingValues(top = pagerTopPadding, bottom = deckBottomPadding),
+            // Peek: zero content padding — the chrome / nav clearance is a modifier inset
+            // below, so SnapPosition.Center can flush-align the edge cards (see the
+            // layout note above). Full-viewport: the historical chrome + nav content
+            // padding, no modifier inset, so cards fill edge to edge and slide under the
+            // translucent chrome on a drag.
+            contentPadding = if (peek) {
+                PaddingValues(0.dp)
+            } else {
+                PaddingValues(top = pagerTopPadding, bottom = pagerBottomPadding)
+            },
             pageSize = deckPageSize,
-            // Compose the immediate neighbours in peek mode so the peeking slices
-            // render fully-laid-out cards (not blank placeholders) the moment the
-            // deck settles. Full-viewport mode keeps the default (0): neighbours
-            // compose lazily on drag, which is the cheaper path the R1 wants.
-            beyondViewportPageCount = if (peekDeck) 1 else 0,
+            // Centre the active card in the inset band; the first and last cards clamp
+            // flush to its top / bottom. Start (the full-viewport default) is identical
+            // to Center for a Fill page, so non-peek decks are unaffected by setting it.
+            snapPosition = if (peek) SnapPosition.Center else SnapPosition.Start,
+            flingBehavior = deckFling,
+            // Compose the immediate neighbours in peek mode so the peeking slices render
+            // fully-laid-out cards the moment the deck settles. A fast multi-card fling
+            // may briefly compose its landing card as it arrives, which is cheaper than
+            // holding N neighbours alive at rest on every wheel detent. Full-viewport
+            // mode keeps the default (0): neighbours compose lazily on drag, the cheaper
+            // path the R1 wants.
+            beyondViewportPageCount = if (peek) 1 else 0,
             pageSpacing = deckPageSpacing,
             // Stable per-card key in FINITE mode = the card's entity_id, so a deck
             // mutation (favourite added / removed / reordered) keeps each surviving
@@ -1694,7 +1714,15 @@ private fun PageDeck(
             } else {
                 { page -> cards.getOrNull(page)?.id?.value ?: page }
             },
-            modifier = Modifier.fillMaxSize(),
+            // Peek: inset the pager below the chrome (top) and above the nav inset
+            // (bottom) so its viewport is exactly the band the cards centre within.
+            modifier = if (peek) {
+                Modifier
+                    .fillMaxSize()
+                    .padding(top = pagerTopPadding, bottom = pagerBottomPadding)
+            } else {
+                Modifier.fillMaxSize()
+            },
         ) { page ->
             // ~85% viewport — pad the card inward so the bg shows around it. Combined with a
             // rounded corner shape (hoisted to PageDeck scope above) and the shadow
@@ -1733,7 +1761,7 @@ private fun PageDeck(
                 // currentPage, which flips mid-fling) so a card only counts as
                 // "the active one" once the deck has come to rest on it — this
                 // keeps a tap during a settle from being read as an actuation.
-                val isPeekNeighbour = peekDeck && page != pagerState.settledPage
+                val isPeekNeighbour = peek && page != pagerState.settledPage
                 EntityCard(
                     state = card,
                     onTapToggle = { vm.tapToggle() },
@@ -2008,6 +2036,13 @@ private const val STALLED_AFTER_MS = 10_000L
  *  page spacing so the two peek slices read as distinct cards rather than a continuous
  *  strip. */
 private const val PEEK_PAGE_FRACTION = 0.62f
+
+/** How many cards a single hard flick may carry the peek deck through. The pager's
+ *  default fling caps at one page regardless of velocity; this lets the spline decay
+ *  project a fast flick a few cards before snapping so the deck has momentum. Kept small
+ *  so a flick on the narrow panel still lands predictably rather than rocketing across
+ *  the whole deck. */
+private const val PEEK_FLING_MAX_PAGES = 3
 
 /** Virtual page count used by the pager when infinite-scroll is enabled. Big enough
  *  that even an entire afternoon of aggressive swiping doesn't run out of pages (200 k

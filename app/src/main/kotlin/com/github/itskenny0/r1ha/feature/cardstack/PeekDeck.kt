@@ -41,6 +41,18 @@ private fun isPhonePeekTier(tier: WindowTier): Boolean =
     tier == WindowTier.COMPACT || tier == WindowTier.MEDIUM
 
 /**
+ * Whether the peek layout should actually render for a deck of [cardCount] cards once the
+ * tier/orientation decision [peekEnabled] (from [effectivePeek]) has been made.
+ *
+ * A single-card deck has no previous/next card to peek, so peeking it would only strand the
+ * lone card flush against the top of the deck (the first card snaps to the top) with empty
+ * space below. Such a deck renders full-bleed instead, exactly like the historical
+ * single-card view. Two or more cards is the point at which a peeking neighbour exists.
+ */
+fun peekActiveForDeck(peekEnabled: Boolean, cardCount: Int): Boolean =
+    peekEnabled && cardCount > 1
+
+/**
  * A [PageSize] that measures each page as a [fraction] of the pager's available main-axis
  * space (the viewport minus the pager's content padding). Compose's bundled [PageSize]
  * only ships [PageSize.Fill] and [PageSize.Fixed]; the peek deck needs a fractional size so
