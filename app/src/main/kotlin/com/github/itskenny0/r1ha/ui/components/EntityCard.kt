@@ -92,6 +92,9 @@ fun EntityCard(
         // fallback (and any future themed rendering) carries the right domain identity.
         Domain.PERSON -> CardRenderModel.Glyph.PERSON
         Domain.WEATHER -> CardRenderModel.Glyph.WEATHER
+        // Catch-all domains have no card archetype and aren't pinnable, so this glyph is
+        // never actually drawn for them; a generic switch glyph keeps the when total.
+        Domain.OTHER -> CardRenderModel.Glyph.SWITCH
     }
     val accentRole = when (state.id.domain) {
         Domain.LIGHT -> CardRenderModel.AccentRole.WARM
@@ -151,6 +154,9 @@ fun EntityCard(
             .personAccent(state.rawState)
         Domain.WEATHER -> com.github.itskenny0.r1ha.ui.components.PersonWeatherCardModel
             .weatherAccent(state.rawState)
+        // Catch-all domains have no card archetype and aren't pinnable; neutral keeps the
+        // when total for the defensive / future-rendering path.
+        Domain.OTHER -> CardRenderModel.AccentRole.NEUTRAL
     }
     // When the entity is unavailable, dim the whole card and overlay a "UNAVAILABLE" label so
     // the user doesn't think the card is just at 0%. The themes themselves don't honour

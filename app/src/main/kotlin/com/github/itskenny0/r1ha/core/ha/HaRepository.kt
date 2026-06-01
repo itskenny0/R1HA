@@ -64,8 +64,14 @@ interface HaRepository {
     val lastEventAtMillis: StateFlow<Long>
     /** Fire a service call. Coalesces back-to-back calls per entity via internal debounce. */
     suspend fun call(call: ServiceCall): Result<Unit>
-    /** One-shot REST GET /api/states equivalent, used by FavoritesPicker. */
+    /** One-shot REST GET /api/states equivalent, used by FavoritesPicker. Filtered to the
+     *  domains the app has a card archetype for. */
     suspend fun listAllEntities(): Result<List<EntityState>>
+
+    /** Like [listAllEntities] but also includes entities from domains with no card archetype
+     *  (device_tracker, zone, calendar, ...) as read-only [Domain.OTHER] records. Used by
+     *  Universal Search so every entity the user owns is findable, not just the renderable ones. */
+    suspend fun listAllEntitiesForSearch(): Result<List<EntityState>>
 
     /**
      * Diagnostic — issue the same GET /api/states call as [listAllEntities] but

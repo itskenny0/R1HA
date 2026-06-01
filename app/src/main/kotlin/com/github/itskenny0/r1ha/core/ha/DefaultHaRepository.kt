@@ -130,7 +130,9 @@ private fun computePercent(domain: Domain, attrs: kotlinx.serialization.json.Jso
     Domain.ALARM_CONTROL_PANEL,
     // Person — presence zone is categorical; weather — a condition word plus
     // forecast attributes. Neither maps to a 0..100 wheel scalar.
-    Domain.PERSON, Domain.WEATHER -> null
+    Domain.PERSON, Domain.WEATHER,
+    // Catch-all domains with no card archetype: no wheel scalar.
+    Domain.OTHER -> null
 }
 
 /**
@@ -227,7 +229,9 @@ private fun computeRaw(domain: Domain, attrs: kotlinx.serialization.json.JsonObj
     Domain.ALARM_CONTROL_PANEL,
     // Person — presence zone is a string; weather — the temperature lives in
     // an attribute the Weather screen reads directly, not a card-stack raw.
-    Domain.PERSON, Domain.WEATHER -> null
+    Domain.PERSON, Domain.WEATHER,
+    // Catch-all domains with no card archetype: no numeric raw.
+    Domain.OTHER -> null
 }
 
 /**
@@ -317,7 +321,9 @@ private fun supportsScalar(domain: Domain, attrs: kotlinx.serialization.json.Jso
     // AlarmPanel surfacing the per-mode chips. No wheel-driven scalar.
     Domain.ALARM_CONTROL_PANEL -> false
     // Person / weather are read-only — rendered as SensorCard, no wheel.
-    Domain.PERSON, Domain.WEATHER -> false
+    Domain.PERSON, Domain.WEATHER,
+    // Catch-all domains with no card archetype: never wheel-scalar.
+    Domain.OTHER -> false
 }
 
 /**
@@ -1129,6 +1135,8 @@ class DefaultHaRepository(
             // Weather: state is the current condition word, no on/off concept.
             // Read-only forecast surface; pin to false so the chrome pill stays quiet.
             Domain.WEATHER -> false
+            // Catch-all domains with no archetype: no on/off mapping.
+            Domain.OTHER -> false
         }
         val available = stateStr != "unavailable" && stateStr != "unknown"
         val pct = computePercentWithState(domain, raw.attributes, stateStr)
@@ -1341,7 +1349,18 @@ class DefaultHaRepository(
         return Result.success(Unit)
     }
 
-    override suspend fun listAllEntities(): Result<List<EntityState>> = withContext(Dispatchers.IO) {
+    override suspend fun listAllEntities(): Result<List<EntityState>> =
+        fetchAndDecodeAllEntities(includeUnsupported = false)
+
+    /** Like [listAllEntities] but keeps entities from domains the app has no card archetype
+     *  for (device_tracker, zone, calendar, ...). Used by Universal Search so the user can find
+     *  every entity they own, not just the ones the card stack can render. */
+    override suspend fun listAllEntitiesForSearch(): Result<List<EntityState>> =
+        fetchAndDecodeAllEntities(includeUnsupported = true)
+
+    private suspend fun fetchAndDecodeAllEntities(
+        includeUnsupported: Boolean,
+    ): Result<List<EntityState>> = withContext(Dispatchers.IO) {
         runCatching {
             val s = settings.settings.first()
             val server = s.server ?: error("Server URL not configured. Sign out & reconnect from Settings.")
@@ -1375,7 +1394,11 @@ class DefaultHaRepository(
             // some scene entries in HA's response had shapes the strict decoder didn't
             // accept. Per-row decoding with a try/catch keeps the rest of the list
             // available and lets us log the offenders rather than silently empty the UI.
-            decodeStatesBody(body)
+            decodeStatesBody(
+                body,
+                includeUnsupported = includeUnsupported,
+                strictDecode = s.advanced.strictEntityDecode,
+            )
         }
     }
 
@@ -2374,6 +2397,15 @@ class DefaultHaRepository(
             body: String,
             logInfo: (String, String) -> Unit = { where, msg -> R1Log.i(where, msg) },
             logWarn: (String, String) -> Unit = { where, msg -> R1Log.w(where, msg) },
+            // When true, entities from domains the app has no archetype for (device_tracker,
+            // zone, calendar, ...) are kept as read-only [Domain.OTHER] records instead of being
+            // dropped. The card stack / favourites picker pass false (they only render
+            // archetypes); Universal Search passes true so the user can find every entity.
+            includeUnsupported: Boolean = false,
+            // Mirrors AdvancedSettings.strictEntityDecode. When false (the lenient default), a row
+            // whose rich decode throws is kept as a minimal read-only record so it stays
+            // searchable; when true, such a row is dropped (the historical behaviour).
+            strictDecode: Boolean = false,
         ): List<EntityState> {
             val rowsJson = statesJson.decodeFromString<List<kotlinx.serialization.json.JsonElement>>(body)
             logInfo("HaRepo.listAll", "raw rows from /api/states: ${rowsJson.size}")
@@ -2418,7 +2450,7 @@ class DefaultHaRepository(
             }
             return rows.mapNotNull { row ->
                 val prefix = row.entity_id.substringBefore('.', missingDelimiterValue = "")
-                if (!Domain.isSupportedPrefix(prefix)) return@mapNotNull null
+                if (!includeUnsupported && !Domain.isSupportedPrefix(prefix)) return@mapNotNull null
                 // Wrap the whole EntityState construction in a try/catch so one weird
                 // row (a media_player whose `volume_level` is a JsonArray instead of a
                 // primitive, a climate with malformed `min_temp`, etc.) doesn't drop
@@ -2479,6 +2511,8 @@ class DefaultHaRepository(
                         // Person: "home" reads as on; weather has no on/off concept.
                         Domain.PERSON -> stateStr.equals("home", ignoreCase = true)
                         Domain.WEATHER -> false
+                        // Catch-all domains with no archetype: no on/off mapping.
+                        Domain.OTHER -> false
                     },
                     percent = pct,
                     raw = rawNum,
@@ -2612,7 +2646,25 @@ class DefaultHaRepository(
                 )
                 }.getOrElse { t ->
                     logWarn("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")
-                    null
+                    if (strictDecode) return@mapNotNull null
+                    // Lenient default: keep the entity as a minimal read-only record so a row whose
+                    // rich attributes failed to decode is still findable in Universal Search rather
+                    // than silently vanishing. A second failure (e.g. a malformed entity_id with no
+                    // dot) drops it for real.
+                    runCatching {
+                        EntityState(
+                            id = EntityId(row.entity_id),
+                            friendlyName = row.attrsObj["friendly_name"].asString()
+                                ?: row.entity_id.substringAfter('.'),
+                            area = row.attrsObj["area_id"].asString(),
+                            isOn = false,
+                            percent = null,
+                            raw = null,
+                            lastChanged = Instant.now(),
+                            isAvailable = row.stateStr != "unavailable" && row.stateStr != "unknown",
+                            rawState = row.stateStr,
+                        )
+                    }.getOrNull()
                 }
             }
         }

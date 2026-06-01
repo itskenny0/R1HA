@@ -733,6 +733,9 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     // static at-rest accents; the card stack tints person by actual home/away state.
     Domain.PERSON -> R1.AccentGreen
     Domain.WEATHER -> R1.AccentCool
+    // Catch-all domains with no archetype: neutral. Only reachable via the niche
+    // manual-favorites-JSON path; they have no first-class picker affordance.
+    Domain.OTHER -> R1.AccentNeutral
 }
 
 private fun domainLabel(domain: Domain): String = when (domain) {
@@ -769,4 +772,5 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.ALARM_CONTROL_PANEL -> "ALARM"
     Domain.PERSON -> "PERSON"
     Domain.WEATHER -> "WEATHER"
+    Domain.OTHER -> "OTHER"
 }

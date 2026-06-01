@@ -162,6 +162,9 @@ data class ServiceCall(
                     "update_entity",
                     JsonObject(emptyMap()),
                 )
+                // Catch-all domains with no archetype never reach setPercent (the wheel is
+                // inert on them). Defensive no-op refresh keeps the dispatch path total.
+                Domain.OTHER -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
             }
         }
 
@@ -437,6 +440,9 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // Catch-all domains with no archetype: Search routes their tap to a detail
+            // toast, never here. Defensive no-op refresh keeps the dispatch total.
+            Domain.OTHER -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
         }
 
         /**
@@ -529,6 +535,8 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // Catch-all domains with no archetype: no on/off. Defensive no-op refresh.
+            Domain.OTHER -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
         }
 
         /**

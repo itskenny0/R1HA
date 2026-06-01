@@ -182,6 +182,17 @@ enum class Domain(val prefix: String) {
      * dedicated Weather screen, and as a SensorCard in the card stack.
      */
     WEATHER("weather"),
+    /**
+     * Catch-all for any domain the app has no dedicated archetype for (device_tracker, zone,
+     * calendar, sun, image, event, tts, conversation, group, and anything new HA ships). These
+     * entities have no card-stack rendering and can't be pinned (the favourites picker and the
+     * card stack only list the archetypes above), but they are still real entities the user
+     * owns, so the Universal Search surface includes them as read-only "find it by name" results
+     * via [DefaultHaRepository.listAllEntitiesForSearch]. [prefix] is the empty sentinel because
+     * the real prefix is recoverable from the entity_id string itself; OTHER is never produced by
+     * [fromPrefix] / [isSupportedPrefix], only by [fromPrefixOrOther].
+     */
+    OTHER(""),
     ;
 
     /** Action-only domains — UI renders them as fire-and-forget ActionCard tiles. */
@@ -202,9 +213,17 @@ enum class Domain(val prefix: String) {
     val isSelect: Boolean get() = this == SELECT || this == INPUT_SELECT
 
     companion object {
-        private val byPrefix = entries.associateBy { it.prefix }
+        // OTHER is the catch-all sentinel and must never be reachable by prefix lookup: its
+        // empty prefix would otherwise shadow a malformed "" prefix and, worse, make
+        // isSupportedPrefix("") return true. Exclude it from the reverse map entirely.
+        private val byPrefix = entries.filter { it != OTHER }.associateBy { it.prefix }
         fun fromPrefix(prefix: String): Domain =
             byPrefix[prefix] ?: throw IllegalArgumentException("unknown domain prefix: '$prefix'")
         fun isSupportedPrefix(prefix: String): Boolean = prefix in byPrefix
+
+        /** Lenient lookup used by [EntityId.domain]: maps any unrecognised prefix to [OTHER]
+         *  rather than throwing, so an entity from a domain the app has no archetype for is
+         *  still a constructible [EntityState] (read-only, search-only). */
+        fun fromPrefixOrOther(prefix: String): Domain = byPrefix[prefix] ?: OTHER
     }
 }

@@ -21,13 +21,15 @@ class EntityIdTest {
         assertThrows<IllegalArgumentException> { EntityId("light_kitchen") }
     }
 
-    @Test fun `rejects unsupported domain`() {
-        // device_tracker / sun are read-only state surfaces without a clean R1
-        // control affordance. Adding them would either show as inert cards or
-        // duplicate the sensor read-out path with no real value, so they stay out
-        // to keep the picker signal-to-noise high.
-        assertThrows<IllegalArgumentException> { EntityId("device_tracker.phone") }
-        assertThrows<IllegalArgumentException> { EntityId("sun.sun") }
+    @Test fun `accepts unsupported domain as OTHER so search can find it`() {
+        // Entities from domains with no card archetype (device_tracker, sun, zone, ...) used to
+        // be rejected outright, which is why Universal Search couldn't find them. They are now
+        // constructible and resolve to Domain.OTHER; the card stack / picker filter OTHER out at
+        // their own boundaries, but search includes them.
+        assertThat(EntityId("device_tracker.phone").domain).isEqualTo(Domain.OTHER)
+        assertThat(EntityId("sun.sun").domain).isEqualTo(Domain.OTHER)
+        // The object_id is still recoverable for display even for OTHER entities.
+        assertThat(EntityId("device_tracker.phone").objectId).isEqualTo("phone")
     }
 
     @Test fun `parses sensor domains`() {

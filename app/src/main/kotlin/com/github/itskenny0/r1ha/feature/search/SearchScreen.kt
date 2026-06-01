@@ -338,7 +338,14 @@ fun SearchScreen(
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     item("__count_header") {
-                        val countLabel = "${results.size} result${if (results.size == 1) "" else "s"}"
+                        // When the list is at the cap, more entities matched than we show. Say so
+                        // (with a "+") so the user reads it as "narrow your query" rather than
+                        // "that entity doesn't exist".
+                        val countLabel = if (results.size >= vm.currentResultCap) {
+                            "${results.size}+ results, narrow your search"
+                        } else {
+                            "${results.size} result${if (results.size == 1) "" else "s"}"
+                        }
                         Text(
                             text = countLabel,
                             style = R1.labelMicro,

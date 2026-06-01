@@ -100,6 +100,18 @@ class RawEntityRowDecoderTest {
             logWarn = { _, _ -> },
         )
         assertThat(typed.map { it.id.value }).containsExactly("light.kitchen")
+        // ...but the search path (includeUnsupported = true) keeps them as OTHER records so
+        // Universal Search can find every entity the user owns.
+        val forSearch = DefaultHaRepository.decodeStatesBody(
+            body,
+            logInfo = { _, _ -> },
+            logWarn = { _, _ -> },
+            includeUnsupported = true,
+        )
+        assertThat(forSearch.map { it.id.value })
+            .containsExactly("light.kitchen", "sun.sun", "device_tracker.phone")
+        assertThat(forSearch.first { it.id.value == "device_tracker.phone" }.id.domain)
+            .isEqualTo(Domain.OTHER)
     }
 
     @Test

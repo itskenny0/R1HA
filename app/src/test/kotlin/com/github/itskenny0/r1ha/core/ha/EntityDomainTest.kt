@@ -38,10 +38,23 @@ class EntityDomainTest {
     }
 
     @Test fun `fromPrefix rejects unknown prefix`() {
-        // Domains the app deliberately doesn't surface yet — device_tracker /
-        // sun / etc. are read-only state surfaces without a clean R1 affordance.
+        // Domains the app has no card archetype for. fromPrefix stays strict (throws) for the
+        // control paths; the lenient fromPrefixOrOther below is the search path's entry point.
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("device_tracker") }
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("sun") }
         assertThrows<IllegalArgumentException> { Domain.fromPrefix("") }
+    }
+
+    @Test fun `fromPrefixOrOther maps unknown prefixes to OTHER`() {
+        assertThat(Domain.fromPrefixOrOther("light")).isEqualTo(Domain.LIGHT)
+        assertThat(Domain.fromPrefixOrOther("device_tracker")).isEqualTo(Domain.OTHER)
+        assertThat(Domain.fromPrefixOrOther("zone")).isEqualTo(Domain.OTHER)
+        assertThat(Domain.fromPrefixOrOther("")).isEqualTo(Domain.OTHER)
+    }
+
+    @Test fun `OTHER is never reachable via prefix lookup`() {
+        // Its empty sentinel prefix must not shadow a real lookup.
+        assertThat(Domain.isSupportedPrefix("")).isFalse()
+        assertThat(Domain.isSupportedPrefix("other")).isFalse()
     }
 }

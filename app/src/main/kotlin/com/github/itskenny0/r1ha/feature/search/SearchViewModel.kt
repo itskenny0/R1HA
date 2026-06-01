@@ -50,6 +50,11 @@ class SearchViewModel(
     @Volatile
     private var resultCap: Int = 80
 
+    /** The result cap currently in force (snapshotted from settings on [refresh]). Exposed so the
+     *  results header can tell the user when the list was truncated ("showing the first N")
+     *  rather than letting matches silently vanish past the cap. */
+    val currentResultCap: Int get() = resultCap
+
     /** Coarse-grained domain bucket for the filter chips. Maps the
      *  Domain enum into the four user-facing groupings the chips
      *  expose; "ALL" disables the kind filter entirely. */
@@ -84,6 +89,9 @@ class SearchViewModel(
         // Remote/IR blasters control devices via send_command — sit them
         // under CONTROLS alongside switches and the like.
         Domain.REMOTE -> Bucket.CONTROLS
+        // Catch-all domains with no archetype (device_tracker, zone, calendar, ...) are
+        // search-only, read-only results. They bucket under OTHER.
+        Domain.OTHER -> Bucket.OTHER
     }
 
     @androidx.compose.runtime.Stable
@@ -166,7 +174,7 @@ class SearchViewModel(
             // reflects user prefs without each call paying for a flow
             // collection.
             resultCap = settings.settings.first().integrations.searchResultCap.coerceIn(1, 1000)
-            haRepository.listAllEntities().fold(
+            haRepository.listAllEntitiesForSearch().fold(
                 onSuccess = { entities ->
                     R1Log.i("Search", "loaded ${entities.size} entities")
                     _ui.value = _ui.value.copy(loading = false, all = entities, error = null)
