@@ -92,6 +92,9 @@ data class AppBackup(
      *  without this field decode as the default (panel on, nothing hidden). */
     val navPanel: NavPanelSettings = NavPanelSettings(),
     val integrations: IntegrationsSettings = IntegrationsSettings(),
+    /** Connection-hardening (breaker + polling) prefs. Older backups without this
+     *  field decode as the default (strict mode off, conservative breaker dials). */
+    val connection: ConnectionSettings = ConnectionSettings(),
 
     val pages: List<FavoritePage> = emptyList(),
     val activePageId: String = "",
@@ -162,6 +165,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     dashboard = dashboard,
     navPanel = navPanel,
     integrations = integrations,
+    connection = connection,
     pages = pages,
     activePageId = activePageId,
     favorites = favorites,
@@ -239,6 +243,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         dashboard = dashboard,
         navPanel = navPanel,
         integrations = integrations,
+        connection = connection,
         pages = effectivePages,
         activePageId = activeId,
         favorites = effectivePages.flatMap { it.favorites }.distinct(),

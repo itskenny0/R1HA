@@ -193,7 +193,9 @@ fun CamerasScreen(
                             camera = camera,
                             serverUrl = serverUrl!!,
                             bearerToken = token,
-                            pollSec = appSettings.integrations.cameraGridPollSec,
+                            pollSec = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
+                                .from(appSettings.connection)
+                                .flooredCameraSeconds(appSettings.integrations.cameraGridPollSec),
                             onTap = { viewingEntityId = camera.entityId },
                         )
                     }
@@ -227,7 +229,9 @@ fun CamerasScreen(
             displayName = ui.cameras.firstOrNull { it.entityId == viewing }?.name ?: viewing,
             settings = settings,
             tokens = tokens,
-            pollSec = appSettings.integrations.cameraOverlayPollSec,
+            pollSec = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
+                .from(appSettings.connection)
+                .flooredCameraSeconds(appSettings.integrations.cameraOverlayPollSec),
             onDismiss = { viewingEntityId = null },
         )
     }

@@ -439,6 +439,64 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         },
     ),
 
+    // ── Connection hardening (strict mode) ──────────────────────────────
+    SettingEntry(
+        id = "connection.strictMode",
+        category = SettingCategory.SERVER,
+        label = "Strict connection mode",
+        description = "Limit requests + retries to avoid a strict Home Assistant IP ban",
+        isDefault = { it.connection.strictMode == defaults.connection.strictMode },
+        currentDisplay = { if (it.connection.strictMode) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "connection.maxConcurrentRequests",
+        category = SettingCategory.SERVER,
+        label = "Max simultaneous requests",
+        description = "Cap on requests in flight at once; fewer means fewer failed logins per burst",
+        isDefault = { it.connection.maxConcurrentRequests == defaults.connection.maxConcurrentRequests },
+        currentDisplay = { "${it.connection.maxConcurrentRequests}" },
+    ),
+    SettingEntry(
+        id = "connection.breakerFailureThreshold",
+        category = SettingCategory.SERVER,
+        label = "Trip after failed requests",
+        description = "Auth failures before the app stops sending requests and backs off",
+        isDefault = { it.connection.breakerFailureThreshold == defaults.connection.breakerFailureThreshold },
+        currentDisplay = { "${it.connection.breakerFailureThreshold}" },
+    ),
+    SettingEntry(
+        id = "connection.breakerCooldownSec",
+        category = SettingCategory.SERVER,
+        label = "Cooldown after tripping",
+        description = "How long the breaker waits before retesting the connection (seconds)",
+        isDefault = { it.connection.breakerCooldownSec == defaults.connection.breakerCooldownSec },
+        currentDisplay = { "${it.connection.breakerCooldownSec} s" },
+    ),
+    SettingEntry(
+        id = "connection.maxAuthRetries",
+        category = SettingCategory.SERVER,
+        label = "Max retries before pausing",
+        description = "Sign-in recovery attempts before waiting for a manual retry (strict mode)",
+        isDefault = { it.connection.maxAuthRetries == defaults.connection.maxAuthRetries },
+        currentDisplay = { "${it.connection.maxAuthRetries}" },
+    ),
+    SettingEntry(
+        id = "connection.minCameraRefreshSec",
+        category = SettingCategory.SERVER,
+        label = "Minimum camera refresh",
+        description = "Floor on camera snapshot polling in strict mode (seconds; 0 = per-camera)",
+        isDefault = { it.connection.minCameraRefreshSec == defaults.connection.minCameraRefreshSec },
+        currentDisplay = { if (it.connection.minCameraRefreshSec == 0) "OFF" else "${it.connection.minCameraRefreshSec} s" },
+    ),
+    SettingEntry(
+        id = "connection.backgroundRefreshMultiplier",
+        category = SettingCategory.SERVER,
+        label = "Slow background refresh",
+        description = "Multiplier on background surface auto-refresh intervals in strict mode",
+        isDefault = { it.connection.backgroundRefreshMultiplier == defaults.connection.backgroundRefreshMultiplier },
+        currentDisplay = { "${it.connection.backgroundRefreshMultiplier}×" },
+    ),
+
     // ── Integrations ────────────────────────────────────────────────────
     SettingEntry(
         id = "integrations.notificationsRefreshSec",

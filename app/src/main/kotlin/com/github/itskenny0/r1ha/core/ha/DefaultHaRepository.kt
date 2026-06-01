@@ -373,6 +373,15 @@ class DefaultHaRepository(
      * instead of waiting for the half-open backoff to elapse. Null in tests.
      */
     private val authThrottle: AuthThrottle? = null,
+    /**
+     * Current connection-hardening tuning, read on each use so a strict-mode toggle takes
+     * effect without restarting the repository. Defaults to the conservative non-strict
+     * values so tests (and the brief window before [App]'s collector runs) behave sensibly.
+     * In production [AppGraph] supplies a lambda reading its live `connectionTuning`.
+     */
+    private val connectionTuning: () -> ConnectionTuning = {
+        ConnectionTuning.from(com.github.itskenny0.r1ha.core.prefs.ConnectionSettings())
+    },
 ) : HaRepository {
 
     override val connection: StateFlow<ConnectionState> = ws.state
@@ -727,8 +736,10 @@ class DefaultHaRepository(
                         // expired. Try one refresh; if it succeeds, reconnect. If the refresh
                         // itself fails (revoked refresh token, server unreachable, etc.) we stay
                         // in AuthLost and the user has to manually sign out & reconnect.
-                        // Bounded to MAX_AUTHLOST_RETRIES to avoid tight-looping if HA keeps
-                        // issuing access tokens that fail auth (rare misconfiguration).
+                        // Bounded to the configured max (ConnectionTuning.maxAuthRetries; 3 by
+                        // default, lower in strict mode) to avoid tight-looping if HA keeps issuing
+                        // access tokens that fail auth, and to bound the /auth/token POSTs a strict
+                        // HA also counts as failed logins.
                         // Also drain pendingCalls — the WS was just closed by AuthInvalid so
                         // any outstanding Result deferreds won't ever complete naturally.
                         if (pendingCalls.isNotEmpty()) {
@@ -744,7 +755,11 @@ class DefaultHaRepository(
                             pendingPayloads.clear()
                         }
                         val attempt = authLostRefreshAttempt
-                        if (attempt >= MAX_AUTHLOST_RETRIES) {
+                        // Cap the recovery loop. In strict mode the user can lower this so the
+                        // app POSTs /auth/token fewer times before pausing — each failed refresh
+                        // is also a failed login a strict HA counts toward its ban.
+                        val maxAuthRetries = connectionTuning().maxAuthRetries
+                        if (attempt >= maxAuthRetries) {
                             R1Log.w("HaRepo.authLost", "max refresh attempts ($attempt) reached; staying AuthLost")
                             return@onEach
                         }
@@ -869,7 +884,10 @@ class DefaultHaRepository(
             // A truly silent WS gives the user cards lagging ~30 s instead of forever.
             launch {
                 while (true) {
-                    delay(HEARTBEAT_INTERVAL_MS)
+                    // Strict mode stretches the heartbeat cadence so a quiet WS triggers fewer
+                    // background REST polls against a strict HA. Re-read each tick so a toggle
+                    // applies on the next loop.
+                    delay(connectionTuning().scaleBackground(HEARTBEAT_INTERVAL_MS))
                     val s = settings.settings.first()
                     if (s.server == null) continue
                     if (s.favorites.isEmpty()) continue
@@ -2292,7 +2310,6 @@ class DefaultHaRepository(
     }
 
     companion object {
-        const val MAX_AUTHLOST_RETRIES = 3
         /**
          * Maximum number of consecutive WS reconnect failures before the repository
          * gives up and stops scheduling auto-retries. With the default BackoffPolicy

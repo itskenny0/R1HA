@@ -216,6 +216,11 @@ class SettingsViewModel(
     fun updateIntegrations(transform: (com.github.itskenny0.r1ha.core.prefs.IntegrationsSettings) -> com.github.itskenny0.r1ha.core.prefs.IntegrationsSettings) =
         update { it.copy(integrations = transform(it.integrations)) }
 
+    /** Generic mutator for the connection-hardening prefs (strict mode + breaker /
+     *  polling dials). Used by the CONNECTION & SERVER section in SettingsScreen. */
+    fun updateConnection(transform: (com.github.itskenny0.r1ha.core.prefs.ConnectionSettings) -> com.github.itskenny0.r1ha.core.prefs.ConnectionSettings) =
+        update { it.copy(connection = transform(it.connection)) }
+
     /** Generic mutator for IoT Camera Mode (device-local camera streaming
      *  config). Used by the IOT_CAMERA settings subpage. */
     fun updateIotCamera(transform: (com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) -> com.github.itskenny0.r1ha.core.prefs.IotCameraSettings) =

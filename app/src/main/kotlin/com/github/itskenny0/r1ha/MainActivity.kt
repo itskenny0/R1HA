@@ -245,10 +245,20 @@ class MainActivity : ComponentActivity() {
                     .map { it.ui }
                     .distinctUntilChanged()
             }.collectAsStateWithLifecycle(initialValue = settings.ui)
+            // Strict-mode background-refresh multiplier, narrowed so unrelated settings edits
+            // don't re-provide it. Only meaningful when strict mode is on (otherwise 1).
+            val bgRefreshMultiplier by remember {
+                graph.settings.settings
+                    .map { com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(it.connection).backgroundRefreshMultiplier }
+                    .distinctUntilChanged()
+            }.collectAsStateWithLifecycle(
+                initialValue = com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(settings.connection).backgroundRefreshMultiplier,
+            )
             R1ThemeHost(themeId = themeNow) {
                 CompositionLocalProvider(
                     LocalUiOptions provides uiOptions,
                     com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken provides bearerToken,
+                    com.github.itskenny0.r1ha.ui.components.LocalBackgroundRefreshMultiplier provides bgRefreshMultiplier,
                 ) {
                     // Wrap the nav graph in a Box so the in-app ToastHost can
                     // overlay every navigated screen. The toast bus is process-

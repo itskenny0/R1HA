@@ -166,6 +166,7 @@ class SettingsRepository private constructor(
         val dashboardJson = stringPreferencesKey("dashboard.json")
         val navpanelJson = stringPreferencesKey("navpanel.json")
         val integrationsJson = stringPreferencesKey("integrations.json")
+        val connectionJson = stringPreferencesKey("connection.json")
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
         /**
@@ -373,6 +374,13 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: IntegrationsSettings(),
+                connection = p[K.connectionJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(ConnectionSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: ConnectionSettings(),
                 pages = decodePages(p[K.pagesJson], favorites),
                 activePageId = p[K.activePageId].orEmpty(),
                 // Absent → 0: a fresh install (or a pre-feature upgrade) starts the
@@ -532,6 +540,10 @@ class SettingsRepository private constructor(
                 p[K.integrationsJson] = advancedJson.encodeToString(
                     IntegrationsSettings.serializer(),
                     next.integrations,
+                )
+                p[K.connectionJson] = advancedJson.encodeToString(
+                    ConnectionSettings.serializer(),
+                    next.connection,
                 )
                 // Pages — encoded as JSON. Keep next.pages canonical and recompute
                 // [favorites] as their flat union before writing so any legacy

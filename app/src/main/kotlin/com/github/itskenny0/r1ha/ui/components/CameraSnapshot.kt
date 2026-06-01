@@ -169,17 +169,47 @@ private fun computeSampleSize(srcW: Int, srcH: Int, targetW: Int, targetH: Int):
     return sample
 }
 
-/** Module-scoped OkHttp client for camera fetches. Separate from
- *  AsyncBitmapCache's client so a slow camera doesn't park the
- *  album-art request queue. */
-private val cameraHttp: OkHttpClient by lazy {
-    OkHttpClient.Builder()
-        // Long-ish read timeout — some integrations (Reolink / Doorbird)
-        // generate the snapshot on demand and a sub-5 s read can clip
-        // them. The polling loop keeps things lively in spite of this.
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .build()
+/**
+ * Holder for the camera-fetch OkHttp client. Kept separate from AsyncBitmapCache's client so a
+ * slow camera doesn't park the album-art request queue, but wired to the SAME [AuthThrottle] as
+ * the rest of the app (via [init] from App.onCreate) so that:
+ *   - a stale-token 401 from `/api/camera_proxy` counts toward opening the shared breaker, and
+ *   - once the breaker is open, camera polls short-circuit locally (synthetic 503) instead of
+ *     hammering HA's failed-login counter every few seconds.
+ *
+ * Before [init] runs (or in unit/preview contexts), [client] falls back to a plain client with no
+ * breaker, so a screenshot test or a Compose preview still renders.
+ */
+object CameraHttp {
+    @Volatile private var configured: OkHttpClient? = null
+
+    /** Wire the shared breaker. [maxConcurrent] follows the user's connection setting. */
+    fun init(
+        throttle: com.github.itskenny0.r1ha.core.ha.AuthThrottle,
+        maxConcurrent: () -> Int,
+    ) {
+        if (configured != null) return
+        configured = baseBuilder()
+            .addInterceptor(
+                com.github.itskenny0.r1ha.core.ha.AuthThrottleInterceptor(
+                    throttle,
+                    dynamicMaxConcurrent = maxConcurrent,
+                ),
+            )
+            .build()
+    }
+
+    fun client(): OkHttpClient = configured ?: fallback
+
+    private fun baseBuilder(): OkHttpClient.Builder =
+        OkHttpClient.Builder()
+            // Long-ish read timeout — some integrations (Reolink / Doorbird) generate the
+            // snapshot on demand and a sub-5 s read can clip them. The polling loop keeps
+            // things lively in spite of this.
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+
+    private val fallback: OkHttpClient by lazy { baseBuilder().build() }
 }
 
 private suspend fun fetchSnapshot(
@@ -193,7 +223,7 @@ private suspend fun fetchSnapshot(
         if (!bearerToken.isNullOrBlank()) {
             builder.header("Authorization", "Bearer $bearerToken")
         }
-        cameraHttp.newCall(builder.build()).execute().use { resp ->
+        CameraHttp.client().newCall(builder.build()).execute().use { resp ->
             if (!resp.isSuccessful) return@withContext null
             val bytes = resp.body?.bytes() ?: return@withContext null
             // Two-pass decode: first measure the source dimensions with inJustDecodeBounds,

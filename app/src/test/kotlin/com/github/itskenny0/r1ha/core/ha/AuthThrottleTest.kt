@@ -99,4 +99,29 @@ class AuthThrottleTest {
         t.reset()
         assertFalse(t.shouldShortCircuit())
     }
+
+    @Test fun applyConfig_lowers_threshold_so_breaker_trips_sooner() {
+        val c = Clock(); val t = newThrottle(c) // threshold starts at 4
+        t.applyConfig(failureThreshold = 1, baseBackoffMillis = 30_000L)
+        t.recordAuthFailure() // now a single failure is enough
+        assertTrue(t.shouldShortCircuit())
+    }
+
+    @Test fun applyConfig_changes_backoff_length() {
+        val c = Clock(); val t = newThrottle(c)
+        t.applyConfig(failureThreshold = 1, baseBackoffMillis = 120_000L)
+        t.recordAuthFailure()            // open @0, backoff 120s
+        c.now = 119_000L
+        assertTrue(t.shouldShortCircuit())  // still open
+        c.now = 120_000L
+        assertFalse(t.shouldShortCircuit()) // half-open once the new, longer backoff elapses
+    }
+
+    @Test fun applyConfig_clamps_stray_zero_to_safe_floor() {
+        val c = Clock(); val t = newThrottle(c)
+        t.applyConfig(failureThreshold = 0, baseBackoffMillis = 0L)
+        // threshold floored to 1, so one failure trips; backoff floored to >=1s (not 0 = disabled).
+        t.recordAuthFailure()
+        assertTrue(t.shouldShortCircuit())
+    }
 }

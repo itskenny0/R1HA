@@ -38,8 +38,23 @@ class AppGraph(context: Context) {
 
     /** Rolling-window circuit breaker shared between the OkHttp interceptor (which feeds it
      *  REST auth outcomes) and [haRepository] (which resets it on manual retry / server
-     *  change). One instance so both sides see the same breaker state. */
+     *  change). One instance so both sides see the same breaker state. The SAME instance is
+     *  also handed to the camera and album-art clients (via [App]) so a stale-token 401 from
+     *  any of them opens the breaker for all — the gap that kept tripping strict HA bans. */
     val authThrottle: AuthThrottle by lazy { AuthThrottle() }
+
+    /**
+     * Effective connection-hardening values, recomputed by a settings collector in [App] on
+     * every [com.github.itskenny0.r1ha.core.prefs.ConnectionSettings] change. Read on the hot
+     * path by the OkHttp gate (max-concurrency supplier) and by the camera / album-art clients,
+     * so it is @Volatile rather than wrapped in a flow. Seeded with the defaults so traffic
+     * before the first settings emission is already conservatively gated.
+     */
+    @Volatile
+    var connectionTuning: com.github.itskenny0.r1ha.core.ha.ConnectionTuning =
+        com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(
+            com.github.itskenny0.r1ha.core.prefs.ConnectionSettings(),
+        )
 
     val okHttp: OkHttpClient by lazy {
         val builder = OkHttpClient.Builder()
@@ -53,8 +68,14 @@ class AppGraph(context: Context) {
             .pingInterval(30, TimeUnit.SECONDS)
         // Application interceptor: gates the REST /api/ fan-out when the refresh token is
         // permanently broken so a revoked token can't trip HA's failed-login IP ban. The
-        // WS handshake and /auth/ refresh are exempt inside the interceptor.
-        builder.addInterceptor(AuthThrottleInterceptor(authThrottle))
+        // WS handshake and /auth/ refresh are exempt inside the interceptor. The concurrency
+        // cap follows the user's connection setting at runtime via [connectionTuning].
+        builder.addInterceptor(
+            AuthThrottleInterceptor(
+                authThrottle,
+                dynamicMaxConcurrent = { connectionTuning.maxConcurrentRequests },
+            ),
+        )
         attachCertificatePinner(builder)
         attachMtlsKeystore(builder)
         builder.build()
@@ -197,6 +218,7 @@ class AppGraph(context: Context) {
             refresher = tokenRefresher,
             persister = entityCachePersister,
             authThrottle = authThrottle,
+            connectionTuning = { connectionTuning },
         )
     }
 

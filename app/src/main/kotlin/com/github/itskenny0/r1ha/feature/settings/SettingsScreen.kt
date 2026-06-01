@@ -375,6 +375,7 @@ fun SettingsScreen(
                     // ── Connection & server ───────────────────────────────
                     SettingsNode.CONNECTION -> connectionRoot(
                         s = s,
+                        vm = vm,
                         haRepository = haRepository,
                         push = push,
                         groupBadge = ::groupBadge,
@@ -544,6 +545,7 @@ private fun LazyListScope.rootCategories(
 
 private fun LazyListScope.connectionRoot(
     s: AppSettings,
+    vm: SettingsViewModel,
     haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
     push: (SettingsNode) -> Unit,
     groupBadge: (Array<out String>) -> Int,
@@ -568,6 +570,74 @@ private fun LazyListScope.connectionRoot(
             value = "${com.github.itskenny0.r1ha.BuildConfig.VERSION_NAME} (${com.github.itskenny0.r1ha.BuildConfig.VERSION_CODE})",
             mono = true,
         )
+    }
+    item { SubGroupLabel("REQUEST LIMITING") }
+    item {
+        SwitchRow(
+            label = "Strict connection mode",
+            subtitle = "Limits how many requests the app sends to Home Assistant and how hard it " +
+                "retries after an error. Turn this on if your Home Assistant bans devices after a " +
+                "few failed logins. Some surfaces (camera snapshots, dashboards, live data) update " +
+                "more slowly while this is on.",
+            checked = s.connection.strictMode,
+            onCheckedChange = { on -> vm.updateConnection { it.copy(strictMode = on) } },
+        )
+    }
+    if (s.connection.strictMode) {
+        item {
+            NumberStepperRow(
+                label = "Max simultaneous requests",
+                subtitle = "Lower means fewer failed logins can reach HA in a single burst. 1 is safest.",
+                value = s.connection.maxConcurrentRequests,
+                min = 1, max = 4, step = 1,
+                onChange = { v -> vm.updateConnection { it.copy(maxConcurrentRequests = v) } },
+            )
+        }
+        item {
+            NumberStepperRow(
+                label = "Trip after failed requests",
+                subtitle = "How many auth failures before the app stops sending requests and backs off.",
+                value = s.connection.breakerFailureThreshold,
+                min = 1, max = 5, step = 1,
+                onChange = { v -> vm.updateConnection { it.copy(breakerFailureThreshold = v) } },
+            )
+        }
+        item {
+            NumberStepperRow(
+                label = "Cooldown after tripping",
+                subtitle = "How long the app waits before testing the connection again. Grows on repeat failures.",
+                value = s.connection.breakerCooldownSec,
+                min = 5, max = 300, step = 5, suffix = " s",
+                onChange = { v -> vm.updateConnection { it.copy(breakerCooldownSec = v) } },
+            )
+        }
+        item {
+            NumberStepperRow(
+                label = "Max retries before pausing",
+                subtitle = "Sign-in recovery attempts before the app waits for a manual retry.",
+                value = s.connection.maxAuthRetries,
+                min = 1, max = 5, step = 1,
+                onChange = { v -> vm.updateConnection { it.copy(maxAuthRetries = v) } },
+            )
+        }
+        item {
+            NumberStepperRow(
+                label = "Minimum camera refresh",
+                subtitle = "Floor on camera snapshot polling. Higher means fewer camera requests. 0 keeps each camera's own setting.",
+                value = s.connection.minCameraRefreshSec,
+                min = 0, max = 120, step = 5, suffix = " s",
+                onChange = { v -> vm.updateConnection { it.copy(minCameraRefreshSec = v) } },
+            )
+        }
+        item {
+            NumberStepperRow(
+                label = "Slow background refresh",
+                subtitle = "Multiplies the auto-refresh interval of background surfaces. 2 polls half as often.",
+                value = s.connection.backgroundRefreshMultiplier,
+                min = 1, max = 6, step = 1, suffix = "×",
+                onChange = { v -> vm.updateConnection { it.copy(backgroundRefreshMultiplier = v) } },
+            )
+        }
     }
     item { SubGroupLabel("MANAGE") }
     item {

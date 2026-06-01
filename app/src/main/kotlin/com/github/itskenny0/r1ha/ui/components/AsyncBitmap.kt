@@ -204,15 +204,34 @@ internal object AsyncBitmapCache {
     @Volatile private var sharedClient: OkHttpClient? = null
 
     /** Called from App.onCreate. Wires the disk cache under the application's
-     *  cache dir; safe to call more than once (subsequent calls no-op). */
-    fun init(context: Context) {
+     *  cache dir; safe to call more than once (subsequent calls no-op).
+     *
+     *  [throttle] hooks this client into the app-wide circuit breaker so an
+     *  entity_picture under `/api/` that 401s on a stale token both trips the
+     *  breaker and gets short-circuited while it's open, instead of silently
+     *  contributing to HA's failed-login IP ban. [maxConcurrent] follows the
+     *  user's connection setting. Both are optional so the test/preview
+     *  fallback path (no throttle) still builds a working client. */
+    fun init(
+        context: Context,
+        throttle: com.github.itskenny0.r1ha.core.ha.AuthThrottle? = null,
+        maxConcurrent: () -> Int = { 1 },
+    ) {
         if (sharedClient != null) return
         synchronized(this) {
             if (sharedClient != null) return
             val cacheDir = File(context.cacheDir, "r1ha-images")
-            sharedClient = OkHttpClient.Builder()
+            val builder = OkHttpClient.Builder()
                 .cache(Cache(cacheDir, DISK_CACHE_BYTES))
-                .build()
+            if (throttle != null) {
+                builder.addInterceptor(
+                    com.github.itskenny0.r1ha.core.ha.AuthThrottleInterceptor(
+                        throttle,
+                        dynamicMaxConcurrent = maxConcurrent,
+                    ),
+                )
+            }
+            sharedClient = builder.build()
         }
     }
 

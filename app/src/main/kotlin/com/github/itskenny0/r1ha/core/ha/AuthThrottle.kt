@@ -18,15 +18,17 @@ package com.github.itskenny0.r1ha.core.ha
  * [clock] is injectable so tests drive time deterministically.
  */
 class AuthThrottle(
-    private val windowMillis: Long = 60_000L,
-    // Open after just a couple of 401s. Healthy auth produces ~0 sustained 401s (the token
-    // is refreshed proactively and any success clears the window), so a low threshold rarely
-    // false-trips, while a strict HA that bans after a handful of failed logins needs the
-    // breaker to engage before that handful accumulates.
-    private val failureThreshold: Int = 2,
+    windowMillis: Long = 60_000L,
+    // Open after the very first 401 by default. Healthy auth produces ~0 sustained 401s (the
+    // token is refreshed proactively and any success clears the window), so a threshold of 1
+    // rarely false-trips, while a strict HA that bans after a handful of failed logins needs
+    // the breaker to engage before that handful accumulates — and once the camera/image
+    // clients also feed this breaker, the first stale-token 401 from any of them is the right
+    // moment to short-circuit the rest of the burst.
+    failureThreshold: Int = 1,
     // Short first backoff so a transient blip recovers quickly via the half-open probe; the
     // exponential growth still pulls genuinely-broken auth out to long, sparse retries.
-    private val baseBackoffMillis: Long = 15_000L,
+    baseBackoffMillis: Long = 15_000L,
     private val maxBackoffMillis: Long = 900_000L,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -37,6 +39,30 @@ class AuthThrottle(
     private var state = State.CLOSED
     private var openUntil = 0L
     private var consecutiveOpens = 0
+
+    // Live-tunable breaker parameters. Held as volatile vars (seeded from the constructor) so
+    // a settings change — e.g. the user toggling strict connection mode — re-tunes the breaker
+    // in place without rebuilding the OkHttp client. Mutated only under [lock] via [applyConfig];
+    // read under [lock] in the decision paths below.
+    @Volatile private var windowMillis: Long = windowMillis
+    @Volatile private var failureThreshold: Int = failureThreshold
+    @Volatile private var baseBackoffMillis: Long = baseBackoffMillis
+
+    /**
+     * Re-tune the breaker thresholds at runtime. Values are clamped to sane floors so a stray 0
+     * can't disable the breaker. Does not retroactively shorten an already-open backoff: the new
+     * values take effect from the next [recordAuthFailure] / [reopen]. Idempotent and cheap, so
+     * a settings collector can call it on every emission.
+     */
+    fun applyConfig(
+        failureThreshold: Int,
+        baseBackoffMillis: Long,
+        windowMillis: Long = this.windowMillis,
+    ) = synchronized(lock) {
+        this.failureThreshold = failureThreshold.coerceAtLeast(1)
+        this.baseBackoffMillis = baseBackoffMillis.coerceAtLeast(1_000L)
+        this.windowMillis = windowMillis.coerceAtLeast(1_000L)
+    }
 
     /** Returns true when the caller should fail fast without hitting the network.
      *  Has the side effect of admitting a single half-open probe when the backoff

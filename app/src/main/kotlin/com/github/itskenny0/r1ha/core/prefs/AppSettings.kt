@@ -428,6 +428,78 @@ data class NavPanelSettings(
 )
 
 /**
+ * Connection-hardening preferences surfaced under Settings → Connection & server. These tune the
+ * shared REST circuit breaker ([com.github.itskenny0.r1ha.core.ha.AuthThrottle]) and the polling
+ * cadence so a strict Home Assistant install — one that IP-bans a device after a handful of failed
+ * logins — doesn't get tripped when the app's session goes bad and every polling surface fires a
+ * burst of 401s at once.
+ *
+ * Two tiers:
+ *  - The breaker dials ([maxConcurrentRequests], [breakerFailureThreshold], [breakerCooldownSec],
+ *    [maxAuthRetries]) apply on EVERY install. Their defaults are deliberately conservative (one
+ *    request at a time, trip on the first 401) so a normal user is protected from the ban path
+ *    without touching anything, while staying configurable for anyone who wants snappier fan-out.
+ *  - The slowdown dials ([minCameraRefreshSec], [backgroundRefreshMultiplier]) only take effect
+ *    when [strictMode] is on, because they trade freshness for fewer requests and most users
+ *    shouldn't pay that cost unprovoked.
+ *
+ * See [com.github.itskenny0.r1ha.core.ha.ConnectionTuning] for the pure mapping from this struct
+ * to the effective runtime values (which gates the slowdown dials behind [strictMode]).
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class ConnectionSettings(
+    /**
+     * Master opt-in for strict connection mode. Off by default. When on, the Settings UI reveals
+     * the full set of limiting dials and the two slowdown dials below begin to apply. The breaker
+     * dials apply regardless of this flag — strict mode is about the extra, freshness-costing
+     * limits, not about whether the breaker protects you.
+     */
+    val strictMode: Boolean = false,
+    /**
+     * Max gated REST/camera/image requests allowed in flight at once, per client. Lower means
+     * fewer 401s can escape in a single burst before the breaker opens. Default 1 (one at a time)
+     * is the safest setting and the reason a strict install stops getting banned; raise toward 4
+     * for a snappier dashboard fan-out on a lax HA. Coerced to 1..8 by the tuning mapper.
+     */
+    val maxConcurrentRequests: Int = 1,
+    /**
+     * Number of auth failures (HTTP 401) inside the rolling window that trips the breaker.
+     * Default 1 so the very first stale-token 401 short-circuits the rest of the burst. Raise to
+     * tolerate a transient blip before the breaker engages. Coerced to 1..10.
+     */
+    val breakerFailureThreshold: Int = 1,
+    /**
+     * How long (seconds) the breaker stays open before admitting a single recovery probe. Grows
+     * exponentially per consecutive reopen, so this is the FIRST cooldown, not the only one.
+     * Default 15 s recovers a transient blip quickly; strict installs may prefer longer so a
+     * genuinely-broken session reprobes less often. Coerced to 5..900.
+     */
+    val breakerCooldownSec: Int = 60,
+    /**
+     * Max consecutive auth-recovery attempts (token refresh + reconnect) before the app pauses
+     * auto-retry and waits for a manual retry. Each attempt POSTs to `/auth/token`, which a strict
+     * HA also counts, so capping this bounds the recovery-path request count too. Default 3;
+     * strict installs may prefer 1-2. Coerced to 1..10. Only applied when [strictMode] is on
+     * (a normal install keeps the repository's built-in cap).
+     */
+    val maxAuthRetries: Int = 2,
+    /**
+     * Floor (seconds) applied to every camera snapshot poll interval. The camera's own configured
+     * cadence still wins when it is already slower than this. 0 disables the floor. Only applied
+     * when [strictMode] is on — this is a freshness-for-requests trade. Default 20 s when strict.
+     * Coerced to 0..120.
+     */
+    val minCameraRefreshSec: Int = 20,
+    /**
+     * Multiplier applied to background polling cadences — the WS-silent REST heartbeat and the
+     * per-surface integration auto-refresh intervals. 1 = unchanged. Only applied when [strictMode]
+     * is on. Default 2 (poll half as often) when strict. Coerced to 1..6.
+     */
+    val backgroundRefreshMultiplier: Int = 2,
+)
+
+/**
  * Per-surface refresh intervals + integration tweaks. Each value is
  * the auto-refresh period in seconds; 0 disables auto-refresh on
  * that surface entirely.
@@ -939,6 +1011,8 @@ data class AppSettings(
     val navPanel: NavPanelSettings = NavPanelSettings(),
     /** Per-surface refresh intervals + integration tuning. */
     val integrations: IntegrationsSettings = IntegrationsSettings(),
+    /** Circuit-breaker + polling-cadence hardening so a strict HA doesn't IP-ban the device. */
+    val connection: ConnectionSettings = ConnectionSettings(),
     /**
      * User-configurable hardware-key bindings. Keys are
      * [com.github.itskenny0.r1ha.core.input.KeyAction] enum names (string form so an

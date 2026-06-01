@@ -81,7 +81,17 @@ class App : Application() {
         // Wire the album-art cache to the app's cache dir so HA media_player
         // entity_pictures persist across launches. Disk hit ≈ 0 ms vs the ~300
         // ms LAN round-trip every fresh fetch costs on the R1's slow stack.
-        com.github.itskenny0.r1ha.ui.components.AsyncBitmapCache.init(this)
+        // Pass the shared circuit breaker so entity_picture 401s on a stale token
+        // feed and respect the same breaker as the REST tabs.
+        com.github.itskenny0.r1ha.ui.components.AsyncBitmapCache.init(
+            this,
+            graph.authThrottle,
+        ) { graph.connectionTuning.maxConcurrentRequests }
+        // Same for the camera snapshot client: hook it into the shared breaker so a
+        // /api/camera_proxy poll loop on a bad session can't quietly trip an IP ban.
+        com.github.itskenny0.r1ha.ui.components.CameraHttp.init(
+            graph.authThrottle,
+        ) { graph.connectionTuning.maxConcurrentRequests }
         // Debug-only ANR watchdog: posts a sentinel to the main looper every 5 s
         // and a paired check-completion ping; if the ping doesn't fire within the
         // ANR threshold the main thread's current stack trace is logged. Cheap
@@ -188,6 +198,24 @@ class App : Application() {
                     }
                     graph.latestBindings =
                         com.github.itskenny0.r1ha.core.input.KeyBindings(resolved)
+                }
+        }
+        // Connection-hardening: recompute the effective breaker / polling tuning on every
+        // ConnectionSettings change and push it into the shared breaker + the volatile the
+        // OkHttp gate and the camera/image clients read. Distinct on the struct so unrelated
+        // settings emissions don't re-tune. Applied immediately so a strict-mode toggle takes
+        // effect without an app restart.
+        appScope.launch {
+            graph.settings.settings
+                .map { it.connection }
+                .distinctUntilChanged()
+                .collect { c ->
+                    val tuning = com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(c)
+                    graph.connectionTuning = tuning
+                    graph.authThrottle.applyConfig(
+                        failureThreshold = tuning.breakerFailureThreshold,
+                        baseBackoffMillis = tuning.breakerCooldownMillis,
+                    )
                 }
         }
         // Honour the background-refresh advanced toggle: schedule or cancel the periodic

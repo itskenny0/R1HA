@@ -2,10 +2,20 @@ package com.github.itskenny0.r1ha.ui.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+
+/**
+ * Strict-connection-mode multiplier applied to every [AutoRefresh] cadence. 1 (the default,
+ * provided when strict mode is off) leaves every surface polling at its configured interval;
+ * a higher value makes the Dashboard / Notifications / Logbook / Weather / Persons / Calendars
+ * surfaces poll proportionally less often, cutting background request volume against a strict HA.
+ * Provided once high in the tree (MainActivity) from the user's ConnectionSettings.
+ */
+val LocalBackgroundRefreshMultiplier = staticCompositionLocalOf { 1 }
 
 /**
  * Re-runs [block] on entry and then every [everyMillis] for as long
@@ -26,11 +36,15 @@ import kotlinx.coroutines.delay
 @Composable
 fun AutoRefresh(everyMillis: Long, block: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    LaunchedEffect(everyMillis, lifecycleOwner) {
+    // Stretch the cadence by the strict-mode multiplier. Keyed below so flipping strict mode
+    // re-arms the loop at the new interval rather than waiting out the current delay.
+    val multiplier = LocalBackgroundRefreshMultiplier.current.coerceAtLeast(1)
+    val effectiveMillis = everyMillis * multiplier
+    LaunchedEffect(effectiveMillis, lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 block()
-                delay(everyMillis)
+                delay(effectiveMillis)
             }
         }
     }
