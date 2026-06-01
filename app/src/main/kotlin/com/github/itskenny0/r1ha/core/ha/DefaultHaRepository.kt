@@ -367,6 +367,12 @@ class DefaultHaRepository(
      * accidentally read a developer's snapshot from /tmp.
      */
     private val persister: EntityStateCachePersister? = null,
+    /**
+     * Optional REST auth-failure circuit breaker, shared with the OkHttp interceptor.
+     * Reset here on manual retry and server change so the user gets immediate relief
+     * instead of waiting for the half-open backoff to elapse. Null in tests.
+     */
+    private val authThrottle: AuthThrottle? = null,
 ) : HaRepository {
 
     override val connection: StateFlow<ConnectionState> = ws.state
@@ -808,6 +814,9 @@ class DefaultHaRepository(
                     // inheriting accumulated failures from the previous server.
                     reconnectAttempt = 0
                     authLostRefreshAttempt = 0
+                    // A different server (or a re-onboard to the same one) invalidates the
+                    // breaker's accumulated 401s: the new credentials deserve a clean start.
+                    authThrottle?.reset()
                     if (url == null) {
                         // Drop any cached entity states from the previous server so the next
                         // sign-in starts fresh: otherwise stale data from server A could be
@@ -965,6 +974,9 @@ class DefaultHaRepository(
     }
 
     override fun reconnectNow() {
+        // The user explicitly asked to retry: drop the auth breaker so REST traffic flows
+        // again immediately rather than waiting out the open backoff.
+        authThrottle?.reset()
         val current = ws.state.value
         // Only honour the request when there's nothing useful in flight already — re-entering
         // a Connecting state would just thrash the WS client.

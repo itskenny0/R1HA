@@ -196,6 +196,7 @@ class AppGraph(context: Context) {
             tokens = tokens,
             refresher = tokenRefresher,
             persister = entityCachePersister,
+            authThrottle = authThrottle,
         )
     }
 
