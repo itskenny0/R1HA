@@ -88,6 +88,9 @@ data class AppBackup(
 
     val advanced: AdvancedSettings = AdvancedSettings(),
     val dashboard: DashboardSettings = DashboardSettings(),
+    /** Side navigation panel enable + per-item visibility. Older backup files
+     *  without this field decode as the default (panel on, nothing hidden). */
+    val navPanel: NavPanelSettings = NavPanelSettings(),
     val integrations: IntegrationsSettings = IntegrationsSettings(),
 
     val pages: List<FavoritePage> = emptyList(),
@@ -157,6 +160,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     behaviorToastLogLevel = behavior.toastLogLevel,
     advanced = advanced,
     dashboard = dashboard,
+    navPanel = navPanel,
     integrations = integrations,
     pages = pages,
     activePageId = activePageId,
@@ -233,6 +237,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         ),
         advanced = advanced,
         dashboard = dashboard,
+        navPanel = navPanel,
         integrations = integrations,
         pages = effectivePages,
         activePageId = activeId,
