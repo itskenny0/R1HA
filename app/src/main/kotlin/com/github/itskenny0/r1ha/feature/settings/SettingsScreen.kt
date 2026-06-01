@@ -789,9 +789,9 @@ private fun LazyListScope.appearanceNavPanel(
     item {
         SwitchRow(
             label = "Show Today",
-            subtitle = "The Today dashboard. Off removes it from the panel and stops it loading.",
+            subtitle = "The Today dashboard. Off removes it from the panel and stops it loading " +
+                "(no background polling). Available even when the panel is off.",
             checked = com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY !in nav.hiddenNavItems,
-            enabled = nav.sidePanelEnabled,
             onCheckedChange = { v ->
                 vm.updateNavPanel {
                     it.copy(hiddenNavItems = it.hiddenNavItems.toggleHidden(com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY, hidden = !v))
