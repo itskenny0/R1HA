@@ -33,6 +33,7 @@ enum class SettingsNode(
     // ── Appearance ────────────────────────────────────────────────────────
     APPEARANCE(ROOT, "Appearance"),
     APPEARANCE_THEME(APPEARANCE, "Theme"),
+    APPEARANCE_NAVPANEL(APPEARANCE, "Navigation panel"),
     APPEARANCE_CARDS(APPEARANCE, "Cards"),
     APPEARANCE_CARDS_VALUEBAR(APPEARANCE_CARDS, "Value bar & pip"),
     APPEARANCE_CARDS_CHROME(APPEARANCE_CARDS, "Chrome buttons"),

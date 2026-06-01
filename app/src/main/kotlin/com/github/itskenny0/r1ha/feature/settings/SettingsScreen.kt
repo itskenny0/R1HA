@@ -402,6 +402,7 @@ fun SettingsScreen(
                         groupBadge = ::groupBadge,
                     )
                     SettingsNode.APPEARANCE_THEME -> appearanceTheme(s = s, vm = vm, onOpenThemePicker = onOpenThemePicker)
+                    SettingsNode.APPEARANCE_NAVPANEL -> appearanceNavPanel(s = s, vm = vm)
                     SettingsNode.APPEARANCE_CARDS -> appearanceCards(s = s, vm = vm, push = push)
                     SettingsNode.APPEARANCE_CARDS_VALUEBAR -> appearanceValueBar(s = s, vm = vm)
                     SettingsNode.APPEARANCE_CARDS_CHROME -> appearanceChrome(s = s, vm = vm)
@@ -745,6 +746,14 @@ private fun LazyListScope.appearanceRoot(
     }
     item {
         CategorySubRow(
+            node = SettingsNode.APPEARANCE_NAVPANEL,
+            summary = navPanelSummary(s.navPanel),
+            badge = groupBadge(arrayOf("APPEARANCE")),
+            onClick = { push(SettingsNode.APPEARANCE_NAVPANEL) },
+        )
+    }
+    item {
+        CategorySubRow(
             node = SettingsNode.APPEARANCE_CARDS,
             summary = "Display mode: ${prettyEnumName(s.ui.displayMode.name)}",
             badge = groupBadge(arrayOf("CARD UI")),
@@ -752,6 +761,73 @@ private fun LazyListScope.appearanceRoot(
         )
     }
 }
+
+/** One-line summary of the nav-panel settings for the Appearance sub-row. */
+private fun navPanelSummary(navPanel: com.github.itskenny0.r1ha.core.prefs.NavPanelSettings): String =
+    if (!navPanel.sidePanelEnabled) {
+        "Off"
+    } else {
+        val hidden = navPanel.hiddenNavItems.count { it in com.github.itskenny0.r1ha.core.prefs.NavItemId.HIDEABLE }
+        if (hidden == 0) "On" else "On · $hidden hidden"
+    }
+
+private fun LazyListScope.appearanceNavPanel(
+    s: AppSettings,
+    vm: SettingsViewModel,
+) {
+    val nav = s.navPanel
+    item {
+        SwitchRow(
+            label = "Show side navigation panel",
+            subtitle = "The rail / drawer on tablets and large screens. Off reverts large " +
+                "screens to the card-stack layout (Settings stays on the chrome gear).",
+            checked = nav.sidePanelEnabled,
+            onCheckedChange = { v -> vm.updateNavPanel { it.copy(sidePanelEnabled = v) } },
+        )
+    }
+    item { SubGroupLabel("VISIBLE ITEMS") }
+    item {
+        SwitchRow(
+            label = "Show Today",
+            subtitle = "The Today dashboard. Off removes it from the panel and stops it loading.",
+            checked = com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY !in nav.hiddenNavItems,
+            enabled = nav.sidePanelEnabled,
+            onCheckedChange = { v ->
+                vm.updateNavPanel {
+                    it.copy(hiddenNavItems = it.hiddenNavItems.toggleHidden(com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY, hidden = !v))
+                }
+            },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show Search",
+            checked = com.github.itskenny0.r1ha.core.prefs.NavItemId.SEARCH !in nav.hiddenNavItems,
+            enabled = nav.sidePanelEnabled,
+            onCheckedChange = { v ->
+                vm.updateNavPanel {
+                    it.copy(hiddenNavItems = it.hiddenNavItems.toggleHidden(com.github.itskenny0.r1ha.core.prefs.NavItemId.SEARCH, hidden = !v))
+                }
+            },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show Assist",
+            checked = com.github.itskenny0.r1ha.core.prefs.NavItemId.ASSIST !in nav.hiddenNavItems,
+            enabled = nav.sidePanelEnabled,
+            onCheckedChange = { v ->
+                vm.updateNavPanel {
+                    it.copy(hiddenNavItems = it.hiddenNavItems.toggleHidden(com.github.itskenny0.r1ha.core.prefs.NavItemId.ASSIST, hidden = !v))
+                }
+            },
+        )
+    }
+}
+
+/** Returns a copy of the set with [id] added when [hidden], removed otherwise. */
+private fun Set<String>.toggleHidden(id: String, hidden: Boolean): Set<String> =
+    if (hidden) this + id else this - id
 
 private fun LazyListScope.appearanceTheme(
     s: AppSettings,
@@ -2082,13 +2158,15 @@ private fun SwitchRow(
     label: String,
     subtitle: String? = null,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     R1Row(
         label = label,
         description = subtitle,
+        enabled = enabled,
         onClick = { onCheckedChange(!checked) },
-        trailing = { R1Switch(checked = checked, onCheckedChange = onCheckedChange) },
+        trailing = { R1Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange) },
     )
 }
 
