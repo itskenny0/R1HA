@@ -670,14 +670,19 @@ fun CardStackScreen(
                 // Threaded into every PageDeck so the active deck and its
                 // peek-composed neighbours all agree on the layout. effectivePeek
                 // is a pure function (unit-tested) so this call site stays a thin
-                // read of three already-available inputs.
+                // read of already-available inputs.
                 val windowTier = LocalWindowTier.current.tier
                 val isPortrait = androidx.compose.ui.platform.LocalConfiguration.current
                     .orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+                // Raw window pixels (density- and ROM-independent) gate the R1 out of AUTO
+                // peek: its 240 px panel can report a COMPACT-range width in dp, but never
+                // clears the pixel floor. See PEEK_MIN_SHORTEST_SIDE_PX.
+                val windowPx = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
                 val peekDeck = effectivePeek(
                     mode = appSettings.ui.cardPeekMode,
                     tier = windowTier,
                     isPortrait = isPortrait,
+                    shortestSidePx = minOf(windowPx.width, windowPx.height),
                 )
                 val pageIds = androidx.compose.runtime.remember(state.pages) {
                     state.pages.map { it.id }
@@ -1534,6 +1539,10 @@ private fun PageDeck(
         if (cards.isEmpty()) 0
         else ((page % cards.size) + cards.size) % cards.size
     }
+    // Whether THIS deck actually renders the peek layout: the resolved peek decision plus a
+    // neighbour to peek (a lone card renders full-bleed). Computed once here so the layout,
+    // the peek-neighbour gate, and the re-settle guard below all agree.
+    val peek = peekActiveForDeck(peekDeck, cards.size)
     // Report the settled card index up to the VM, scoped to this page. Active page
     // writes through setCurrentIndex (which also updates the legacy currentIndex
     // field); inactive pages write through setIndexForPage so background scroll is
@@ -1562,6 +1571,27 @@ private fun PageDeck(
         snapshotFlow { pagerState.isScrollInProgress }
             .distinctUntilChanged()
             .collect { onActivePagerAnimatingChange(it) }
+    }
+    // Re-settle guard. The vertical pager can come to rest at a fractional offset — a card
+    // left visibly half-scrolled between two neighbours — when its page is restored or becomes
+    // active mid-transition (switching tabs, or returning to the card view after navigating
+    // away). Compose does not re-snap a restored / interrupted fractional offset on its own,
+    // so when this deck is the active one, has stopped scrolling, and is not aligned to a
+    // page, snap it to the nearest card. This also backstops the fling: should one ever end
+    // between cards, it is pulled onto the nearest. Skipped in peek mode, where the first /
+    // last card legitimately rest at a non-zero offset fraction (Center clamps them flush to
+    // the band edge) so zeroing it would fight the layout and loop. Re-keyed on isActive so a
+    // tab switch re-checks the deck it lands on.
+    LaunchedEffect(pagerState, isActive, peek) {
+        if (!isActive || peek) return@LaunchedEffect
+        snapshotFlow { pagerState.isScrollInProgress }
+            .collect { scrolling ->
+                if (!scrolling &&
+                    kotlin.math.abs(pagerState.currentPageOffsetFraction) > 0.01f
+                ) {
+                    pagerState.scrollToPage(pagerState.currentPage)
+                }
+            }
     }
     // Wheel-as-navigation, fired from CardStackScreen when the active card is read-only.
     // animateScrollToPage so the transition is the same gentle spring the user gets when
@@ -1663,19 +1693,25 @@ private fun PageDeck(
         // can never scroll its last card to the top snap, so the second card never
         // settled and could never be activated; Center makes every index the
         // nearest-snap page at some reachable scroll offset.
-        val peek = peekActiveForDeck(peekDeck, cards.size)
         val deckPageSize = if (peek) FractionPageSize(PEEK_PAGE_FRACTION) else PageSize.Fill
         val deckPageSpacing = if (peek) 8.dp else 0.dp
-        // Velocity: the pager's default fling caps at one page no matter how hard the
-        // flick. atMost(N) lets the spline decay carry a fast flick through up to N cards
-        // before snapping, giving the deck momentum. Full-viewport mode keeps the
-        // one-page default. Programmatic moves (wheel / hardware keys / jump-to-card /
-        // tap-to-navigate) all go through animateScrollToPage, which bypasses the fling
-        // behaviour, so a single detent or tap still advances exactly one card / to its
-        // target.
+        // Velocity fling. One motion carries the deck through as many cards as the flick's
+        // velocity projects, up to the whole stack: atMost(cards.size - 1) lets a hard flick
+        // reach any card from any card, while the pager's own bounds stop it past the ends.
+        // (The default caps every fling at a single page regardless of velocity.) The snap
+        // uses a crisp, critically-damped spring (StiffnessMedium, no bounce): a critically
+        // damped spring approaches its target monotonically, so the fling always settles
+        // decisively ONTO a card and never overshoots or rests between two, on a 60 Hz budget
+        // phone as cleanly as a 120 Hz flagship. Programmatic moves (wheel / hardware keys /
+        // jump-to-card / tap-to-navigate) go through animateScrollToPage, which bypasses the
+        // fling behaviour, so a detent or tap still advances exactly one card / to its target.
         val deckFling = PagerDefaults.flingBehavior(
             state = pagerState,
-            pagerSnapDistance = PagerSnapDistance.atMost(if (peek) PEEK_FLING_MAX_PAGES else 1),
+            pagerSnapDistance = PagerSnapDistance.atMost(maxOf(1, cards.size - 1)),
+            snapAnimationSpec = androidx.compose.animation.core.spring<Float>(
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessMedium,
+            ),
         )
         VerticalPager(
             state = pagerState,
@@ -2036,13 +2072,6 @@ private const val STALLED_AFTER_MS = 10_000L
  *  page spacing so the two peek slices read as distinct cards rather than a continuous
  *  strip. */
 private const val PEEK_PAGE_FRACTION = 0.62f
-
-/** How many cards a single hard flick may carry the peek deck through. The pager's
- *  default fling caps at one page regardless of velocity; this lets the spline decay
- *  project a fast flick a few cards before snapping so the deck has momentum. Kept small
- *  so a flick on the narrow panel still lands predictably rather than rocketing across
- *  the whole deck. */
-private const val PEEK_FLING_MAX_PAGES = 3
 
 /** Virtual page count used by the pager when infinite-scroll is enabled. Big enough
  *  that even an entire afternoon of aggressive swiping doesn't run out of pages (200 k

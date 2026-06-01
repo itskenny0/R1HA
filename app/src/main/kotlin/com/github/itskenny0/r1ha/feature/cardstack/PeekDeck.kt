@@ -13,21 +13,31 @@ import kotlin.math.roundToInt
  *
  * Semantics, by [mode]:
  *
- *  - [CardPeekMode.AUTO]   — peek only on a phone-width tier in portrait. The phone
- *    tiers are [WindowTier.COMPACT] and [WindowTier.MEDIUM]; the R1 / sub-compact
- *    tier ([WindowTier.R1]) and the tablet / desktop tiers ([WindowTier.EXPANDED],
- *    [WindowTier.EXTRA_LARGE]) stay full-viewport, as does any landscape orientation.
+ *  - [CardPeekMode.AUTO]   — peek only on a phone-width tier in portrait whose panel is
+ *    also physically large enough: at least [PEEK_MIN_SHORTEST_SIDE_PX] raw pixels on its
+ *    shortest side. The phone tiers are [WindowTier.COMPACT] and [WindowTier.MEDIUM]; the
+ *    R1 / sub-compact tier ([WindowTier.R1]) and the tablet / desktop tiers
+ *    ([WindowTier.EXPANDED], [WindowTier.EXTRA_LARGE]) stay full-viewport, as does any
+ *    landscape orientation. The raw-pixel floor is what actually keeps the R1 out: its
+ *    240 px panel can report a COMPACT-range width in dp on some ROMs (its density is low
+ *    and ROM-dependent), but its pixel count is fixed and far below any real phone's.
  *  - [CardPeekMode.ALWAYS] — peek on every device and orientation (the opt-in path
- *    for R1 / small-phone users).
+ *    for R1 / small-phone users); ignores the raw-pixel floor.
  *  - [CardPeekMode.NEVER]  — full-viewport everywhere.
  *
- * Kept pure (no Compose, no Android) so it can be unit-tested directly and so the
- * caller reads it once per composition from the resolved tier + orientation.
+ * Kept pure (no Compose, no Android) so it can be unit-tested directly and so the caller
+ * reads it once per composition from the resolved tier + orientation + window pixel size.
  */
-fun effectivePeek(mode: CardPeekMode, tier: WindowTier, isPortrait: Boolean): Boolean = when (mode) {
+fun effectivePeek(
+    mode: CardPeekMode,
+    tier: WindowTier,
+    isPortrait: Boolean,
+    shortestSidePx: Int,
+): Boolean = when (mode) {
     CardPeekMode.NEVER -> false
     CardPeekMode.ALWAYS -> true
-    CardPeekMode.AUTO -> isPortrait && isPhonePeekTier(tier)
+    CardPeekMode.AUTO ->
+        isPortrait && isPhonePeekTier(tier) && shortestSidePx >= PEEK_MIN_SHORTEST_SIDE_PX
 }
 
 /**
@@ -39,6 +49,18 @@ fun effectivePeek(mode: CardPeekMode, tier: WindowTier, isPortrait: Boolean): Bo
  */
 private fun isPhonePeekTier(tier: WindowTier): Boolean =
     tier == WindowTier.COMPACT || tier == WindowTier.MEDIUM
+
+/**
+ * The minimum shortest-side size, in RAW pixels, an AUTO deck needs before it peeks.
+ *
+ * The Rabbit R1's 240 px panel can report a portrait width of 360 dp or more (its density is
+ * low and ROM-dependent), which lands it in the COMPACT tier and would otherwise enable peek
+ * under AUTO despite there being no room for it. Raw pixels are density- and ROM-independent:
+ * no ordinary phone has a shortest side below ~720 px and the R1's is 240 px, so a 600 px
+ * floor cleanly excludes the R1 (and any genuinely sub-compact panel) while admitting every
+ * real phone. ALWAYS bypasses this for users who explicitly want peek on a small panel.
+ */
+const val PEEK_MIN_SHORTEST_SIDE_PX = 600
 
 /**
  * Whether the peek layout should actually render for a deck of [cardCount] cards once the

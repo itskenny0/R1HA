@@ -17,39 +17,55 @@ class PeekDeckTest {
 
     @Test
     fun auto_phonePortrait_peeks() {
-        assertTrue(effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = true))
+        assertTrue(effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = true, shortestSidePx = PHONE_PX))
         // MEDIUM (large landscape phones / small tablets) also counts as a phone tier
         // for peek when it happens to be in portrait.
-        assertTrue(effectivePeek(CardPeekMode.AUTO, WindowTier.MEDIUM, isPortrait = true))
+        assertTrue(effectivePeek(CardPeekMode.AUTO, WindowTier.MEDIUM, isPortrait = true, shortestSidePx = PHONE_PX))
     }
 
     @Test
     fun auto_r1_doesNotPeek() {
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.R1, isPortrait = true))
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.R1, isPortrait = false))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.R1, isPortrait = true, shortestSidePx = R1_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.R1, isPortrait = false, shortestSidePx = R1_PX))
+    }
+
+    @Test
+    fun auto_tinyPanel_doesNotPeek_evenWhenTierLooksLikeAPhone() {
+        // The Rabbit R1's 240 px panel can report a COMPACT/MEDIUM-range width in dp on some
+        // ROMs; the raw-pixel floor is what actually keeps it full-viewport under AUTO.
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = true, shortestSidePx = R1_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.MEDIUM, isPortrait = true, shortestSidePx = R1_PX))
+        // Boundary: just under the floor stays off; at the floor (phone tier, portrait) peeks.
+        assertFalse(
+            effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = true, shortestSidePx = PEEK_MIN_SHORTEST_SIDE_PX - 1),
+        )
+        assertTrue(
+            effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = true, shortestSidePx = PEEK_MIN_SHORTEST_SIDE_PX),
+        )
     }
 
     @Test
     fun auto_landscape_doesNotPeek() {
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = false))
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.MEDIUM, isPortrait = false))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.COMPACT, isPortrait = false, shortestSidePx = PHONE_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.MEDIUM, isPortrait = false, shortestSidePx = PHONE_PX))
     }
 
     @Test
     fun auto_tablet_doesNotPeek() {
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXPANDED, isPortrait = true))
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXTRA_LARGE, isPortrait = true))
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXPANDED, isPortrait = false))
-        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXTRA_LARGE, isPortrait = false))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXPANDED, isPortrait = true, shortestSidePx = TABLET_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXTRA_LARGE, isPortrait = true, shortestSidePx = TABLET_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXPANDED, isPortrait = false, shortestSidePx = TABLET_PX))
+        assertFalse(effectivePeek(CardPeekMode.AUTO, WindowTier.EXTRA_LARGE, isPortrait = false, shortestSidePx = TABLET_PX))
     }
 
     @Test
-    fun always_peeksEverywhere() {
+    fun always_peeksEverywhere_evenOnATinyPanel() {
+        // ALWAYS bypasses both the tier gate and the raw-pixel floor (the explicit opt-in).
         for (tier in WindowTier.entries) {
             for (portrait in listOf(true, false)) {
                 assertTrue(
                     "ALWAYS should peek on $tier portrait=$portrait",
-                    effectivePeek(CardPeekMode.ALWAYS, tier, portrait),
+                    effectivePeek(CardPeekMode.ALWAYS, tier, portrait, shortestSidePx = R1_PX),
                 )
             }
         }
@@ -61,7 +77,7 @@ class PeekDeckTest {
             for (portrait in listOf(true, false)) {
                 assertFalse(
                     "NEVER should never peek on $tier portrait=$portrait",
-                    effectivePeek(CardPeekMode.NEVER, tier, portrait),
+                    effectivePeek(CardPeekMode.NEVER, tier, portrait, shortestSidePx = PHONE_PX),
                 )
             }
         }
@@ -216,6 +232,15 @@ class PeekDeckTest {
     }
 
     private companion object {
+        /** A representative phone's shortest side in raw px (well above the peek floor). */
+        const val PHONE_PX = 1080
+
+        /** The Rabbit R1's panel width in raw px (well below the peek floor). */
+        const val R1_PX = 240
+
+        /** A representative tablet's shortest side in raw px. */
+        const val TABLET_PX = 2000
+
         /** Mirrors PEEK_PAGE_FRACTION in CardStackScreen.kt. */
         const val PEEK_FRACTION = 0.62f
 
