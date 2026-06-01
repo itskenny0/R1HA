@@ -80,6 +80,26 @@ class AuthThrottleInterceptorTest {
         assertEquals(5, hits[0]) // never short-circuited
     }
 
+    @Test fun short_circuit_response_is_not_fed_back_into_breaker() {
+        val c = Clock()
+        val t = AuthThrottle(failureThreshold = 1, baseBackoffMillis = 1_000L, clock = c::millis)
+        t.recordAuthFailure() // open at now=0, backoff 1000 -> openUntil 1000
+        val itc = AuthThrottleInterceptor(t)
+        val hits = intArrayOf(0)
+        // Repeated short-circuited calls within the backoff window must neither close the
+        // breaker (would return 200 early) nor push its backoff out.
+        repeat(5) {
+            assertEquals(503, itc.intercept(FakeChain(req("/api/states"), 200, hits)).code)
+        }
+        assertEquals(0, hits[0]) // none reached the network
+        // Exactly at the original openUntil the half-open probe is admitted, proving the
+        // short-circuited 503s were not recorded as failures (which would extend backoff)
+        // nor as successes (which would have closed it sooner).
+        c.now = 1_000L
+        assertEquals(200, itc.intercept(FakeChain(req("/api/states"), 200, hits)).code)
+        assertEquals(1, hits[0])
+    }
+
     @Test fun websocket_path_exempt() {
         val c = Clock()
         val t = AuthThrottle(failureThreshold = 1, clock = c::millis)

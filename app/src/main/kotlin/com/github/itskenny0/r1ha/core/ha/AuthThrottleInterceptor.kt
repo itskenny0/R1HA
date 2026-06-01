@@ -14,6 +14,11 @@ import okhttp3.ResponseBody.Companion.toResponseBody
  *
  * A short-circuited request returns a synthetic 503 without touching the network, so HA
  * never sees the request and logs no failed login.
+ *
+ * The gate matches HA served at the URL root (paths begin with `/api/`). Behind a
+ * reverse proxy that mounts HA under a subpath (e.g. `/ha/api/...`) the gate simply
+ * never engages — the breaker is a no-op rather than a hazard, since the same subpath
+ * shifts the websocket URL too, so nothing is wrongly short-circuited.
  */
 class AuthThrottleInterceptor(private val throttle: AuthThrottle) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {

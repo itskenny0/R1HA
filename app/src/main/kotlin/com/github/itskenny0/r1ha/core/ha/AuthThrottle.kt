@@ -31,7 +31,6 @@ class AuthThrottle(
     private var state = State.CLOSED
     private var openUntil = 0L
     private var consecutiveOpens = 0
-    private var probeInFlight = false
 
     /** Returns true when the caller should fail fast without hitting the network.
      *  Has the side effect of admitting a single half-open probe when the backoff
@@ -42,9 +41,10 @@ class AuthThrottle(
             State.HALF_OPEN -> true // a probe is already in flight; everyone else waits
             State.OPEN -> {
                 if (clock() >= openUntil) {
+                    // Admit exactly this one probe: once HALF_OPEN, every other caller
+                    // takes the branch above and short-circuits until the probe resolves.
                     state = State.HALF_OPEN
-                    probeInFlight = true
-                    false // admit exactly this one probe
+                    false
                 } else {
                     true
                 }
@@ -69,7 +69,6 @@ class AuthThrottle(
         state = State.CLOSED
         failures.clear()
         consecutiveOpens = 0
-        probeInFlight = false
         openUntil = 0L
     }
 
@@ -83,7 +82,6 @@ class AuthThrottle(
         val backoff = if (grown <= 0L) maxBackoffMillis else grown.coerceAtMost(maxBackoffMillis)
         state = State.OPEN
         openUntil = clock() + backoff
-        probeInFlight = false
         failures.clear()
         consecutiveOpens++
     }
