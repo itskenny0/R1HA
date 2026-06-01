@@ -397,6 +397,36 @@ enum class DashboardTile(val label: String) {
     INLINE_ALERTS("Inline alert previews"),
 }
 
+/** Stable ids for the top-level navigation destinations. Used as the keys in
+ *  [NavPanelSettings.hiddenNavItems] so the persisted set is decoupled from the
+ *  nav-route string constants. "home" and "settings" are intentionally absent:
+ *  they are never hideable (there must always be a route home and to settings). */
+object NavItemId {
+    const val TODAY = "today"
+    const val SEARCH = "search"
+    const val ASSIST = "assist"
+
+    /** The items a user is allowed to hide, in display order. */
+    val HIDEABLE = listOf(TODAY, SEARCH, ASSIST)
+}
+
+/**
+ * Controls the large-screen side navigation panel (the rail / drawer rendered by
+ * AdaptiveNavShell on MEDIUM+ window tiers). Has no effect on the R1 / compact
+ * card-stack experience, which never shows the panel.
+ *
+ * [sidePanelEnabled] = false forces the no-panel passthrough layout on every tier,
+ * reverting tablets to the card-stack experience (Settings stays reachable via the
+ * card-stack chrome's gear). [hiddenNavItems] holds [NavItemId] values that should
+ * be omitted from the panel when it is shown.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class NavPanelSettings(
+    val sidePanelEnabled: Boolean = true,
+    val hiddenNavItems: Set<String> = emptySet(),
+)
+
 /**
  * Per-surface refresh intervals + integration tweaks. Each value is
  * the auto-refresh period in seconds; 0 disables auto-refresh on
@@ -905,6 +935,8 @@ data class AppSettings(
     val advanced: AdvancedSettings = AdvancedSettings(),
     /** Per-section dashboard visibility + thresholds. */
     val dashboard: DashboardSettings = DashboardSettings(),
+    /** Large-screen side navigation panel enable + per-item visibility. */
+    val navPanel: NavPanelSettings = NavPanelSettings(),
     /** Per-surface refresh intervals + integration tuning. */
     val integrations: IntegrationsSettings = IntegrationsSettings(),
     /**

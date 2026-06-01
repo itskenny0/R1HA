@@ -164,6 +164,35 @@ class SettingsRepositoryTest {
     }
 
     /**
+     * Nav-panel enable flag + hidden-item set round-trip through the JSON-encoded
+     * persistence path. Defaults (panel on, nothing hidden) come back when the key
+     * is absent; an explicit override survives a reload.
+     */
+    @Test fun navPanelRoundTrips() = runTest {
+        val repo = newRepo()
+        repo.settings.test {
+            val s = awaitItem()
+            assertThat(s.navPanel.sidePanelEnabled).isTrue()
+            assertThat(s.navPanel.hiddenNavItems).isEmpty()
+            cancelAndConsumeRemainingEvents()
+        }
+        repo.update {
+            it.copy(
+                navPanel = it.navPanel.copy(
+                    sidePanelEnabled = false,
+                    hiddenNavItems = setOf("today", "assist"),
+                ),
+            )
+        }
+        repo.settings.test {
+            val s = awaitItem()
+            assertThat(s.navPanel.sidePanelEnabled).isFalse()
+            assertThat(s.navPanel.hiddenNavItems).containsExactly("today", "assist")
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    /**
      * Slot B/C/D quick-tile entity ids round-trip alongside the legacy slot-A
      * field. Each slot is independent — saving slot B doesn't touch A/C/D.
      */

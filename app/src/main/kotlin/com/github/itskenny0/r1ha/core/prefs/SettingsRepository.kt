@@ -164,6 +164,7 @@ class SettingsRepository private constructor(
         val behaviorOrientationMode = stringPreferencesKey("behavior.orientation_mode")
         val advancedJson = stringPreferencesKey("advanced.json")
         val dashboardJson = stringPreferencesKey("dashboard.json")
+        val navpanelJson = stringPreferencesKey("navpanel.json")
         val integrationsJson = stringPreferencesKey("integrations.json")
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
@@ -358,6 +359,13 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: DashboardSettings(),
+                navPanel = p[K.navpanelJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(NavPanelSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: NavPanelSettings(),
                 integrations = p[K.integrationsJson]
                     ?.let {
                         runCatching {
@@ -516,6 +524,10 @@ class SettingsRepository private constructor(
                 p[K.dashboardJson] = advancedJson.encodeToString(
                     DashboardSettings.serializer(),
                     next.dashboard,
+                )
+                p[K.navpanelJson] = advancedJson.encodeToString(
+                    NavPanelSettings.serializer(),
+                    next.navPanel,
                 )
                 p[K.integrationsJson] = advancedJson.encodeToString(
                     IntegrationsSettings.serializer(),
