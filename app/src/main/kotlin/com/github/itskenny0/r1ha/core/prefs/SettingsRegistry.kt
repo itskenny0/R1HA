@@ -446,6 +446,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             }
         },
     ),
+    SettingEntry(
+        id = "behavior.guestMode",
+        category = SettingCategory.BEHAVIOUR,
+        label = "Guest mode (read-only)",
+        description = "Refuse every outbound service call; observe-only until turned off",
+        isDefault = { it.guestModeEnabled == defaults.guestModeEnabled },
+        currentDisplay = { if (it.guestModeEnabled) "ON" else "OFF" },
+    ),
 
     // ── Connection hardening (strict mode) ──────────────────────────────
     SettingEntry(
@@ -566,12 +574,156 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         },
         currentDisplay = { "${it.integrations.searchResultCap}" },
     ),
+    SettingEntry(
+        id = "integrations.personsRefreshSec",
+        category = SettingCategory.INTEGRATIONS,
+        label = "Who's-home refresh",
+        description = "Auto-refresh cadence for the Persons surface (seconds)",
+        isDefault = {
+            it.integrations.personsRefreshSec == defaults.integrations.personsRefreshSec
+        },
+        currentDisplay = { "${it.integrations.personsRefreshSec} s" },
+    ),
+    SettingEntry(
+        id = "integrations.weatherRefreshSec",
+        category = SettingCategory.INTEGRATIONS,
+        label = "Weather refresh",
+        description = "Auto-refresh cadence for the Weather surface (seconds)",
+        isDefault = {
+            it.integrations.weatherRefreshSec == defaults.integrations.weatherRefreshSec
+        },
+        currentDisplay = { "${it.integrations.weatherRefreshSec} s" },
+    ),
+    SettingEntry(
+        id = "integrations.calendarsRefreshSec",
+        category = SettingCategory.INTEGRATIONS,
+        label = "Calendars refresh",
+        description = "Auto-refresh cadence for the Calendars surface (seconds)",
+        isDefault = {
+            it.integrations.calendarsRefreshSec == defaults.integrations.calendarsRefreshSec
+        },
+        currentDisplay = { "${it.integrations.calendarsRefreshSec} s" },
+    ),
+    SettingEntry(
+        id = "integrations.logbookDefaultWindowHours",
+        category = SettingCategory.INTEGRATIONS,
+        label = "Logbook default window",
+        description = "Time window applied when Recent Activity opens (hours)",
+        isDefault = {
+            it.integrations.logbookDefaultWindowHours == defaults.integrations.logbookDefaultWindowHours
+        },
+        currentDisplay = { "${it.integrations.logbookDefaultWindowHours} h" },
+    ),
+    SettingEntry(
+        id = "integrations.calendarLookaheadDays",
+        category = SettingCategory.INTEGRATIONS,
+        label = "Calendar look-ahead",
+        description = "Days of events fetched when drilling into a calendar",
+        isDefault = {
+            it.integrations.calendarLookaheadDays == defaults.integrations.calendarLookaheadDays
+        },
+        currentDisplay = { "${it.integrations.calendarLookaheadDays} d" },
+    ),
+    SettingEntry(
+        id = "integrations.recentHistoryDepth",
+        category = SettingCategory.INTEGRATIONS,
+        label = "RECENT history depth",
+        description = "Items kept in Templates and Service Caller RECENT lists",
+        isDefault = {
+            it.integrations.recentHistoryDepth == defaults.integrations.recentHistoryDepth
+        },
+        currentDisplay = { "${it.integrations.recentHistoryDepth}" },
+    ),
 
     // ── Dashboard ───────────────────────────────────────────────────────
-    // Two most-touched dashboard knobs: how often it polls, and where the
-    // BATTERIES LOW threshold sits. Section-visibility toggles intentionally
-    // omitted from the registry — 11 booleans is a lot of registry weight for
-    // controls the user can already see in the Dashboard section's flat list.
+    SettingEntry(
+        id = "dashboard.showGreeting",
+        category = SettingCategory.DASHBOARD,
+        label = "Greeting",
+        description = "GOOD MORNING / AFTERNOON / EVENING / NIGHT row on the dashboard",
+        isDefault = { it.dashboard.showGreeting == defaults.dashboard.showGreeting },
+        currentDisplay = { if (it.dashboard.showGreeting) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showWeather",
+        category = SettingCategory.DASHBOARD,
+        label = "Weather card",
+        description = "Current condition and temperature from your first weather entity",
+        isDefault = { it.dashboard.showWeather == defaults.dashboard.showWeather },
+        currentDisplay = { if (it.dashboard.showWeather) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showSun",
+        category = SettingCategory.DASHBOARD,
+        label = "Sun card",
+        description = "Above/below horizon, elevation, next rise/set",
+        isDefault = { it.dashboard.showSun == defaults.dashboard.showSun },
+        currentDisplay = { if (it.dashboard.showSun) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showTimers",
+        category = SettingCategory.DASHBOARD,
+        label = "Timers",
+        description = "Active timer entities with remaining time",
+        isDefault = { it.dashboard.showTimers == defaults.dashboard.showTimers },
+        currentDisplay = { if (it.dashboard.showTimers) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showMedia",
+        category = SettingCategory.DASHBOARD,
+        label = "Now Playing",
+        description = "Currently-playing media players with prev / play / next",
+        isDefault = { it.dashboard.showMedia == defaults.dashboard.showMedia },
+        currentDisplay = { if (it.dashboard.showMedia) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showPersons",
+        category = SettingCategory.DASHBOARD,
+        label = "People",
+        description = "Home/away count and per-person state",
+        isDefault = { it.dashboard.showPersons == defaults.dashboard.showPersons },
+        currentDisplay = { if (it.dashboard.showPersons) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showNextEvent",
+        category = SettingCategory.DASHBOARD,
+        label = "Next event",
+        description = "Earliest upcoming calendar event with a NOW pill",
+        isDefault = { it.dashboard.showNextEvent == defaults.dashboard.showNextEvent },
+        currentDisplay = { if (it.dashboard.showNextEvent) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showPower",
+        category = SettingCategory.DASHBOARD,
+        label = "DRAW (power)",
+        description = "Sum of device_class=power sensors in watts",
+        isDefault = { it.dashboard.showPower == defaults.dashboard.showPower },
+        currentDisplay = { if (it.dashboard.showPower) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showMetrics",
+        category = SettingCategory.DASHBOARD,
+        label = "Metrics row",
+        description = "LIGHTS ON / CAMERAS / ALERTS tiles",
+        isDefault = { it.dashboard.showMetrics == defaults.dashboard.showMetrics },
+        currentDisplay = { if (it.dashboard.showMetrics) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showLowBattery",
+        category = SettingCategory.DASHBOARD,
+        label = "Low-battery alerts",
+        description = "Surface battery sensors under the threshold",
+        isDefault = { it.dashboard.showLowBattery == defaults.dashboard.showLowBattery },
+        currentDisplay = { if (it.dashboard.showLowBattery) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "dashboard.showInlineAlerts",
+        category = SettingCategory.DASHBOARD,
+        label = "Inline alert previews",
+        description = "Preview the first N HA persistent alerts on the dashboard",
+        isDefault = { it.dashboard.showInlineAlerts == defaults.dashboard.showInlineAlerts },
+        currentDisplay = { if (it.dashboard.showInlineAlerts) "ON" else "OFF" },
+    ),
     SettingEntry(
         id = "dashboard.refreshIntervalSec",
         category = SettingCategory.DASHBOARD,
@@ -591,6 +743,46 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             it.dashboard.lowBatteryThresholdPct == defaults.dashboard.lowBatteryThresholdPct
         },
         currentDisplay = { "${it.dashboard.lowBatteryThresholdPct} %" },
+    ),
+    SettingEntry(
+        id = "dashboard.powerAmberThresholdW",
+        category = SettingCategory.DASHBOARD,
+        label = "DRAW amber above",
+        description = "Power threshold where the DRAW tile turns amber (watts)",
+        isDefault = {
+            it.dashboard.powerAmberThresholdW == defaults.dashboard.powerAmberThresholdW
+        },
+        currentDisplay = { "${it.dashboard.powerAmberThresholdW} W" },
+    ),
+    SettingEntry(
+        id = "dashboard.powerRedThresholdW",
+        category = SettingCategory.DASHBOARD,
+        label = "DRAW red above",
+        description = "Power threshold where the DRAW tile turns red (watts)",
+        isDefault = {
+            it.dashboard.powerRedThresholdW == defaults.dashboard.powerRedThresholdW
+        },
+        currentDisplay = { "${it.dashboard.powerRedThresholdW} W" },
+    ),
+    SettingEntry(
+        id = "dashboard.inlineAlertsCount",
+        category = SettingCategory.DASHBOARD,
+        label = "Inline alerts shown",
+        description = "Max HA persistent-alert previews under the METRICS row",
+        isDefault = {
+            it.dashboard.inlineAlertsCount == defaults.dashboard.inlineAlertsCount
+        },
+        currentDisplay = { "${it.dashboard.inlineAlertsCount}" },
+    ),
+    SettingEntry(
+        id = "dashboard.mediaSummaryCount",
+        category = SettingCategory.DASHBOARD,
+        label = "Media rows shown",
+        description = "Max simultaneous media-player cards on the dashboard",
+        isDefault = {
+            it.dashboard.mediaSummaryCount == defaults.dashboard.mediaSummaryCount
+        },
+        currentDisplay = { "${it.dashboard.mediaSummaryCount}" },
     ),
     SettingEntry(
         id = "dashboard.tileOrder",

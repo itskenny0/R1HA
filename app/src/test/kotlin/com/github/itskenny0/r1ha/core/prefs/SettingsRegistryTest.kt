@@ -125,6 +125,27 @@ class SettingsRegistryTest {
     }
 
     @Test
+    fun `previously-missing main-tree settings now surface in search`() {
+        // Representative settings that render in the main Settings tree but were
+        // absent from the registry, so search returned nothing for them. Each must
+        // now be reachable; the search label is what the user types.
+        assertThat(searchSettings("Guest mode").map { it.id }).contains("behavior.guestMode")
+        assertThat(searchSettings("Weather refresh").map { it.id })
+            .contains("integrations.weatherRefreshSec")
+        assertThat(searchSettings("Calendar look-ahead").map { it.id })
+            .contains("integrations.calendarLookaheadDays")
+        assertThat(searchSettings("RECENT history depth").map { it.id })
+            .contains("integrations.recentHistoryDepth")
+        assertThat(searchSettings("Now Playing").map { it.id }).contains("dashboard.showMedia")
+        assertThat(searchSettings("Low-battery alerts").map { it.id })
+            .contains("dashboard.showLowBattery")
+        assertThat(searchSettings("DRAW red above").map { it.id })
+            .contains("dashboard.powerRedThresholdW")
+        assertThat(searchSettings("Media rows shown").map { it.id })
+            .contains("dashboard.mediaSummaryCount")
+    }
+
+    @Test
     fun `query matches substring inside the description`() {
         // Description-only match: 'spring-animated' isn't in any label but
         // should be in a wheel-step description… actually it's not. Test
