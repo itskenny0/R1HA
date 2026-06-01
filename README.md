@@ -1,4 +1,4 @@
-# R1HA: A native Kotlin Home Assistant client, designed for small screens
+# R1HA: A native Kotlin Home Assistant client
 
 ![R1HA: native Kotlin Home Assistant client](r1ha.png)
 
