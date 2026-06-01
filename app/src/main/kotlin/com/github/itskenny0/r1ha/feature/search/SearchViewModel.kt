@@ -13,6 +13,8 @@ import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -177,7 +179,13 @@ class SearchViewModel(
             haRepository.listAllEntitiesForSearch().fold(
                 onSuccess = { entities ->
                     R1Log.i("Search", "loaded ${entities.size} entities")
-                    _ui.value = _ui.value.copy(loading = false, all = entities, error = null)
+                    // /api/states omits area assignment, so resolve each candidate's
+                    // effective area NAME by joining HA's registries (fetched over WS).
+                    // This is best-effort: if the registries are unavailable (WS not
+                    // connected, older HA), fall back to the entities as-is so search
+                    // still works, just without area matching.
+                    val resolved = resolveAreasOrFallback(entities)
+                    _ui.value = _ui.value.copy(loading = false, all = resolved, error = null)
                 },
                 onFailure = { t ->
                     R1Log.w("Search", "list failed: ${t.message}")
@@ -187,6 +195,38 @@ class SearchViewModel(
             )
         }
     }
+
+    /**
+     * Stamps each entity with its resolved area NAME by joining the area, entity, and
+     * device registries. The three registry calls are fired concurrently (each is an
+     * independent WS round-trip) so the join waits on the slowest one rather than the
+     * sum of all three. If ANY of the three fails, or the whole join throws, we log at
+     * warn and return the entities unchanged so search degrades gracefully to name /
+     * entity_id matching rather than failing outright. Runs entirely off Main (it is a
+     * suspend fun invoked from the viewModelScope.launch in [refresh]).
+     */
+    private suspend fun resolveAreasOrFallback(entities: List<EntityState>): List<EntityState> =
+        try {
+            coroutineScope {
+                val areasDeferred = async { haRepository.listAreas() }
+                val entityRegistryDeferred = async { haRepository.listEntityRegistry() }
+                val devicesDeferred = async { haRepository.listDevices() }
+
+                val areas = areasDeferred.await().getOrThrow()
+                val entityRegistry = entityRegistryDeferred.await().getOrThrow()
+                val devices = devicesDeferred.await().getOrThrow()
+
+                SearchAreaResolver.resolveAreas(
+                    entities = entities,
+                    areas = areas,
+                    entityRegistry = entityRegistry,
+                    devices = devices,
+                )
+            }
+        } catch (t: Throwable) {
+            R1Log.w("Search", "area resolve failed, search will not match on area: ${t.message}")
+            entities
+        }
 
     fun setQuery(q: String) {
         if (_ui.value.query == q) return
