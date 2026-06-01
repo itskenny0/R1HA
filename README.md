@@ -81,10 +81,26 @@ Where the official [Home Assistant Companion app](https://github.com/home-assist
 
 ## Requirements
 
-- **Android 8.0 (Oreo) or newer** on any phone, tablet, or wall-mounted kiosk display.
+- **Android 6.0 (Marshmallow) or newer** on any phone, tablet, or wall-mounted kiosk display.
 - The **Rabbit R1** (primary target) running **LineageOS 21 GSI** (Android 14) or **CipherOS** (Android 16).
 - A reachable **Home Assistant** instance (local network or remote URL).
 - For sane UI scaling on R1 LineageOS GSI: `adb shell wm density 180`.
+
+### Supported vs. works
+
+The app is built and tested against modern Android (the R1 itself runs Android 14/16), but the minimum is deliberately low so an old phone or tablet gathering dust can have a second life as a dedicated Home Assistant remote. Older devices are not first-class citizens: the core experience (browsing entities, toggling, scenes, the assistant, search, dashboards) runs all the way down to Android 6.0, while a few extras that depend on newer OS features degrade gracefully or sit out.
+
+| Feature | Works from | Below that |
+| --- | --- | --- |
+| Core app: entities, control, scenes, assist, search, dashboards | Android 6.0 | n/a |
+| Quick Settings tiles | Android 7.0 | Not offered; the rest of the app is unaffected |
+| Per-channel notification settings | Android 8.0 | Notifications still post; the OS just has no channels to tune |
+| Rich haptics (predefined effects, amplitude control) | Android 8.0 | Falls back to a plain short vibration |
+| Adaptive (masked) launcher icon | Android 8.0 | Shows a plain square icon |
+
+Nothing in the list blocks the app from installing or running; it is only about which conveniences light up on which OS version.
+
+The oldest version the developer has actually tested on is **Android 9 (Pie)**. Anything between the 6.0 floor and there should work, but it is untested; if you run the app on an older device, reports are welcome.
 
 ## Install
 

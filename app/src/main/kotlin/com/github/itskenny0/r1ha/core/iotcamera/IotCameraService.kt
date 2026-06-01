@@ -555,6 +555,9 @@ class IotCameraService : Service() {
         }
 
         fun ensureChannel(context: Context) {
+            // Notification channels are an API-26 concept; on older devices
+            // NotificationCompat ignores the channel id and posts directly.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             val channel = NotificationChannel(
                 CHANNEL_ID,

@@ -153,7 +153,8 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/quick_tile_label"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="24">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
             </intent-filter>
@@ -166,7 +167,8 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/quick_tile_label_b"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="24">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
             </intent-filter>
@@ -179,7 +181,8 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/quick_tile_label_c"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="24">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
             </intent-filter>
@@ -192,7 +195,8 @@
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/quick_tile_label_d"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="24">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE"/>
             </intent-filter>

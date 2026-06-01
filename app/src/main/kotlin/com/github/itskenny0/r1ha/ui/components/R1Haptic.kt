@@ -59,27 +59,36 @@ class R1Haptic internal constructor(
         runCatching {
             val v = vibrator ?: return@runCatching
             if (!v.hasVibrator()) return@runCatching
-            // Predefined effects (EFFECT_TICK / EFFECT_CLICK) plus the
-            // areEffectsSupported() query that backs them land in API 29/30.
-            // On 26-29 we skip straight to the createOneShot fallback, which
-            // has been available since API 26 and produces a comparable
-            // short buzz. Gated at 30 so the single guard covers both the
-            // API-29 createPredefined and the API-30 areEffectsSupported call.
-            val effect = if (Build.VERSION.SDK_INT >= 30 && predefinedSupported(v, tick)) {
-                createPredefinedEffect(tick)
-            } else if (tick) {
-                VibrationEffect.createOneShot(20L, VibrationEffect.DEFAULT_AMPLITUDE)
-            } else {
-                VibrationEffect.createOneShot(35L, VibrationEffect.DEFAULT_AMPLITUDE)
-            }
-            // VibrationAttributes is API 33; VibrationAttributes-less vibrate is
-            // deprecated from 26 but works on 30-32. Both branches reference classes
-            // in @RequiresApi helpers so ART only loads what's actually reachable.
-            if (Build.VERSION.SDK_INT >= 33) {
-                vibrateWithAttrs(v, effect)
+            // The whole VibrationEffect API (createOneShot, the (effect)
+            // vibrate overload, DEFAULT_AMPLITUDE) lands in API 26. Below that we
+            // fall back to the legacy time-based vibrate, which has no amplitude
+            // control but still produces the short buzz the UI expects.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // Predefined effects (EFFECT_TICK / EFFECT_CLICK) plus the
+                // areEffectsSupported() query that backs them land in API 29/30.
+                // On 26-29 we skip straight to the createOneShot fallback, which
+                // produces a comparable short buzz. Gated at 30 so the single guard
+                // covers both the API-29 createPredefined and the API-30
+                // areEffectsSupported call.
+                val effect = if (Build.VERSION.SDK_INT >= 30 && predefinedSupported(v, tick)) {
+                    createPredefinedEffect(tick)
+                } else if (tick) {
+                    VibrationEffect.createOneShot(20L, VibrationEffect.DEFAULT_AMPLITUDE)
+                } else {
+                    VibrationEffect.createOneShot(35L, VibrationEffect.DEFAULT_AMPLITUDE)
+                }
+                // VibrationAttributes is API 33; VibrationAttributes-less vibrate is
+                // deprecated from 26 but works on 30-32. Both branches reference classes
+                // in @RequiresApi helpers so ART only loads what's actually reachable.
+                if (Build.VERSION.SDK_INT >= 33) {
+                    vibrateWithAttrs(v, effect)
+                } else {
+                    @Suppress("DEPRECATION")
+                    v.vibrate(effect)
+                }
             } else {
                 @Suppress("DEPRECATION")
-                v.vibrate(effect)
+                v.vibrate(if (tick) 20L else 35L)
             }
         }.onFailure {
             R1Log.w("R1Haptic", "vibrator path failed: ${it.message}")

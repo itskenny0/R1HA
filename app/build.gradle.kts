@@ -38,7 +38,14 @@ android {
 
     defaultConfig {
         applicationId = "com.github.itskenny0.r1ha"
-        minSdk = 26
+        // Android 6.0. The app is built and tested against modern hardware (the
+        // R1 targets run Android 14/16); 23 is the floor the current Jetpack Compose
+        // libraries support, kept low deliberately so the app can give aging
+        // devices a second life as a Home Assistant remote. Features that need a
+        // newer OS (Quick Settings tiles = 24, notification channels = 26, etc.)
+        // are gated at runtime; see the README "Supported vs. works" section for
+        // what degrades on older devices.
+        minSdk = 23
         targetSdk = 34
         // Versions are date-based to match the `r1ha-YYYYMMDD` release tag scheme.
         // CI passes APP_VERSION_CODE / APP_VERSION_NAME on tag builds; local builds fall back to today's date.
@@ -120,6 +127,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // java.time (used pervasively for entity timestamps, history, calendars)
+        // is an API-26 platform addition. Core-library desugaring backports it
+        // (and java.util.stream / Optional / etc.) down to our minSdk so the date
+        // and time code runs on Android 6.0/7.x without a NoClassDefFoundError.
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions { jvmTarget = "17" }
 
@@ -171,6 +183,8 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.activity.compose)

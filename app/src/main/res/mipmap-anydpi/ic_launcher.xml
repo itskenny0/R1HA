@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy (pre-API-26) launcher icon. Devices below Android 8.0 don't understand
+  <adaptive-icon>, so they fall back to this layer-list, which composites the same
+  orange background and white rabbit foreground vectors into a plain square icon.
+  Vector drawables are honoured from API 21 via the support library
+  (vectorDrawables.useSupportLibrary in build.gradle.kts), so no raster assets are
+  needed. On API 26+ the mipmap-anydpi-v26 adaptive icon is more specific and wins.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background"/>
+    <item android:drawable="@drawable/ic_launcher_foreground"/>
+</layer-list>

@@ -68,8 +68,12 @@ class MqttPubSubSession(
     @Volatile private var lastConnectAttemptNanos: Long = 0L
     private val packetId = AtomicInteger(1)
     /** Topics we've successfully subscribed to. Replayed after a reconnect so
-     *  the owning service doesn't have to track and re-issue them. */
-    private val subscriptions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+     *  the owning service doesn't have to track and re-issue them.
+     *  ConcurrentHashMap.newKeySet() returns an API-24 KeySetView (not covered by
+     *  library desugaring), so we build the equivalent concurrent set via
+     *  newSetFromMap, which works back to our minSdk. */
+    private val subscriptions: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
     fun isReady(): Boolean = ready
 

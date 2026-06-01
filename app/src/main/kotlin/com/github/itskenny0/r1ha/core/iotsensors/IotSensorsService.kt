@@ -70,8 +70,12 @@ class IotSensorsService : Service() {
     private var publishJob: Job? = null
     private var sensorListener: SensorEventListener? = null
     /** Discovery topics we've published this session — remembered so
-     *  onDestroy can blank them and HA stops showing stale entities. */
-    private val publishedDiscoveryTopics = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+     *  onDestroy can blank them and HA stops showing stale entities.
+     *  ConcurrentHashMap.newKeySet() returns an API-24 KeySetView (not covered by
+     *  library desugaring), so we build the equivalent concurrent set via
+     *  newSetFromMap, which works back to our minSdk. */
+    private val publishedDiscoveryTopics: MutableSet<String> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -743,6 +747,9 @@ class IotSensorsService : Service() {
         }
 
         fun ensureChannel(context: Context) {
+            // Notification channels are an API-26 concept; on older devices
+            // NotificationCompat ignores the channel id and posts directly.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val manager = context.getSystemService(NotificationManager::class.java) ?: return
             val channel = NotificationChannel(
                 CHANNEL_ID,

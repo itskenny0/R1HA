@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -53,6 +54,9 @@ object HaNotificationMirror {
      *  a one-time-per-install operation; we still call it on every enable to handle the
      *  edge case of the user manually deleting the channel from System Settings. */
     fun ensureChannel(context: Context) {
+        // Notification channels are an API-26 concept; on older devices
+        // NotificationCompat ignores the channel id and posts directly.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,

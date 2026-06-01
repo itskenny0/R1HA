@@ -1,6 +1,8 @@
 package com.github.itskenny0.r1ha.feature.quicktile
 
+import android.os.Build
 import android.service.quicksettings.TileService
+import androidx.annotation.RequiresApi
 import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import kotlinx.coroutines.CoroutineScope
@@ -16,25 +18,33 @@ import kotlinx.coroutines.SupervisorJob
  * per declared tile. Subclasses for slots B/C/D differ only in the [entityIdSelector]
  * they hand to [QuickTileLogic].
  */
+@RequiresApi(Build.VERSION_CODES.N)
 class HaQuickTileService : BaseQuickTileService() {
     override fun entityIdSelector(s: AppSettings): String? = s.behavior.quickTileEntityId
 }
 
 /** Slot B. Bound to [AppSettings.behavior.quickTileEntityIdB]. */
+@RequiresApi(Build.VERSION_CODES.N)
 class HaQuickTileServiceB : BaseQuickTileService() {
     override fun entityIdSelector(s: AppSettings): String? = s.behavior.quickTileEntityIdB
 }
 
 /** Slot C. Bound to [AppSettings.behavior.quickTileEntityIdC]. */
+@RequiresApi(Build.VERSION_CODES.N)
 class HaQuickTileServiceC : BaseQuickTileService() {
     override fun entityIdSelector(s: AppSettings): String? = s.behavior.quickTileEntityIdC
 }
 
 /** Slot D. Bound to [AppSettings.behavior.quickTileEntityIdD]. */
+@RequiresApi(Build.VERSION_CODES.N)
 class HaQuickTileServiceD : BaseQuickTileService() {
     override fun entityIdSelector(s: AppSettings): String? = s.behavior.quickTileEntityIdD
 }
 
+// Quick Settings tiles arrived in API 24. Below that the OS never binds these
+// services (the feature doesn't exist) and the manifest <service> entries are
+// inert, so gating the classes here loses nothing on older devices.
+@RequiresApi(Build.VERSION_CODES.N)
 abstract class BaseQuickTileService : TileService() {
 
     /** SupervisorJob so a single failed toggle doesn't cascade into killing the next refresh. */

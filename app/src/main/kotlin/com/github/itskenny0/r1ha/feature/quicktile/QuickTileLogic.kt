@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.quicksettings.Tile
+import androidx.annotation.RequiresApi
 import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.R
 import com.github.itskenny0.r1ha.core.ha.EntityId
@@ -35,6 +36,7 @@ internal object QuickTileLogic {
      * and the active/inactive tint conveys on/off state, so nothing functional is
      * lost. Keeps the tile feature usable down to the minSdk floor.
      */
+    @RequiresApi(Build.VERSION_CODES.N)
     private fun Tile.setSubtitleCompat(text: CharSequence) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             subtitle = text
@@ -45,6 +47,7 @@ internal object QuickTileLogic {
      * Refresh the visible label/state of a tile from the live entity cache. Safe to
      * call from any TileService callback that has access to its `qsTile`.
      */
+    @RequiresApi(Build.VERSION_CODES.N)
     fun refresh(
         context: Context,
         qsTile: Tile?,
@@ -99,6 +102,7 @@ internal object QuickTileLogic {
      * scene/script/button), and refresh after a brief settle delay so the displayed
      * state matches what HA echoed back.
      */
+    @RequiresApi(Build.VERSION_CODES.N)
     fun click(
         context: Context,
         qsTile: Tile?,
