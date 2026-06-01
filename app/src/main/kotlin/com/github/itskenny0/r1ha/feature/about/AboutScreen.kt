@@ -33,11 +33,16 @@ import com.github.itskenny0.r1ha.core.ha.ConnectionState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
+import com.github.itskenny0.r1ha.core.prefs.CardPeekMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.feature.cardstack.PEEK_MIN_SHORTEST_SIDE_PX
+import com.github.itskenny0.r1ha.feature.cardstack.effectivePeek
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.components.rememberWindowTier
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 @Composable
@@ -175,6 +180,11 @@ fun AboutScreen(
                 item { InfoRow("Manufacturer", Build.MANUFACTURER) }
                 item { InfoRow("Model", Build.MODEL) }
                 item { InfoRow("Android", "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})") }
+                // What the responsive layout actually resolves this device to, and why the
+                // peek deck is on or off. Reading these here is how an R1 owner (or a tester
+                // on any panel) can see the resolved size class, the raw window pixels, and
+                // the exact factor that decided peek without guessing.
+                item { DisplayDetectionRows(appSettings) }
 
                 item { SectionDivider() }
 
@@ -700,6 +710,55 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
             textAlign = TextAlign.End,
         )
     }
+}
+
+/**
+ * Read-only diagnostics for the responsive layout: the resolved size class with the raw
+ * dp / pixel dimensions it came from, the orientation, and whether the peek deck is on with
+ * the single factor that decided it. Surfaces exactly what [effectivePeek] and the window
+ * tier see, so a tester can confirm a device is classified as intended (the Rabbit R1 in
+ * particular, whose dp width is density- and ROM-dependent) without reading logs.
+ */
+@Composable
+private fun DisplayDetectionRows(appSettings: AppSettings) {
+    val window = rememberWindowTier()
+    val px = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
+    val shortestPx = minOf(px.width, px.height)
+    val isPortrait = androidx.compose.ui.platform.LocalConfiguration.current
+        .orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val mode = appSettings.ui.cardPeekMode
+    val peeks = effectivePeek(mode, window.tier, isPortrait, shortestPx)
+    InfoRow("Size class", "${window.tier} · ${window.widthDp}×${window.heightDp} dp", mono = true)
+    InfoRow("Window", "${px.width}×${px.height} px (min $shortestPx)", mono = true)
+    InfoRow("Orientation", if (isPortrait) "Portrait" else "Landscape")
+    InfoRow("Peek deck", peekDeckExplanation(mode, window.tier, isPortrait, shortestPx, peeks))
+}
+
+/**
+ * Human-readable "On / Off (why)" for the peek-deck decision, mirroring [effectivePeek]'s
+ * branches so the displayed reason is always the actual deciding factor.
+ */
+private fun peekDeckExplanation(
+    mode: CardPeekMode,
+    tier: WindowTier,
+    isPortrait: Boolean,
+    shortestPx: Int,
+    peeks: Boolean,
+): String {
+    val state = if (peeks) "On" else "Off"
+    val reason = when (mode) {
+        CardPeekMode.NEVER -> "mode NEVER"
+        CardPeekMode.ALWAYS -> "mode ALWAYS"
+        CardPeekMode.AUTO -> when {
+            !isPortrait -> "AUTO, landscape"
+            tier != WindowTier.COMPACT && tier != WindowTier.MEDIUM ->
+                "AUTO, $tier is not a phone width"
+            shortestPx < PEEK_MIN_SHORTEST_SIDE_PX ->
+                "AUTO, $shortestPx px below the $PEEK_MIN_SHORTEST_SIDE_PX px floor"
+            else -> "AUTO, phone in portrait"
+        }
+    }
+    return "$state ($reason)"
 }
 
 @Composable
