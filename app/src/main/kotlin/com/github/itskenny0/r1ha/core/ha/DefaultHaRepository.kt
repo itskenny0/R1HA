@@ -388,6 +388,12 @@ class DefaultHaRepository(
     private val connectionTuning: () -> ConnectionTuning = {
         ConnectionTuning.from(com.github.itskenny0.r1ha.core.prefs.ConnectionSettings())
     },
+    /**
+     * Base backoff between [fetchHistory] retries (doubles each attempt). The production
+     * default rides out a transiently-open auth breaker; tests inject a tiny value so the
+     * retry path runs without real-time waits.
+     */
+    private val historyRetryBackoffMillis: Long = 1_000L,
 ) : HaRepository {
 
     override val connection: StateFlow<ConnectionState> = ws.state
@@ -1590,63 +1596,83 @@ class DefaultHaRepository(
 
     override suspend fun fetchHistory(entityId: EntityId, hours: Int): Result<List<HistoryPoint>> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                val s = settings.settings.first()
-                val server = s.server ?: error("Server URL not configured.")
-                // Pre-emptive refresh on near-expiry — same reasoning as listAllEntities.
-                refresher?.ensureFresh()
-                val since = Instant.now().minusSeconds(hours.toLong() * 3600L)
-                // HA's history endpoint takes the ISO timestamp in the URL path. URL-encode
-                // the entity_id even though current HA versions don't require it — defensive
-                // against entity_ids that contain unusual characters in future versions.
-                val sinceIso = since.toString()
-                val url = "${server.url.trimEnd('/')}/api/history/period/$sinceIso" +
-                    "?filter_entity_id=${java.net.URLEncoder.encode(entityId.value, "UTF-8")}" +
-                    "&minimal_response&no_attributes"
-                // Same 401 → refresh → retry path as listAllEntities — sensor charts
-                // fired silently in the background while the user was on the card stack
-                // were a common trigger for "history failed; chart blank" until the user
-                // restarted the app.
-                val body = fetchHistoryBody(url) ?: run {
-                    if (refresher?.forceRefresh() == true) {
-                        R1Log.i("HaRepo.fetchHistory", "401 → refreshed access token; retrying once")
-                        fetchHistoryBody(url)
-                            ?: error("Home Assistant returned HTTP 401 for /api/history even after refresh. Sign out & reconnect.")
-                    } else {
-                        error("Home Assistant returned HTTP 401 for /api/history. Sign out & reconnect.")
-                    }
-                }
-                // HA returns a JSON array of arrays — outermost level is one entry per
-                // requested entity (we only ask for one). Each inner entry is a state
-                // snapshot. `minimal_response` strips the attribute payload after the
-                // first sample which keeps the response small and parse fast.
-                val outer = listStatesJson.decodeFromString<List<List<HistoryRow>>>(body)
-                val first = outer.firstOrNull().orEmpty()
-                first.mapNotNull { row ->
-                    val state = row.state ?: return@mapNotNull null
-                    val ts = row.last_changed ?: row.last_updated ?: return@mapNotNull null
-                    val instant = runCatching { Instant.parse(ts) }.getOrNull() ?: return@mapNotNull null
-                    HistoryPoint.fromRaw(state, instant)
-                }
-            }.onFailure { t ->
-                // CancellationException is the normal flow-control signal when the
-                // calling LaunchedEffect (SensorCard's history fetch) is cancelled
-                // because the card was scrolled out of view — not an error, just the
-                // coroutine being told to stop. Logging it at WARN spammed the toast
-                // feed with 'coroutine scope left the composition' noise that drowned
-                // out actual failures. Surface it at DEBUG instead so it stays
-                // available for power users who turn the toast level down, and skip
-                // entirely the most common 'JobCancellationException: …left the
-                // composition' wording from Compose's lifecycle scope.
-                if (t is kotlinx.coroutines.CancellationException ||
-                    t.message?.contains("left the composition", ignoreCase = true) == true
-                ) {
-                    R1Log.d("HaRepo.fetchHistory", "${entityId.value}: cancelled (card no longer composed)")
-                } else {
-                    R1Log.w("HaRepo.fetchHistory", "${entityId.value}: ${t.message}")
-                }
+            // Retry on failure with exponential backoff. The auth breaker returns a synthetic
+            // 503 for /api/history the whole time it is tripped, and the SensorCard /
+            // HistoryGraphCard fetch is a one-shot — so without this a single transient or
+            // unrelated 401 (a token rotation, or a stale-token camera poll feeding the now-
+            // shared breaker) left the chart permanently blank until the card was re-opened.
+            // While the breaker is open the retry is short-circuited locally (no HA traffic,
+            // so no failed-login risk); the first attempt after the cooldown elapses becomes
+            // the breaker's half-open probe, whose success both loads the chart and closes the
+            // breaker for every client. A genuine empty history (HA simply has no samples) is
+            // a *success* and returns immediately without burning the retry budget.
+            var lastFailure: Throwable? = null
+            for (attempt in 0..HISTORY_FETCH_RETRIES) {
+                if (attempt > 0) delay(historyRetryBackoffMillis shl (attempt - 1))
+                val result = runCatching { fetchHistoryOnce(entityId, hours) }
+                result.fold(
+                    onSuccess = { return@withContext Result.success(it) },
+                    onFailure = { t ->
+                        // A cancelled fetch (the card was scrolled out of view) must propagate
+                        // to cancel the coroutine, never be retried.
+                        if (t is kotlinx.coroutines.CancellationException) throw t
+                        lastFailure = t
+                    },
+                )
+            }
+            val t = lastFailure ?: IllegalStateException("history fetch failed without a cause")
+            // 'left the composition' is Compose's lifecycle-scope cancellation wording; log it
+            // at DEBUG so it doesn't spam the toast feed and bury genuine failures.
+            if (t.message?.contains("left the composition", ignoreCase = true) == true) {
+                R1Log.d("HaRepo.fetchHistory", "${entityId.value}: cancelled (card no longer composed)")
+            } else {
+                R1Log.w("HaRepo.fetchHistory", "${entityId.value}: ${t.message}")
+            }
+            Result.failure(t)
+        }
+
+    /** One attempt of the [fetchHistory] REST GET + parse. Throws on any failure (HTTP error,
+     *  breaker short-circuit 503, parse error); the caller's retry loop decides whether to
+     *  re-attempt. */
+    private suspend fun fetchHistoryOnce(entityId: EntityId, hours: Int): List<HistoryPoint> {
+        val s = settings.settings.first()
+        val server = s.server ?: error("Server URL not configured.")
+        // Pre-emptive refresh on near-expiry — same reasoning as listAllEntities.
+        refresher?.ensureFresh()
+        val since = Instant.now().minusSeconds(hours.toLong() * 3600L)
+        // HA's history endpoint takes the ISO timestamp in the URL path. URL-encode
+        // the entity_id even though current HA versions don't require it — defensive
+        // against entity_ids that contain unusual characters in future versions.
+        val sinceIso = since.toString()
+        val url = "${server.url.trimEnd('/')}/api/history/period/$sinceIso" +
+            "?filter_entity_id=${java.net.URLEncoder.encode(entityId.value, "UTF-8")}" +
+            "&minimal_response&no_attributes"
+        // Same 401 → refresh → retry path as listAllEntities — sensor charts
+        // fired silently in the background while the user was on the card stack
+        // were a common trigger for "history failed; chart blank" until the user
+        // restarted the app.
+        val body = fetchHistoryBody(url) ?: run {
+            if (refresher?.forceRefresh() == true) {
+                R1Log.i("HaRepo.fetchHistory", "401 → refreshed access token; retrying once")
+                fetchHistoryBody(url)
+                    ?: error("Home Assistant returned HTTP 401 for /api/history even after refresh. Sign out & reconnect.")
+            } else {
+                error("Home Assistant returned HTTP 401 for /api/history. Sign out & reconnect.")
             }
         }
+        // HA returns a JSON array of arrays — outermost level is one entry per
+        // requested entity (we only ask for one). Each inner entry is a state
+        // snapshot. `minimal_response` strips the attribute payload after the
+        // first sample which keeps the response small and parse fast.
+        val outer = listStatesJson.decodeFromString<List<List<HistoryRow>>>(body)
+        val first = outer.firstOrNull().orEmpty()
+        return first.mapNotNull { row ->
+            val state = row.state ?: return@mapNotNull null
+            val ts = row.last_changed ?: row.last_updated ?: return@mapNotNull null
+            val instant = runCatching { Instant.parse(ts) }.getOrNull() ?: return@mapNotNull null
+            HistoryPoint.fromRaw(state, instant)
+        }
+    }
 
     /** Minimal row shape for /api/history; uses `minimal_response` so attributes are absent
      *  after the first sample. Both timestamp fields are nullable because HA omits one or
@@ -2345,6 +2371,14 @@ class DefaultHaRepository(
          * routes to [reconnectNow] and resets the counter.
          */
         const val RECONNECT_GIVE_UP_THRESHOLD = 20
+        /**
+         * Times [fetchHistory] re-attempts after a failure (on top of the first try), with
+         * the backoff doubling each time. At the 1 s default base the attempts land at
+         * +1/+3/+7/+15/+31 s, so the window comfortably outlasts the breaker's 15 s default
+         * cooldown: a transiently-tripped breaker recovers and the chart fills rather than
+         * staying blank until the card is re-opened.
+         */
+        const val HISTORY_FETCH_RETRIES = 5
         /**
          * Hard ceiling on how long the repository will wait for a `result` message after sending
          * a `call_service`. Set high enough to absorb a busy HA on a slow phone-to-broker link

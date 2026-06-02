@@ -368,6 +368,97 @@ class DefaultHaRepositoryTest {
     }
 
     /**
+     * Regression: when the auth breaker is tripped it short-circuits /api/history with a
+     * synthetic 503, and the SensorCard / HistoryGraphCard fetch is a one-shot — so a single
+     * transient failure used to leave the chart permanently blank. fetchHistory now retries
+     * with backoff, so a couple of failures followed by a good response still yields the data.
+     */
+    @Test fun `fetchHistory retries past transient failures and succeeds`() = runTest {
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl)) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val ws = HaWebSocketClient(http = http, scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        // Tiny backoff so the retry path runs without real-time waits.
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            historyRetryBackoffMillis = 1L)
+
+        // Two short-circuit-style 503s, then a real history payload with two numeric samples.
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[[{"state":"21.5","last_changed":"2026-05-29T10:00:00+00:00"},""" +
+                    """{"state":"22.0","last_changed":"2026-05-29T10:05:00+00:00"}]]"""
+            )
+        )
+
+        val result = repo.fetchHistory(EntityId("sensor.temp"), hours = 24)
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow()).hasSize(2)
+        // Two failed attempts + the successful third == three requests reached the server.
+        assertThat(server.requestCount).isEqualTo(3)
+
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
+     * A genuinely empty history (HA simply has no samples in the window) is a success, not a
+     * failure, so it must return immediately on the first try and never burn the retry budget.
+     */
+    @Test fun `fetchHistory does not retry a successful empty history`() = runTest {
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl)) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+        val ws = HaWebSocketClient(http = http, scope = CoroutineScope(SupervisorJob() + Dispatchers.IO))
+        val repo = DefaultHaRepository(ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            historyRetryBackoffMillis = 1L)
+
+        // HA returns one entity entry with no samples: the outer array holds one empty array.
+        server.enqueue(MockResponse().setResponseCode(200).setBody("[[]]"))
+
+        val result = repo.fetchHistory(EntityId("sensor.temp"), hours = 24)
+        assertThat(result.isSuccess).isTrue()
+        assertThat(result.getOrThrow()).isEmpty()
+        assertThat(server.requestCount).isEqualTo(1)
+
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
      * The human label can arrive under `context_name` instead of
      * `context_entity_id_name` (HA uses the former for user-initiated actions).
      * The mapper prefers the entity-scoped label but must accept either; here
