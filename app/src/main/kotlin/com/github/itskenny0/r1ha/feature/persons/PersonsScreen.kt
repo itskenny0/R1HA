@@ -145,6 +145,7 @@ fun PersonsScreen(
                                     title = "People",
                                     count = ui.people.size,
                                     topSpace = R1.space.s,
+                                    trailing = { PresenceSummary(ui.people) },
                                     content = {},
                                 )
                             }
@@ -163,6 +164,7 @@ fun PersonsScreen(
                                 R1Section(
                                     title = "Device trackers",
                                     count = ui.devices.size,
+                                    trailing = { PresenceSummary(ui.devices) },
                                     content = {},
                                 )
                             }
@@ -243,6 +245,46 @@ private fun rowPresence(state: String): RowPresence {
     return RowPresence(derived.label, color)
 }
 
+/**
+ * Home-vs-away count for a section header ("3 HOME / 2 AWAY"), so the user
+ * sees who's in without scanning every row. Home is tinted with the same
+ * green the row chips use and away with the amber, keeping the accent system
+ * consistent; UNKNOWN rows are excluded from both counts (see presenceTally).
+ * The split is rendered as plain text rather than colour alone, and the whole
+ * header carries one merged spoken summary for TalkBack.
+ */
+@Composable
+private fun PresenceSummary(entries: List<PersonsViewModel.Entry>) {
+    val tally = presenceTally(entries.map { it.state })
+    if (tally.home == 0 && tally.away == 0) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.clearAndSetSemantics { contentDescription = tally.summary() },
+    ) {
+        if (tally.home > 0) {
+            Text(
+                text = "${tally.home} HOME",
+                style = R1.labelMicro,
+                color = R1.AccentGreen,
+            )
+        }
+        if (tally.home > 0 && tally.away > 0) {
+            Text(
+                text = " / ",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+        if (tally.away > 0) {
+            Text(
+                text = "${tally.away} AWAY",
+                style = R1.labelMicro,
+                color = R1.StatusAmber,
+            )
+        }
+    }
+}
+
 @Composable
 private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
     val presence = rowPresence(entry.state)
@@ -252,6 +294,10 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
     // separately. mergeDescendants keeps the row's tap action while the
     // explicit contentDescription replaces the child text for announcement.
     val rel = com.github.itskenny0.r1ha.ui.components.rememberRelativeTime(entry.since)
+    // The whole row is tappable and opens this entity's location history, so
+    // suffix the merged label with the tap action (the trailing chevron conveys
+    // the same affordance visually). Appended here, not inside the pure helper,
+    // so the helper's tested output stays a content-only description.
     val rowDescription = rowContentDescription(
         name = entry.name,
         state = entry.state,
@@ -259,7 +305,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
         source = entry.source,
         batteryLevel = entry.batteryLevel,
         gpsAccuracy = entry.gpsAccuracy,
-    )
+    ) + ", open history"
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -348,5 +394,14 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                 }
             }
         }
+        // Trailing chevron — the only visual cue that the row drills into the
+        // entity's location history. The parent row owns the tap + merged
+        // semantics, so this glyph is decorative (no contentDescription, no
+        // separate tap target) and the action is announced via rowDescription.
+        Spacer(Modifier.width(R1.space.s))
+        com.github.itskenny0.r1ha.ui.components.Chevron(
+            direction = com.github.itskenny0.r1ha.ui.components.ChevronDirection.Right,
+            tint = R1.InkMuted,
+        )
     }
 }

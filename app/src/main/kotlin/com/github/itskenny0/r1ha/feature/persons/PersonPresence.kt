@@ -91,6 +91,37 @@ fun presenceSpoken(state: String): String {
 }
 
 /**
+ * Home-vs-away tally for a group of person/device rows, shown as a short
+ * summary chip in the section header ("3 home, 2 away") so the user gets a
+ * who's-in count without scanning every row. ZONE counts as away (the person
+ * is somewhere other than home); UNKNOWN is excluded from both buckets so a
+ * stale/unavailable tracker doesn't inflate either side.
+ */
+data class PresenceTally(val home: Int, val away: Int) {
+    /** "3 home, 2 away", dropping a zero bucket, or "" when both are zero. */
+    fun summary(): String {
+        val parts = mutableListOf<String>()
+        if (home > 0) parts += "$home home"
+        if (away > 0) parts += "$away away"
+        return parts.joinToString(", ")
+    }
+}
+
+/** Tally a group's raw HA states into home / away buckets (see [PresenceTally]). */
+fun presenceTally(states: List<String>): PresenceTally {
+    var home = 0
+    var away = 0
+    for (s in states) {
+        when (presenceLabel(s).kind) {
+            PresenceKind.HOME -> home++
+            PresenceKind.AWAY, PresenceKind.ZONE -> away++
+            PresenceKind.UNKNOWN -> Unit
+        }
+    }
+    return PresenceTally(home, away)
+}
+
+/**
  * One merged accessibility description for a person/device row so a screen
  * reader announces it as a single phrase ("Jane Doe, Home, phone 82 percent")
  * instead of reading the avatar, presence chip, name, entity id, and each
