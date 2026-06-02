@@ -54,6 +54,29 @@ class ScenesViewModel(
          * label on the row.
          */
         val lastActivated: Instant? = null,
+        /**
+         * Script-only: HA reports a script as `state: on` for the whole time it's
+         * actually executing (scenes never have a meaningful on-state, their
+         * `state` is the last-fired timestamp). Surfaces a persistent "RUNNING"
+         * indicator so a long-running script doesn't look idle. Always false for
+         * scenes. Distinct from the transient [UiState.firing] spinner, which only
+         * covers the brief turn_on round-trip.
+         */
+        val running: Boolean = false,
+        /**
+         * For a `queued` / `parallel` mode script that's running, how many copies
+         * are in flight (HA's `current` attribute). Null when not running, when the
+         * script is `single` / `restart` mode (no meaningful count), or for scenes.
+         * Shown next to the RUNNING badge as e.g. "RUNNING x2".
+         */
+        val runningCount: Int? = null,
+        /**
+         * False when HA reports the entity as `unavailable` (integration offline,
+         * not yet loaded). Tapping an unavailable scene / script would fail, so the
+         * row dims itself, drops the spinner, and announces the unavailable state
+         * rather than firing. Mirrors HA's own `canRun` gate.
+         */
+        val available: Boolean = true,
     )
 
     @androidx.compose.runtime.Stable
@@ -74,6 +97,11 @@ class ScenesViewModel(
          *  flight. The row renders a spinner and ignores re-taps while its id
          *  is present so a slow HA round-trip can't be double-fired. */
         val firing: Set<EntityId> = emptySet(),
+        /** Last load failure message, or null when the most recent load
+         *  succeeded. Drives a dedicated error state (distinct from empty) so a
+         *  failed /api/states fetch reads as "couldn't load" rather than "you
+         *  have no scenes". Cleared on the next successful refresh. */
+        val error: String? = null,
     ) {
         /** Subset visible under the current filter + search query. Counts are
          *  small (typically <50) so the in-place filter is trivial. */
@@ -105,6 +133,11 @@ class ScenesViewModel(
                             Domain.SCRIPT -> Kind.SCRIPT
                             else -> null
                         } ?: return@mapNotNull null
+                        // A running script reports state: on; HA carries the in-flight
+                        // copy count in `current` for queued / parallel mode scripts.
+                        val running = kind == Kind.SCRIPT && es.isOn
+                        val current = (es.attributesJson?.get("current") as? JsonPrimitive)
+                            ?.content?.toIntOrNull()
                         Entry(
                             id = es.id,
                             name = es.friendlyName,
@@ -115,6 +148,13 @@ class ScenesViewModel(
                                 lastTriggeredAttr = (es.attributesJson?.get("last_triggered")
                                     as? JsonPrimitive)?.content,
                             ),
+                            running = running,
+                            // Only surface a count when it actually adds information:
+                            // more than one concurrent copy. single / restart scripts
+                            // report current=1 while running, which the RUNNING badge
+                            // already conveys.
+                            runningCount = if (running && current != null && current > 1) current else null,
+                            available = es.isAvailable,
                         )
                     }.sortedBy { it.name.lowercase() }
                     val counts = mapOf(
@@ -126,17 +166,26 @@ class ScenesViewModel(
                         "Scenes",
                         "loaded scenes=${counts[Filter.SCENES]} scripts=${counts[Filter.SCRIPTS]}",
                     )
+                    // Preserve the user's current filter + query across a refresh so a
+                    // periodic / pull reload doesn't reset what they were looking at.
                     _ui.value = UiState(
                         loading = false,
                         all = entries,
                         filter = _ui.value.filter,
+                        query = _ui.value.query,
                         counts = counts,
+                        error = null,
                     )
                 },
                 onFailure = { t ->
                     R1Log.w("Scenes", "list failed: ${t.message}")
-                    Toaster.error("Scenes load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false)
+                    val msg = t.message ?: "unknown"
+                    Toaster.error("Scenes load failed: $msg")
+                    // Keep any previously-loaded entries on screen (a transient fetch
+                    // failure shouldn't blank a working list) but record the error so
+                    // a first-load failure shows a distinct error state instead of the
+                    // "you have no scenes" empty copy.
+                    _ui.value = _ui.value.copy(loading = false, error = msg)
                 },
             )
         }
@@ -278,6 +327,12 @@ class ScenesViewModel(
         // Ignore a re-tap while this entity's turn_on is still in flight so a
         // slow HA round-trip can't double-fire the scene.
         if (entry.id in _ui.value.firing) return
+        // An unavailable entity (integration offline) can't be activated; HA's own
+        // frontend gates this. Tell the user rather than firing into the void.
+        if (!entry.available) {
+            Toaster.show("'${entry.name}' is unavailable")
+            return
+        }
         _ui.value = _ui.value.copy(firing = _ui.value.firing + entry.id)
         viewModelScope.launch {
             val call = ServiceCall(

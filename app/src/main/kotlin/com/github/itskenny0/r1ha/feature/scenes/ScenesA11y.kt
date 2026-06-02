@@ -43,22 +43,36 @@ internal fun sceneInFlightLabel(name: String, kind: ScenesViewModel.Kind): Strin
     }
 
 /**
- * Full row description combining the fire action, in-flight status, and the
- * last-activated hint. [lastActivatedSpoken] is the already-formatted relative
- * phrase (e.g. "5 minutes ago"), or null/blank when the entry has never run or
- * the timestamp is unknown.
+ * Full row description combining the fire action, in-flight status, currently-
+ * running and availability state, and the last-activated hint.
+ * [lastActivatedSpoken] is the already-formatted relative phrase (e.g. "5 minutes
+ * ago"), or null/blank when the entry has never run or the timestamp is unknown.
+ *
+ * Precedence of the leading clause: unavailable beats everything (the row can't be
+ * fired at all), then the in-flight tap echo, then a currently-running script, then
+ * the plain fire affordance. [running] / [runningCount] only ever apply to scripts.
  */
 internal fun sceneRowLabel(
     name: String,
     kind: ScenesViewModel.Kind,
     firing: Boolean,
+    available: Boolean = true,
+    running: Boolean = false,
+    runningCount: Int? = null,
     lastActivatedSpoken: String?,
 ): String {
     val parts = mutableListOf<String>()
-    if (firing) {
-        parts += sceneInFlightLabel(name, kind)
-    } else {
-        parts += sceneFireActionLabel(name, kind)
+    when {
+        !available -> parts += "$name ${sceneKindWord(kind)} unavailable"
+        firing -> parts += sceneInFlightLabel(name, kind)
+        else -> parts += sceneFireActionLabel(name, kind)
+    }
+    if (available && running) {
+        parts += if (runningCount != null && runningCount > 1) {
+            "currently running $runningCount copies"
+        } else {
+            "currently running"
+        }
     }
     if (!lastActivatedSpoken.isNullOrBlank()) {
         parts += "last activated $lastActivatedSpoken"

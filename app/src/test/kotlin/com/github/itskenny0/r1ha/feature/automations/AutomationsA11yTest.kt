@@ -142,4 +142,30 @@ class AutomationsA11yTest {
             "Disable Morning Routine, currently enabled, restart mode, 2 running instances, last triggered an hour ago",
         )
     }
+
+    @Test fun `unavailable row label reads as read-only status not a toggle`() {
+        assertThat(
+            automationRowLabel(
+                name = "Morning Routine",
+                enabled = false,
+                mode = AutomationsViewModel.Mode.SINGLE,
+                runningInstances = 0,
+                lastTriggeredSpoken = null,
+                available = false,
+            ),
+        ).isEqualTo("Morning Routine, unavailable")
+    }
+
+    @Test fun `unavailable row label still surfaces last triggered`() {
+        assertThat(
+            automationRowLabel(
+                name = "Morning Routine",
+                enabled = false,
+                mode = AutomationsViewModel.Mode.SINGLE,
+                runningInstances = 0,
+                lastTriggeredSpoken = "an hour ago",
+                available = false,
+            ),
+        ).isEqualTo("Morning Routine, unavailable, last triggered an hour ago")
+    }
 }

@@ -69,8 +69,19 @@ internal fun automationRowLabel(
     mode: AutomationsViewModel.Mode,
     runningInstances: Int,
     lastTriggeredSpoken: String?,
+    available: Boolean = true,
 ): String {
     val parts = mutableListOf<String>()
+    // An unavailable automation can't be toggled or run, so frame the row as a
+    // read-only status rather than a toggle action; the body opens History on a
+    // tap. Long-press still drills into History for the back-story.
+    if (!available) {
+        val statusParts = mutableListOf("$name, unavailable")
+        if (!lastTriggeredSpoken.isNullOrBlank()) {
+            statusParts += "last triggered $lastTriggeredSpoken"
+        }
+        return statusParts.joinToString(separator = ", ")
+    }
     // Lead with the toggle the row body performs, plus the current state so the
     // reader knows what tapping will do and where it starts from.
     val toggleVerb = if (enabled) "Disable" else "Enable"

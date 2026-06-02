@@ -70,6 +70,10 @@ class HelpersViewModel(
         val options: List<String> = emptyList(),
         /** Timer's finishes_at — null for paused / idle timers. */
         val finishesAt: Instant? = null,
+        /** input_button's state is the ISO timestamp of its last press (or
+         *  `unknown` if never pressed). Parsed so the row can show a relative
+         *  "pressed N ago" the way HA's button row surfaces last-changed. */
+        val pressedAt: Instant? = null,
         /** Timer's `remaining` attribute (HH:MM:SS). Useful when
          *  paused — `finishes_at` is stale at that point. */
         val remaining: String? = null,
@@ -82,6 +86,13 @@ class HelpersViewModel(
          *  the set_datetime payload. */
         val hasDate: Boolean = false,
         val hasTime: Boolean = false,
+        /** input_text mode: "password" masks the displayed value the way HA's
+         *  password-mode text field does. Null / "text" shows it plainly. */
+        val mode: String? = null,
+        /** True when the helper isn't reporting an actionable value
+         *  (`unavailable` / `unknown` / blank). The row renders read-only in
+         *  that case, mirroring HA which disables the control. */
+        val inactive: Boolean = false,
     )
 
     @androidx.compose.runtime.Stable
@@ -163,11 +174,22 @@ class HelpersViewModel(
                         ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
                     finishesAt = (attrs["finishes_at"] as? JsonPrimitive)?.content
                         ?.let { parseHaInstant(it) },
+                    pressedAt = if (kind == Kind.BUTTON) parseHaInstant(row.state) else null,
                     remaining = (attrs["remaining"] as? JsonPrimitive)?.content,
                     textMin = (attrs["min"] as? JsonPrimitive)?.content?.toIntOrNull(),
                     textMax = (attrs["max"] as? JsonPrimitive)?.content?.toIntOrNull(),
                     hasDate = (attrs["has_date"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
                     hasTime = (attrs["has_time"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
+                    mode = (attrs["mode"] as? JsonPrimitive)?.content,
+                    // input_button has no meaningful "inactive" state (its
+                    // state is the last-press timestamp), and a freshly-created
+                    // input_datetime / input_text legitimately reads blank, so
+                    // only gate the value-bearing scalar/select/timer kinds on
+                    // the unavailable/unknown sentinels.
+                    inactive = kind != Kind.BUTTON &&
+                        kind != Kind.TEXT &&
+                        kind != Kind.DATETIME &&
+                        HelpersLogic.isInactiveState(row.state),
                 )
             }.sortedWith(
                 // Group by kind first (so the eye finds e.g. all the

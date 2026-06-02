@@ -49,6 +49,21 @@ class AutomationsViewModelTest {
         assertThat(AutomationsViewModel.enabledFrom(null)).isFalse()
     }
 
+    // --- availableFrom ---------------------------------------------------
+
+    @Test fun `availableFrom is true for a clean on or off state`() {
+        for (s in listOf("on", "OFF", "  on  ", "off")) {
+            assertThat(AutomationsViewModel.availableFrom(s)).isTrue()
+        }
+    }
+
+    @Test fun `availableFrom is false for unavailable unknown blank and null`() {
+        for (s in listOf("unavailable", "unknown", "", "   ")) {
+            assertThat(AutomationsViewModel.availableFrom(s)).isFalse()
+        }
+        assertThat(AutomationsViewModel.availableFrom(null)).isFalse()
+    }
+
     // --- modeOf ----------------------------------------------------------
 
     @Test fun `modeOf maps the four known modes case-insensitively`() {

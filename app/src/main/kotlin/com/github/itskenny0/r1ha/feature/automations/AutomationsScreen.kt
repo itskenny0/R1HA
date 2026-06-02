@@ -302,6 +302,7 @@ private fun AutomationRow(
             mode = entry.mode,
             runningInstances = entry.currentRunning,
             lastTriggeredSpoken = relative.ifBlank { null },
+            available = entry.available,
         )
     }
     val rowSemantics = if (running) {
@@ -328,9 +329,11 @@ private fun AutomationRow(
             // row body), long-press drills into History so the user
             // can see when this automation last fired + how
             // frequently. Separate RUN affordance on the right edge
-            // dispatches a manual trigger.
+            // dispatches a manual trigger. When the automation is
+            // unavailable there's no on/off to flip, so the tap falls
+            // back to opening History rather than firing a doomed toggle.
             .r1RowPressable(
-                onTap = onToggleEnabled,
+                onTap = if (entry.available) onToggleEnabled else onLongPress,
                 onLongPress = onLongPress,
                 contentDescription = rowLabel,
             )
@@ -338,11 +341,22 @@ private fun AutomationRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ON / OFF state label, green when active, muted when off.
+        // State label: ON green when active, OFF muted when disabled, and an
+        // amber "N/A" for an unavailable automation (matches the rest of the
+        // app's StatusAmber 'unavailable' treatment). Sized to fit the longest
+        // token without pushing the name column around.
         Text(
-            text = if (entry.enabled) "ON" else "OFF",
+            text = when {
+                !entry.available -> "N/A"
+                entry.enabled -> "ON"
+                else -> "OFF"
+            },
             style = R1.labelMicro,
-            color = if (entry.enabled) R1.AccentGreen else R1.InkMuted,
+            color = when {
+                !entry.available -> R1.StatusAmber
+                entry.enabled -> R1.AccentGreen
+                else -> R1.InkMuted
+            },
             modifier = Modifier.width(R1.space.xl),
         )
         Spacer(Modifier.width(R1.space.s))
@@ -398,7 +412,7 @@ private fun AutomationRow(
                         modifier = Modifier
                             .clearAndSetSemantics {}
                             .r1RowPressable(
-                                onTap = onToggleEnabled,
+                                onTap = if (entry.available) onToggleEnabled else onLongPress,
                                 onLongPress = { modeExplain.value = true },
                             ),
                     )
@@ -439,14 +453,28 @@ private fun AutomationRow(
         // RUN tap target, fires automation.trigger. Separate from the
         // row's enabled-toggle press handler so a tap here is
         // unambiguously "run now" rather than "toggle on/off".
-        R1Chip(
-            text = "RUN",
-            variant = R1ChipVariant.Action,
-            selected = true,
-            tone = R1.AccentGreen,
-            onClick = onRun,
-            contentDescription = automationRunActionLabel(entry.name),
-        )
+        //
+        // While a manual trigger is in flight the chip reads "RUN…" so the
+        // tap has a visible acknowledgement (the polite live region covers
+        // screen-reader users; this covers everyone else). An unavailable
+        // automation can't be fired, so the chip renders as a dimmed,
+        // non-interactive Pill instead of a live Action.
+        if (entry.available) {
+            R1Chip(
+                text = if (running) "RUN…" else "RUN",
+                variant = R1ChipVariant.Action,
+                selected = true,
+                tone = R1.AccentGreen,
+                onClick = onRun,
+                contentDescription = automationRunActionLabel(entry.name),
+            )
+        } else {
+            R1Chip(
+                text = "RUN",
+                variant = R1ChipVariant.Pill,
+                tone = R1.InkMuted,
+            )
+        }
     }
 }
 

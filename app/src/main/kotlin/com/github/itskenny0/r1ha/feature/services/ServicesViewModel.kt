@@ -30,7 +30,10 @@ class ServicesViewModel(
         val error: String? = null,
     ) {
         /** Filtered subset matching [query]. Matches against domain name,
-         *  service name, or description (case-insensitive substring). */
+         *  service name, description, or any field name (case-insensitive
+         *  substring). Field names are matched too because they're shown in
+         *  the row, so searching e.g. "brightness" should surface
+         *  `light.turn_on` rather than coming up empty. */
         val domains: List<HaServiceDomain> get() {
             if (query.isBlank()) return all
             val q = query.trim().lowercase()
@@ -38,7 +41,8 @@ class ServicesViewModel(
                 if (d.domain.lowercase().contains(q)) return@mapNotNull d
                 val matchingServices = d.services.filter {
                     it.name.lowercase().contains(q) ||
-                        (it.description?.lowercase()?.contains(q) ?: false)
+                        (it.description?.lowercase()?.contains(q) ?: false) ||
+                        it.fieldNames.any { f -> f.lowercase().contains(q) }
                 }
                 if (matchingServices.isEmpty()) null else d.copy(services = matchingServices)
             }

@@ -55,6 +55,14 @@ class AutomationsViewModel(
         /** "on" = enabled (triggers fire automatically); "off" =
          *  disabled. Independent of `current` running instances. */
         val enabled: Boolean,
+        /** False when HA reports the automation as `unavailable` /
+         *  `unknown` (integration not loaded, config error). HA's own
+         *  frontend greys these out and tints the icon red; we surface
+         *  an UNAVAIL badge and suppress the toggle / RUN gestures since
+         *  both would silently no-op against an unavailable entity.
+         *  Defaults to available so existing call sites / tests that
+         *  don't model availability keep the prior behaviour. */
+        val available: Boolean = true,
         val mode: Mode,
         /** Number of currently-running instances (relevant for
          *  parallel / queued modes). 0 most of the time. */
@@ -106,6 +114,7 @@ class AutomationsViewModel(
                             id = EntityId(row.entityId),
                             name = row.friendlyName,
                             enabled = enabledFrom(row.state),
+                            available = availableFrom(row.state),
                             mode = modeOf((row.attributes["mode"] as? JsonPrimitive)?.content),
                             currentRunning = (row.attributes["current"] as? JsonPrimitive)?.content
                                 ?.toIntOrNull() ?: 0,
@@ -138,6 +147,12 @@ class AutomationsViewModel(
      * which is what the user typically wants when they're testing.
      */
     fun trigger(entry: Entry) {
+        // An unavailable automation can't be fired; tell the user rather than
+        // dispatching a call HA will reject silently.
+        if (!entry.available) {
+            Toaster.error("'${entry.name}' is unavailable")
+            return
+        }
         viewModelScope.launch {
             val call = ServiceCall(
                 target = entry.id,
@@ -170,6 +185,12 @@ class AutomationsViewModel(
      *  service contract — and the state attribute reflects this
      *  exactly. */
     fun setEnabled(entry: Entry, enabled: Boolean) {
+        // An unavailable automation has no meaningful on/off to flip; skip the
+        // optimistic update and the doomed dispatch, and surface why.
+        if (!entry.available) {
+            Toaster.error("'${entry.name}' is unavailable")
+            return
+        }
         // Optimistic update: flip the row's enabled flag in-place right away so
         // the inline toggle reflects the intent without waiting on the round
         // trip. The follow-up refresh reconciles against HA's authoritative
@@ -266,6 +287,17 @@ class AutomationsViewModel(
          *  than guessing. Case-insensitive to match HA's loose casing. */
         internal fun enabledFrom(rawState: String?): Boolean =
             rawState?.trim()?.equals("on", ignoreCase = true) == true
+
+        /** True when HA reports a real on/off state. "unavailable" (the
+         *  integration failed to load / the automation has a config error)
+         *  and "unknown" both mean the automation can't be toggled or run,
+         *  so we treat anything that isn't a clean on/off as unavailable.
+         *  Case-insensitive to match HA's loose casing. */
+        internal fun availableFrom(rawState: String?): Boolean =
+            when (rawState?.trim()?.lowercase()) {
+                "on", "off" -> true
+                else -> false
+            }
 
         /** Map HA's `mode` attribute to one of our [Mode] enum cases. A null
          *  attribute or a future HA mode we haven't enumerated falls through

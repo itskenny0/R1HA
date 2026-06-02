@@ -104,6 +104,33 @@ object HelpersLogic {
     }
 
     /**
+     * Pick the option index to advance / step back FROM, given the helper's
+     * current [state]. When the state is one of the helper's [options] we cycle
+     * relative to it. When it isn't (a fresh helper reports `unknown`, or the
+     * options were edited out from under the state), [options.indexOf] returns
+     * -1 and the old `coerceAtLeast(0)` quietly skipped `options[0]` on the
+     * first forward tap and mislabelled the position counter. Returning -1 here
+     * lets the caller treat "no current selection" distinctly: a forward step
+     * then lands on `options[0]` and the counter can read 0 / N.
+     */
+    fun selectCurrentIndex(state: String, options: List<String>): Int =
+        options.indexOf(state)
+
+    /** Home Assistant's two non-actionable state sentinels. Controls should
+     *  render read-only (HA disables them) rather than dispatch a service that
+     *  would no-op or error against an entity that isn't reporting. */
+    fun isInactiveState(state: String): Boolean =
+        state.equals("unavailable", ignoreCase = true) ||
+            state.equals("unknown", ignoreCase = true) ||
+            state.isBlank()
+
+    /** Mask a value for display when an input_text helper is in `password`
+     *  mode (HA renders these as a password field). Length-preserving so the
+     *  row still hints at "set vs empty" without leaking the secret. */
+    fun maskText(value: String): String =
+        if (value.isEmpty()) value else "•".repeat(value.length.coerceAtMost(32))
+
+    /**
      * Split an input_datetime state string into the `date` / `time` fields HA's
      * `set_datetime` service expects. HA states look like:
      *   - date-only:     "2024-01-15"

@@ -103,7 +103,7 @@ fun ScenesScreen(
             onSelect = { vm.setFilter(it) },
         )
             when {
-                ui.loading -> Box(
+                ui.loading && ui.all.isEmpty() -> Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .semantics {
@@ -117,6 +117,41 @@ fun ScenesScreen(
                         strokeWidth = 2.dp,
                         color = R1.AccentWarm,
                     )
+                }
+                // Dedicated error state: only when the load failed AND we have
+                // nothing cached to show. A transient failure over a populated list
+                // keeps the list (the toast already reported the failure) so a blip
+                // doesn't blank a working screen.
+                ui.error != null && ui.all.isEmpty() -> Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(R1.space.xl)
+                        .semantics {
+                            liveRegion = LiveRegionMode.Polite
+                            contentDescription = "Failed to load scenes and scripts: ${ui.error}"
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(R1.space.m),
+                    ) {
+                        Text(
+                            text = "Couldn't load scenes and scripts: ${ui.error}",
+                            style = R1.body,
+                            color = R1.StatusRed,
+                        )
+                        // Explicit retry: the empty / error Box isn't scrollable so
+                        // pull-to-refresh can't fire here. Give the user a direct way
+                        // to re-issue the /api/states fetch without leaving the screen.
+                        R1Chip(
+                            text = "RETRY",
+                            modifier = Modifier.height(R1.MinTarget),
+                            variant = R1ChipVariant.Action,
+                            onClick = { vm.refresh() },
+                            contentDescription = "Retry loading scenes and scripts",
+                        )
+                    }
                 }
                 entries.isEmpty() -> Box(
                     modifier = Modifier
@@ -195,9 +230,15 @@ private fun SceneRow(
         name = entry.name,
         kind = entry.kind,
         firing = firing,
+        available = entry.available,
+        running = entry.running,
+        runningCount = entry.runningCount,
         lastActivatedSpoken = relative,
     )
-    val rowSemantics = if (firing) {
+    // Announce on the two transient/notable states: the tap echo (firing) and a
+    // script that's actively executing. Both warrant a polite re-read without the
+    // user re-focusing the row.
+    val rowSemantics = if (firing || entry.running) {
         Modifier.semantics {
             liveRegion = LiveRegionMode.Polite
             contentDescription = rowLabel
@@ -213,31 +254,58 @@ private fun SceneRow(
     // timestamp (scripts report it via last_triggered), surfaced as a subtle
     // 'activated <relative>' so the user can tell which scenes ran recently. It
     // self-omits when the entity has never run (label resolves to "").
+    // Unavailable entries dim their leading kind chip too, so the whole row reads
+    // as inert at a glance rather than just the muted label text.
+    val chipTone = if (entry.available) kindTone else R1.InkMuted
     R1Row(
         label = entry.name,
         description = entry.id.value,
         boxed = true,
+        enabled = entry.available,
         leadingContent = {
-            R1Chip(text = kindLabel, variant = R1ChipVariant.Pill, tone = kindTone)
+            R1Chip(text = kindLabel, variant = R1ChipVariant.Pill, tone = chipTone)
         },
-        trailing = if (firing) {
-            {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = kindTone,
-                )
+        // Trailing priority: the transient tap echo (firing spinner) wins, then the
+        // unavailable badge (can't be fired), then a script's persistent RUNNING
+        // indicator, and finally the subtle last-activated freshness label.
+        trailing = when {
+            firing -> {
+                {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = kindTone,
+                    )
+                }
             }
-        } else if (relative.isNotEmpty()) {
-            {
-                Text(
-                    text = "activated $relative",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
+            !entry.available -> {
+                {
+                    R1Chip(
+                        text = "UNAVAILABLE",
+                        variant = R1ChipVariant.Pill,
+                        tone = R1.StatusAmber,
+                    )
+                }
             }
-        } else {
-            null
+            entry.running -> {
+                {
+                    R1Chip(
+                        text = entry.runningCount?.let { "RUNNING x$it" } ?: "RUNNING",
+                        variant = R1ChipVariant.Pill,
+                        tone = R1.AccentGreen,
+                    )
+                }
+            }
+            relative.isNotEmpty() -> {
+                {
+                    Text(
+                        text = "activated $relative",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+            }
+            else -> null
         },
         modifier = Modifier
             .then(rowSemantics)

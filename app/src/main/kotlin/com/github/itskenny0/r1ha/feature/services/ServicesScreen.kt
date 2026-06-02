@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
@@ -85,7 +86,11 @@ fun ServicesScreen(
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         SearchBar(query = ui.query, onQueryChange = { vm.setQuery(it) })
         when {
-            ui.loading -> Box(
+            // Only block the whole surface with a spinner on the FIRST load
+            // (nothing cached yet). A refresh of an already-populated list
+            // routes through PullToRefreshBox's overlay instead, so pulling
+            // to refresh no longer blanks the list out from under the user.
+            ui.loading && ui.all.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
@@ -96,7 +101,7 @@ fun ServicesScreen(
                 )
             }
             ui.error != null && filteredDomains.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Service registry fetch failed — surface the real error
@@ -109,7 +114,7 @@ fun ServicesScreen(
                 )
             }
             filteredDomains.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -128,9 +133,9 @@ fun ServicesScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     for (domain in filteredDomains) {
                         item(key = domain.domain) {
@@ -171,10 +176,10 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = 8.dp))
+        Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = R1.space.s))
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
                 value = query,
@@ -184,9 +189,11 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             )
         }
         if (query.isNotEmpty()) {
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Box(
-                modifier = Modifier.size(48.dp).r1Pressable({ onQueryChange("") }),
+                modifier = Modifier
+                    .size(R1.MinTarget)
+                    .r1Pressable(onClick = { onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
@@ -200,36 +207,42 @@ private fun DomainRow(domain: String, count: Int, expanded: Boolean, onToggle: (
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onToggle)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .r1Pressable(
+                onClick = onToggle,
+                contentDescription = if (expanded) "Collapse $domain, $count services" else "Expand $domain, $count services",
+            )
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = domain.uppercase(), style = R1.body, color = R1.AccentWarm, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(text = "$count", style = R1.labelMicro, color = R1.InkSoft)
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(R1.space.xs))
         Text(text = if (expanded) "▾" else "▸", style = R1.labelMicro, color = R1.InkSoft)
     }
 }
 
 @Composable
 private fun ServiceRow(domain: String, service: HaService, onCopy: () -> Unit) {
+    val fqn = "$domain.${service.name}"
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp)
+            .padding(start = R1.space.l)
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onCopy)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .r1Pressable(onClick = onCopy, contentDescription = "Copy $fqn to clipboard")
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "$domain.${service.name}",
+                text = fqn,
                 style = R1.body,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),

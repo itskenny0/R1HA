@@ -32,6 +32,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -438,7 +440,15 @@ private fun HelperRow(
         )
         Spacer(Modifier.height(R1.space.s))
         // Per-kind control row, branches on entry.kind so each domain
-        // gets the affordance that fits HA's native semantic.
+        // gets the affordance that fits HA's native semantic. When the helper
+        // is reporting unavailable / unknown we show the sentinel read-only
+        // rather than an interactive control, mirroring HA which disables the
+        // control: stepping / toggling / selecting against an entity that
+        // isn't reporting would only no-op or surface an error toast.
+        if (entry.inactive) {
+            UnavailableValue(entry.state)
+            return@Column
+        }
         when (entry.kind) {
             HelpersViewModel.Kind.BOOLEAN -> BooleanControl(entry, vm)
             HelpersViewModel.Kind.NUMBER -> NumberControl(
@@ -569,7 +579,11 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
     // full-list picker so users can jump directly. Short lists still benefit
     // from cycle-on-tap because no dialog round-trip is needed.
     val options = entry.options
-    val currentIdx = options.indexOf(entry.state).coerceAtLeast(0)
+    // -1 when the current state isn't one of the helper's options (a fresh
+    // helper reads `unknown`, or options were edited out). Distinct from index
+    // 0 so a forward tap lands on options[0] instead of skipping it, and the
+    // position counter reads 0 / N rather than a misleading 1 / N.
+    val currentIdx = HelpersLogic.selectCurrentIndex(entry.state, options)
     val showPicker = androidx.compose.runtime.remember(entry.id.value) {
         androidx.compose.runtime.mutableStateOf(false)
     }
@@ -582,13 +596,18 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
                 .r1RowPressable(
                     onTap = {
                         if (options.isNotEmpty()) {
-                            val next = options[(currentIdx + 1) % options.size]
-                            vm.selectOption(entry, next)
+                            // From "no current selection" (-1) the first tap
+                            // should land on options[0]; from a valid index it
+                            // advances normally with wraparound.
+                            val nextIdx = if (currentIdx < 0) 0
+                            else HelpersLogic.cycleSelectIndex(currentIdx, options.size, forward = true)
+                            vm.selectOption(entry, options[nextIdx])
                         }
                     },
                     onLongPress = {
                         if (options.isNotEmpty()) {
-                            val prevIdx = if (currentIdx == 0) options.size - 1 else currentIdx - 1
+                            val prevIdx = if (currentIdx < 0) options.size - 1
+                            else HelpersLogic.cycleSelectIndex(currentIdx, options.size, forward = false)
                             vm.selectOption(entry, options[prevIdx])
                         }
                     },
@@ -597,7 +616,15 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
                 .padding(horizontal = R1.space.m, vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = entry.state, style = R1.bodyEmph, color = R1.AccentWarm, maxLines = 1)
+            Text(
+                text = entry.state,
+                style = R1.bodyEmph,
+                color = R1.AccentWarm,
+                maxLines = 1,
+                modifier = Modifier.semantics {
+                    contentDescription = "Current option ${entry.state}, tap to change"
+                },
+            )
         }
         Spacer(Modifier.width(R1.space.s))
         Text(
@@ -695,14 +722,25 @@ private fun SelectOptionPicker(
 
 @Composable
 private fun ButtonControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
-    R1Chip(
-        text = "PRESS",
-        variant = R1ChipVariant.Action,
-        selected = true,
-        tone = R1.AccentGreen,
-        onClick = { vm.pressButton(entry) },
-        contentDescription = "Press ${entry.name}",
-    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        R1Chip(
+            text = "PRESS",
+            variant = R1ChipVariant.Action,
+            selected = true,
+            tone = R1.AccentGreen,
+            onClick = { vm.pressButton(entry) },
+            contentDescription = "Press ${entry.name}",
+        )
+        // input_button's state is the ISO timestamp of the last press; surface
+        // it as a relative "pressed N ago" the way HA shows last-changed. Never
+        // pressed (state was `unknown`) parses to null and the label hides.
+        if (entry.pressedAt != null) {
+            Spacer(Modifier.width(R1.space.s))
+            Text(text = "pressed", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.width(R1.space.xs))
+            RelativeTimeLabel(at = entry.pressedAt, color = R1.InkSoft, style = R1.labelMicro)
+        }
+    }
 }
 
 @Composable
@@ -710,9 +748,18 @@ private fun TextControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
     val showEditor = androidx.compose.runtime.remember(entry.id.value) {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // HA renders password-mode input_text as a masked field; mirror that on
+    // the read row so a stored secret isn't shown in the clear on a list that
+    // a glance can take in. The editor still works on the real value.
+    val isPassword = entry.mode.equals("password", ignoreCase = true)
+    val display = when {
+        entry.state.isBlank() -> "(empty)"
+        isPassword -> HelpersLogic.maskText(entry.state)
+        else -> entry.state
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = entry.state.ifBlank { "(empty)" },
+            text = display,
             style = R1.body,
             color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
             maxLines = 2,
@@ -991,6 +1038,26 @@ private fun ReadOnlyValue(value: String) {
         style = R1.body,
         color = R1.Ink,
         maxLines = 2,
+    )
+}
+
+/**
+ * Read-only stand-in for a helper that isn't reporting an actionable value
+ * (unavailable / unknown / blank). Muted ink + a clear word so the row reads
+ * as intentionally inert rather than a control that silently does nothing.
+ */
+@Composable
+private fun UnavailableValue(state: String) {
+    val label = when (state.lowercase()) {
+        "unavailable" -> "UNAVAILABLE"
+        "" -> "UNKNOWN"
+        else -> state.uppercase()
+    }
+    Text(
+        text = label,
+        style = R1.labelMicro,
+        color = R1.InkMuted,
+        maxLines = 1,
     )
 }
 

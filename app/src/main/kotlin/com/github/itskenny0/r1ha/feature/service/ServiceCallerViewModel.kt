@@ -54,7 +54,29 @@ class ServiceCallerViewModel(
          *  "what did I do last week" — the latter would want a real
          *  history surface. */
         val recent: List<RecentCall> = emptyList(),
-    )
+    ) {
+        /** True when [domain] is empty or a legal HA domain token. The repo
+         *  enforces `[a-z0-9_]+` and throws otherwise; mirroring the check
+         *  here lets the field paint red and the FIRE button disable BEFORE
+         *  a doomed round-trip, instead of surfacing the failure as an error
+         *  panel after the fact. Empty is treated as "not yet invalid" so the
+         *  field doesn't glow red before the user has typed. */
+        val domainValid: Boolean get() = domain.isBlank() || domain.trim().matches(TOKEN)
+
+        /** True when [service] is empty or a legal HA service token. */
+        val serviceValid: Boolean get() = service.isBlank() || service.trim().matches(TOKEN)
+
+        /** True when [data] is blank or parses as a JSON object. Surfaced as
+         *  an inline hint so malformed JSON is caught while typing rather
+         *  than only on FIRE. */
+        val dataValid: Boolean get() = data.isBlank() || runCatching {
+            kotlinx.serialization.json.Json.parseToJsonElement(data.trim()) is kotlinx.serialization.json.JsonObject
+        }.getOrDefault(false)
+
+        /** All fields present and well-formed, ready to dispatch. */
+        val canFire: Boolean get() = domain.isNotBlank() && service.isNotBlank() &&
+            domainValid && serviceValid && dataValid
+    }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
@@ -85,12 +107,22 @@ class ServiceCallerViewModel(
             _ui.value = s.copy(error = "Domain + service required")
             return
         }
+        // Validate the domain/service tokens up front. The repo throws on
+        // anything outside [a-z0-9_]+; catching it here gives a clear,
+        // field-specific message instead of leaking the raw require() text.
+        if (!s.domainValid || !s.serviceValid) {
+            _ui.value = s.copy(
+                error = "Domain and service must be lowercase letters, digits, or underscores " +
+                    "(e.g. light.turn_on). Drop the dot and any spaces.",
+            )
+            return
+        }
         // Parse the data field as a JsonObject if non-blank; empty = {}.
         val payload = if (s.data.isBlank()) {
             kotlinx.serialization.json.JsonObject(emptyMap())
         } else {
             runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(s.data)
+                kotlinx.serialization.json.Json.parseToJsonElement(s.data.trim())
                     as? kotlinx.serialization.json.JsonObject
                     ?: error("Data must be a JSON object")
             }.getOrElse { t ->
@@ -161,6 +193,11 @@ class ServiceCallerViewModel(
     }
 
     companion object {
+        /** Legal HA domain / service token: lowercase letters, digits,
+         *  underscores. Mirrors the guard in
+         *  [com.github.itskenny0.r1ha.core.ha.HaRepository.callRawService]. */
+        private val TOKEN = Regex("[a-z0-9_]+")
+
         /** Shared Json instance for pretty-printing service-call results.
          *  prettyPrint = true is enough; default 4-space indent reads
          *  fine on the R1's tiny screen. Lives in the companion so the

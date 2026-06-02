@@ -83,35 +83,45 @@ fun ServiceCallerScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = R1.space.m, vertical = R1.space.s)
                 .verticalScroll(scrollState),
         ) {
             ExampleChips(onPick = vm::load)
-            Spacer(Modifier.padding(top = 10.dp))
+            Spacer(Modifier.padding(top = R1.space.s))
             FieldLabel("DOMAIN")
             R1TextField(
                 value = ui.domain,
                 onValueChange = { vm.setDomain(it) },
                 placeholder = "homeassistant",
                 monospace = true,
+                isError = !ui.domainValid,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     imeAction = androidx.compose.ui.text.input.ImeAction.Next,
                 ),
             )
-            Spacer(Modifier.padding(top = 6.dp))
+            Spacer(Modifier.padding(top = R1.space.xs))
             FieldLabel("SERVICE")
             R1TextField(
                 value = ui.service,
                 onValueChange = { vm.setService(it) },
                 placeholder = "check_config",
                 monospace = true,
+                isError = !ui.serviceValid,
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     imeAction = androidx.compose.ui.text.input.ImeAction.Next,
                 ),
             )
-            Spacer(Modifier.padding(top = 6.dp))
+            if (!ui.domainValid || !ui.serviceValid) {
+                Spacer(Modifier.padding(top = R1.space.xxs))
+                Text(
+                    text = "Use lowercase letters, digits, underscores. No dot, no spaces.",
+                    style = R1.labelMicro,
+                    color = R1.StatusRed,
+                )
+            }
+            Spacer(Modifier.padding(top = R1.space.xs))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "DATA (JSON, optional)", style = R1.labelMicro, color = R1.InkSoft)
                 Spacer(Modifier.weight(1f))
@@ -124,33 +134,36 @@ fun ServiceCallerScreen(
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = {
-                            val text = clipboard.getText()?.toString().orEmpty().trim()
-                            if (text.isBlank()) {
-                                Toaster.show("Clipboard empty")
-                            } else {
-                                // Try pretty-printing JSON for readability.
-                                // Anything that doesn't parse drops through as
-                                // raw text — paste-as-is for non-JSON snippets.
-                                // Reuses ServiceCallerViewModel.prettyJson so
-                                // the formatter is not rebuilt per paste.
-                                val pretty = runCatching {
-                                    val parsed = kotlinx.serialization.json.Json
-                                        .parseToJsonElement(text)
-                                    ServiceCallerViewModel.prettyJson.encodeToString(
-                                        kotlinx.serialization.json.JsonElement.serializer(),
-                                        parsed,
-                                    )
-                                }.getOrNull()
-                                vm.setData(pretty ?: text)
-                            }
-                        })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .r1Pressable(
+                            onClick = {
+                                val text = clipboard.getText()?.toString().orEmpty().trim()
+                                if (text.isBlank()) {
+                                    Toaster.show("Clipboard empty")
+                                } else {
+                                    // Try pretty-printing JSON for readability.
+                                    // Anything that doesn't parse drops through as
+                                    // raw text — paste-as-is for non-JSON snippets.
+                                    // Reuses ServiceCallerViewModel.prettyJson so
+                                    // the formatter is not rebuilt per paste.
+                                    val pretty = runCatching {
+                                        val parsed = kotlinx.serialization.json.Json
+                                            .parseToJsonElement(text)
+                                        ServiceCallerViewModel.prettyJson.encodeToString(
+                                            kotlinx.serialization.json.JsonElement.serializer(),
+                                            parsed,
+                                        )
+                                    }.getOrNull()
+                                    vm.setData(pretty ?: text)
+                                }
+                            },
+                            contentDescription = "Paste JSON data from clipboard",
+                        )
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(text = "PASTE", style = R1.labelMicro, color = R1.InkSoft)
                 }
             }
-            Spacer(Modifier.padding(top = 4.dp))
+            Spacer(Modifier.padding(top = R1.space.xs))
             R1TextField(
                 value = ui.data,
                 onValueChange = { vm.setData(it) },
@@ -158,38 +171,50 @@ fun ServiceCallerScreen(
                 monospace = true,
                 singleLine = false,
                 minLines = 3,
+                isError = !ui.dataValid,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 88.dp),
             )
-            Spacer(Modifier.padding(top = 8.dp))
+            if (!ui.dataValid) {
+                Spacer(Modifier.padding(top = R1.space.xxs))
+                Text(
+                    text = "Data must be a JSON object, e.g. {\"entity_id\":\"light.kitchen\"}.",
+                    style = R1.labelMicro,
+                    color = R1.StatusRed,
+                )
+            }
+            Spacer(Modifier.padding(top = R1.space.s))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 R1Button(
                     text = if (ui.inFlight) "FIRING…" else "FIRE",
                     onClick = { vm.fire() },
-                    enabled = !ui.inFlight && ui.domain.isNotBlank() && ui.service.isNotBlank(),
+                    enabled = !ui.inFlight && ui.canFire,
                 )
                 if (ui.inFlight) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(R1.space.xs))
                     Box(
                         modifier = Modifier
                             .clip(R1.ShapeS)
                             .background(R1.StatusRed.copy(alpha = 0.18f))
                             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
-                            .r1Pressable(onClick = { vm.cancel() })
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .r1Pressable(
+                                onClick = { vm.cancel() },
+                                contentDescription = "Cancel service call",
+                            )
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(text = "CANCEL", style = R1.labelMicro, color = R1.StatusRed)
                     }
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "POST /api/services/${ui.domain}/${ui.service}",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
             }
-            Spacer(Modifier.padding(top = 12.dp))
+            Spacer(Modifier.padding(top = R1.space.m))
             when {
                 ui.error != null -> ResultPanel(
                     heading = "ERROR",
@@ -212,7 +237,7 @@ fun ServiceCallerScreen(
             // Recent fires — newest first; tap to recall into the editor.
             // Useful for re-firing the same service while iterating data.
             if (ui.recent.isNotEmpty()) {
-                Spacer(Modifier.padding(top = 16.dp))
+                Spacer(Modifier.padding(top = R1.space.l))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "RECENT", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
@@ -220,19 +245,22 @@ fun ServiceCallerScreen(
                         modifier = Modifier
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
-                            .r1Pressable(onClick = { vm.clearRecent() })
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .r1Pressable(
+                                onClick = { vm.clearRecent() },
+                                contentDescription = "Clear recent calls",
+                            )
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(text = "CLEAR", style = R1.labelMicro, color = R1.InkSoft)
                     }
                 }
-                Spacer(Modifier.padding(top = 4.dp))
+                Spacer(Modifier.padding(top = R1.space.xs))
                 for (call in ui.recent) {
                     RecentRow(call, onPick = { vm.load(call.domain, call.service, call.data) })
-                    Spacer(Modifier.padding(top = 4.dp))
+                    Spacer(Modifier.padding(top = R1.space.xs))
                 }
             }
-            Spacer(Modifier.padding(top = 24.dp))
+            Spacer(Modifier.padding(top = R1.space.xl))
         }
         } // AdaptiveContent
     }
@@ -246,10 +274,14 @@ private fun RecentRow(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .r1Pressable(onClick = onPick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .r1Pressable(
+                onClick = onPick,
+                contentDescription = "Recall ${call.domain}.${call.service} into editor",
+            )
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
     ) {
         Column {
             Text(
@@ -273,7 +305,7 @@ private fun RecentRow(
 @Composable
 private fun FieldLabel(label: String) {
     Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
-    Spacer(Modifier.padding(top = 4.dp))
+    Spacer(Modifier.padding(top = R1.space.xs))
 }
 
 private fun copy(clipboard: androidx.compose.ui.platform.ClipboardManager, text: String) {
@@ -330,7 +362,7 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
                         brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
                             colors = listOf(R1.Bg, androidx.compose.ui.graphics.Color.Transparent),
                             startX = 0f,
-                            endX = 18.dp.toPx(),
+                            endX = R1.space.l.toPx(),
                         ),
                         blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
                         size = size,
@@ -340,7 +372,7 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
                     drawRect(
                         brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
                             colors = listOf(androidx.compose.ui.graphics.Color.Transparent, R1.Bg),
-                            startX = size.width - 18.dp.toPx(),
+                            startX = size.width - R1.space.l.toPx(),
                             endX = size.width,
                         ),
                         blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
@@ -353,19 +385,22 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(chipScroll),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = "TRY", style = R1.labelMicro, color = R1.InkMuted)
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(R1.space.xs))
             for (ex in examples) {
                 Box(
                     modifier = Modifier
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { onPick(ex.domain, ex.service, ex.data) })
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .r1Pressable(
+                            onClick = { onPick(ex.domain, ex.service, ex.data) },
+                            contentDescription = "Load example: ${ex.label}",
+                        )
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(text = ex.label, style = R1.labelMicro, color = R1.InkSoft)
                 }
@@ -384,26 +419,26 @@ private fun ResultPanel(
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = heading, style = R1.labelMicro, color = accent)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = onCopy)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .r1Pressable(onClick = onCopy, contentDescription = "Copy $heading to clipboard")
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
             ) {
                 Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
             }
         }
-        Spacer(Modifier.padding(top = 4.dp))
+        Spacer(Modifier.padding(top = R1.space.xs))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.s, vertical = R1.space.s),
         ) {
             Text(text = body, style = R1.body, color = R1.Ink)
         }
