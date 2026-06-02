@@ -341,7 +341,7 @@ private fun HaInbound.Result.Error?.bestMessage(): String =
 private fun parseBucketInstant(element: kotlinx.serialization.json.JsonElement?): java.time.Instant? {
     val raw = (element as? JsonPrimitive)?.content ?: return null
     raw.toLongOrNull()?.let { return runCatching { java.time.Instant.ofEpochMilli(it) }.getOrNull() }
-    return runCatching { java.time.Instant.parse(raw) }.getOrNull()
+    return parseHaInstant(raw)
 }
 
 /** Fallback bucket span when HA omits `end` (rare but defensive). */
@@ -1048,7 +1048,7 @@ class DefaultHaRepository(
                 friendlyName = raw.attributes["friendly_name"].asString() ?: idStr,
                 state = stateStr,
                 attributes = raw.attributes,
-                lastChanged = runCatching { Instant.parse(raw.lastChanged ?: "") }.getOrNull(),
+                lastChanged = parseHaInstant(raw.lastChanged),
             )
             rawCache.update { it + (idStr to rawRow) }
             _lastEventAt.value = System.currentTimeMillis()
@@ -1155,7 +1155,7 @@ class DefaultHaRepository(
             isOn = isOn,
             percent = if (available) pct else null,
             raw = rawNum,
-            lastChanged = runCatching { Instant.parse(raw.lastChanged ?: "") }.getOrDefault(Instant.now()),
+            lastChanged = (parseHaInstant(raw.lastChanged) ?: Instant.now()),
             isAvailable = available,
             supportsScalar = supportsScalar(domain, raw.attributes),
             rawState = stateStr,
@@ -1199,7 +1199,7 @@ class DefaultHaRepository(
             mediaDuration = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_duration"].asInt() else null,
             mediaPosition = if (domain == Domain.MEDIA_PLAYER) raw.attributes["media_position"].asInt() else null,
             mediaPositionUpdatedAt = if (domain == Domain.MEDIA_PLAYER) {
-                raw.attributes["media_position_updated_at"].asString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                raw.attributes["media_position_updated_at"].asString()?.let { parseHaInstant(it) }
             } else null,
             mediaPicture = if (domain == Domain.MEDIA_PLAYER) raw.attributes["entity_picture"].asString() else null,
             isVolumeMuted = domain == Domain.MEDIA_PLAYER &&
@@ -1669,7 +1669,7 @@ class DefaultHaRepository(
         return first.mapNotNull { row ->
             val state = row.state ?: return@mapNotNull null
             val ts = row.last_changed ?: row.last_updated ?: return@mapNotNull null
-            val instant = runCatching { Instant.parse(ts) }.getOrNull() ?: return@mapNotNull null
+            val instant = parseHaInstant(ts) ?: return@mapNotNull null
             HistoryPoint.fromRaw(state, instant)
         }
     }
@@ -1767,7 +1767,7 @@ class DefaultHaRepository(
                 rows.mapNotNull { row ->
                     val ts = row.`when`
                         ?: return@mapNotNull null
-                    val instant = runCatching { Instant.parse(ts) }.getOrNull()
+                    val instant = parseHaInstant(ts)
                         ?: return@mapNotNull null
                     val entityId = row.entity_id?.let { raw ->
                         // Defensive — HA can include entity_ids from domains we
@@ -1844,7 +1844,7 @@ class DefaultHaRepository(
                     val message = (row.attributes["message"] as? JsonPrimitive)?.content
                         ?: row.state
                     val createdRaw = (row.attributes["created_at"] as? JsonPrimitive)?.content
-                    val createdAt = createdRaw?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                    val createdAt = createdRaw?.let { parseHaInstant(it) }
                     PersistentNotification(
                         notificationId = notificationId,
                         title = title,
@@ -2000,7 +2000,7 @@ class DefaultHaRepository(
     private fun parseCalDate(el: kotlinx.serialization.json.JsonElement?): Pair<Instant?, Boolean> {
         val obj = el as? kotlinx.serialization.json.JsonObject ?: return null to false
         (obj["dateTime"] as? JsonPrimitive)?.content?.let { dt ->
-            return runCatching { Instant.parse(dt) }.getOrNull() to false
+            return parseHaInstant(dt) to false
         }
         (obj["date"] as? JsonPrimitive)?.content?.let { date ->
             // All-day events in HA are local-date strings (no timezone). Resolve them against
@@ -2133,7 +2133,7 @@ class DefaultHaRepository(
             // against malformed strings (some integrations emit
             // 'unavailable' or omit the field).
             val lastChanged = (obj["last_changed"] as? JsonPrimitive)?.content
-                ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                ?.let { parseHaInstant(it) }
             RawEntityRow(
                 entityId = eid,
                 friendlyName = friendly,
@@ -2550,7 +2550,7 @@ class DefaultHaRepository(
                     },
                     percent = pct,
                     raw = rawNum,
-                    lastChanged = runCatching { Instant.parse(row.last_changed ?: "") }.getOrDefault(Instant.now()),
+                    lastChanged = (parseHaInstant(row.last_changed) ?: Instant.now()),
                     isAvailable = available,
                     supportsScalar = supportsScalar(domain, attrs),
                     rawState = stateStr,
@@ -2590,7 +2590,7 @@ class DefaultHaRepository(
                     mediaDuration = if (domain == Domain.MEDIA_PLAYER) attrs["media_duration"].asInt() else null,
                     mediaPosition = if (domain == Domain.MEDIA_PLAYER) attrs["media_position"].asInt() else null,
                     mediaPositionUpdatedAt = if (domain == Domain.MEDIA_PLAYER) {
-                        attrs["media_position_updated_at"].asString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
+                        attrs["media_position_updated_at"].asString()?.let { parseHaInstant(it) }
                     } else null,
                     mediaPicture = if (domain == Domain.MEDIA_PLAYER) attrs["entity_picture"].asString() else null,
                     isVolumeMuted = domain == Domain.MEDIA_PLAYER &&
@@ -3578,7 +3578,7 @@ class DefaultHaRepository(
                 fun str(key: String): String? = (o[key] as? JsonPrimitive)?.content
                 val id = str("id") ?: str("tag_id") ?: return@mapNotNull null
                 val lastScanned = str("last_scanned")?.let {
-                    runCatching { java.time.Instant.parse(it) }.getOrNull()
+                    parseHaInstant(it)
                 }
                 HaTag(
                     id = id,

@@ -5,9 +5,9 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import java.util.Locale
 
 /**
@@ -105,7 +105,7 @@ fun parseForecastResponse(element: JsonElement?): List<ForecastEntry> {
  * frontend buckets the legacy attribute.
  */
 fun classifyForecastKind(entries: List<ForecastEntry>): ForecastKind {
-    val instants = entries.mapNotNull { runCatching { Instant.parse(it.whenIso) }.getOrNull() }
+    val instants = entries.mapNotNull { parseHaInstant(it.whenIso) }
     if (instants.size < 2) return ForecastKind.Daily
     val gaps = instants.zipWithNext { a, b -> kotlin.math.abs(b.epochSecond - a.epochSecond) }
         .filter { it > 0 }
@@ -122,7 +122,7 @@ fun classifyForecastKind(entries: List<ForecastEntry>): ForecastKind {
  */
 fun formatHourLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String =
     runCatching {
-        val zdt = Instant.parse(iso).atZone(zone)
+        val zdt = (parseHaInstant(iso) ?: error("unparseable timestamp")).atZone(zone)
         HOUR_FORMAT.format(zdt)
     }.getOrElse { iso.take(5) }
 
@@ -133,7 +133,7 @@ fun formatHourLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String 
  */
 fun formatDayLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String =
     runCatching {
-        val zdt = Instant.parse(iso).atZone(zone)
+        val zdt = (parseHaInstant(iso) ?: error("unparseable timestamp")).atZone(zone)
         DAY_FORMAT.format(zdt)
     }.getOrElse { iso.take(5) }
 
