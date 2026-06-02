@@ -2244,11 +2244,14 @@ private fun SwitchRow(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    // Merge label + subtitle + on/off state into one spoken phrase so the toggle
+    // state reaches a screen reader (the switch graphic alone doesn't convey it).
     R1Row(
         label = label,
         description = subtitle,
         enabled = enabled,
         onClick = { onCheckedChange(!checked) },
+        contentDescription = SettingsA11y.switchRowDescription(label, subtitle, checked),
         trailing = { R1Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange) },
     )
 }
@@ -2455,10 +2458,16 @@ private fun NavRow(
 
 @Composable
 private fun InfoRow(label: String, value: String, mono: Boolean = false) {
+    // Label and value render as two columns; merge them into one spoken phrase
+    // ("HA version, 2025.5.1") so a screen reader doesn't read them as two
+    // disconnected fragments.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = R1.MinTarget)
+            .semantics(mergeDescendants = true) {
+                contentDescription = SettingsA11y.infoRowDescription(label, value)
+            }
             .padding(horizontal = R1.space.xl, vertical = R1.space.m),
         verticalAlignment = Alignment.Top,
     ) {

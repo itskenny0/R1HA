@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -100,7 +101,7 @@ fun KeyBindingsScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
+    Box(modifier = Modifier.fillMaxSize().background(R1.Bg).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             R1TopBar(title = "KEY BINDINGS", onBack = onBack)
             LazyColumn(
@@ -108,7 +109,7 @@ fun KeyBindingsScreen(
                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
                 item { HeaderBlock(customizedCount = customizedCount, conflictCount = conflictingCodes.size) }
-                items(KeyAction.entries) { action ->
+                items(KeyAction.entries, key = { it.name }) { action ->
                     val effective = effectiveByAction[action].orEmpty()
                     val isCustomized = s.keyBindings.containsKey(action.name) &&
                         effective != DEFAULT_KEY_BINDINGS[action].orEmpty()

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
@@ -76,7 +77,8 @@ fun SyncSettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(R1.Bg),
+            .background(R1.Bg)
+            .systemBarsPadding(),
     ) {
         R1TopBar(title = "SYNC", onBack = onBack)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -235,7 +237,10 @@ private fun MasterRow(
                 if (checked) R1.AccentGreen.copy(alpha = 0.45f) else R1.Hairline,
                 R1.ShapeS,
             )
-            .r1Pressable(onClick = { onCheckedChange(!checked) })
+            .r1Pressable(
+                onClick = { onCheckedChange(!checked) },
+                contentDescription = SettingsA11y.switchRowDescription(label, description, checked),
+            )
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -316,6 +321,7 @@ private fun SwitchInlineRow(
         label = title,
         description = subtitle,
         onClick = { onCheckedChange(!checked) },
+        contentDescription = SettingsA11y.switchRowDescription(title, subtitle, checked),
         trailing = { R1Switch(checked = checked, onCheckedChange = onCheckedChange) },
     )
 }
@@ -386,6 +392,9 @@ private fun CategoryRow(
         label = category.displayLabel,
         description = category.description,
         onClick = { onChange(!included) },
+        contentDescription = SettingsA11y.switchRowDescription(
+            category.displayLabel, category.description, included,
+        ),
         trailing = { R1Switch(checked = included, onCheckedChange = onChange) },
     )
 }

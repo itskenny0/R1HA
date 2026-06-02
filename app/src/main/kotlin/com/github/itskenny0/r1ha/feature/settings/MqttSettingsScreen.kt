@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,7 +82,9 @@ fun MqttSettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(R1.Bg),
+            .background(R1.Bg)
+            .systemBarsPadding()
+            .imePadding(),
     ) {
         R1TopBar(title = "MQTT BROKER", onBack = onBack)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -152,7 +158,16 @@ fun MqttSettingsScreen(
                             modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
                         )
                         Spacer(Modifier.height(R1.space.m))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = SettingsA11y.switchRowDescription(
+                                    "Use TLS",
+                                    "Wrap the socket with TLS (typically port 8883).",
+                                    advanced.mqttUseTls,
+                                )
+                            },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("Use TLS", style = R1.bodyEmph, color = R1.Ink)
                                 Text(

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
@@ -99,7 +100,8 @@ fun IotSensorsSettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(R1.Bg),
+            .background(R1.Bg)
+            .systemBarsPadding(),
     ) {
         R1TopBar(title = "IOT SENSORS MODE", onBack = onBack)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -525,7 +527,10 @@ private fun MasterSwitchRow(
                 if (checked) R1.AccentGreen.copy(alpha = 0.45f) else R1.Hairline,
                 R1.ShapeS,
             )
-            .r1Pressable(onClick = onCheckedChange)
+            .r1Pressable(
+                onClick = onCheckedChange,
+                contentDescription = SettingsA11y.switchRowDescription(label, description, checked),
+            )
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -553,7 +558,12 @@ private fun SensorRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onCheckedChange)
+            .r1Pressable(
+                onClick = onCheckedChange,
+                // Fold title + on/off into one phrase; topic / meta are power-user
+                // captions that don't add to the spoken state.
+                contentDescription = SettingsA11y.switchRowDescription(title, null, checked),
+            )
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
