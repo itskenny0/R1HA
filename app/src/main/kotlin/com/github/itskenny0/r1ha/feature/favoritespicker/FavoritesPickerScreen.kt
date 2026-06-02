@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
@@ -26,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +81,10 @@ fun FavoritesPickerScreen(
     val previewing = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityState?>(null)
     }
+    // Page (tab-group) editor dialog state — local UI, not business logic. Null = closed.
+    val pageDialog = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<PageDialog?>(null)
+    }
 
     // Settings flow lifted so the entity-override map can be supplied to LocalEntityOverrides.
     val appSettingsForOverrides by settings.settings.collectAsStateWithLifecycle(initialValue = com.github.itskenny0.r1ha.core.prefs.AppSettings())
@@ -102,6 +108,20 @@ fun FavoritesPickerScreen(
             // results from any scroll position. Hidden during initial load; no point
             // showing them before we know what's available.
             if (!ui.loading && ui.error == null) {
+                // Tab-group strip — the picker edits ONE page's favourites at a time;
+                // this shows which page that is and lets the user switch, add, rename, or
+                // delete a page without backing out to the card stack.
+                if (ui.pages.isNotEmpty()) {
+                    PageBar(
+                        pages = ui.pages,
+                        activePageId = ui.activePageId,
+                        onSelect = { vm.selectPage(it) },
+                        onAdd = { pageDialog.value = PageDialog.Create },
+                        onRename = { id, name -> pageDialog.value = PageDialog.Rename(id, name) },
+                        onDelete = { id, name -> pageDialog.value = PageDialog.Delete(id, name) },
+                        canDelete = ui.pages.size > 1,
+                    )
+                }
                 SearchBar(
                     query = ui.query,
                     onQueryChange = { vm.setQuery(it) },
@@ -171,11 +191,17 @@ fun FavoritesPickerScreen(
                     else -> ChannelList(
                         rows = ui.rows,
                         listState = listState,
-                        isReorderable = ui.filter == PickerFilter.FAVS,
+                        // Drag-reorder is index-based and only valid when the visible row
+                        // index equals the favourite's position in the persisted list:
+                        // true on the FAVS tab with no active search. A query filters the
+                        // FAVS list, so a row's index no longer maps to its stored
+                        // position; disable the drag there (arrows still nudge by id) so a
+                        // drag can't reorder the wrong entities.
+                        isReorderable = ui.filter == PickerFilter.FAVS && ui.query.isBlank(),
                         onToggle = { vm.toggle(it) },
                         onMoveUp = { vm.moveUp(it) },
                         onMoveDown = { vm.moveDown(it) },
-                        onReorderTo = { entityId, idx -> vm.moveTo(entityId, idx) },
+                        onReorderTo = { from, to -> vm.reorderFavorite(from, to) },
                         onEdit = { vm.startEditing(it) },
                         onPreview = { previewing.value = it },
                     )
@@ -218,8 +244,48 @@ fun FavoritesPickerScreen(
                 onDismiss = { previewing.value = null },
             )
         }
+
+        // ── Page (tab-group) create / rename / delete dialogs ─────────────────────────
+        when (val dlg = pageDialog.value) {
+            is PageDialog.Create -> PageNameDialog(
+                title = "NEW TAB",
+                initial = "",
+                confirmLabel = "CREATE",
+                onConfirm = { name ->
+                    vm.addPage(name)
+                    pageDialog.value = null
+                },
+                onCancel = { pageDialog.value = null },
+            )
+            is PageDialog.Rename -> PageNameDialog(
+                title = "RENAME TAB",
+                initial = dlg.name,
+                confirmLabel = "SAVE",
+                onConfirm = { name ->
+                    vm.renamePage(dlg.id, name)
+                    pageDialog.value = null
+                },
+                onCancel = { pageDialog.value = null },
+            )
+            is PageDialog.Delete -> PageDeleteDialog(
+                name = dlg.name,
+                onConfirm = {
+                    vm.deletePage(dlg.id)
+                    pageDialog.value = null
+                },
+                onCancel = { pageDialog.value = null },
+            )
+            null -> Unit
+        }
     }
     }
+}
+
+/** Which page-editor dialog is open. Local screen state, not business logic. */
+private sealed interface PageDialog {
+    data object Create : PageDialog
+    data class Rename(val id: String, val name: String) : PageDialog
+    data class Delete(val id: String, val name: String) : PageDialog
 }
 
 /**
@@ -265,6 +331,239 @@ private fun FilterChipRow(
                     text = "${filter.label} · $count",
                     style = R1.labelMicro,
                     color = if (isSelected) R1.Bg else R1.InkSoft,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Tab-group strip. Horizontal-scroll row of page chips: the active page is filled
+ * with the accent colour, the rest are hairline-bordered. Tapping a non-active chip
+ * switches the page being edited; tapping the active chip opens its rename dialog (a
+ * pencil glyph hints at this), and a small delete control sits on the active chip when
+ * more than one page exists. A trailing "+" chip creates a new tab. Mirrors the card
+ * stack's page-tab vocabulary so the two surfaces read as the same tab model.
+ */
+@Composable
+private fun PageBar(
+    pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage>,
+    activePageId: String,
+    onSelect: (String) -> Unit,
+    onAdd: () -> Unit,
+    onRename: (id: String, name: String) -> Unit,
+    onDelete: (id: String, name: String) -> Unit,
+    canDelete: Boolean,
+) {
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "TAB",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        pages.forEach { page ->
+            val isActive = page.id == activePageId
+            val label = page.icon?.let { "$it ${page.name}" } ?: page.name
+            Row(
+                modifier = Modifier
+                    .padding(end = 6.dp)
+                    .heightIn(min = 36.dp)
+                    .clip(R1.ShapeS)
+                    .background(if (isActive) R1.AccentWarm else R1.Bg)
+                    .then(
+                        if (isActive) Modifier
+                        else Modifier.border(1.dp, R1.Hairline, R1.ShapeS),
+                    )
+                    // Tap an inactive chip to switch; tap the active chip to rename it.
+                    .r1Pressable(
+                        onClick = {
+                            if (isActive) onRename(page.id, page.name) else onSelect(page.id)
+                        },
+                        contentDescription = if (isActive) {
+                            "Active tab ${page.name}, tap to rename"
+                        } else {
+                            "Switch to tab ${page.name}"
+                        },
+                    )
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = label.ifBlank { "UNNAMED" },
+                    style = R1.labelMicro,
+                    color = if (isActive) R1.Bg else R1.InkSoft,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.widthIn(max = 120.dp),
+                )
+                if (isActive) {
+                    Spacer(Modifier.width(6.dp))
+                    com.github.itskenny0.r1ha.ui.components.EditGlyph(size = 11.dp, tint = R1.Bg)
+                    // Delete is only offered while more than one page survives — the
+                    // store refuses to delete the last page, and we shouldn't show an
+                    // affordance that silently no-ops.
+                    if (canDelete) {
+                        Spacer(Modifier.width(8.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(20.dp)
+                                .r1Pressable(
+                                    onClick = { onDelete(page.id, page.name) },
+                                    hapticOnClick = false,
+                                    contentDescription = "Delete tab ${page.name}",
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(text = "✕", style = R1.labelMicro, color = R1.Bg)
+                        }
+                    }
+                }
+            }
+        }
+        // Trailing add chip.
+        Box(
+            modifier = Modifier
+                .heightIn(min = 36.dp)
+                .clip(R1.ShapeS)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = onAdd, contentDescription = "Add a new tab")
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "+ NEW", style = R1.labelMicro, color = R1.InkSoft)
+        }
+    }
+}
+
+/**
+ * Single-field name dialog used for both create and rename of a tab group. Auto-focuses
+ * the field on open; CREATE / SAVE is disabled while the field is blank so an empty tab
+ * name can't be committed (the VM also guards, but disabling the button is the clearer
+ * affordance). Back / tap-outside cancels.
+ */
+@Composable
+private fun PageNameDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    BackHandler(onBack = onCancel)
+    var name by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(initial)
+    }
+    val focusRequester = androidx.compose.runtime.remember {
+        androidx.compose.ui.focus.FocusRequester()
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.92f))
+            .r1Pressable(onClick = onCancel, hapticOnClick = false)
+            .systemBarsPadding()
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .padding(horizontal = R1.space.l)
+                .clip(R1.ShapeS)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                // Absorb taps so a tap inside the panel doesn't dismiss the dialog.
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(16.dp),
+        ) {
+            Text(text = title, style = R1.sectionHeader, color = R1.AccentWarm)
+            Spacer(Modifier.height(R1.space.m))
+            com.github.itskenny0.r1ha.ui.components.R1TextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "Tab name",
+                monospace = false,
+                focusRequester = focusRequester,
+            )
+            Spacer(Modifier.height(R1.space.l))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = "CANCEL",
+                    onClick = onCancel,
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                )
+                Spacer(Modifier.width(R1.space.s))
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = confirmLabel,
+                    onClick = { onConfirm(name) },
+                    enabled = name.isNotBlank(),
+                )
+            }
+        }
+    }
+}
+
+/** Destructive-confirm dialog for deleting a tab group. Spells out that the page's
+ *  favourites go with it so the user can't nuke a populated tab by reflex. */
+@Composable
+private fun PageDeleteDialog(
+    name: String,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    BackHandler(onBack = onCancel)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.92f))
+            .r1Pressable(onClick = onCancel, hapticOnClick = false)
+            .systemBarsPadding()
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .padding(horizontal = R1.space.l)
+                .clip(R1.ShapeS)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(16.dp),
+        ) {
+            Text(text = "DELETE TAB", style = R1.sectionHeader, color = R1.StatusRed)
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Remove \"${name.ifBlank { "UNNAMED" }}\" and its favourites from the deck? Entities themselves stay in Home Assistant.",
+                style = R1.body,
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.height(R1.space.l))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.weight(1f))
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = "CANCEL",
+                    onClick = onCancel,
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                )
+                Spacer(Modifier.width(R1.space.s))
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = "DELETE",
+                    onClick = onConfirm,
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                    accent = R1.StatusRed,
                 )
             }
         }
@@ -450,7 +749,7 @@ private fun ChannelList(
     onToggle: (String) -> Unit,
     onMoveUp: (String) -> Unit,
     onMoveDown: (String) -> Unit,
-    onReorderTo: (entityId: String, toIndex: Int) -> Unit,
+    onReorderTo: (fromIndex: Int, toIndex: Int) -> Unit,
     onEdit: (String) -> Unit,
     onPreview: (com.github.itskenny0.r1ha.core.ha.EntityState) -> Unit,
 ) {
@@ -465,10 +764,13 @@ private fun ChannelList(
         com.github.itskenny0.r1ha.ui.components.DragReorderColumn(
             items = rows,
             keyOf = { it.state.id.value },
-            onReorder = { from, to ->
-                val entityId = rows.getOrNull(from)?.state?.id?.value ?: return@DragReorderColumn
-                onReorderTo(entityId, to)
-            },
+            // Index-based: pass the swap straight through to the VM, which reorders the
+            // favourites list by index. The previous code re-resolved an entity_id from
+            // `rows` per swap, but `rows` is async-stale across the multiple swaps a fast
+            // drag fires in one frame, so the wrong entity moved. On the FAVS tab the row
+            // index equals the favourite's position (rows are sorted by orderIndex), so
+            // (from, to) map directly onto the persisted list.
+            onReorder = { from, to -> onReorderTo(from, to) },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 4.dp),

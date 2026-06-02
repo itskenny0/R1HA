@@ -84,6 +84,16 @@ class FavoritesPickerViewModel(
         DOMAIN("BY KIND"),
     }
 
+    /** Internal projection of the settings flow the reactive rebuild listens on.
+     *  distinctUntilChanged works on this so a settings emission that doesn't touch
+     *  the picker (e.g. a wheel-acceleration tweak) doesn't trigger a rebuild. */
+    private data class PageSnapshot(
+        val overrides: Map<String, String>,
+        val favs: List<String>,
+        val pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage>,
+        val activePageId: String,
+    )
+
     data class UiState(
         val loading: Boolean = true,
         val rows: List<Row> = emptyList(),
@@ -103,10 +113,24 @@ class FavoritesPickerViewModel(
          *  but not process death — the picker is short-lived enough that DataStore
          *  persistence felt like over-engineering. FAVS tab ignores this. */
         val sortPerFilter: Map<PickerFilter, SortOrder> = emptyMap(),
+        /** Card-stack tab groups the picker can edit. The picker only mutates the
+         *  ACTIVE page's favourites; this list drives the page-selector strip so the
+         *  user can see which tab they're editing and switch to another without
+         *  backing out to the card stack. */
+        val pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage> = emptyList(),
+        /** Id of the page whose favourites the picker is currently editing. */
+        val activePageId: String = "",
     )
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
+
+    /** Sort order in force for the current filter tab. FAVS is always orderIndex
+     *  (handled inside [buildRows]); every other tab reads its sticky per-tab choice,
+     *  defaulting to ALPHA. Centralised so favourite-toggle and reorder rebuilds keep
+     *  the active sort instead of silently snapping back to ALPHA. */
+    private fun UiState.currentSort(): SortOrder =
+        sortPerFilter[filter] ?: SortOrder.ALPHA
     /** Cached list of all controllable entities from the latest /api/states fetch. Toggling or
      *  reordering favourites doesn't change this list, so we can update [_ui] locally without
      *  re-fetching every time the user taps a checkbox. */
@@ -127,19 +151,32 @@ class FavoritesPickerViewModel(
             // Switching pages from the card stack will flow a new active-page id
             // here, the picker re-renders with that page's contents.
             settings.settings
-                .map {
-                    val active = it.pages.firstOrNull { p -> p.id == it.activePageId }
-                    it.nameOverrides to active?.favorites.orEmpty()
+                .map { s ->
+                    val active = s.pages.firstOrNull { p -> p.id == s.activePageId }
+                    PageSnapshot(
+                        overrides = s.nameOverrides,
+                        favs = active?.favorites.orEmpty(),
+                        pages = s.pages,
+                        activePageId = s.activePageId,
+                    )
                 }
                 .distinctUntilChanged()
-                .collect { (overrides, favs) ->
+                .collect { snap ->
+                    val cur = _ui.value
+                    // Always reflect the page strip (names/active id) even before the
+                    // entity fetch lands, so the picker shows which tab it edits while
+                    // still on the loading spinner.
+                    var next = cur.copy(pages = snap.pages, activePageId = snap.activePageId)
                     if (entitiesCache.isNotEmpty()) {
-                        val cur = _ui.value
-                        _ui.value = cur.copy(
-                            rows = buildRows(entitiesCache, favs, cur.filter, cur.query, overrides),
-                            countsByFilter = countsByFilter(entitiesCache, favs),
+                        next = next.copy(
+                            rows = buildRows(
+                                entitiesCache, snap.favs, cur.filter, cur.query, snap.overrides,
+                                sortOrder = cur.currentSort(),
+                            ),
+                            countsByFilter = countsByFilter(entitiesCache, snap.favs),
                         )
                     }
+                    _ui.value = next
                 }
         }
     }
@@ -173,15 +210,24 @@ class FavoritesPickerViewModel(
                     val cur = _ui.value
                     _ui.value = cur.copy(
                         loading = false,
-                        rows = buildRows(list, favs, cur.filter, cur.query, snapshot.nameOverrides),
+                        rows = buildRows(
+                            list, favs, cur.filter, cur.query, snapshot.nameOverrides,
+                            sortOrder = cur.currentSort(),
+                        ),
                         countsByFilter = countsByFilter(list, favs),
+                        pages = snapshot.pages,
+                        activePageId = snapshot.activePageId,
                     )
                     R1Log.i("FavoritesPicker.refresh", "fetched ${list.size} entities")
                 },
                 onFailure = {
                     R1Log.e("FavoritesPicker.refresh", "fetch failed", it)
                     Toaster.error("Fetch failed: ${it.message}")
-                    _ui.value = UiState(loading = false, error = it.message)
+                    // Preserve the page strip + filter/query/sort so an error doesn't
+                    // blank the chrome the user was working in; only the row list and
+                    // loading/error flags change. A retry via pull-to-refresh then keeps
+                    // their context.
+                    _ui.value = _ui.value.copy(loading = false, error = it.message, rows = emptyList())
                 },
             )
         }
@@ -208,7 +254,10 @@ class FavoritesPickerViewModel(
             // the result list to reflect that.
             val now = _ui.value
             _ui.value = now.copy(
-                rows = buildRows(entitiesCache, favs, now.filter, now.query, snapshot.nameOverrides),
+                rows = buildRows(
+                    entitiesCache, favs, now.filter, now.query, snapshot.nameOverrides,
+                    sortOrder = now.currentSort(),
+                ),
             )
         }
     }
@@ -385,19 +434,34 @@ class FavoritesPickerViewModel(
             // scoped to whichever page the user has selected in the card stack.
             // updateActivePage handles the mutex + favourites-union recalculation.
             settings.updateActivePage { page ->
-                val l = page.favorites.toMutableList()
+                // De-dupe defensively: collapse any pre-existing duplicate entries first
+                // (an older build or a hand-edited backup could have introduced them),
+                // then toggle. A duplicate in the list would otherwise render the same
+                // card twice in the deck and throw off the orderIndex / reorder math.
+                val l = page.favorites.distinct().toMutableList()
                 if (entityId in l) l.remove(entityId) else l.add(entityId)
                 page.copy(favorites = l)
             }
             // Local re-render reads from the active page after the write completes.
-            val snapshot = settings.settings.first()
-            val newFavs = snapshot.pages.firstOrNull { it.id == snapshot.activePageId }?.favorites.orEmpty()
-            val cur = _ui.value
-            _ui.value = cur.copy(
-                rows = buildRows(entitiesCache, newFavs, cur.filter, cur.query, snapshot.nameOverrides),
-                countsByFilter = countsByFilter(entitiesCache, newFavs),
-            )
+            rebuildAfterFavMutation()
         }
+    }
+
+    /** Re-derive the row list + counts from the just-persisted active page. Shared by
+     *  every favourite mutation so they all preserve the active filter/query/sort
+     *  instead of each re-spelling the rebuild (and forgetting the sort, as the
+     *  reorder paths previously did, which snapped the tab back to A→Z on every nudge). */
+    private suspend fun rebuildAfterFavMutation() {
+        val snapshot = settings.settings.first()
+        val newFavs = snapshot.pages.firstOrNull { it.id == snapshot.activePageId }?.favorites.orEmpty()
+        val cur = _ui.value
+        _ui.value = cur.copy(
+            rows = buildRows(
+                entitiesCache, newFavs, cur.filter, cur.query, snapshot.nameOverrides,
+                sortOrder = cur.currentSort(),
+            ),
+            countsByFilter = countsByFilter(entitiesCache, newFavs),
+        )
     }
 
     fun moveUp(entityId: String) {
@@ -408,35 +472,38 @@ class FavoritesPickerViewModel(
                 if (idx > 0) { l.removeAt(idx); l.add(idx - 1, entityId) }
                 page.copy(favorites = l)
             }
-            val snapshot = settings.settings.first()
-            val newFavs = snapshot.pages.firstOrNull { it.id == snapshot.activePageId }?.favorites.orEmpty()
-            val cur = _ui.value
-            _ui.value = cur.copy(rows = buildRows(entitiesCache, newFavs, cur.filter, cur.query, snapshot.nameOverrides))
+            rebuildAfterFavMutation()
         }
     }
 
     /**
-     * Absolute reorder — moves [entityId] from its current position to [toIndex].
-     * Backs the drag-reorder gesture in the FAVS view; the up/down arrows still
-     * use [moveUp] / [moveDown] for single-step nudges. Affects only the active
-     * page's favourites list.
+     * Index-based reorder — moves the favourite currently at [fromIndex] to
+     * [toIndex] within the active page's favourites list. Backs the drag-reorder
+     * gesture in the FAVS view.
+     *
+     * Index-based (not entity-id based) on purpose: [com.github.itskenny0.r1ha.ui.components.DragReorderColumn]
+     * emits a swap for every neighbour the finger crosses, sometimes several within a
+     * single frame, and expects each swap applied to the result of the previous one.
+     * The previous implementation re-resolved the entity_id from the on-screen `rows`
+     * snapshot per swap; because the persist + flow round-trip is async, `rows` was
+     * stale by the second same-frame swap and the WRONG entity was moved on fast drags.
+     * Each [updateActivePage] runs serially under the settings mutex and reads the
+     * latest persisted list, so composing index moves remove/insert correctly — matching
+     * the card stack's proven reorder path.
      */
-    fun moveTo(entityId: String, toIndex: Int) {
+    fun reorderFavorite(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
         viewModelScope.launch {
             settings.updateActivePage { page ->
                 val l = page.favorites.toMutableList()
-                val fromIdx = l.indexOf(entityId)
-                if (fromIdx < 0) return@updateActivePage page
+                if (fromIndex !in l.indices) return@updateActivePage page
                 val clamped = toIndex.coerceIn(0, l.size - 1)
-                if (fromIdx == clamped) return@updateActivePage page
-                l.removeAt(fromIdx)
-                l.add(clamped, entityId)
+                if (fromIndex == clamped) return@updateActivePage page
+                val item = l.removeAt(fromIndex)
+                l.add(clamped, item)
                 page.copy(favorites = l)
             }
-            val snapshot = settings.settings.first()
-            val newFavs = snapshot.pages.firstOrNull { it.id == snapshot.activePageId }?.favorites.orEmpty()
-            val cur = _ui.value
-            _ui.value = cur.copy(rows = buildRows(entitiesCache, newFavs, cur.filter, cur.query, snapshot.nameOverrides))
+            rebuildAfterFavMutation()
         }
     }
 
@@ -448,11 +515,46 @@ class FavoritesPickerViewModel(
                 if (idx in 0 until l.size - 1) { l.removeAt(idx); l.add(idx + 1, entityId) }
                 page.copy(favorites = l)
             }
-            val snapshot = settings.settings.first()
-            val newFavs = snapshot.pages.firstOrNull { it.id == snapshot.activePageId }?.favorites.orEmpty()
-            val cur = _ui.value
-            _ui.value = cur.copy(rows = buildRows(entitiesCache, newFavs, cur.filter, cur.query, snapshot.nameOverrides))
+            rebuildAfterFavMutation()
         }
+    }
+
+    // ── Tab-group (page) management ──────────────────────────────────────────────
+    // The picker edits ONE page's favourites at a time (the active page). These let
+    // the user switch which page they're editing and do basic create / rename / delete
+    // without leaving the picker. All delegate to the repository's page API, which owns
+    // the mutex, the favourites-union recalculation, and the "always keep at least one
+    // page" / active-id-clamp invariants — the picker never reasons about those itself.
+
+    /** Switch the page whose favourites the picker edits. The reactive settings flow
+     *  rebuilds the row list for the new page automatically, so no explicit rebuild
+     *  here. No-op for the already-active page (the repository de-dupes too). */
+    fun selectPage(pageId: String) {
+        viewModelScope.launch { settings.setActivePage(pageId) }
+    }
+
+    /** Create a new (empty) tab group and switch to it. Blank names are ignored so a
+     *  stray SAVE on an empty field can't spawn an unlabelled tab. */
+    fun addPage(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch { settings.addPage(trimmed) }
+    }
+
+    /** Rename a tab group. Blank names are ignored so the user can't erase a tab's
+     *  label into an unidentifiable blank. */
+    fun renamePage(pageId: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch { settings.renamePage(pageId, trimmed) }
+    }
+
+    /** Delete a tab group. The repository refuses to delete the only remaining page and
+     *  re-points the active id, so the picker can call this unconditionally; we mirror
+     *  the guard here only to avoid firing a no-op write. */
+    fun deletePage(pageId: String) {
+        if (_ui.value.pages.size <= 1) return
+        viewModelScope.launch { settings.deletePage(pageId) }
     }
 
     companion object {
