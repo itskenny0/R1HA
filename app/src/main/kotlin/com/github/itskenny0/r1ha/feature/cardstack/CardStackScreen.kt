@@ -197,10 +197,6 @@ fun CardStackScreen(
             onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
         )
     }
-    // Sliding-window of wheel timestamps for the nav acceleration ramp. Mirrors the
-    // VM's own deque (which accelerates scalar percent steps) but lives at the screen
-    // layer because navigation is a screen concern, not a per-card one.
-    val navTimestamps = remember { ArrayDeque<Long>() }
     // Per-card accumulator for select-option cycling. Needs two same-direction
     // detents (or one same-direction detent within 800 ms of the last) to
     // fire, so a brushing motion doesn't accidentally cycle a select. Tracks
@@ -244,6 +240,37 @@ fun CardStackScreen(
     val jumpPickerOpen = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // Customize-dialog entry from the card stack. `customizingId` is the entity_id under
+    // edit; null means the dialog is closed. We hold it locally because the dialog is a
+    // transient UI overlay — no need to thread it through the VM state. Declared up here
+    // (alongside the other overlay-visibility flags) so the wheel handler's modal gate
+    // below can drop wheel events while the dialog is open — otherwise a spin reaches
+    // past the full-screen dialog and adjusts the card underneath.
+    val customizingId = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    // Hoisted state for the screen-level effect picker overlay. When non-null, an
+    // overlay sheet renders above all card chrome listing the bulb's effects. Lifted
+    // here (rather than inside each card) so the picker can use the full screen rather
+    // than being clipped to the card body — a Nanoleaf can ship 30+ effects and a
+    // card-bound picker would be cramped on the R1's 320 px tall display. Hoisted above
+    // the wheel handler so its modal gate can read it.
+    val effectPickerFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
+    // Parallel state for the select-option picker overlay (Server Fan Mode = auto /
+    // manual, etc.). Same screen-scope hoisting as the effect picker so it can use the
+    // full display rather than being clipped to the card body.
+    val selectPickerFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
+    // Fan preset-mode picker overlay. Lifted to screen scope for the same reason as
+    // the effect picker (full-screen list rather than a card-bound popup) and also
+    // because the in-card chip row was eating the horizontal swipe used to switch
+    // tabs on the card stack.
+    val fanPresetPickerFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
     // "Any pager mid-animation" gates wheel events. Two writers feed this:
     //   - the screen-level HorizontalPager (tab swipes) — wired below
     //     where the pager state itself is created
@@ -269,14 +296,20 @@ fun CardStackScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) {
         wheelInput.events.collect { event ->
-            // Modal gate: if any full-screen overlay above this scope is open
-            // (tab management, quick actions), the wheel shouldn't reach past
-            // the overlay and silently adjust the card or page underneath. The
-            // jumpPickerOpen branch lower down is intentional (the picker
-            // wants wheel input as scroll); the customize-dialog gate lives
-            // closer to the dialog itself since its remember is declared
-            // later in this composable.
-            if (tabManagementForId.value != null || quickActionsOpen.value) {
+            // Modal gate: if any full-screen overlay above this scope is open,
+            // the wheel shouldn't reach past the overlay and silently adjust the
+            // card or page underneath. Covers tab management, quick actions, the
+            // customize dialog, and the effect / select / fan-preset picker
+            // sheets — every modal that draws over the active card. The
+            // jumpPickerOpen branch lower down is intentional (the picker wants
+            // wheel input as scroll), so it stays out of this gate.
+            if (tabManagementForId.value != null ||
+                quickActionsOpen.value ||
+                customizingId.value != null ||
+                effectPickerFor.value != null ||
+                selectPickerFor.value != null ||
+                fanPresetPickerFor.value != null
+            ) {
                 return@collect
             }
             // One-shot: first time the user spins the wheel, retire the
@@ -336,18 +369,6 @@ fun CardStackScreen(
                 return@collect
             }
             val now = event.timestampMillis
-            navTimestamps.addLast(now)
-            while (navTimestamps.isNotEmpty() && now - navTimestamps.first() > 250L) {
-                navTimestamps.removeFirst()
-            }
-            val ratePerSec = navTimestamps.size * (1000.0 / 250L)
-            val navStep = com.github.itskenny0.r1ha.core.input.WheelInput.effectiveStep(
-                base = 1,
-                ratePerSec = ratePerSec,
-                accelerate = appSettings.wheel.acceleration,
-                curve = appSettings.wheel.accelerationCurve,
-            ).coerceIn(1, 8)
-            val navDelta = sign * navStep
             // Per-card wheel override: explicit On / Off / Inherit. Defaults
             // depend on the domain — select / input_select default OFF
             // because cycling on every detent was too easy to trigger
@@ -513,33 +534,6 @@ fun CardStackScreen(
         }
     }
 
-    // Customize-dialog entry from the card stack. `customizingId` is the entity_id under
-    // edit; null means the dialog is closed. We hold it locally because the dialog is a
-    // transient UI overlay — no need to thread it through the VM state.
-    val customizingId = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
-    }
-    // Hoisted state for the screen-level effect picker overlay. When non-null, an
-    // overlay sheet renders above all card chrome listing the bulb's effects. Lifted
-    // here (rather than inside each card) so the picker can use the full screen rather
-    // than being clipped to the card body — a Nanoleaf can ship 30+ effects and a
-    // card-bound picker would be cramped on the R1's 320 px tall display.
-    val effectPickerFor = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
-    }
-    // Parallel state for the select-option picker overlay (Server Fan Mode = auto /
-    // manual, etc.). Same screen-scope hoisting as the effect picker so it can use the
-    // full display rather than being clipped to the card body.
-    val selectPickerFor = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
-    }
-    // Fan preset-mode picker overlay. Lifted to screen scope for the same reason as
-    // the effect picker (full-screen list rather than a card-bound popup) and also
-    // because the in-card chip row was eating the horizontal swipe used to switch
-    // tabs on the card stack.
-    val fanPresetPickerFor = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
-    }
     // Stable callback holders — each lambda is remembered keyed on `vm` (which
     // doesn't change across recompositions) so the reference identity stays
     // stable. The local-provider stack is staticCompositionLocalOf which
@@ -2342,7 +2336,7 @@ private fun TabStrip(
                 .padding(end = 4.dp)
                 .clip(R1.ShapeS)
                 .background(R1.SurfaceMuted)
-                .r1Pressable(onClick = onAddPage)
+                .r1Pressable(onClick = onAddPage, contentDescription = "Add page")
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
             Text(text = "+", style = R1.labelMicro, color = R1.InkSoft)
@@ -3492,7 +3486,7 @@ private fun JumpRow(
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .background(R1.Bg.copy(alpha = if (isActive) 0.4f else 0.7f))
-                    .r1Pressable(onClick = onOpenMenu)
+                    .r1Pressable(onClick = onOpenMenu, contentDescription = "Card actions for $name")
                     .padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Text(
