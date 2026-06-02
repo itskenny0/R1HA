@@ -60,6 +60,26 @@ fun UnsupportedCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // A handful of first-class HA card types aren't in R1HA's typed
+    // [LovelaceCard] model (the parser keeps them as Unsupported, preserving
+    // the lowercased `type` string + the entity refs it scraped). Dispatch
+    // those to their dedicated renderers here so they don't fall through to
+    // the generic entity-tile / raw-JSON fallback. Type strings match HA's
+    // card registry (hui-todo-list-card / hui-entity-card / hui-toggle-group-card).
+    when (card.type) {
+        "todo-list" -> {
+            TodoListCard(card, stateMap, modifier)
+            return
+        }
+        "toggle-group" -> {
+            ToggleGroupCard(card, stateMap, onAction, modifier)
+            return
+        }
+        "entity" -> {
+            EntityCard(card, stateMap, onAction, modifier)
+            return
+        }
+    }
     when {
         card.url != null -> IframeCard(card, modifier)
         card.entityRefs.isNotEmpty() -> CustomEntityCard(card, stateMap, onAction, modifier)

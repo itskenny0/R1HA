@@ -106,7 +106,7 @@ private fun GlanceTile(
                     .background(accent.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "·", style = R1.numeralM, color = accent)
+                Text(text = domainGlyph(row.entityId, state), style = R1.numeralS, color = accent)
             }
             Spacer(Modifier.height(6.dp))
         }

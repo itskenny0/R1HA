@@ -42,8 +42,18 @@ fun TileCard(
     modifier: Modifier = Modifier,
 ) {
     val state = stateMap.byRaw(card.entityId)
-    val accent = stateAccentFor(card.entityId, state)
+    // HA's tile tints the icon with a configured `color` while the entity is
+    // active, falling back to the state-derived accent otherwise (and always
+    // for an unavailable entity, so a dead tile reads red rather than its
+    // decorative colour).
+    val stateAccent = stateAccentFor(card.entityId, state)
+    val accent = if (state?.isOn == true && state.isAvailable) {
+        haColorAccent(card.color) ?: stateAccent
+    } else {
+        stateAccent
+    }
     val name = resolveName(card.name, state, card.entityId)
+    val glyph = domainGlyph(card.entityId, state)
     // Bind the card's entity to a config tap_action that omits one (toggle /
     // more-info / target-less call-service) so the dispatcher always has a target.
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
@@ -62,7 +72,7 @@ fun TileCard(
             modifier = modifier.then(tileSurface),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            IconDisc(accent = accent, size = 48.dp)
+            IconDisc(accent = accent, size = 48.dp, glyph = glyph)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = name,
@@ -86,7 +96,7 @@ fun TileCard(
             modifier = modifier.then(tileSurface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconDisc(accent = accent, size = 40.dp)
+            IconDisc(accent = accent, size = 40.dp, glyph = glyph)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -134,7 +144,11 @@ private fun isToggleableDomain(entityId: String): Boolean =
     }
 
 @Composable
-private fun IconDisc(accent: androidx.compose.ui.graphics.Color, size: androidx.compose.ui.unit.Dp) {
+private fun IconDisc(
+    accent: androidx.compose.ui.graphics.Color,
+    size: androidx.compose.ui.unit.Dp,
+    glyph: String = "·",
+) {
     Box(
         modifier = Modifier
             .size(size)
@@ -143,6 +157,6 @@ private fun IconDisc(accent: androidx.compose.ui.graphics.Color, size: androidx.
             .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = "·", style = R1.numeralM, color = accent)
+        Text(text = glyph, style = R1.numeralM, color = accent)
     }
 }

@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -48,6 +50,24 @@ fun ButtonCard(
             .padding(horizontal = 14.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // HA's button card is icon-forward: a large glyph disc tops the surface.
+        // We honour `show_icon` and only show a glyph when we can derive one
+        // (an entity-bound button); a bare action button without an entity skips
+        // the disc rather than drawing a meaningless placeholder.
+        if (card.showIcon && card.entityId != null) {
+            val glyph = domainGlyph(card.entityId, state)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.18f))
+                    .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = glyph, style = R1.numeralM, color = accent)
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         if (card.showName) {
             Text(
                 text = label,
