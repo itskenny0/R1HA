@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -86,19 +88,33 @@ fun ConfigureEntitySheet(
         containerColor = R1.Bg,
         title = { Text(text = "CONFIGURE ENTITY", style = R1.sectionHeader, color = R1.Ink) },
         text = {
-            Column {
+            // The R1's portrait screen is tiny; with the area chips, the inline
+            // create field, and an error line all visible at once the body can
+            // exceed the dialog's height, so make it scroll rather than clip.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text(text = entityId, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(R1.space.s))
                 Text(text = "NAME", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 R1TextField(
                     value = name,
                     onValueChange = { name = it },
                     placeholder = "Living room ceiling light",
                 )
-                Spacer(Modifier.height(10.dp))
+                // Empty name resets the entity to its integration-provided default
+                // name (HA's entity_registry behaviour), so it's allowed; flag it
+                // softly rather than blocking save.
+                if (name.isBlank()) {
+                    Spacer(Modifier.height(R1.space.xxs))
+                    Text(
+                        text = "Leave blank to use the default name",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+                Spacer(Modifier.height(R1.space.s))
                 Text(text = "AREA", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 if (areas == null && error == null) {
                     Text(text = "Loading…", style = R1.labelMicro, color = R1.InkMuted)
                 } else if (areas != null) {
@@ -107,7 +123,7 @@ fun ConfigureEntitySheet(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         // (none) chip — explicit affordance to clear area
                         AreaChip(
@@ -127,11 +143,22 @@ fun ConfigureEntitySheet(
                             label = "+ NEW",
                             active = createMode,
                             accent = R1.AccentWarm,
+                            contentDescription = "Create a new area",
                             onClick = { createMode = !createMode },
                         )
                     }
+                    // Loaded but no areas defined yet: nudge the user toward + NEW
+                    // so the empty chip row isn't a dead end.
+                    if (list.isEmpty() && !createMode) {
+                        Spacer(Modifier.height(R1.space.xs))
+                        Text(
+                            text = "No areas yet. Tap + NEW to create one.",
+                            style = R1.labelMicro,
+                            color = R1.InkMuted,
+                        )
+                    }
                     if (createMode) {
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(R1.space.xs))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.width(160.dp)) {
                                 R1TextField(
@@ -140,40 +167,52 @@ fun ConfigureEntitySheet(
                                     placeholder = "Workshop",
                                 )
                             }
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(R1.space.s))
+                            val trimmedNew = newAreaName.trim()
                             Box(
+                                contentAlignment = Alignment.Center,
                                 modifier = Modifier
+                                    .heightIn(min = R1.MinTarget)
                                     .clip(R1.ShapeS)
                                     .background(R1.SurfaceMuted)
                                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable(onClick = {
-                                        val n = newAreaName.trim()
-                                        if (n.isBlank()) return@r1Pressable
-                                        scope.launch {
-                                            haRepository.createArea(n).fold(
-                                                onSuccess = { created ->
-                                                    areas = (areas.orEmpty() + created)
-                                                        .sortedBy { it.name.lowercase() }
-                                                    areaId = created.areaId
-                                                    newAreaName = ""
-                                                    createMode = false
-                                                    Toaster.show("Area '${created.name}' created")
-                                                },
-                                                onFailure = { t ->
-                                                    error = "Create failed: ${t.message ?: "unknown"}"
-                                                },
-                                            )
-                                        }
-                                    })
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .r1Pressable(
+                                        contentDescription = "Create area",
+                                        onClick = {
+                                            val n = newAreaName.trim()
+                                            if (n.isBlank()) return@r1Pressable
+                                            scope.launch {
+                                                haRepository.createArea(n).fold(
+                                                    onSuccess = { created ->
+                                                        areas = (areas.orEmpty() + created)
+                                                            .sortedBy { it.name.lowercase() }
+                                                        areaId = created.areaId
+                                                        newAreaName = ""
+                                                        createMode = false
+                                                        Toaster.show("Area '${created.name}' created")
+                                                    },
+                                                    onFailure = { t ->
+                                                        error = "Create failed: ${t.message ?: "unknown"}"
+                                                    },
+                                                )
+                                            }
+                                        },
+                                    )
+                                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
                             ) {
-                                Text(text = "CREATE", style = R1.labelMicro, color = R1.AccentWarm)
+                                Text(
+                                    text = "CREATE",
+                                    style = R1.labelMicro,
+                                    // Dim the action until there's a name to submit so
+                                    // a blank tap reads as a no-op, not a broken button.
+                                    color = if (trimmedNew.isBlank()) R1.InkMuted else R1.AccentWarm,
+                                )
                             }
                         }
                     }
                 }
                 if (error != null) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     Text(text = error ?: "", style = R1.labelMicro, color = R1.StatusAmber)
                 }
             }
@@ -222,10 +261,16 @@ private fun AreaChip(
     label: String,
     active: Boolean,
     accent: androidx.compose.ui.graphics.Color = R1.AccentCool,
+    contentDescription: String? = null,
     onClick: () -> Unit,
 ) {
     Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
+            // Meet the 48dp minimum tappable height even though the chip text is
+            // short; the visual chip stays compact via wrapContentHeight, so the
+            // extra hit area is invisible padding around it.
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(if (active) accent.copy(alpha = 0.18f) else R1.SurfaceMuted)
             .border(
@@ -233,13 +278,14 @@ private fun AreaChip(
                 if (active) accent.copy(alpha = 0.6f) else R1.Hairline,
                 R1.ShapeS,
             )
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription)
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
     ) {
         Text(
             text = label,
             style = R1.labelMicro,
             color = if (active) accent else R1.Ink,
+            modifier = Modifier.wrapContentHeight(),
         )
     }
 }

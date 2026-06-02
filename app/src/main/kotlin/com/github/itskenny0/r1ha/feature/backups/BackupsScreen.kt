@@ -37,9 +37,10 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,20 +140,16 @@ fun BackupsScreen(
             title = "BACKUPS",
             onBack = onBack,
             action = {
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(text = if (ui.loading) "…" else "REFRESH", style = R1.labelMicro, color = R1.InkSoft)
-                }
+                R1Chip(
+                    text = if (ui.loading) "…" else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh backup list",
+                )
             },
         )
         AdaptiveContent(modifier = Modifier.weight(1f)) {
-            Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(R1.space.m)) {
                 R1Button(
                     text = if (ui.creating) "CREATING BACKUP…" else "CREATE BACKUP NOW",
                     onClick = { vm.createBackup() },
@@ -162,36 +159,36 @@ fun BackupsScreen(
                     leadingContent = if (ui.creating) {
                         {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
+                                modifier = Modifier.size(R1.space.l),
                                 strokeWidth = 2.dp,
                                 color = R1.InkMuted,
                             )
-                            Spacer(Modifier.size(8.dp))
+                            Spacer(Modifier.size(R1.space.s))
                         }
                     } else {
                         null
                     },
                 )
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(R1.space.s))
                 Text(
                     text = "Fires backup.create on your HA server. The new backup appears in the list once HA has finished writing it (15-60 s on a typical install).",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
-                Spacer(Modifier.size(4.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 when {
                     ui.loading && ui.backups.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(R1.space.xl),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = R1.AccentWarm)
                     }
                     ui.error != null && ui.backups.isEmpty() -> Column {
-                        Spacer(Modifier.size(12.dp))
-                        Text(text = "COULDN'T LOAD BACKUPS", style = R1.labelMicro, color = R1.StatusAmber)
-                        Spacer(Modifier.size(4.dp))
+                        Spacer(Modifier.size(R1.space.m))
+                        Text(text = "COULDN'T LOAD BACKUPS", style = R1.labelMicro, color = R1.StatusRed)
+                        Spacer(Modifier.size(R1.space.xs))
                         Text(text = ui.error ?: "", style = R1.body, color = R1.InkSoft)
-                        Spacer(Modifier.size(8.dp))
+                        Spacer(Modifier.size(R1.space.s))
                         Text(
                             text = "backup/info is HA Core 2024.4+ only. Older releases or installs without the backup integration return empty.",
                             style = R1.labelMicro,
@@ -199,9 +196,15 @@ fun BackupsScreen(
                         )
                     }
                     ui.backups.isEmpty() -> Column {
-                        Spacer(Modifier.size(12.dp))
+                        Spacer(Modifier.size(R1.space.m))
                         Text(
-                            text = "(No backups found)",
+                            text = "NO BACKUPS YET",
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                        )
+                        Spacer(Modifier.size(R1.space.xs))
+                        Text(
+                            text = "Tap CREATE BACKUP NOW above to take your first one, or schedule automatic backups from Home Assistant's Settings > System > Backups.",
                             style = R1.body,
                             color = R1.InkMuted,
                         )
@@ -212,16 +215,12 @@ fun BackupsScreen(
                         topSpace = R1.space.s,
                         modifier = Modifier.weight(1f),
                         trailing = {
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .background(R1.SurfaceMuted)
-                                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                                    .r1Pressable(onClick = { vm.cycleSort() })
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                            ) {
-                                Text(text = sortLabel(ui.sort), style = R1.labelMicro, color = R1.InkSoft)
-                            }
+                            R1Chip(
+                                text = sortLabel(ui.sort),
+                                variant = R1ChipVariant.Action,
+                                onClick = { vm.cycleSort() },
+                                contentDescription = "Change sort order, currently ${sortLabel(ui.sort).lowercase()}",
+                            )
                         },
                     ) {
                         PullToRefreshBox(
@@ -231,8 +230,8 @@ fun BackupsScreen(
                         ) {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                contentPadding = PaddingValues(vertical = R1.space.xs),
+                                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                             ) {
                                 items(ui.sorted, key = { it.backupId }) { b ->
                                     BackupRow(b)
@@ -255,14 +254,30 @@ private fun sortLabel(sort: BackupsLogic.Sort): String = when (sort) {
 
 @Composable
 private fun BackupRow(b: BackupInfo) {
+    val created = BackupsLogic.formatCreatedAt(b.createdAt)
+    val relative = BackupsLogic.relativeCreatedAt(b.createdAt)
+    val size = BackupsLogic.formatSize(b.sizeBytes)
+    val type = BackupsLogic.typeLabel(b.type)
+    val meta = buildString {
+        append(created)
+        if (relative != null) {
+            append(" (")
+            append(relative)
+            append(")")
+        }
+        append(" · ")
+        append(size)
+        append(" · ")
+        append(type)
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = b.name, style = R1.bodyEmph, color = R1.Ink, modifier = Modifier.weight(1f))
@@ -271,13 +286,7 @@ private fun BackupRow(b: BackupInfo) {
             }
         }
         Text(
-            text = buildString {
-                append(BackupsLogic.formatCreatedAt(b.createdAt))
-                append(" · ")
-                append(BackupsLogic.formatSize(b.sizeBytes))
-                append(" · ")
-                append(BackupsLogic.typeLabel(b.type))
-            },
+            text = meta,
             style = R1.labelMicro,
             color = R1.InkSoft,
         )

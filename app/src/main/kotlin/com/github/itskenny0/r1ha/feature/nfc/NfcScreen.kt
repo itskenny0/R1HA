@@ -23,20 +23,34 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HaTag
 import com.github.itskenny0.r1ha.core.input.WheelInput
+import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Button
@@ -44,12 +58,14 @@ import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
+import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
+import kotlinx.coroutines.launch
 
 /**
  * NFC screen: a tester's-eye view of HA's tag registry. Lists every NFC / QR
@@ -74,6 +90,33 @@ fun NfcScreen(
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
+
+    // Per-feature opt-in toggle, mirrored from settings so the screen can both
+    // reflect and flip it (same field the Advanced dev-menu switch drives).
+    val appSettings by settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
+    val scannerEnabled = appSettings.advanced.nfcTagScannerEnabled
+    val settingsScope = rememberCoroutineScope()
+
+    // Hardware/system NFC status. Re-read on every resume because the user can
+    // toggle NFC in system settings and return without the activity restarting,
+    // which would otherwise leave a stale "NFC OFF" / "READY" label here.
+    val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+    var readerState by remember {
+        mutableStateOf(
+            activity?.let { NfcReader.readerState(it) } ?: NfcReader.ReaderState.NO_HARDWARE,
+        )
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, activity) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && activity != null) {
+                readerState = NfcReader.readerState(activity)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Column(
         modifier = Modifier
@@ -130,16 +173,38 @@ fun NfcScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        item {
+                        item(key = "reader-status") {
+                            ReaderStatusCard(
+                                readerState = readerState,
+                                scannerEnabled = scannerEnabled,
+                                onToggle = { enabled ->
+                                    settingsScope.launch {
+                                        settings.update {
+                                            it.copy(
+                                                advanced = it.advanced.copy(
+                                                    nfcTagScannerEnabled = enabled,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                        item(key = "simulate-scan") {
+                            // "…" only when THIS manual id is the one in flight; a
+                            // row scan still locks the button (one fire at a time)
+                            // but shouldn't make the manual field read as busy.
+                            val manualNorm = NfcViewModel.normalizeTagId(ui.manualId)
                             SimulateScanCard(
                                 manualId = ui.manualId,
-                                firing = ui.firingId != null,
+                                busy = ui.firingId != null,
+                                firingThis = ui.firingId != null && ui.firingId == manualNorm,
                                 onIdChange = { vm.setManualId(it) },
                                 onFire = { vm.simulateScan(ui.manualId) },
                             )
                         }
                         if (ui.tags.isEmpty()) {
-                            item {
+                            item(key = "empty-tags") {
                                 R1Section(title = "REGISTERED TAGS", count = 0) {
                                     Text(
                                         text = "No tags registered yet. Scan an NFC / QR tag at HA " +
@@ -155,7 +220,7 @@ fun NfcScreen(
                                 }
                             }
                         } else {
-                            item {
+                            item(key = "tags-header") {
                                 R1Section(
                                     title = "REGISTERED TAGS",
                                     count = ui.tags.size,
@@ -171,7 +236,7 @@ fun NfcScreen(
                                 )
                             }
                         }
-                        item { Spacer(Modifier.size(R1.space.xl)) }
+                        item(key = "bottom-spacer") { Spacer(Modifier.size(R1.space.xl)) }
                     }
                 }
             }
@@ -182,7 +247,8 @@ fun NfcScreen(
 @Composable
 private fun SimulateScanCard(
     manualId: String,
-    firing: Boolean,
+    busy: Boolean,
+    firingThis: Boolean,
     onIdChange: (String) -> Unit,
     onFire: () -> Unit,
 ) {
@@ -213,9 +279,9 @@ private fun SimulateScanCard(
             }
             Spacer(Modifier.width(R1.space.s))
             R1Button(
-                text = if (firing) "…" else "FIRE",
+                text = if (firingThis) "…" else "FIRE",
                 onClick = onFire,
-                enabled = !firing && manualId.isNotBlank(),
+                enabled = !busy && manualId.isNotBlank(),
             )
         }
     }
@@ -278,12 +344,107 @@ private fun TagRow(
         Spacer(Modifier.size(R1.space.s))
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.weight(1f))
+            // The bare "SCAN" label reads ambiguously to a screen reader once
+            // several rows are on screen; name the tag it fires.
             R1Button(
                 text = if (firing) "…" else "SCAN",
                 onClick = onSimulate,
                 enabled = !firing,
                 variant = R1ButtonVariant.Outlined,
+                modifier = Modifier.semantics {
+                    contentDescription = "Simulate scan of ${NfcViewModel.displayName(tag)}"
+                },
             )
         }
     }
+}
+
+/**
+ * Reader status: the device's NFC capability paired with the app's opt-in
+ * toggle, collapsed into the four states the user can be in. The toggle is
+ * the same `nfcTagScannerEnabled` flag the Advanced settings switch drives,
+ * surfaced here so the NFC screen is self-contained: a user who lands here can
+ * see why a real tap isn't firing and flip it on without hunting for the
+ * setting. Simulate-scan works regardless of these states (it fires the event
+ * over the HA connection, not the radio), which the copy makes explicit.
+ */
+@Composable
+private fun ReaderStatusCard(
+    readerState: NfcReader.ReaderState,
+    scannerEnabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val noHardware = readerState == NfcReader.ReaderState.NO_HARDWARE
+    val statusLabel: String
+    val statusColor: Color
+    val detail: String
+    when {
+        noHardware -> {
+            statusLabel = "NO NFC HARDWARE"
+            statusColor = R1.InkMuted
+            detail = "This device has no NFC radio, so it can't read a physical tap. " +
+                "Simulate scan below still fires tag_scanned over your HA connection."
+        }
+        !scannerEnabled -> {
+            statusLabel = "READER OFF"
+            statusColor = R1.InkSoft
+            detail = "The foreground tag reader is off. Turn it on to fire tag_scanned " +
+                "when you tap an NFC tag against this device while the app is open."
+        }
+        readerState == NfcReader.ReaderState.DISABLED -> {
+            statusLabel = "NFC TURNED OFF"
+            statusColor = R1.StatusAmber
+            detail = "The reader is on, but NFC is switched off in system settings. " +
+                "Enable NFC there to read physical taps."
+        }
+        else -> {
+            statusLabel = "READER ON"
+            statusColor = R1.AccentGreen
+            detail = "Tap an NFC tag against this device while the app is open to fire " +
+                "its tag_scanned event."
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .padding(R1.space.m),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = R1.MinTarget),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "FOREGROUND READER", style = R1.label, color = R1.InkSoft)
+                Spacer(Modifier.size(R1.space.xxs))
+                Text(text = statusLabel, style = R1.bodyEmph, color = statusColor)
+            }
+            if (!noHardware) {
+                Spacer(Modifier.width(R1.space.s))
+                R1Switch(
+                    checked = scannerEnabled,
+                    onCheckedChange = onToggle,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Foreground NFC tag reader"
+                    },
+                )
+            }
+        }
+        Spacer(Modifier.size(R1.space.xs))
+        Text(text = detail, style = R1.labelMicro, color = R1.InkMuted)
+    }
+}
+
+/** Walk the [android.content.ContextWrapper] chain to the hosting Activity, or
+ *  null when this composable isn't hosted by one (previews, tests). */
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is android.app.Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

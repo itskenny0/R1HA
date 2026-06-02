@@ -63,6 +63,41 @@ internal fun mediaEntryRowLabel(entry: MediaBrowseEntry): String =
         canPlay = entry.canPlay,
     )
 
+/**
+ * A single-character glyph standing in for HA's per-media-class icon set
+ * (album, artist, playlist, ...). The canonical frontend draws an mdi icon per
+ * media class; the R1 has no icon font budget, so we map the common classes to
+ * an evocative unicode glyph and fall back to a generic affordance arrow when
+ * the class is unknown or absent. [canExpand]/[canPlay] pick the fallback so an
+ * unclassified folder still reads as openable and an unclassified track as
+ * playable.
+ *
+ * Kept here (pure, no Compose) so the mapping is auditable and unit-testable in
+ * one place.
+ */
+internal fun mediaEntryGlyph(mediaClass: String?, canExpand: Boolean, canPlay: Boolean): String {
+    // Monochrome unicode glyphs only (no colour emoji), to match the surface's
+    // brutalist look and to stay renderable in the R1's narrow font set.
+    when (mediaClass?.trim()?.lowercase()) {
+        "album" -> return "◈"                                   // diamond, filled
+        "artist", "composer", "contributing_artist" -> return "♫" // beamed notes
+        "playlist" -> return "≡"                                // triple bar (list)
+        "directory" -> return "▸"                               // small right triangle
+        "podcast", "channel" -> return "◉"                      // fisheye
+        "track", "music" -> return "♪"                          // eighth note
+        "movie", "video", "tv_show", "episode", "season" -> return "▶" // play triangle
+        "image" -> return "▣"                                   // square with inner square
+        "genre" -> return "◇"                                   // diamond, open
+        "app", "url", "game" -> return "◆"                      // diamond, solid
+    }
+    // Unknown / absent class: fall back to the affordance the row offers.
+    return when {
+        canExpand -> "›"   // single right angle quote (open)
+        canPlay -> "▷"     // open play triangle
+        else -> "·"        // middle dot (inert)
+    }
+}
+
 /** Spoken label for the dedicated PLAY button on a playable row. */
 internal fun mediaPlayActionLabel(title: String): String = "Play $title"
 

@@ -7,15 +7,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -52,6 +58,10 @@ fun RepairsScreen(
 ) {
     val vm: RepairsViewModel = viewModel(factory = RepairsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    // Hoisted so the feed keeps its scroll position across refreshes and so the
+    // physical scroll wheel can drive it once the wheel input is plumbed through
+    // (see the SHARED CHANGE REQUEST in the surface report).
+    val listState = rememberLazyListState()
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -65,11 +75,14 @@ fun RepairsScreen(
             action = {
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
                         .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs)
+                        .semantics { contentDescription = "Refresh repairs" },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (ui.loading) "…" else "REFRESH",
@@ -94,7 +107,7 @@ fun RepairsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp),
+                            .padding(R1.space.xl),
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -103,13 +116,13 @@ fun RepairsScreen(
                             style = R1.labelMicro,
                             color = R1.StatusAmber,
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(R1.space.xs))
                         Text(
                             text = ui.error ?: "",
                             style = R1.body,
                             color = R1.InkSoft,
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(R1.space.m))
                         Text(
                             text = "Repairs only flows over the live WebSocket. If your link is down or the server is offline, retry once it reconnects.",
                             style = R1.labelMicro,
@@ -121,7 +134,7 @@ fun RepairsScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp),
+                            .padding(R1.space.xl),
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -130,7 +143,7 @@ fun RepairsScreen(
                             style = R1.labelMicro,
                             color = R1.AccentCool,
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(R1.space.xs))
                         Text(
                             text = "Nothing for HA's integrations to flag.",
                             style = R1.body,
@@ -140,12 +153,13 @@ fun RepairsScreen(
                 }
                 else -> {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
-                        item {
+                        item(key = "summary") {
                             // Compose a severity breakdown line: gives the user
                             // a one-glance read on how alarming the list is
                             // before they scroll through individual rows.
@@ -161,7 +175,7 @@ fun RepairsScreen(
                                 text = summary,
                                 style = R1.labelMicro,
                                 color = accent,
-                                modifier = Modifier.padding(vertical = 4.dp),
+                                modifier = Modifier.padding(vertical = R1.space.xs),
                             )
                         }
                         items(ui.issues, key = { it.domain + "/" + it.issueId }) { issue ->
@@ -191,22 +205,41 @@ private fun RepairRow(
         "warning" -> R1.AccentWarm
         else -> R1.InkMuted
     }
-    Column(
+    // Ignored rows mute their accent so the active issues read first; the live
+    // severity colour returns the moment the user restores the issue.
+    val accent = if (issue.ignored) R1.Hairline else tone
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            // IntrinsicSize.Min lets the leading severity stripe stretch to the
+            // measured height of the text column beside it; without it a
+            // fillMaxHeight child in a wrap-content Row collapses to zero.
+            .height(IntrinsicSize.Min)
             .clip(R1.ShapeS)
             .background(if (issue.ignored) R1.Bg else R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .border(1.dp, R1.Hairline, R1.ShapeS),
     ) {
+        // Severity stripe: an accent rail down the leading edge so the list
+        // can be triaged by colour at a glance without reading each badge.
+        Box(
+            modifier = Modifier
+                .width(R1.space.xxs)
+                .fillMaxHeight()
+                .background(accent),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .background(tone.copy(alpha = 0.18f))
                     .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
             ) {
                 Text(
                     text = issue.severity.uppercase(),
@@ -214,14 +247,14 @@ private fun RepairRow(
                     color = tone,
                 )
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = issue.domain,
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
             if (issue.ignored) {
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "IGNORED",
                     style = R1.labelMicro,
@@ -231,7 +264,7 @@ private fun RepairRow(
             // Fixable issues route through HA's multi-step fix flow; the rest
             // are informational and can only be read or ignored. Labelling
             // both makes the distinction explicit rather than implied.
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = if (issue.isFixable) "FIXABLE" else "INFO",
                 style = R1.labelMicro,
@@ -267,11 +300,16 @@ private fun RepairRow(
             if (issue.isFixable && !issue.ignored) {
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.AccentCool.copy(alpha = 0.5f), R1.ShapeS)
                         .r1Pressable(onClick = { openFixFlow(context, repairsUrl) })
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                        .semantics {
+                            contentDescription = "Fix ${issue.domain} issue in Home Assistant"
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (repairsUrl != null) "FIX IN HA ↗" else "FIX IN HOME ASSISTANT",
@@ -283,11 +321,20 @@ private fun RepairRow(
             Spacer(Modifier.weight(1f))
             Box(
                 modifier = Modifier
+                    .heightIn(min = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
                     .r1Pressable(onClick = onToggleIgnore)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .semantics {
+                        contentDescription = if (issue.ignored) {
+                            "Restore ${issue.domain} issue"
+                        } else {
+                            "Ignore ${issue.domain} issue"
+                        }
+                    },
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = if (issue.ignored) "RESTORE" else "IGNORE",
@@ -296,6 +343,7 @@ private fun RepairRow(
                 )
             }
         }
+        } // inner Column
     }
 }
 

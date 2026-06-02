@@ -71,7 +71,7 @@ fun SyncOnboardingStep(
             modifier = Modifier
                 .fillMaxWidth()
                 .systemBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m)
                 // Cap to the available height so the R1's 320dp tall display
                 // doesn't get a prompt whose buttons fall off the bottom.
                 // Inner content scrolls if it overflows.
@@ -80,18 +80,18 @@ fun SyncOnboardingStep(
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, RoundedCornerShape(12.dp))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 28.dp),
+                .padding(horizontal = R1.space.xl, vertical = R1.space.xl),
         ) {
             // Step callout matching 01 LINK / 02 AUTHORISE so this reads as
             // part of the same sequence the user just walked through.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "03", style = R1.labelMicro, color = R1.AccentWarm)
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 Box(modifier = Modifier.size(width = 14.dp, height = 1.dp).background(R1.AccentWarm))
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 Text(text = "SYNC", style = R1.labelMicro, color = R1.AccentWarm)
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.s))
             Text(
                 text = if (customising) {
                     "Pick what to sync"
@@ -110,7 +110,7 @@ fun SyncOnboardingStep(
                     style = R1.body,
                     color = R1.InkMuted,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "Wheel and input mappings stay per-device on the " +
                         "default. PICK below to fine-tune.",
@@ -118,50 +118,11 @@ fun SyncOnboardingStep(
                     color = R1.InkMuted,
                 )
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             if (customising) {
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(R1.space.l))
                 Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
-                SyncCategory.entries.forEach { category ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .r1Pressable(
-                                onClick = {
-                                    excluded = excluded.toMutableSet().apply {
-                                        if (contains(category.name)) remove(category.name)
-                                        else add(category.name)
-                                    }
-                                },
-                                hapticOnClick = false,
-                            )
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = category.displayLabel,
-                                style = R1.bodyEmph,
-                                color = R1.Ink,
-                            )
-                            Text(
-                                text = category.description,
-                                style = R1.labelMicro,
-                                color = R1.InkMuted,
-                            )
-                        }
-                        val included = !excluded.contains(category.name)
-                        R1Switch(
-                            checked = included,
-                            onCheckedChange = { v ->
-                                excluded = excluded.toMutableSet().apply {
-                                    if (v) remove(category.name) else add(category.name)
-                                }
-                            },
-                        )
-                    }
-                }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 SyncCategory.entries.forEach { category ->
                     CategoryRow(
                         label = category.displayLabel,
@@ -174,14 +135,14 @@ fun SyncOnboardingStep(
                         },
                     )
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(R1.space.l))
                 StepButton(
                     text = "CONFIRM",
                     tint = R1.AccentGreen,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { onAcceptWithExclusions(excluded) },
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 StepButton(
                     text = "BACK",
                     tint = R1.InkMuted,
@@ -189,7 +150,7 @@ fun SyncOnboardingStep(
                     onClick = { customising = false },
                 )
             } else {
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(R1.space.xl))
                 // Primary recommendation. The label spells out the
                 // exclusion so the user knows what they're agreeing to
                 // without expanding the picker.
@@ -199,21 +160,21 @@ fun SyncOnboardingStep(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onAcceptAll,
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 StepButton(
                     text = "PICK WHAT TO SYNC",
                     tint = R1.AccentWarm,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = { customising = true },
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 StepButton(
                     text = "NOT NOW",
                     tint = R1.InkMuted,
                     modifier = Modifier.fillMaxWidth(),
                     onClick = onDecline,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "You can change this any time in Settings, Sync.",
                     style = R1.labelMicro,
@@ -222,7 +183,7 @@ fun SyncOnboardingStep(
             }
             // Trailing spacer so the last button clears the navigation
             // bar on portrait phones / R1's short display.
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(R1.space.l))
         }
     }
 }
@@ -238,7 +199,13 @@ private fun CategoryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .heightIn(min = R1.MinTarget)
+            .r1Pressable(
+                onClick = { onIncludedChange(!included) },
+                hapticOnClick = false,
+                contentDescription = "$label, sync ${if (included) "on" else "off"}",
+            )
+            .padding(vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -251,10 +218,10 @@ private fun CategoryRow(
                 text = description,
                 style = R1.body,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(top = 1.dp),
+                modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
-        Spacer(Modifier.size(12.dp))
+        Spacer(Modifier.size(R1.space.m))
         R1Switch(
             checked = included,
             onCheckedChange = onIncludedChange,
@@ -271,12 +238,12 @@ private fun StepButton(
 ) {
     Box(
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .r1Pressable(onClick = onClick, contentDescription = text)
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = text, style = R1.labelMicro, color = tint)

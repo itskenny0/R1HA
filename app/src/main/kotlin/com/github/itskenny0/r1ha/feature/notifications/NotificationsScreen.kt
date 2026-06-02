@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -108,7 +108,7 @@ fun NotificationsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -119,18 +119,27 @@ fun NotificationsScreen(
                 )
                 Box(
                     modifier = Modifier
+                        .defaultMinSize(minHeight = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.StatusRed.copy(alpha = if (armed.value) 0.32f else 0.18f))
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = {
-                            if (armed.value) {
-                                vm.dismissAll()
-                                armed.value = false
+                        .r1Pressable(
+                            onClick = {
+                                if (armed.value) {
+                                    vm.dismissAll()
+                                    armed.value = false
+                                } else {
+                                    armed.value = true
+                                }
+                            },
+                            contentDescription = if (armed.value) {
+                                "Confirm dismiss all ${ui.notifications.size} notifications"
                             } else {
-                                armed.value = true
-                            }
-                        })
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                "Dismiss all ${ui.notifications.size} notifications"
+                            },
+                        )
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (armed.value) "TAP AGAIN" else "DISMISS ALL",
@@ -141,7 +150,7 @@ fun NotificationsScreen(
             }
         }
         when {
-            // Only show the centred spinner on the first load, when there's literally
+            // Only show the skeleton on the first load, when there's literally
             // nothing else to render. Subsequent refreshes keep the existing list +
             // DISMISS ALL row visible and rely on the pull-to-refresh spinner instead,
             // so the user doesn't lose scroll position or bulk-action access during a
@@ -149,8 +158,8 @@ fun NotificationsScreen(
             ui.loading && ui.notifications.isEmpty() && ui.error == null -> androidx.compose.foundation.layout.Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
                 // Skeleton rows teach the eye where notifications will land
                 // instead of leaving a void with a tiny centred spinner.
@@ -160,7 +169,7 @@ fun NotificationsScreen(
                 }
             }
             ui.error != null && ui.notifications.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // Distinct from "all clear" — the request itself failed.
@@ -171,7 +180,7 @@ fun NotificationsScreen(
                 )
             }
             ui.notifications.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -189,9 +198,9 @@ fun NotificationsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = ui.notifications, key = { it.notificationId }) { n ->
                         NotificationRow(
@@ -238,7 +247,7 @@ private fun CreateNotificationForm(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -256,7 +265,7 @@ private fun CreateNotificationForm(
             )
         }
         if (open) {
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = title,
                 onValueChange = { title = it },
@@ -264,7 +273,7 @@ private fun CreateNotificationForm(
                 monospace = false,
                 enabled = !creating,
             )
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = message,
                 onValueChange = { message = it },
@@ -274,7 +283,7 @@ private fun CreateNotificationForm(
                 minLines = 2,
                 enabled = !creating,
             )
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
                 val canCreate = !creating && message.isNotBlank()
@@ -304,41 +313,69 @@ private fun NotificationRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = notification.title?.takeIf { it.isNotBlank() } ?: notification.notificationId,
-                style = R1.body,
+                style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             // Relative timestamp — same ticker as the rest of the app so
             // "2 m ago" updates without us having to invalidate manually.
-            RelativeTimeLabel(
-                at = notification.createdAt,
-                color = R1.InkMuted,
-                style = R1.labelMicro,
-            )
+            // HA's notification drawer always renders a time element; when
+            // created_at is missing (some auto-generated notifications omit
+            // it) fall back to a static label rather than the blank that
+            // RelativeTimeLabel emits for a null instant, so the row never
+            // reads as "no time at all".
+            if (notification.createdAt != null) {
+                RelativeTimeLabel(
+                    at = notification.createdAt,
+                    color = R1.InkMuted,
+                    style = R1.labelMicro,
+                )
+            } else {
+                Text(
+                    text = "no date",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
         }
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(R1.space.xs))
         // HACS update lists and other "here are 14 components needing review" payloads
         // routinely exceed 6 lines. Collapse by default; tap to expand the full body.
         val expanded = androidx.compose.runtime.remember(notification.notificationId) {
             androidx.compose.runtime.mutableStateOf(false)
         }
+        // HA renders the message as markdown (with line breaks). We have no
+        // markdown renderer on this surface, so reduce the common inline
+        // markdown to readable plain text (strip emphasis fences, render
+        // [text](url) as "text", drop heading hashes / list bullets to a
+        // dash) rather than showing literal `**`, `#` and link syntax.
+        val plainMessage = remember(notification.message) {
+            markdownToPlain(notification.message)
+        }
         val collapsedLines = 6
-        val needsExpand = notification.message.lineSequence().count() > collapsedLines ||
-            notification.message.length > 280
+        val needsExpand = plainMessage.lineSequence().count() > collapsedLines ||
+            plainMessage.length > 280
         Text(
-            text = notification.message,
+            text = plainMessage,
             style = R1.body,
             color = R1.InkSoft,
             maxLines = if (expanded.value) Int.MAX_VALUE else collapsedLines,
             modifier = if (needsExpand) {
-                Modifier.r1Pressable(onClick = { expanded.value = !expanded.value })
+                Modifier.r1Pressable(
+                    onClick = { expanded.value = !expanded.value },
+                    contentDescription = if (expanded.value) {
+                        "Collapse message"
+                    } else {
+                        "Expand message"
+                    },
+                )
             } else Modifier,
         )
         if (needsExpand) {
@@ -347,11 +384,19 @@ private fun NotificationRow(
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 modifier = Modifier
-                    .padding(top = 2.dp)
-                    .r1Pressable(onClick = { expanded.value = !expanded.value }),
+                    .defaultMinSize(minHeight = R1.MinTarget)
+                    .padding(top = R1.space.xxs)
+                    .r1Pressable(
+                        onClick = { expanded.value = !expanded.value },
+                        contentDescription = if (expanded.value) {
+                            "Collapse message"
+                        } else {
+                            "Expand message"
+                        },
+                    ),
             )
         }
-        Spacer(Modifier.size(6.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = notification.notificationId,
@@ -360,16 +405,25 @@ private fun NotificationRow(
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
+                    .defaultMinSize(minHeight = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(
                         if (pendingDismiss) R1.SurfaceMuted else R1.StatusRed.copy(alpha = 0.18f),
                     )
                     .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { if (!pendingDismiss) onDismiss() })
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                    .r1Pressable(
+                        onClick = { if (!pendingDismiss) onDismiss() },
+                        contentDescription = if (pendingDismiss) {
+                            "Dismissing notification"
+                        } else {
+                            "Dismiss notification ${notification.notificationId}"
+                        },
+                    )
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = if (pendingDismiss) "DISMISSING…" else "DISMISS",
@@ -379,4 +433,40 @@ private fun NotificationRow(
             }
         }
     }
+}
+
+/**
+ * Reduce the common inline/block markdown HA emits in notification bodies to
+ * readable plain text. This is deliberately small and conservative, not a real
+ * markdown parser: this surface has no rich-text renderer, so the goal is only
+ * to stop literal `**`, `#`, backticks and `[text](url)` link syntax from
+ * showing through as noise. Anything it doesn't recognise passes through
+ * unchanged. Pure + side-effect free so it can be memoised per message.
+ */
+internal fun markdownToPlain(raw: String): String {
+    if (raw.isBlank()) return raw
+    var s = raw
+    // Images first: ![alt](url) -> alt (so the leading '!' doesn't survive the
+    // plain link pass below).
+    s = Regex("""!\[([^\]]*)]\((?:[^)]*)\)""").replace(s) { it.groupValues[1] }
+    // Links: [label](url) -> label
+    s = Regex("""\[([^\]]+)]\((?:[^)]*)\)""").replace(s) { it.groupValues[1] }
+    // Bold / italic / strikethrough fences: **x**, __x__, *x*, _x_, ~~x~~ -> x
+    s = Regex("""\*\*([^*]+)\*\*""").replace(s) { it.groupValues[1] }
+    s = Regex("""__([^_]+)__""").replace(s) { it.groupValues[1] }
+    s = Regex("""\*([^*\n]+)\*""").replace(s) { it.groupValues[1] }
+    s = Regex("""(?<![A-Za-z0-9])_([^_\n]+)_(?![A-Za-z0-9])""").replace(s) { it.groupValues[1] }
+    s = Regex("""~~([^~]+)~~""").replace(s) { it.groupValues[1] }
+    // Inline code `x` -> x
+    s = Regex("""`([^`]+)`""").replace(s) { it.groupValues[1] }
+    // Per-line block syntax: heading hashes and list bullets.
+    s = s.lineSequence().joinToString("\n") { line ->
+        var l = line
+        // Leading heading markers: "## Title" -> "Title".
+        l = l.replaceFirst(Regex("""^\s{0,3}#{1,6}\s+"""), "")
+        // Unordered list markers "* ", "- ", "+ " -> "- " (uniform bullet).
+        l = l.replaceFirst(Regex("""^(\s*)[*+\-]\s+"""), "$1- ")
+        l
+    }
+    return s.trim()
 }

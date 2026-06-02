@@ -75,6 +75,8 @@ fun HaSyncOnboardingPrompt(
     var remoteTimestamp by remember { mutableStateOf<Long?>(null) }
     var probed by remember { mutableStateOf(false) }
     var probeError by remember { mutableStateOf<String?>(null) }
+    // Bumped by RETRY to re-run the probe after a transient network failure.
+    var probeAttempt by remember { mutableStateOf(0) }
     val scope = rememberCoroutineScope()
 
     // Probe HA on first show so the prompt can offer IMPORT only when a
@@ -82,11 +84,23 @@ fun HaSyncOnboardingPrompt(
     // timeout (callWsExpectingPayload caps at 15s); UI is not blocked.
     // probeError is surfaced inline so the user knows whether the network
     // round-trip succeeded vs. just returned "no payload".
-    LaunchedEffect(Unit) {
+    LaunchedEffect(probeAttempt) {
+        // Reset to the checking state on retry so the pill reflects the
+        // re-probe instead of leaving the previous error/result up.
+        if (probeAttempt > 0) {
+            probed = false
+            probeError = null
+            remoteTimestamp = null
+        }
         if (syncManager != null) {
             val result = runCatching { syncManager.probeRemoteExists() }
             remoteTimestamp = result.getOrNull()
             probeError = result.exceptionOrNull()?.message
+        } else {
+            // No sync manager on the graph (should not happen once the app
+            // is wired up). Surface it as a probe error rather than silently
+            // claiming "no remote", which would invite a destructive push.
+            probeError = "Sync unavailable: settings manager not ready."
         }
         probed = true
     }
@@ -109,7 +123,7 @@ fun HaSyncOnboardingPrompt(
             modifier = Modifier
                 .fillMaxWidth()
                 .systemBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m)
                 // Cap to the available height so the R1's 320dp tall display
                 // doesn't get a prompt whose buttons fall off the bottom.
                 // Inner content scrolls if it overflows.
@@ -118,8 +132,8 @@ fun HaSyncOnboardingPrompt(
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, RoundedCornerShape(12.dp))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = R1.space.l, vertical = R1.space.l),
+            verticalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
             Text(text = "SYNC ACROSS DEVICES", style = R1.labelMicro, color = R1.AccentWarm)
             Text(
@@ -136,7 +150,7 @@ fun HaSyncOnboardingPrompt(
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
 
             // Probe-state pill keeps the user oriented while the network
             // call is running, and reads as a finished decision once we
@@ -147,14 +161,16 @@ fun HaSyncOnboardingPrompt(
                 error = probeError,
             )
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
             // Per-category opt-out chips inside the prompt; the user can
             // pre-trim what gets shared before committing to import/push.
             SyncCategory.entries.forEach { category ->
+                val included = !excluded.value.contains(category.name)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = R1.MinTarget)
                         .r1Pressable(
                             onClick = {
                                 excluded.value = excluded.value.toMutableSet().apply {
@@ -163,8 +179,10 @@ fun HaSyncOnboardingPrompt(
                                 }
                             },
                             hapticOnClick = false,
+                            contentDescription =
+                                "${category.displayLabel}, sync ${if (included) "on" else "off"}",
                         )
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = R1.space.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -173,7 +191,6 @@ fun HaSyncOnboardingPrompt(
                         color = R1.Ink,
                         modifier = Modifier.weight(1f),
                     )
-                    val included = !excluded.value.contains(category.name)
                     R1Switch(
                         checked = included,
                         onCheckedChange = { v ->
@@ -184,35 +201,54 @@ fun HaSyncOnboardingPrompt(
                     )
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.xs))
             // Action row. IMPORT only renders when probe found a remote; it
-            // would be a no-op otherwise.
+            // would be a no-op otherwise. On a probe error we can't tell
+            // whether a remote exists, so we offer RETRY instead of a push
+            // that could clobber an unread remote payload.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
-                if (probed && remoteTimestamp != null) {
+                if (probed && probeError != null) {
                     PromptButton(
-                        text = "IMPORT FROM HA",
+                        text = "RETRY",
                         tint = R1.AccentWarm,
                         modifier = Modifier.weight(1f),
+                        onClick = { probeAttempt++ },
+                    )
+                } else {
+                    if (probed && remoteTimestamp != null) {
+                        PromptButton(
+                            text = "IMPORT FROM HA",
+                            tint = R1.AccentWarm,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                onChooseImport(excluded.value)
+                                onMarkSeen()
+                            },
+                        )
+                    }
+                    PromptButton(
+                        // Wait for the probe before labelling the primary
+                        // action; "ENABLE SYNC" vs "PUSH THIS DEVICE" depends
+                        // on whether a remote already exists.
+                        text = when {
+                            !probed -> "CHECKING…"
+                            remoteTimestamp != null -> "PUSH THIS DEVICE"
+                            else -> "ENABLE SYNC"
+                        },
+                        tint = R1.AccentGreen,
+                        modifier = Modifier.weight(1f),
+                        enabled = probed,
                         onClick = {
-                            onChooseImport(excluded.value)
+                            onChoosePush(excluded.value)
                             onMarkSeen()
                         },
                     )
                 }
-                PromptButton(
-                    text = if (remoteTimestamp != null) "PUSH THIS DEVICE" else "ENABLE SYNC",
-                    tint = R1.AccentGreen,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        onChoosePush(excluded.value)
-                        onMarkSeen()
-                    },
-                )
             }
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             PromptButton(
                 text = "NOT NOW",
                 tint = R1.InkMuted,
@@ -247,19 +283,19 @@ private fun ProbeStatusRow(probed: Boolean, hasRemote: Boolean, error: String?) 
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
             modifier = Modifier
-                .size(8.dp)
+                .size(R1.space.s)
                 .clip(R1.ShapeRound)
                 .background(tint),
         )
-        Spacer(Modifier.size(8.dp))
+        Spacer(Modifier.size(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = R1.labelMicro, color = tint)
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(text = body, style = R1.body, color = R1.InkSoft)
         }
     }
@@ -270,18 +306,31 @@ private fun PromptButton(
     text: String,
     tint: Color,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+            .then(
+                if (enabled) {
+                    Modifier.r1Pressable(onClick = onClick, contentDescription = text)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = R1.space.m, vertical = R1.space.m),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = text, style = R1.labelMicro, color = tint)
+        Text(
+            text = text,
+            style = R1.labelMicro,
+            // Dim the label while disabled so "CHECKING…" reads as pending,
+            // not tappable.
+            color = if (enabled) tint else tint.copy(alpha = 0.4f),
+        )
     }
 }

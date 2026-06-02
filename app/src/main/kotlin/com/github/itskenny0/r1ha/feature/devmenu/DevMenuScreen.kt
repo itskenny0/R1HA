@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -299,36 +300,40 @@ fun DevMenuScreen(
             item { SectionDivider() }
 
             // ── iBeacon advertiser ──────────────────────────────────────────
+            // Stable keys on the panel items so the LazyColumn keeps each
+            // panel's internal `remember` state (text fields, in-flight flags,
+            // captured-event rings) tied to the right slot across recomposition
+            // and scroll recycling instead of churning on position.
             item { Section("IBEACON") }
-            item { IBeaconPanel(advanced, vm) }
+            item(key = "panel-ibeacon") { IBeaconPanel(advanced, vm) }
             item { SectionDivider() }
 
             // ── Webhook receiver ────────────────────────────────────────────
             item { Section("WEBHOOK") }
-            item { WebhookPanel(advanced, vm) }
+            item(key = "panel-webhook") { WebhookPanel(advanced, vm) }
             item { SectionDivider() }
 
             // ── MQTT publish ────────────────────────────────────────────────
             item { Section("MQTT") }
-            item { MqttPanel(advanced, vm) }
+            item(key = "panel-mqtt") { MqttPanel(advanced, vm) }
             item { SectionDivider() }
 
             // ── Fire event ──────────────────────────────────────────────────────────
             if (haRepository != null) {
                 item { Section("FIRE EVENT") }
-                item { FireEventPanel(haRepository) }
+                item(key = "panel-fire-event") { FireEventPanel(haRepository) }
                 item { SectionDivider() }
                 // ── Live events tail ───────────────────────────────────────────
                 item { Section("LIVE EVENTS") }
-                item { LiveEventsPanel(haRepository) }
+                item(key = "panel-live-events") { LiveEventsPanel(haRepository) }
                 item { SectionDivider() }
             }
 
             // ── Log viewer ──────────────────────────────────────────────────────────
             item { Section("APP LOG") }
-            item { LogViewer() }
+            item(key = "panel-log-viewer") { LogViewer() }
 
-            item { Spacer(Modifier.height(48.dp)) }
+            item { Spacer(Modifier.height(R1.space.xxl)) }
         }
     }
 }
@@ -431,7 +436,12 @@ private fun LogViewer() {
     // Subscribe to the bump-on-append flag so the viewer recomposes when new
     // entries land. The snapshot itself is read inline.
     val tick by R1LogBuffer.updates.collectAsStateWithLifecycle()
-    val expanded = remember { androidx.compose.runtime.mutableStateOf<Int?>(null) }
+    // Expansion is keyed by the entry's stable identity (timestamp + message)
+    // rather than its list index: entries are prepended newest-first, so an
+    // index would point at a different row the moment a new log lands and the
+    // wrong entry would appear expanded. A stable key tracks the row the user
+    // actually tapped.
+    val expanded = remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val entries = remember(tick) { R1LogBuffer.snapshot().reversed() }
     // SAF launcher for the EXPORT button — writes the log buffer as a plain
     // text file the user can share for diagnostics. Held outside the button's
@@ -460,99 +470,97 @@ private fun LogViewer() {
             )
         }
     }
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "${entries.size} entries (newest first)",
-                style = R1.body,
-                color = R1.InkSoft,
-                modifier = Modifier.weight(1f),
+    // Tracks whether a crash report sits on disk so the LAST CRASH chip can
+    // tint red. Held as state and flipped to false right after the user taps
+    // the chip + the files are deleted, so the tint clears in place without
+    // needing to leave and re-enter the screen.
+    val crashFilesExist = remember {
+        mutableStateOf(
+            java.io.File(context.filesDir, "last_crash.txt").let { it.exists() && it.length() > 0L } ||
+                java.io.File(context.filesDir, "last_crash_seen.txt").let { it.exists() && it.length() > 0L },
+        )
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.l)) {
+        Text(
+            text = "${entries.size} entries (newest first)",
+            style = R1.body,
+            color = R1.InkSoft,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(R1.space.xs))
+        // FlowRow so the five action chips wrap onto a second line on the
+        // R1's 240dp-wide display instead of clipping off the right edge.
+        androidx.compose.foundation.layout.FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
+            DevChip(
+                label = "CLEAR",
+                contentDescription = "Clear the log buffer",
+                onClick = {
+                    R1LogBuffer.clear()
+                    com.github.itskenny0.r1ha.core.util.Toaster.show("Log buffer cleared")
+                },
             )
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = { R1LogBuffer.clear() })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text("CLEAR", style = R1.labelMicro, color = R1.InkSoft)
-            }
-            Spacer(Modifier.width(6.dp))
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = {
-                        R1Log.i("DevMenu", "test-INFO ping from dev menu — verify the log viewer + toasts route correctly")
-                        R1Log.w("DevMenu", "test-WARN ping from dev menu")
-                        R1Log.e("DevMenu", "test-ERROR ping from dev menu", IllegalStateException("synthetic"))
-                    })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text("PING", style = R1.labelMicro, color = R1.InkSoft)
-            }
-            Spacer(Modifier.width(6.dp))
+            DevChip(
+                label = "PING",
+                contentDescription = "Emit test log entries at info, warn and error level",
+                onClick = {
+                    R1Log.i("DevMenu", "test-INFO ping from dev menu — verify the log viewer + toasts route correctly")
+                    R1Log.w("DevMenu", "test-WARN ping from dev menu")
+                    R1Log.e("DevMenu", "test-ERROR ping from dev menu", IllegalStateException("synthetic"))
+                },
+            )
             // Clear the in-memory + on-disk album-cover cache. Useful when a
             // user's HA media_player_proxy URL changes and the cached bytes
-            // would otherwise paint a stale cover until eviction. Pushes a
-            // toast so the user sees it took effect (force-shown so it lands
-            // even with diagnostic toasts off — this is a deliberate action).
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = {
-                        com.github.itskenny0.r1ha.ui.components.AsyncBitmapCache.clear()
-                        R1Log.i("DevMenu", "AsyncBitmapCache cleared")
-                        com.github.itskenny0.r1ha.core.util.Toaster.error("Image cache cleared")
-                    })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text("IMG CACHE", style = R1.labelMicro, color = R1.InkSoft)
-            }
-            Spacer(Modifier.width(6.dp))
+            // would otherwise paint a stale cover until eviction.
+            DevChip(
+                label = "IMG CACHE",
+                contentDescription = "Clear the cached album-cover images",
+                onClick = {
+                    com.github.itskenny0.r1ha.ui.components.AsyncBitmapCache.clear()
+                    R1Log.i("DevMenu", "AsyncBitmapCache cleared")
+                    com.github.itskenny0.r1ha.core.util.Toaster.show("Image cache cleared")
+                },
+            )
             // EXPORT — drop the entire log buffer to a SAF-picked file the
             // user can share for diagnostics. Plain text (one line per
             // entry) so non-developers can read it; timestamps in ISO
             // format for grep-friendliness; throwables appended after their
             // message with indented stack frames.
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = {
-                        val now = R1LogBuffer.snapshot()
-                        val blob = buildString {
-                            append("R1HA log export · ")
-                            append(java.time.Instant.now().toString())
-                            append('\n')
-                            append("App ${com.github.itskenny0.r1ha.BuildConfig.VERSION_NAME} (${com.github.itskenny0.r1ha.BuildConfig.VERSION_CODE})\n")
-                            append("${now.size} entries\n\n")
-                            for (e in now) {
-                                val ts = java.time.Instant.ofEpochMilli(e.timestampMillis).toString()
-                                append("[$ts] ${e.level} ${e.tag} — ${e.message}\n")
-                                e.throwable?.let { t ->
-                                    append("    ").append(t::class.java.name)
-                                    t.message?.let { append(": ").append(it) }
-                                    append('\n')
-                                    for (line in t.stackTraceToString().lines().take(20)) {
-                                        append("    ").append(line).append('\n')
-                                    }
+            DevChip(
+                label = "EXPORT",
+                contentDescription = "Export the log buffer to a text file",
+                onClick = {
+                    val now = R1LogBuffer.snapshot()
+                    val blob = buildString {
+                        append("R1HA log export · ")
+                        append(java.time.Instant.now().toString())
+                        append('\n')
+                        append("App ${com.github.itskenny0.r1ha.BuildConfig.VERSION_NAME} (${com.github.itskenny0.r1ha.BuildConfig.VERSION_CODE})\n")
+                        append("${now.size} entries\n\n")
+                        for (e in now) {
+                            val ts = java.time.Instant.ofEpochMilli(e.timestampMillis).toString()
+                            append("[$ts] ${e.level} ${e.tag} — ${e.message}\n")
+                            e.throwable?.let { t ->
+                                append("    ").append(t::class.java.name)
+                                t.message?.let { append(": ").append(it) }
+                                append('\n')
+                                for (line in t.stackTraceToString().lines().take(20)) {
+                                    append("    ").append(line).append('\n')
                                 }
                             }
                         }
-                        pendingExport.value = blob
-                        val stamp = java.text.SimpleDateFormat(
-                            "yyyyMMdd-HHmm",
-                            java.util.Locale.US,
-                        ).format(java.util.Date())
-                        exportLauncher.launch("r1ha-logs-$stamp.txt")
-                    })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text("EXPORT", style = R1.labelMicro, color = R1.InkSoft)
-            }
-            Spacer(Modifier.width(6.dp))
+                    }
+                    pendingExport.value = blob
+                    val stamp = java.text.SimpleDateFormat(
+                        "yyyyMMdd-HHmm",
+                        java.util.Locale.US,
+                    ).format(java.util.Date())
+                    exportLauncher.launch("r1ha-logs-$stamp.txt")
+                },
+            )
             // LAST CRASH — reads the persisted crash report written by the
             // uncaught-exception handler in App.onCreate and surfaces it
             // through the expandable error toast. After-the-fact diagnostics
@@ -561,60 +569,63 @@ private fun LogViewer() {
             // after re-launching. The chip tints with StatusRed when a
             // crash file exists so it's obvious there's something to look
             // at; otherwise stays SurfaceMuted like the other dev chips.
-            val crashFilesExist = remember {
-                val a = java.io.File(context.filesDir, "last_crash.txt").let { it.exists() && it.length() > 0L }
-                val b = java.io.File(context.filesDir, "last_crash_seen.txt").let { it.exists() && it.length() > 0L }
-                a || b
-            }
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(
-                        if (crashFilesExist) R1.StatusRed.copy(alpha = 0.25f)
-                        else R1.SurfaceMuted
-                    )
-                    .r1Pressable(onClick = {
-                        // Try the un-seen file first (most-recent crash that
-                        // wasn't auto-surfaced yet), then the seen file (the
-                        // last crash that the auto-surface already showed).
-                        val unseen = java.io.File(context.filesDir, "last_crash.txt")
-                        val seen = java.io.File(context.filesDir, "last_crash_seen.txt")
-                        val file = when {
-                            unseen.exists() && unseen.length() > 0L -> unseen
-                            seen.exists() && seen.length() > 0L -> seen
-                            else -> null
+            DevChip(
+                label = "LAST CRASH",
+                contentDescription = if (crashFilesExist.value) {
+                    "Show and clear the last crash report"
+                } else {
+                    "No crash report on disk"
+                },
+                tint = if (crashFilesExist.value) R1.StatusRed else R1.InkSoft,
+                background = if (crashFilesExist.value) R1.StatusRed.copy(alpha = 0.25f) else R1.SurfaceMuted,
+                onClick = {
+                    // Try the un-seen file first (most-recent crash that
+                    // wasn't auto-surfaced yet), then the seen file (the
+                    // last crash that the auto-surface already showed).
+                    val unseen = java.io.File(context.filesDir, "last_crash.txt")
+                    val seen = java.io.File(context.filesDir, "last_crash_seen.txt")
+                    val file = when {
+                        unseen.exists() && unseen.length() > 0L -> unseen
+                        seen.exists() && seen.length() > 0L -> seen
+                        else -> null
+                    }
+                    if (file == null) {
+                        com.github.itskenny0.r1ha.core.util.Toaster.show("No crash report on disk")
+                    } else {
+                        val raw = runCatching { file.readText(Charsets.UTF_8) }
+                            .getOrElse { "(read failed: ${it.message})" }
+                        com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
+                            shortText = "Last crash · ${raw.lineSequence().firstOrNull()?.take(40) ?: "(empty)"}",
+                            fullText = raw,
+                        )
+                        // Delete both files after surfacing so the red
+                        // chip clears on next dev-menu visit. The user
+                        // has the trace in the toast; no reason to keep
+                        // it on disk after they've seen it.
+                        runCatching {
+                            if (unseen.exists()) unseen.delete()
+                            if (seen.exists()) seen.delete()
                         }
-                        if (file == null) {
-                            com.github.itskenny0.r1ha.core.util.Toaster.show("No crash report on disk")
-                        } else {
-                            val raw = runCatching { file.readText(Charsets.UTF_8) }
-                                .getOrElse { "(read failed: ${it.message})" }
-                            com.github.itskenny0.r1ha.core.util.Toaster.errorExpandable(
-                                shortText = "Last crash · ${raw.lineSequence().firstOrNull()?.take(40) ?: "(empty)"}",
-                                fullText = raw,
-                            )
-                            // Delete both files after surfacing so the red
-                            // chip clears on next dev-menu visit. The user
-                            // has the trace in the toast; no reason to keep
-                            // it on disk after they've seen it.
-                            runCatching {
-                                if (unseen.exists()) unseen.delete()
-                                if (seen.exists()) seen.delete()
-                            }
-                        }
-                    })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = "LAST CRASH",
-                    style = R1.labelMicro,
-                    color = if (crashFilesExist) R1.StatusRed else R1.InkSoft,
-                )
-            }
+                        crashFilesExist.value = false
+                    }
+                },
+            )
         }
-        Spacer(Modifier.height(8.dp))
-        entries.forEachIndexed { idx, entry ->
-            val isOpen = expanded.value == idx
+        Spacer(Modifier.height(R1.space.s))
+        if (entries.isEmpty()) {
+            // Empty state: the ring is empty either because "Keep log buffer"
+            // is off or nothing has logged yet. Tell the user how to populate
+            // it rather than leaving a bare header.
+            Text(
+                text = "No log entries yet. Enable \"Keep log buffer\" above, then PING to emit test entries.",
+                style = R1.body,
+                color = R1.InkMuted,
+                modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.s),
+            )
+        }
+        entries.forEach { entry ->
+            val key = "${entry.timestampMillis}|${entry.message}"
+            val isOpen = expanded.value == key
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -627,8 +638,11 @@ private fun LogViewer() {
                             R1LogBuffer.Level.D -> R1.SurfaceMuted
                         },
                     )
-                    .r1Pressable(onClick = { expanded.value = if (isOpen) null else idx })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .r1Pressable(
+                        onClick = { expanded.value = if (isOpen) null else key },
+                        contentDescription = "${entry.level.name} ${entry.tag}, ${if (isOpen) "collapse" else "expand"}",
+                    )
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -640,7 +654,7 @@ private fun LogViewer() {
                             else -> R1.InkSoft
                         },
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Text(
                         text = entry.tag,
                         style = R1.labelMicro,
@@ -662,7 +676,7 @@ private fun LogViewer() {
                     )
                 }
             }
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
         }
     }
 }
@@ -672,11 +686,11 @@ private fun Section(title: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 8.dp),
+            .padding(start = R1.space.l, end = R1.space.l, top = R1.space.l, bottom = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
                 .height(1.dp)
@@ -688,7 +702,34 @@ private fun Section(title: String) {
 
 @Composable
 private fun SectionDivider() {
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
+}
+
+/**
+ * Small labelled action chip for the log-viewer toolbar (CLEAR / PING / EXPORT
+ * etc.). [contentDescription] is required so TalkBack announces the action and
+ * the chip reads as a Button; the visible label stays terse. The tap target is
+ * padded out to [R1.MinTarget] tall even though the visual chip is shorter.
+ */
+@Composable
+private fun DevChip(
+    label: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color = R1.InkSoft,
+    background: androidx.compose.ui.graphics.Color = R1.SurfaceMuted,
+) {
+    Box(
+        modifier = Modifier
+            .heightIn(min = R1.MinTarget)
+            .clip(R1.ShapeS)
+            .background(background)
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription)
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = R1.labelMicro, color = tint)
+    }
 }
 
 @Composable
@@ -701,20 +742,24 @@ private fun DevSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .r1Pressable(onClick = { onChange(!checked) })
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .heightIn(min = R1.MinTarget)
+            .r1Pressable(
+                onClick = { onChange(!checked) },
+                contentDescription = "$label, ${if (checked) "on" else "off"}",
+            )
+            .padding(horizontal = R1.space.l, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = R1.bodyEmph, color = R1.Ink)
             Text(subtitle, style = R1.body, color = R1.InkMuted)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(R1.space.m))
         Box(
             modifier = Modifier
                 .clip(R1.ShapeS)
                 .background(if (checked) R1.AccentWarm else R1.SurfaceMuted)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         ) {
             Text(
                 text = if (checked) "ON" else "OFF",
@@ -734,27 +779,34 @@ private fun IntStepperRow(
     range: IntRange,
     onSet: (Int) -> Unit,
 ) {
+    val atMin = value <= range.first
+    val atMax = value >= range.last
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.l, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = R1.bodyEmph, color = R1.Ink)
             Text(subtitle, style = R1.body, color = R1.InkMuted)
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(R1.space.m))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(width = 36.dp, height = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSet(coerce(value - step, range.first, range.last)) }),
+                    .r1Pressable(
+                        onClick = {
+                            if (!atMin) onSet(coerce(value - step, range.first, range.last))
+                        },
+                        contentDescription = "Decrease $label",
+                    ),
                 contentAlignment = Alignment.Center,
-            ) { Text("−", style = R1.bodyEmph, color = R1.Ink) }
-            Spacer(Modifier.width(6.dp))
+            ) { Text("−", style = R1.bodyEmph, color = if (atMin) R1.InkMuted else R1.Ink) }
+            Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = value.toString(),
                 style = R1.body.copy(fontFamily = FontFamily.Monospace),
@@ -762,15 +814,20 @@ private fun IntStepperRow(
                 modifier = Modifier.width(40.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(width = 36.dp, height = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSet(coerce(value + step, range.first, range.last)) }),
+                    .r1Pressable(
+                        onClick = {
+                            if (!atMax) onSet(coerce(value + step, range.first, range.last))
+                        },
+                        contentDescription = "Increase $label",
+                    ),
                 contentAlignment = Alignment.Center,
-            ) { Text("+", style = R1.bodyEmph, color = R1.Ink) }
+            ) { Text("+", style = R1.bodyEmph, color = if (atMax) R1.InkMuted else R1.Ink) }
         }
     }
 }

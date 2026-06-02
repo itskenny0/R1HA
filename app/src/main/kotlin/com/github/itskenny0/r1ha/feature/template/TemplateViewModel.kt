@@ -58,6 +58,12 @@ class TemplateViewModel(
         /** Classification of the current [error], used by the UI to pick a
          *  heading. Null when there is no error. */
         val errorKind: TemplateLogic.ErrorKind? = null,
+        /** True while a LIVE subscription is being (re)established and no
+         *  event has landed yet. Lets the UI show a "subscribing" state
+         *  instead of presenting a stale [rendered] value as if it were the
+         *  current live output. Cleared once the first event arrives, the
+         *  subscribe fails, or LIVE is turned off. */
+        val liveConnecting: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -73,12 +79,31 @@ class TemplateViewModel(
     @Volatile
     private var autoJob: Job? = null
 
+    /** Pending debounced LIVE resubscribe. While LIVE is on, editing the
+     *  template has to tear down the old WS subscription and open a new one,
+     *  which is a server round-trip. Debouncing (and replacing) this job means
+     *  a burst of keystrokes resubscribes once on pause rather than per
+     *  character, and routing every resubscribe through this single job (rather
+     *  than a fresh launch each keystroke) keeps the [liveSubscription] handle
+     *  from being mutated by overlapping coroutines. */
+    @Volatile
+    private var liveResubscribeJob: Job? = null
+
     fun setTemplate(value: String) {
         _ui.value = _ui.value.copy(template = value)
         // If the user edits the template while LIVE is on, drop the existing
         // subscription and resubscribe so the new template is what's evaluated.
+        // Debounced + serialized through a single job so a burst of keystrokes
+        // doesn't fire a subscribe/unsubscribe round-trip per character or race
+        // overlapping coroutines on the shared subscription handle.
         if (_ui.value.live) {
-            viewModelScope.launch {
+            // The on-screen value is now stale for the edited template; flag
+            // connecting (non-blank only) so the panel shows progress until the
+            // resubscribe lands its first event instead of the old result.
+            _ui.value = _ui.value.copy(liveConnecting = value.isNotBlank())
+            liveResubscribeJob?.cancel()
+            liveResubscribeJob = viewModelScope.launch {
+                delay(TemplateLogic.AUTO_DEBOUNCE_MS)
                 liveSubscription?.cancel()
                 liveSubscription = null
                 startLiveSubscription()
@@ -146,10 +171,21 @@ class TemplateViewModel(
             autoJob?.cancel()
             autoJob = null
         }
-        _ui.value = _ui.value.copy(live = enabled, error = null, errorKind = null)
+        // Turning LIVE on flags "connecting" so the panel shows progress until
+        // the first event lands rather than presenting a stale render as live.
+        // A blank template can't be subscribed, so don't claim to be connecting.
+        val connecting = enabled && _ui.value.template.isNotBlank()
+        _ui.value = _ui.value.copy(
+            live = enabled,
+            error = null,
+            errorKind = null,
+            liveConnecting = connecting,
+        )
         if (enabled) {
             startLiveSubscription()
         } else {
+            liveResubscribeJob?.cancel()
+            liveResubscribeJob = null
             viewModelScope.launch {
                 liveSubscription?.cancel()
                 liveSubscription = null
@@ -159,15 +195,21 @@ class TemplateViewModel(
 
     private fun startLiveSubscription() {
         val template = _ui.value.template
-        if (template.isBlank()) return
+        if (template.isBlank()) {
+            // Nothing to subscribe to; make sure we don't sit in "connecting".
+            _ui.value = _ui.value.copy(liveConnecting = false)
+            return
+        }
         viewModelScope.launch {
             haRepository.subscribeTemplate(template) { rendered ->
                 // Renders land on the IO scope; push into _ui from there since
-                // MutableStateFlow.value is thread-safe.
+                // MutableStateFlow.value is thread-safe. The first event clears
+                // the connecting flag.
                 _ui.value = _ui.value.copy(
                     rendered = TemplateLogic.formatRendered(rendered),
                     error = null,
                     errorKind = null,
+                    liveConnecting = false,
                 )
             }.fold(
                 onSuccess = { sub ->
@@ -181,6 +223,7 @@ class TemplateViewModel(
                         live = false,
                         error = classified.message,
                         errorKind = classified.kind,
+                        liveConnecting = false,
                     )
                 },
             )
@@ -198,6 +241,8 @@ class TemplateViewModel(
         // own scope, not this ViewModel's, so it survives until the frame lands.
         autoJob?.cancel()
         autoJob = null
+        liveResubscribeJob?.cancel()
+        liveResubscribeJob = null
         val sub = liveSubscription
         liveSubscription = null
         if (sub != null) {

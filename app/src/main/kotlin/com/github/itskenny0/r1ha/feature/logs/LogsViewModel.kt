@@ -71,6 +71,11 @@ class LogsViewModel(
         /** Last-fetched wall-clock millis. Drives the "fetched 12 s ago"
          *  hint in the header. 0 = nothing fetched yet. */
         val fetchedAtMillis: Long = 0L,
+        /** True once at least one fetch has come back successfully. Lets the
+         *  empty state distinguish a genuinely clean log ("no errors logged")
+         *  from "haven't loaded yet", so we don't claim the log is clean
+         *  before we've actually read it. */
+        val loadedOnce: Boolean = false,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -119,6 +124,7 @@ class LogsViewModel(
                         truncated = tail.truncated,
                         error = null,
                         fetchedAtMillis = System.currentTimeMillis(),
+                        loadedOnce = true,
                     )
                 },
                 onFailure = { t ->
@@ -153,8 +159,12 @@ class LogsViewModel(
         )
 
         private fun parseLines(body: String): List<Line> {
-            // splitToSequence avoids materialising a full intermediate list;
-            // we index into the result anyway for stable LazyColumn keys.
+            // A clean HA install returns an empty (or whitespace-only) error
+            // log. body.split('\n') on "" yields [""] — one blank line — which
+            // would otherwise render as a single empty row in a box and read
+            // as "content" to the UI. Collapse that to a genuine empty list so
+            // the screen can show the "log is clean" state instead.
+            if (body.isBlank()) return emptyList()
             val raw = body.split('\n')
             return raw.mapIndexed { idx, text ->
                 val match = LEVEL_PATTERN.find(text)?.groupValues?.getOrNull(1)?.uppercase()

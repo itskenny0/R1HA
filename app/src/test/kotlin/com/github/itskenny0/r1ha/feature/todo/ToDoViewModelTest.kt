@@ -128,4 +128,65 @@ class ToDoViewModelTest {
         )
         assertThat(state.activeList).isNull()
     }
+
+    // --- UiState active / completed partitioning -------------------------
+
+    @Test fun `activeItems and completedItems partition by status`() {
+        val state = ToDoViewModel.UiState(
+            items = listOf(
+                ToDoViewModel.Item("k1", "k1", "Milk", completed = false),
+                ToDoViewModel.Item("k2", "k2", "Eggs", completed = true),
+                ToDoViewModel.Item("k3", "k3", "Bread", completed = false),
+            ),
+        )
+        assertThat(state.activeItems.map { it.summary })
+            .containsExactly("Milk", "Bread").inOrder()
+        assertThat(state.completedItems.map { it.summary }).containsExactly("Eggs")
+    }
+
+    // --- formatDue -------------------------------------------------------
+
+    private val today = java.time.LocalDate.of(2026, 6, 2)
+
+    @Test fun `formatDue returns null for null or blank`() {
+        assertThat(ToDoViewModel.formatDue(null, today)).isNull()
+        assertThat(ToDoViewModel.formatDue("   ", today)).isNull()
+    }
+
+    @Test fun `formatDue flags a past bare date as overdue`() {
+        val d = ToDoViewModel.formatDue("2026-05-30", today)!!
+        assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.OVERDUE)
+        assertThat(d.label).isEqualTo("2026-05-30")
+    }
+
+    @Test fun `formatDue labels today`() {
+        val d = ToDoViewModel.formatDue("2026-06-02", today)!!
+        assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.TODAY)
+        assertThat(d.label).isEqualTo("TODAY")
+    }
+
+    @Test fun `formatDue labels tomorrow and yesterday`() {
+        assertThat(ToDoViewModel.formatDue("2026-06-03", today)!!.label).isEqualTo("TOMORROW")
+        val y = ToDoViewModel.formatDue("2026-06-01", today)!!
+        assertThat(y.label).isEqualTo("YESTERDAY")
+        assertThat(y.urgency).isEqualTo(ToDoViewModel.DueUrgency.OVERDUE)
+    }
+
+    @Test fun `formatDue keeps a future date as upcoming with the ISO label`() {
+        val d = ToDoViewModel.formatDue("2026-12-25", today)!!
+        assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.UPCOMING)
+        assertThat(d.label).isEqualTo("2026-12-25")
+    }
+
+    @Test fun `formatDue appends the clock for a datetime due`() {
+        val d = ToDoViewModel.formatDue("2026-06-02T17:30:00+00:00", today)!!
+        assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.TODAY)
+        assertThat(d.label).isEqualTo("TODAY 17:30")
+    }
+
+    @Test fun `formatDue surfaces an unparseable value verbatim as upcoming`() {
+        val d = ToDoViewModel.formatDue("next week", today)!!
+        assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.UPCOMING)
+        assertThat(d.label).isEqualTo("NEXT WEEK")
+    }
 }

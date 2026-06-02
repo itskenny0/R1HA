@@ -84,21 +84,21 @@ fun TemplateScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = R1.space.m, vertical = R1.space.s)
                 .verticalScroll(scrollState),
         ) {
             // Example chips — one-tap insertion of common templates so the
             // user can iterate without having to remember the Jinja2 syntax
             // for the bits HA cares about (states.* tree, state_attr(), etc.).
             ExampleChips(onPick = { vm.setTemplate(it); vm.render() })
-            Spacer(Modifier.padding(top = 10.dp))
+            Spacer(Modifier.padding(top = R1.space.m))
             Text(
                 text = "TEMPLATE (JINJA2)",
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 modifier = Modifier.semantics { heading() },
             )
-            Spacer(Modifier.padding(top = 4.dp))
+            Spacer(Modifier.padding(top = R1.space.xs))
             // Multi-line monospace editor. heightIn keeps a sensible minimum
             // even when the field is empty so the tap target is generous.
             R1TextField(
@@ -111,14 +111,14 @@ fun TemplateScreen(
                     .heightIn(min = 80.dp)
                     .semantics { contentDescription = TemplateA11y.editorLabel() },
             )
-            Spacer(Modifier.padding(top = 8.dp))
+            Spacer(Modifier.padding(top = R1.space.s))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 R1Button(
                     text = if (ui.inFlight) "RENDERING…" else "RENDER",
                     onClick = { vm.render() },
                     enabled = ui.template.isNotBlank() && !ui.inFlight && !ui.live && !ui.auto,
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 // AUTO toggle — debounced render-on-type. While on, every edit
                 // re-renders after a short pause so the output tracks the
                 // template without a button tap. Mutually exclusive with LIVE.
@@ -131,7 +131,7 @@ fun TemplateScreen(
                     spokenLabel = TemplateA11y.autoToggleLabel(ui.auto),
                     onToggle = { vm.setAuto(!ui.auto) },
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 // LIVE toggle — subscribes to HA's render_template WS command,
                 // streaming re-renders on every relevant state change. The
                 // manual RENDER button is disabled while LIVE is on (the
@@ -145,7 +145,7 @@ fun TemplateScreen(
                     spokenLabel = TemplateA11y.liveToggleLabel(ui.live),
                     onToggle = { vm.setLive(!ui.live) },
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = when {
                         ui.live -> "subscribed to render_template"
@@ -156,11 +156,24 @@ fun TemplateScreen(
                     color = R1.InkMuted,
                 )
             }
-            Spacer(Modifier.padding(top = 12.dp))
+            Spacer(Modifier.padding(top = R1.space.m))
             // Output panel — distinct loading / error / rendered / empty
             // states. Loading takes priority so a slow render shows progress
             // rather than the stale previous value reading as current.
             when {
+                // Subscribing to render_template but no event has landed yet.
+                // Distinct from a REST render so the user knows LIVE is wiring
+                // up rather than that a one-off render is in flight, and so a
+                // stale previous value isn't read as the current live output.
+                ui.live && ui.liveConnecting && ui.error == null -> Text(
+                    text = "Subscribing to live re-renders…",
+                    style = R1.body,
+                    color = R1.InkSoft,
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Subscribing to live template re-renders"
+                    },
+                )
                 ui.inFlight && ui.rendered.isEmpty() && ui.error == null -> Text(
                     text = "Rendering against live HA state…",
                     style = R1.body,
@@ -180,9 +193,11 @@ fun TemplateScreen(
                     announce = true,
                 )
                 ui.rendered.isNotEmpty() -> ResultPanel(
-                    heading = "RENDERED",
+                    // While LIVE, the value is streamed from the subscription, so
+                    // label it as such; otherwise it's the last RENDER/AUTO result.
+                    heading = if (ui.live) "LIVE RESULT" else "RENDERED",
                     body = ui.rendered,
-                    accent = R1.AccentWarm,
+                    accent = if (ui.live) R1.AccentCool else R1.AccentWarm,
                     announce = true,
                 )
                 else -> Text(
@@ -193,7 +208,7 @@ fun TemplateScreen(
             }
             // Recent templates — newest first; tap to recall + re-render.
             if (ui.recent.isNotEmpty()) {
-                Spacer(Modifier.padding(top = 16.dp))
+                Spacer(Modifier.padding(top = R1.space.l))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "RECENT",
@@ -211,19 +226,19 @@ fun TemplateScreen(
                                 onClick = { vm.clearRecent() },
                                 contentDescription = "Clear recent templates",
                             )
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "CLEAR", style = R1.labelMicro, color = R1.InkSoft)
                     }
                 }
-                Spacer(Modifier.padding(top = 4.dp))
+                Spacer(Modifier.padding(top = R1.space.xs))
                 for (t in ui.recent) {
                     RecentTemplateRow(t, onPick = { vm.setTemplate(t); vm.render() })
-                    Spacer(Modifier.padding(top = 4.dp))
+                    Spacer(Modifier.padding(top = R1.space.xs))
                 }
             }
-            Spacer(Modifier.padding(top = 24.dp))
+            Spacer(Modifier.padding(top = R1.space.xl))
         }
         } // AdaptiveContent
     }
@@ -241,7 +256,7 @@ private fun RecentTemplateRow(template: String, onPick: () -> Unit) {
                 onClick = onPick,
                 contentDescription = TemplateA11y.recentRowLabel(template),
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
         contentAlignment = Alignment.CenterStart,
     ) {
         // Two-line preview is enough — most templates are short, and the
@@ -264,11 +279,11 @@ private fun ExampleChips(onPick: (String) -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(text = "TRY", style = R1.labelMicro, color = R1.InkMuted)
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(R1.space.xs))
         for (example in TemplateLogic.examples) {
             Box(
                 modifier = Modifier
@@ -280,7 +295,7 @@ private fun ExampleChips(onPick: (String) -> Unit) {
                         onClick = { onPick(example.template) },
                         contentDescription = TemplateA11y.exampleChipLabel(example.label),
                     )
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = example.label, style = R1.labelMicro, color = R1.InkSoft)
@@ -316,7 +331,7 @@ private fun ModeToggle(
                 onClick = onToggle,
                 contentDescription = spokenLabel,
             )
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -343,7 +358,7 @@ private fun ResultPanel(
                 color = accent,
                 modifier = Modifier.semantics { heading() },
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             // Tap-to-copy chip — convenient for piping a rendered value
             // into HA's automation YAML or a Discord/issue post.
             Box(
@@ -359,13 +374,13 @@ private fun ResultPanel(
                         },
                         contentDescription = "Copy result to clipboard",
                     )
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
             }
         }
-        Spacer(Modifier.padding(top = 4.dp))
+        Spacer(Modifier.padding(top = R1.space.xs))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -378,9 +393,11 @@ private fun ResultPanel(
                     contentDescription = TemplateA11y.resultLabel(heading, body)
                     if (announce) liveRegion = LiveRegionMode.Polite
                 }
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.s, vertical = R1.space.s),
         ) {
-            Text(text = body, style = R1.body, color = R1.Ink)
+            // Rendered output and Jinja tracebacks are code, so show them in the
+            // monospace readout style rather than proportional body text.
+            Text(text = body, style = R1.numeralS, color = R1.Ink)
         }
     }
 }

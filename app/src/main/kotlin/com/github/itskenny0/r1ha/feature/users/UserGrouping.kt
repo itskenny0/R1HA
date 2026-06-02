@@ -21,6 +21,10 @@ const val GROUP_ADMIN = "system-admin"
 /** HA Core's built-in standard-user group id. */
 const val GROUP_USERS = "system-users"
 
+/** HA Core's built-in read-only group id. Members can view state but not
+ *  call services; HA surfaces this as a distinct group, so we tag it too. */
+const val GROUP_READ_ONLY = "system-read-only"
+
 /** Which section a row sorts into. Order here is the on-screen order. */
 enum class UserSection { ADMINS, USERS, SYSTEM }
 
@@ -36,6 +40,9 @@ data class UserRowModel(
     val displayName: String,
     val isOwner: Boolean,
     val isAdmin: Boolean,
+    /** True when the user is in HA's built-in read-only group: can view but
+     *  not control. Mutually exclusive with [isAdmin] in practice. */
+    val isReadOnly: Boolean,
     val isActive: Boolean,
     val systemGenerated: Boolean,
     val localOnly: Boolean,
@@ -53,6 +60,22 @@ data class UserRowModel(
 
 /** True when [groupIds] grants administrator access. */
 fun isAdmin(groupIds: List<String>): Boolean = groupIds.any { it.equals(GROUP_ADMIN, ignoreCase = true) }
+
+/** True when [groupIds] is the built-in read-only group (view, no control). */
+fun isReadOnly(groupIds: List<String>): Boolean =
+    groupIds.any { it.equals(GROUP_READ_ONLY, ignoreCase = true) }
+
+/**
+ * Turn a wire group id into a short human label. HA Core's three built-in
+ * groups get friendly names; anything custom is shown verbatim so a bespoke
+ * group id is still recognisable.
+ */
+fun prettyGroupId(groupId: String): String = when (groupId.lowercase(Locale.US)) {
+    GROUP_ADMIN -> "Admin"
+    GROUP_USERS -> "Users"
+    GROUP_READ_ONLY -> "Read-only"
+    else -> groupId
+}
 
 /**
  * Bucket a row. System-generated rows always sort into SYSTEM regardless of
@@ -85,6 +108,7 @@ fun rowModelFor(
     displayName = displayNameFor(user),
     isOwner = isOwner,
     isAdmin = isAdmin(user.groupIds),
+    isReadOnly = isReadOnly(user.groupIds),
     isActive = user.isActive,
     systemGenerated = user.systemGenerated,
     localOnly = user.localOnly,

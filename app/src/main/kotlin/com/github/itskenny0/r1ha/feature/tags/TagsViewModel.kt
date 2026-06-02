@@ -43,6 +43,13 @@ class TagsViewModel(
                 },
                 onFailure = { t ->
                     R1Log.w("Tags", "list failed: ${t.message}")
+                    // When we already have rows on screen, a failed re-fetch must not
+                    // silently blank the inline error slot (which only renders on an
+                    // empty list); surface it as a toast so the stale list stays put
+                    // but the user still learns the refresh didn't land.
+                    if (_ui.value.tags.isNotEmpty()) {
+                        Toaster.error("Tag refresh failed")
+                    }
                     _ui.value = _ui.value.copy(loading = false, error = t.message)
                 },
             )

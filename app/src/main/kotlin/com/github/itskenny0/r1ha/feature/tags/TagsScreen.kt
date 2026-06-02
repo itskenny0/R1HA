@@ -32,6 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
@@ -42,6 +45,7 @@ import com.github.itskenny0.r1ha.core.ha.HaTag
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -76,6 +80,10 @@ fun TagsScreen(
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
+    // HA's tag panel live-updates last_scanned off a tag_scanned subscription; we can't
+    // subscribe from here, so poll the registry periodically to keep the newest-scan-first
+    // ordering current. Registry data is low-churn, so a relaxed cadence is plenty.
+    AutoRefresh(30_000L) { vm.refresh() }
 
     var renaming by remember { mutableStateOf<HaTag?>(null) }
     var deleting by remember { mutableStateOf<HaTag?>(null) }
@@ -101,7 +109,9 @@ fun TagsScreen(
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .semantics { contentDescription = "Loading tags" },
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator(
@@ -136,13 +146,15 @@ fun TagsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
-                    item {
+                    item(key = "tags-header") {
                         Text(
                             text = "${ui.tags.size} tag${if (ui.tags.size == 1) "" else "s"}" +
                                 "  ·  TAP to rename, HOLD to delete",
                             style = R1.labelMicro,
                             color = R1.InkSoft,
-                            modifier = Modifier.padding(vertical = R1.space.xs),
+                            modifier = Modifier
+                                .padding(vertical = R1.space.xs)
+                                .semantics { heading() },
                         )
                     }
                     items(items = ui.tags, key = { it.id }) { tag ->
@@ -152,7 +164,7 @@ fun TagsScreen(
                             onLongPress = { deleting = tag },
                         )
                     }
-                    item { Spacer(Modifier.size(R1.space.xl)) }
+                    item(key = "tags-footer-spacer") { Spacer(Modifier.size(R1.space.xl)) }
                 }
             }
         }
@@ -188,19 +200,34 @@ private fun TagRow(
     onTap: () -> Unit,
     onLongPress: () -> Unit,
 ) {
+    val displayName = tag.name?.takeIf { it.isNotBlank() } ?: tag.id
+    // Merge the row into one announcement so a screen reader reads
+    // "name, scanned 5 minutes ago, double-tap to rename, long-press to delete"
+    // instead of the disjoint name / timestamp / id fragments. rememberRelativeTime
+    // returns the same phrasing the visible label shows, keeping the two in sync.
+    val scannedPhrase = if (tag.lastScanned != null) {
+        "last scanned ${com.github.itskenny0.r1ha.ui.components.rememberRelativeTime(tag.lastScanned)}"
+    } else {
+        "never scanned"
+    }
+    val rowDescription = "$displayName, $scannedPhrase. Double-tap to rename, long-press to delete."
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1RowPressable(onTap = onTap, onLongPress = onLongPress)
+            .r1RowPressable(
+                onTap = onTap,
+                onLongPress = onLongPress,
+                contentDescription = rowDescription,
+            )
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = tag.name?.takeIf { it.isNotBlank() } ?: tag.id,
+                text = displayName,
                 style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),

@@ -72,9 +72,22 @@ class ToDoViewModel(
          *  [Item.key], not the serverRef, so duplicate-summary rows that
          *  share a serverRef don't block each other. */
         val pendingItems: Set<String> = emptySet(),
+        /** When false the completed section is collapsed out of the body.
+         *  Mirrors the Lovelace card's `hide_completed` toggle. Defaults to
+         *  shown so a fresh list reveals everything; the user collapses it
+         *  to focus on what's still outstanding. */
+        val showCompleted: Boolean = true,
     ) {
         val activeList: ToDoList?
             get() = lists.firstOrNull { it.entityId == activeEntityId }
+
+        /** Rows still needing action, in wire order. */
+        val activeItems: List<Item>
+            get() = items.filterNot { it.completed }
+
+        /** Rows already completed, in wire order. */
+        val completedItems: List<Item>
+            get() = items.filter { it.completed }
     }
 
     private val _ui = MutableStateFlow(UiState())
@@ -148,9 +161,20 @@ class ToDoViewModel(
                 onSuccess = { fetchItems(entity) },
                 onFailure = { t ->
                     Toaster.error("Add failed: ${t.message ?: "unknown"}")
+                    // Restore the text the user typed so the failed add isn't
+                    // silently lost. Only refill if they haven't started a new
+                    // draft in the meantime.
+                    if (_ui.value.draft.isBlank()) {
+                        _ui.value = _ui.value.copy(draft = summary)
+                    }
                 },
             )
         }
+    }
+
+    /** Collapse / reveal the completed section, mirroring HA's hide_completed. */
+    fun toggleShowCompleted() {
+        _ui.value = _ui.value.copy(showCompleted = !_ui.value.showCompleted)
     }
 
     fun toggleCompleted(item: Item) {
@@ -271,7 +295,69 @@ class ToDoViewModel(
         }
     }
 
+    /** How urgent a parsed due date is relative to "today". */
+    enum class DueUrgency { OVERDUE, TODAY, UPCOMING }
+
+    /** A due date rendered for the screen: a short label plus its urgency. */
+    @Stable
+    data class DueDisplay(val label: String, val urgency: DueUrgency)
+
     companion object {
+        /**
+         * Parse and humanise a todo item's `due` value for display.
+         *
+         * HA hands `due` over in one of two ISO-8601 shapes: a bare date
+         * ("2026-06-02") for date-only due dates, or a datetime
+         * ("2026-06-02T17:30:00+00:00") when the provider sets a due time.
+         * Anything else (a provider that emits a non-standard string) is shown
+         * verbatim and treated as UPCOMING so we never crash on an odd value.
+         *
+         * [today] is injected so the relative-day logic ("Today", "Overdue")
+         * is deterministic and unit-testable without a real clock.
+         *
+         * The label is intentionally compact for the R1's narrow column:
+         *  - same day      -> "TODAY" (+ time when the provider gave one)
+         *  - in the past   -> the date, flagged OVERDUE so the UI can redden it
+         *  - tomorrow      -> "TOMORROW"
+         *  - otherwise     -> the ISO date
+         */
+        fun formatDue(raw: String?, today: java.time.LocalDate): DueDisplay? {
+            val value = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            // Try datetime first (it carries a date too); fall back to date-only.
+            val dueDate: java.time.LocalDate? = runCatching {
+                java.time.OffsetDateTime.parse(value).toLocalDate()
+            }.getOrNull()
+                ?: runCatching { java.time.LocalDateTime.parse(value).toLocalDate() }.getOrNull()
+                ?: runCatching { java.time.LocalDate.parse(value) }.getOrNull()
+
+            // The clock portion, present only when the provider supplied a
+            // datetime (not a bare date). Both datetime shapes funnel through
+            // one HH:mm rendering path.
+            val clock: String? = (
+                runCatching { java.time.OffsetDateTime.parse(value).toLocalTime() }.getOrNull()
+                    ?: runCatching { java.time.LocalDateTime.parse(value).toLocalTime() }.getOrNull()
+                )?.let { "%02d:%02d".format(it.hour, it.minute) }
+
+            if (dueDate == null) {
+                // Unparseable: surface it raw rather than dropping the field.
+                return DueDisplay(value.uppercase(), DueUrgency.UPCOMING)
+            }
+
+            val urgency = when {
+                dueDate.isBefore(today) -> DueUrgency.OVERDUE
+                dueDate.isEqual(today) -> DueUrgency.TODAY
+                else -> DueUrgency.UPCOMING
+            }
+            val dayLabel = when {
+                dueDate.isEqual(today) -> "TODAY"
+                dueDate.isEqual(today.plusDays(1)) -> "TOMORROW"
+                dueDate.isEqual(today.minusDays(1)) -> "YESTERDAY"
+                else -> dueDate.toString() // ISO yyyy-MM-dd
+            }
+            val label = if (clock != null) "$dayLabel $clock" else dayLabel
+            return DueDisplay(label, urgency)
+        }
+
         /**
          * Map the repository's raw items into keyed screen items, assigning a
          * stable, collision-free [Item.key] per row. Position is the tiebreaker

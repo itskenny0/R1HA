@@ -80,70 +80,137 @@ private class MediaBrowseViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    /** Guards against overlapping browse fetches. Tapping two folders (or
+     *  hammering one) in quick succession would otherwise fire two browses that
+     *  each append a crumb via [MediaBrowseNav.pushCrumb], corrupting the path
+     *  and the on-screen list. While a browse is in flight we drop further
+     *  navigate/back/refresh requests; the spinner already tells the user a load
+     *  is happening. */
+    private var browseInFlight = false
+
+    /** Bumped on every [openRoot] so a browse from a previous target that lands
+     *  late cannot apply its result (crumb push + children) onto the new stack. */
+    private var browseGeneration = 0
+
     /** True when a hardware-back press should pop a browse level rather than
      *  leave the screen entirely. */
     fun canPopLevel(): Boolean = MediaBrowseNav.canPopLevel(_ui.value.crumbs)
 
     fun openRoot(entityId: String) {
+        // openRoot starts a fresh stack, so it is allowed to pre-empt any
+        // in-flight browse of the previous target rather than be dropped. The
+        // generation bump makes a late-landing previous browse a no-op.
+        browseGeneration++
+        val baseCrumbs = emptyList<MediaBrowseNav.Crumb>()
         _ui.value = UiState(entityId = entityId, loading = true)
-        browse(MediaBrowseNav.Crumb("ROOT", null, null), reset = true)
+        browse(
+            crumb = MediaBrowseNav.Crumb("ROOT", null, null),
+            baseCrumbs = baseCrumbs,
+            crumbsOnSuccess = { result -> MediaBrowseNav.rootCrumbs(result) },
+        )
     }
 
     fun navigate(crumb: MediaBrowseNav.Crumb) {
         val current = _ui.value
-        if (current.entityId == null) return
+        if (current.entityId == null || browseInFlight) return
+        val base = current.crumbs
         _ui.value = current.copy(loading = true)
-        browse(crumb, reset = false)
+        browse(
+            crumb = crumb,
+            baseCrumbs = base,
+            crumbsOnSuccess = { result -> MediaBrowseNav.pushCrumb(base, result) },
+        )
     }
 
     fun back() {
         val current = _ui.value
+        if (browseInFlight) return
         val target = MediaBrowseNav.parentCrumb(current.crumbs) ?: return
-        // Drop the current + parent crumbs; re-browsing the parent re-appends
-        // one so the path lands exactly one level shorter.
-        _ui.value = current.copy(
-            loading = true,
-            crumbs = MediaBrowseNav.crumbsForBack(current.crumbs),
+        // The parent's path is everything above the current folder; re-browsing
+        // the parent re-appends it so the path lands exactly one level shorter.
+        val parentBase = current.crumbs.dropLast(2)
+        _ui.value = current.copy(loading = true)
+        browse(
+            crumb = target,
+            baseCrumbs = current.crumbs,
+            crumbsOnSuccess = { result -> MediaBrowseNav.pushCrumb(parentBase, result) },
         )
-        browse(target, reset = false)
     }
 
     /** Re-browse the folder currently on screen (pull-to-refresh). Re-fetches
      *  the deepest crumb without changing the path depth. */
     fun refresh() {
         val current = _ui.value
-        if (current.entityId == null) return
+        if (current.entityId == null || browseInFlight) return
         val here = current.crumbs.lastOrNull() ?: return
-        _ui.value = current.copy(
-            loading = true,
-            crumbs = current.crumbs.dropLast(1),
+        // Refresh keeps the same depth: re-browse the deepest crumb and rebuild
+        // the path by re-pushing onto everything above it. Crumbs are not
+        // pre-mutated, so a failed refresh leaves the visible path intact.
+        val base = current.crumbs.dropLast(1)
+        _ui.value = current.copy(loading = true)
+        browse(
+            crumb = here,
+            baseCrumbs = current.crumbs,
+            crumbsOnSuccess = { result -> MediaBrowseNav.pushCrumb(base, result) },
         )
-        browse(here, reset = false)
     }
 
-    private fun browse(crumb: MediaBrowseNav.Crumb, reset: Boolean) {
+    /**
+     * Run one browse step. [baseCrumbs] is the crumb list to restore if the
+     * fetch fails (so a failed navigate/back/refresh leaves the breadcrumb in
+     * sync with the still-displayed list); [crumbsOnSuccess] builds the path to
+     * show once the new folder loads. Splitting success/failure crumb handling
+     * here keeps the path and the on-screen children from ever disagreeing.
+     */
+    private fun browse(
+        crumb: MediaBrowseNav.Crumb,
+        baseCrumbs: List<MediaBrowseNav.Crumb>,
+        crumbsOnSuccess: (MediaBrowseResult) -> List<MediaBrowseNav.Crumb>,
+    ) {
         val entity = _ui.value.entityId ?: return
+        val generation = browseGeneration
+        browseInFlight = true
         viewModelScope.launch {
-            haRepository.browseMedia(
+            val result = haRepository.browseMedia(
                 entityId = entity,
                 mediaContentId = crumb.mediaContentId,
                 mediaContentType = crumb.mediaContentType,
-            ).fold(
-                onSuccess = { result ->
-                    val newCrumbs = if (reset) MediaBrowseNav.rootCrumbs(result)
-                    else MediaBrowseNav.pushCrumb(_ui.value.crumbs, result)
+            )
+            // A newer openRoot superseded this fetch: drop it so a stale folder
+            // can't push a crumb or paint children onto the new target's stack.
+            if (generation != browseGeneration) return@launch
+            result.fold(
+                onSuccess = { res ->
                     _ui.value = _ui.value.copy(
                         loading = false,
-                        children = MediaBrowseNav.sortChildren(result.children),
-                        crumbs = newCrumbs,
+                        children = MediaBrowseNav.sortChildren(res.children),
+                        crumbs = crumbsOnSuccess(res),
                         error = null,
                     )
                 },
                 onFailure = { t ->
                     R1Log.w("MediaBrowse", "browse failed: ${t.message}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    // When a populated level is already on screen (a failed
+                    // refresh/navigate over existing content), keep showing it
+                    // and surface the failure as a toast rather than blanking
+                    // the list with a full-screen error. The empty-list case
+                    // (first load of a level) falls through to the error state.
+                    if (_ui.value.children.isNotEmpty()) {
+                        Toaster.errorExpandable(
+                            shortText = "Browse failed",
+                            fullText = t.message ?: t.toString(),
+                        )
+                        _ui.value = _ui.value.copy(loading = false, crumbs = baseCrumbs)
+                    } else {
+                        _ui.value = _ui.value.copy(
+                            loading = false,
+                            crumbs = baseCrumbs,
+                            error = t.message,
+                        )
+                    }
                 },
             )
+            browseInFlight = false
         }
     }
 
@@ -225,7 +292,7 @@ fun MediaBrowseScreen(
     ) {
         R1TopBar(title = "MEDIA BROWSE", onBack = onBack)
         AdaptiveContent(modifier = Modifier.weight(1f)) {
-            Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(R1.space.m)) {
                 // Entity binding row — sits at top so the user can swap the
                 // media_player target without losing browse state for the
                 // current one.
@@ -241,7 +308,7 @@ fun MediaBrowseScreen(
                             monospace = true,
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(R1.space.s))
                     Box(
                         modifier = Modifier
                             .heightIn(min = R1.MinTarget)
@@ -259,13 +326,13 @@ fun MediaBrowseScreen(
                                 },
                                 contentDescription = "Browse this media player",
                             )
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "BROWSE", style = R1.labelMicro, color = R1.AccentWarm)
                     }
                 }
-                Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(R1.space.s))
                 // Breadcrumb strip — horizontal scroll so deep paths don't
                 // truncate. Most recent on the right.
                 if (ui.crumbs.isNotEmpty()) {
@@ -294,7 +361,7 @@ fun MediaBrowseScreen(
                             )
                         }
                     }
-                    Spacer(Modifier.size(6.dp))
+                    Spacer(Modifier.size(R1.space.xs))
                     if (ui.crumbs.size > 1) {
                         Box(
                             modifier = Modifier
@@ -306,12 +373,12 @@ fun MediaBrowseScreen(
                                     onClick = { vm.back() },
                                     contentDescription = "Go up one folder",
                                 )
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                                .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(text = "← UP", style = R1.labelMicro, color = R1.InkSoft)
+                            Text(text = "↑ UP", style = R1.labelMicro, color = R1.InkSoft)
                         }
-                        Spacer(Modifier.size(8.dp))
+                        Spacer(Modifier.size(R1.space.s))
                     }
                 }
                 // Body. The full-screen spinner only covers the first load of a
@@ -331,16 +398,28 @@ fun MediaBrowseScreen(
                         ) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(22.dp),
-                                strokeWidth = 2.dp,
+                                strokeWidth = R1.space.xxs,
                                 color = R1.AccentWarm,
                             )
                         }
-                    ui.error != null -> Text(
-                        text = "Browse failed: ${ui.error}",
-                        style = R1.body,
-                        color = R1.StatusAmber,
-                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                    )
+                    ui.error != null -> Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    ) {
+                        // Error state in StatusRed, distinct from the muted empty
+                        // and entity-prompt states below.
+                        Text(
+                            text = "Browse failed: ${ui.error}",
+                            style = R1.body,
+                            color = R1.StatusRed,
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                        Text(
+                            text = "Tap BROWSE to retry, or pick another media_player.",
+                            style = R1.labelMicro,
+                            color = R1.InkMuted,
+                        )
+                    }
                     ui.entityId == null -> Text(
                         text = "Pick a media_player entity above to browse its library.",
                         style = R1.body,
@@ -374,7 +453,7 @@ fun MediaBrowseScreen(
                     ) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                         ) {
                             items(ui.children, key = { it.mediaContentId + "|" + it.mediaContentType }) { entry ->
                                 val playKey = entry.mediaContentId + "|" + entry.mediaContentType
@@ -444,34 +523,39 @@ private fun EntryRow(
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .then(rowSemantics)
             .r1Pressable(onClick = onTap, contentDescription = rowLabel)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Thumbnail where the entry carries one; otherwise a type glyph in the
-        // same footprint so titles stay aligned across rows with and without
-        // art.
+        // Thumbnail where the entry carries one; otherwise a media-class glyph in
+        // the same footprint so titles stay aligned across rows with and without
+        // art. The glyph mirrors HA's per-media-class icon set (album, artist,
+        // playlist, ...) and falls back to a folder/play affordance arrow.
         if (!entry.thumbnail.isNullOrBlank()) {
             AsyncBitmap(
                 url = entry.thumbnail,
                 serverUrl = serverUrl,
                 bearerToken = bearerToken,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(R1.space.xxl)
                     .clip(R1.ShapeS),
+                // Row merges title/kind/class/action into one spoken label, so
+                // this image is decorative to the reader and stays unlabelled.
                 contentDescription = null,
             )
         } else {
-            val glyph = when {
-                entry.canExpand && entry.canPlay -> "▸"
-                entry.canExpand -> "›"
-                entry.canPlay -> "▷"
-                else -> "·"
+            val glyph = mediaEntryGlyph(entry.mediaClass, entry.canExpand, entry.canPlay)
+            // Folders read warm (the primary "drill in" affordance); playable
+            // and inert items read cool/neutral so the list scans by colour too.
+            val glyphColor = when {
+                entry.canExpand -> R1.AccentWarm
+                entry.canPlay -> R1.AccentCool
+                else -> R1.InkMuted
             }
-            Box(modifier = Modifier.size(40.dp), contentAlignment = Alignment.Center) {
-                Text(text = glyph, style = R1.bodyEmph, color = R1.AccentWarm)
+            Box(modifier = Modifier.size(R1.space.xxl), contentAlignment = Alignment.Center) {
+                Text(text = glyph, style = R1.bodyEmph, color = glyphColor)
             }
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = entry.title, style = R1.body, color = R1.Ink, maxLines = 1)
             if (!entry.mediaClass.isNullOrBlank()) {
@@ -482,6 +566,9 @@ private fun EntryRow(
                 )
             }
         }
+        // A folder gets a trailing chevron so the "tap to open" affordance is
+        // visible even when a thumbnail occupies the leading slot. An
+        // expandable-and-playable item shows both PLAY and the chevron.
         if (entry.canPlay) {
             Box(
                 modifier = Modifier
@@ -493,11 +580,21 @@ private fun EntryRow(
                         onClick = onPlay,
                         contentDescription = mediaPlayActionLabel(entry.title),
                     )
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = "PLAY", style = R1.labelMicro, color = R1.AccentCool)
             }
+        }
+        if (entry.canExpand) {
+            Spacer(Modifier.width(R1.space.s))
+            Text(
+                text = "›",
+                style = R1.bodyEmph,
+                color = R1.InkMuted,
+                // Decorative: the merged row label already states "tap to open".
+                modifier = Modifier.semantics { contentDescription = "" },
+            )
         }
     }
 }

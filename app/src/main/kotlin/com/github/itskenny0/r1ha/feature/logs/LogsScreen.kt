@@ -22,8 +22,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +36,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -70,8 +73,43 @@ fun LogsScreen(
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
     val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
+
+    // Derive the filtered view once here so the scroll-to-tail target and the
+    // body render off the same list. Re-derive only when the underlying lines
+    // or the level/query filters change, not on every recomposition: the body
+    // can be up to 512 KB of lines and re-scanning it per keystroke/scroll tick
+    // was wasteful.
+    val visible = remember(ui.lines, ui.level, ui.query) { vm.filteredLines(ui) }
+
+    // A log viewer is most useful pinned to the newest line. We follow the tail
+    // automatically as long as the user is already parked at the bottom; if the
+    // user has scrolled up to read older context we leave their position
+    // untouched and surface a "NEWEST" jump affordance instead (mirrors HA's
+    // new-logs-indicator). atBottom is derived so it only recomputes when the
+    // relevant layout fields actually change, not on every scroll pixel.
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            // No items rendered yet (treat as bottom for first-load follow), or
+            // the last visible item is the last item in the list.
+            last == null || last.index >= info.totalItemsCount - 1
+        }
+    }
+    // Re-anchor to the tail whenever a fresh fetch lands while the user is at
+    // the bottom. Keyed on the fetch timestamp AND the filtered size so the
+    // scroll fires after the new items have been handed to the LazyColumn
+    // (scrolling to a stale totalItemsCount would land short of the real tail).
+    // Typing in the filter or toggling a chip keeps fetchedAtMillis fixed, so
+    // those recompositions never yank the scroll position.
+    LaunchedEffect(ui.fetchedAtMillis, visible.size) {
+        if (ui.fetchedAtMillis > 0L && atBottom && visible.isNotEmpty()) {
+            runCatching { listState.scrollToItem(visible.lastIndex) }
+        }
+    }
     if (ui.autoRefresh) {
         // 10s cadence — fast enough to surface a freshly-logged error
         // while debugging an integration, slow enough that the R1 isn't
@@ -95,6 +133,22 @@ fun LogsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
+                    // NEWEST chip — jump back to the tail after scrolling up
+                    // to read older context. Only shown when there is content
+                    // and the user has actually scrolled away from the bottom,
+                    // so it doesn't clutter the bar in the common pinned case.
+                    if (visible.isNotEmpty() && !atBottom) {
+                        R1Chip(
+                            text = "NEWEST",
+                            variant = R1ChipVariant.Action,
+                            onClick = {
+                                scope.launch {
+                                    runCatching { listState.animateScrollToItem(visible.lastIndex) }
+                                }
+                            },
+                            contentDescription = "Scroll to newest log line",
+                        )
+                    }
                     // COPY chip — hand the currently-filtered text to the
                     // clipboard. Filter-aware so a "copy only the errors"
                     // workflow is one tap rather than a manual selection.
@@ -133,7 +187,7 @@ fun LogsScreen(
                 Spacer(Modifier.size(R1.space.s))
                 SearchField(query = ui.query, onChange = { vm.setQuery(it) })
                 Spacer(Modifier.size(R1.space.s))
-                LogBody(vm = vm, ui = ui, listState = listState)
+                LogBody(ui = ui, visible = visible, listState = listState)
             }
         }
     }
@@ -226,11 +280,12 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
 
 @Composable
 private fun LogBody(
-    vm: LogsViewModel,
     ui: LogsViewModel.UiState,
+    visible: List<LogsViewModel.Line>,
     listState: androidx.compose.foundation.lazy.LazyListState,
 ) {
     when {
+        // LOADING: nothing fetched yet (or a refresh while the buffer is empty).
         ui.loading && ui.lines.isEmpty() -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
@@ -241,65 +296,74 @@ private fun LogBody(
                 color = R1.AccentWarm,
             )
         }
-        ui.lines.isEmpty() -> Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = if (ui.error != null) "No log output." else "(empty body from server)",
-                style = R1.body,
-                color = R1.InkMuted,
-            )
-        }
+        // ERROR: the fetch failed and we have nothing to show. The red banner in
+        // SizeHint carries the message; this just states the body is unavailable.
+        ui.lines.isEmpty() && ui.error != null -> EmptyState(
+            text = "No log output.\nThe error log could not be loaded.",
+        )
+        // CLEAN: the fetch succeeded but the log body was empty. On a healthy HA
+        // install this is the normal case, so frame it positively rather than as
+        // a fault (matches HA's "no errors logged" copy).
+        ui.lines.isEmpty() && ui.loadedOnce -> EmptyState(
+            text = "Log is clean.\nNo warnings or errors logged.",
+        )
+        // CLEAN (pre-load fallback): empty before the first fetch resolves.
+        ui.lines.isEmpty() -> EmptyState(text = "No log output yet.")
+        // CONTENT present but the active filter excludes everything.
+        visible.isEmpty() -> EmptyState(
+            text = if (ui.query.isNotBlank()) {
+                "No lines match \"${ui.query}\"."
+            } else {
+                "No ${ui.level.label} lines in this log."
+            },
+        )
         else -> {
-            // Re-derive the filtered view only when the underlying lines or the
-            // level/query filters change, not on every recomposition. The body can
-            // be up to 512 KB of lines; recomputing the substring/level filter on
-            // each AutoRefresh tick, keystroke, and scroll-driven recomposition was
-            // scanning the whole list redundantly.
-            val visible = remember(ui.lines, ui.level, ui.query) { vm.filteredLines(ui) }
-            if (visible.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No lines match this filter.",
-                        style = R1.body,
-                        color = R1.InkMuted,
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .border(1.dp, R1.Hairline, R1.ShapeS),
+            ) {
+                // The monospace line style is constant; build it once rather than
+                // allocating a fresh TextStyle.copy per line per recomposition.
+                val lineStyle = remember {
+                    R1.body.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = TextUnit(11f, TextUnitType.Sp),
                     )
                 }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS),
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = R1.space.s,
+                        vertical = R1.space.s,
+                    ),
                 ) {
-                    // The monospace line style is constant; build it once rather than
-                    // allocating a fresh TextStyle.copy per line per recomposition.
-                    val lineStyle = remember {
-                        R1.body.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = TextUnit(11f, TextUnitType.Sp),
-                        )
-                    }
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = R1.space.s,
-                            vertical = R1.space.s,
-                        ),
-                    ) {
-                        items(items = visible, key = { it.index }) { line ->
-                            LogLineRow(line, lineStyle)
-                        }
+                    items(items = visible, key = { it.index }) { line ->
+                        LogLineRow(line, lineStyle)
                     }
                 }
             }
         }
+    }
+}
+
+/** Centered muted-ink message used by the empty / clean / error / no-match
+ *  states so they share one styling treatment. */
+@Composable
+private fun EmptyState(text: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = R1.body,
+            color = R1.InkMuted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
 

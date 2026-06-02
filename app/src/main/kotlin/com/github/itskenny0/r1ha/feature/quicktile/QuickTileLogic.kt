@@ -68,10 +68,14 @@ internal object QuickTileLogic {
                     tile.updateTile()
                     return@launch
                 }
+                // EntityId only validates the `domain.object_id` shape now (unknown domains
+                // resolve to Domain.OTHER rather than being rejected), so this branch fires
+                // only when the stored string is genuinely malformed.
                 val entityId = runCatching { EntityId(rawId) }.getOrNull()
                 if (entityId == null) {
                     tile.state = Tile.STATE_UNAVAILABLE
                     tile.label = "HA. Bad entity_id"
+                    tile.setSubtitleCompat(rawId)
                     tile.icon = Icon.createWithResource(context, R.mipmap.ic_launcher)
                     tile.updateTile()
                     return@launch
@@ -87,9 +91,26 @@ internal object QuickTileLogic {
                     return@launch
                 }
                 tile.label = live.friendlyName
-                tile.setSubtitleCompat(if (live.isOn) "ON" else "OFF")
-                tile.state = if (live.isOn) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
                 tile.icon = Icon.createWithResource(context, R.mipmap.ic_launcher)
+                when {
+                    // HA reported `unavailable` / `unknown`: surface that instead of a
+                    // misleading OFF (isOn is false for an unavailable entity too).
+                    !live.isAvailable -> {
+                        tile.state = Tile.STATE_UNAVAILABLE
+                        tile.setSubtitleCompat("unavailable")
+                    }
+                    // Scene / script / button are stateless fire-and-forget actions:
+                    // ON/OFF is meaningless, so show a neutral inactive tile that just
+                    // invites a tap to run.
+                    live.id.domain.isAction -> {
+                        tile.state = Tile.STATE_INACTIVE
+                        tile.setSubtitleCompat("Tap to run")
+                    }
+                    else -> {
+                        tile.setSubtitleCompat(if (live.isOn) "ON" else "OFF")
+                        tile.state = if (live.isOn) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
+                    }
+                }
                 tile.updateTile()
             } catch (t: Throwable) {
                 R1Log.w("QuickTileLogic", "refresh failed: ${t.message}")
@@ -122,13 +143,22 @@ internal object QuickTileLogic {
                 }
                 val entityId = runCatching { EntityId(rawId) }.getOrNull()
                 if (entityId == null) {
-                    R1Log.w("QuickTileLogic", "stored entity_id has unsupported domain: $rawId")
+                    R1Log.w("QuickTileLogic", "stored entity_id is malformed: $rawId")
                     return@launch
                 }
                 val live = graph.haRepository.listAllEntities().getOrNull()
                     ?.firstOrNull { it.id == entityId }
                 if (live == null) {
                     R1Log.w("QuickTileLogic", "${entityId.value} not in entity map yet")
+                    return@launch
+                }
+                // Don't toggle an unavailable entity: HA would reject the service call and
+                // the tile would flicker. Actions stay tappable (they have no availability
+                // gate that matters for a fire-and-forget run). Just repaint the tile so its
+                // 'unavailable' subtitle is fresh.
+                if (!live.isAvailable && !live.id.domain.isAction) {
+                    R1Log.i("QuickTileLogic", "${entityId.value} unavailable; skipping toggle")
+                    refresh(context, qsTile, scope, selector)
                     return@launch
                 }
                 val call = if (live.id.domain.isAction) {

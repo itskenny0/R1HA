@@ -29,9 +29,32 @@ import kotlinx.serialization.json.buildJsonObject
  */
 object NfcReader {
 
+    /**
+     * Coarse hardware/system view of the device's NFC stack, independent of the
+     * app's opt-in toggle. The screen pairs this with the toggle to pick which
+     * of its four reader states to show, so the status logic lives in one place
+     * rather than being re-derived from the adapter in the UI layer.
+     */
+    enum class ReaderState {
+        /** No NFC chip on this device at all. */
+        NO_HARDWARE,
+
+        /** Chip present but NFC is switched off in system settings. */
+        DISABLED,
+
+        /** Chip present and NFC is on; reader mode can engage. */
+        READY,
+    }
+
     /** Read the NFC adapter on the device, or null when there's no hardware. */
     fun adapterOrNull(activity: Activity): NfcAdapter? =
         NfcAdapter.getDefaultAdapter(activity.applicationContext)
+
+    /** Hardware/system NFC status for [activity], ignoring the app toggle. */
+    fun readerState(activity: Activity): ReaderState {
+        val adapter = adapterOrNull(activity) ?: return ReaderState.NO_HARDWARE
+        return if (adapter.isEnabled) ReaderState.READY else ReaderState.DISABLED
+    }
 
     /** Engage reader mode on [activity]. Idempotent — calling twice replaces the
      *  callback. The callback fires on a binder thread; we dispatch onto the
@@ -108,7 +131,9 @@ object NfcReader {
 
     private fun bytesToHex(bytes: ByteArray): String {
         val sb = StringBuilder(bytes.size * 2)
-        for (b in bytes) sb.append(String.format("%02x", b.toInt() and 0xFF))
+        // Locale.ROOT so the hex casing can't shift under a locale with surprising
+        // digit/letter rules (the canonical HA tag_id is plain lowercase hex).
+        for (b in bytes) sb.append(String.format(java.util.Locale.ROOT, "%02x", b.toInt() and 0xFF))
         return sb.toString()
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -117,10 +120,7 @@ fun BlueprintsScreen(
                     )
                 }
                 ui.error != null && ui.totalCount == 0 -> ErrorState(message = ui.error.orEmpty())
-                ui.totalCount == 0 -> EmptyState(
-                    message = "No blueprints installed yet. Use IMPORT URL above to add one " +
-                        "from a HA community post.",
-                )
+                ui.totalCount == 0 -> EmptyState()
                 else -> PullToRefreshBox(
                     isRefreshing = ui.loading,
                     onRefresh = { vm.refresh() },
@@ -214,8 +214,12 @@ private fun SectionHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
-            .r1Pressable(onClick = onToggle, contentDescription = "Toggle $label")
+            .r1Pressable(
+                onClick = onToggle,
+                contentDescription = if (expanded) "Collapse $label" else "Expand $label",
+            )
             .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -223,6 +227,7 @@ private fun SectionHeader(
             text = label,
             style = R1.sectionHeader,
             color = R1.AccentWarm,
+            modifier = Modifier.semantics { heading() },
         )
         Spacer(Modifier.width(R1.space.m))
         Box(
@@ -285,14 +290,24 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 )
             }
         }
-        val src = blueprint.sourceUrl
-        if (!src.isNullOrBlank()) {
-            Text(
-                text = src,
-                style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
-                color = R1.InkMuted,
-                maxLines = 1,
+        val source = sourceTypeOf(blueprint.sourceUrl)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            R1Chip(
+                text = source.label,
+                variant = R1ChipVariant.Pill,
+                tone = source.tone,
             )
+            val src = blueprint.sourceUrl
+            if (!src.isNullOrBlank()) {
+                Spacer(Modifier.width(R1.space.s))
+                Text(
+                    text = src,
+                    style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
+                    color = R1.InkMuted,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+            }
         }
         if (blueprint.description.isNotBlank()) {
             Text(
@@ -312,6 +327,25 @@ private fun domainTone(domain: String): Color = when (domain.lowercase()) {
     else -> R1.InkMuted
 }
 
+/**
+ * Where a blueprint came from, mirroring HA's `getBlueprintSourceType`: no
+ * source_url means it was hand-authored locally; a home-assistant.org / HA
+ * GitHub link is a first-party blueprint; anything else is a community share.
+ * Surfaced as a short pill so the user can tell a vendored example from one
+ * they pasted in, without reading the whole URL on the tiny screen.
+ */
+private enum class BlueprintSource(val label: String, val tone: Color) {
+    LOCAL("LOCAL", R1.InkMuted),
+    HOMEASSISTANT("HA", R1.AccentGreen),
+    COMMUNITY("COMMUNITY", R1.AccentNeutral),
+}
+
+private fun sourceTypeOf(sourceUrl: String?): BlueprintSource = when {
+    sourceUrl.isNullOrBlank() -> BlueprintSource.LOCAL
+    sourceUrl.contains("github.com/home-assistant") -> BlueprintSource.HOMEASSISTANT
+    else -> BlueprintSource.COMMUNITY
+}
+
 @Composable
 private fun EmptySectionHint(message: String) {
     Box(
@@ -324,12 +358,23 @@ private fun EmptySectionHint(message: String) {
 }
 
 @Composable
-private fun EmptyState(message: String) {
-    Box(
+private fun EmptyState() {
+    // Empty here doesn't mean "broken": a fresh HA install ships zero
+    // blueprints. Explain what a blueprint is and the one way to add one from
+    // this client (IMPORT URL) so the screen reads as intentional, not failed.
+    Column(
         modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-        contentAlignment = Alignment.Center,
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = message, style = R1.body, color = R1.InkMuted)
+        Text(text = "NO BLUEPRINTS YET", style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(R1.space.s))
+        Text(
+            text = "Blueprints are reusable automation and script templates. " +
+                "Tap IMPORT URL above to add one from a HA community post or GitHub link.",
+            style = R1.body,
+            color = R1.InkMuted,
+        )
     }
 }
 
@@ -515,13 +560,23 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 tone = R1.AccentCool,
             )
         }
-        if (!preview.sourceUrl.isNullOrBlank()) {
-            Text(
-                text = preview.sourceUrl,
-                style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
-                color = R1.InkMuted,
-                maxLines = 2,
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val source = sourceTypeOf(preview.sourceUrl)
+            R1Chip(
+                text = source.label,
+                variant = R1ChipVariant.Pill,
+                tone = source.tone,
             )
+            if (!preview.sourceUrl.isNullOrBlank()) {
+                Spacer(Modifier.width(R1.space.s))
+                Text(
+                    text = preview.sourceUrl,
+                    style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
+                    color = R1.InkMuted,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                )
+            }
         }
         if (preview.description.isNotBlank()) {
             Text(

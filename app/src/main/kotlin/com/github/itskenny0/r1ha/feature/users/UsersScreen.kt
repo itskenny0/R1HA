@@ -28,6 +28,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
@@ -166,12 +168,17 @@ fun UsersScreen(
 
 @Composable
 private fun UserRow(row: UserRowModel) {
+    // Collapse the row's flags + presence into one spoken line so a screen
+    // reader announces "Jane, admin, home" rather than reading each chip
+    // glyph in isolation.
+    val rowDescription = rowContentDescription(row)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .semantics { contentDescription = rowDescription }
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -197,6 +204,9 @@ private fun UserRow(row: UserRowModel) {
             }
             if (row.isAdmin) {
                 R1Chip(text = "ADMIN", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
+            }
+            if (row.isReadOnly) {
+                R1Chip(text = "READ-ONLY", variant = R1ChipVariant.Pill, tone = R1.AccentNeutral)
             }
             R1Chip(
                 text = if (row.systemGenerated) "SYSTEM" else "HUMAN",
@@ -251,13 +261,33 @@ private fun UserRow(row: UserRowModel) {
         if (row.groupIds.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.xs))
             Text(
-                text = "GROUPS · " + row.groupIds.joinToString(", "),
+                text = "GROUPS · " + row.groupIds.joinToString(", ") { prettyGroupId(it) },
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 2,
             )
         }
     }
+}
+
+/**
+ * Build a single spoken line for a user row's accessibility description. Lists
+ * the name, then every flag that applies, then the linked person's presence so
+ * the meaning a sighted user reads off the chips is announced as one phrase.
+ */
+private fun rowContentDescription(row: UserRowModel): String {
+    val parts = mutableListOf(row.displayName)
+    if (row.isOwner) parts += "owner"
+    if (row.isAdmin) parts += "admin"
+    if (row.isReadOnly) parts += "read-only"
+    parts += if (row.systemGenerated) "system account" else "human account"
+    if (!row.isActive) parts += "disabled"
+    if (row.localOnly) parts += "local only"
+    if (row.linkedPersonName != null) {
+        val presence = rowPresence(row.linkedPersonState.orEmpty()).label
+        parts += "linked to ${row.linkedPersonName}, $presence"
+    }
+    return parts.joinToString(", ")
 }
 
 /** Presence chip text paired with its R1 palette colour for a linked person. */

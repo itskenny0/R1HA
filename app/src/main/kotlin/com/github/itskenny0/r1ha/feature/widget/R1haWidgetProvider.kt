@@ -50,11 +50,12 @@ class R1haWidgetProvider : AppWidgetProvider() {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        // Whole-tile click — the icon and the label both forward through
-        // because we set the click handler on the layout root.
-        views.setOnClickPendingIntent(android.R.id.background, pending)
-        // RemoteViews binds the root by android.R.id.background if set; older
-        // launchers ignore it, so also bind the children explicitly.
+        // Bind the tap intent to the two visible children. The root LinearLayout
+        // carries no id of its own, so we can't attach a single click to it from
+        // here; binding the icon and the label covers every pixel the user can
+        // actually see. (Giving the root an id in the layout XML would let one
+        // click cover the padding too: see the SHARED CHANGE REQUEST in the
+        // widget layout.)
         views.setOnClickPendingIntent(R.id.widget_icon, pending)
         views.setOnClickPendingIntent(R.id.widget_label, pending)
         manager.updateAppWidget(widgetId, views)
