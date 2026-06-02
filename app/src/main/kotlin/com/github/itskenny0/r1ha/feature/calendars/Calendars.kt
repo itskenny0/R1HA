@@ -77,6 +77,7 @@ fun agendaRowDescription(
     }
     if (calendarName.isNotBlank()) append(", on ").append(calendarName)
     if (!event.location.isNullOrBlank()) append(", at ").append(event.location.trim())
+    if (!event.description.isNullOrBlank()) append(". ").append(event.description.trim())
 }
 
 /**

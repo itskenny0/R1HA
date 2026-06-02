@@ -296,6 +296,15 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
                     maxLines = 1,
                 )
             }
+            if (!event.description.isNullOrBlank()) {
+                Spacer(Modifier.size(R1.space.xxs))
+                Text(
+                    text = event.description,
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 2,
+                )
+            }
         }
     }
 }

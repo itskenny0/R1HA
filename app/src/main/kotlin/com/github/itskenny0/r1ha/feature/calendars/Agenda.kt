@@ -120,6 +120,39 @@ private val agendaEntryComparator: Comparator<AgendaEntry> =
 private val dayHeaderFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEE, MMM d", Locale.US)
 
+/** A single calendar's events grouped under a rendered day header. */
+data class EventDay(
+    val date: LocalDate,
+    val header: String,
+    val events: List<CalendarEvent>,
+)
+
+/**
+ * Groups one calendar's [events] by their start day for the drill-down list,
+ * sorted chronologically with all-day / start-less events leading each day.
+ * Mirrors the Agenda's day grouping so the two surfaces read the same. An
+ * event with no start anchors to today so it still surfaces under a header.
+ */
+fun groupEventsByDay(
+    events: List<CalendarEvent>,
+    now: Instant,
+    zone: ZoneId = ZoneId.systemDefault(),
+): List<EventDay> {
+    val today = now.atZone(zone).toLocalDate()
+    val startOfToday = today.atStartOfDay(zone).toInstant()
+    return events
+        .groupBy { (it.start ?: startOfToday).atZone(zone).toLocalDate() }
+        .entries
+        .sortedBy { it.key }
+        .map { (date, dayEvents) ->
+            EventDay(
+                date = date,
+                header = dayHeader(date, today),
+                events = dayEvents.sortedBy { it.start ?: Instant.MIN },
+            )
+        }
+}
+
 /** TODAY / TOMORROW for the two near days, otherwise an absolute date. */
 fun dayHeader(date: LocalDate, today: LocalDate): String = when (date) {
     today -> "TODAY"
@@ -134,13 +167,38 @@ fun dayHeader(date: LocalDate, today: LocalDate): String = when (date) {
 private val timeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
+// Compact date for a timed event whose end lands on a different day, so a
+// multi-day span reads "2:00 PM - Jun 4 9:00 AM" instead of a misleading
+// "2:00 PM - 9:00 AM" that looks like it ends earlier the same day.
+private val endDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d", Locale.US)
+
 /** "9:00 AM" for a timed event, "ALL DAY" for an all-day one. */
 fun formatEventTime(event: CalendarEvent, zone: ZoneId = ZoneId.systemDefault()): String {
     if (isAllDay(event)) return "ALL DAY"
     val start = event.start ?: return "ALL DAY"
-    val startStr = timeFormatter.format(start.atZone(zone))
+    val startZdt = start.atZone(zone)
+    val startStr = timeFormatter.format(startZdt)
     val end = event.end ?: return startStr
-    return "$startStr - ${timeFormatter.format(end.atZone(zone))}"
+    val endZdt = end.atZone(zone)
+    val endStr = if (endZdt.toLocalDate() == startZdt.toLocalDate()) {
+        timeFormatter.format(endZdt)
+    } else {
+        // Different calendar day: prefix the end date so the span is unambiguous.
+        "${endDateFormatter.format(endZdt)} ${timeFormatter.format(endZdt)}"
+    }
+    return "$startStr - $endStr"
+}
+
+/**
+ * True when [now] falls inside an event's [start, end) span. Shared by every
+ * calendar surface so "happening now" is decided one way. An event with no end
+ * is treated as a point in time and is never "ongoing".
+ */
+fun isHappeningNow(event: CalendarEvent, now: Instant): Boolean {
+    val start = event.start ?: return false
+    val end = event.end ?: return false
+    return !now.isBefore(start) && now.isBefore(end)
 }
 
 /**
@@ -159,6 +217,25 @@ fun relativeStartHint(event: CalendarEvent, now: Instant): String {
     val end = event.end
     if (end != null && !now.isBefore(start) && now.isBefore(end)) return "NOW"
     val deltaSec = (start.toEpochMilli() - now.toEpochMilli()) / 1000
+    return when {
+        deltaSec < 60 && deltaSec > -60 -> "NOW"
+        deltaSec <= 0 -> "STARTED"
+        deltaSec < 3600 -> "IN ${deltaSec / 60}M"
+        deltaSec < 86_400 -> "IN ${deltaSec / 3600}H"
+        else -> "IN ${deltaSec / 86_400}D"
+    }
+}
+
+/**
+ * Forward "IN 5M / IN 2H / IN 3D" hint for a single future [at] instant, with
+ * a "NOW" band around the present. Used by the Calendars list where the only
+ * timing we have is the next event's start: the app-wide RelativeTimeLabel
+ * only renders past "ago" strings, so a future event there collapsed to
+ * "just now". Returns "" when [at] is null.
+ */
+fun relativeFutureHint(at: Instant?, now: Instant): String {
+    if (at == null) return ""
+    val deltaSec = (at.toEpochMilli() - now.toEpochMilli()) / 1000
     return when {
         deltaSec < 60 && deltaSec > -60 -> "NOW"
         deltaSec <= 0 -> "STARTED"

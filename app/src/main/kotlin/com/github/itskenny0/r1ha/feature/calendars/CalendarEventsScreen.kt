@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -46,7 +49,6 @@ import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
-import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,6 +76,9 @@ class CalendarEventsViewModel(
     data class UiState(
         val loading: Boolean = true,
         val events: List<CalendarEvent> = emptyList(),
+        /** Look-ahead window the events were fetched over, so the empty-state
+         *  copy can state the real range instead of a hard-coded "14 days". */
+        val windowDays: Int = 14,
         val error: String? = null,
     )
 
@@ -87,7 +92,12 @@ class CalendarEventsViewModel(
             haRepository.fetchCalendarEvents(entityId, fromDaysBack = 0, toDaysAhead = lookahead).fold(
                 onSuccess = { events ->
                     R1Log.i("CalendarEvents", "$entityId loaded ${events.size}")
-                    _ui.value = _ui.value.copy(loading = false, events = events, error = null)
+                    _ui.value = _ui.value.copy(
+                        loading = false,
+                        events = events,
+                        windowDays = lookahead,
+                        error = null,
+                    )
                 },
                 onFailure = { t ->
                     R1Log.w("CalendarEvents", "$entityId failed: ${t.message}")
@@ -155,7 +165,7 @@ fun CalendarEventsScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No events in the next 14 days.",
+                        text = "No events in the next ${ui.windowDays} days.",
                         style = R1.body,
                         color = R1.InkMuted,
                     )
@@ -165,6 +175,8 @@ fun CalendarEventsScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
+                    val now = Instant.now()
+                    val days = groupEventsByDay(ui.events, now)
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -173,19 +185,24 @@ fun CalendarEventsScreen(
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.s),
                     ) {
-                        val now = Instant.now()
-                        // Key includes the list index: summary+start alone collides for
-                        // repeated-title events that share (or both lack) a start time,
-                        // e.g. two all-day events whose start parses to null both keyed
-                        // "Lunch|null" — duplicate LazyColumn keys throw at composition.
-                        // The index keeps every row distinct while preserving stability
-                        // within a single loaded window.
-                        itemsIndexed(
-                            items = ui.events,
-                            key = { index, e -> "$index|${e.summary}|${e.start?.toEpochMilli()}" },
-                        ) { _, e ->
-                            EventRow(e, isHappeningNow = e.start != null && e.end != null &&
-                                now.isAfter(e.start) && now.isBefore(e.end))
+                        days.forEach { day ->
+                            item(key = "header-${day.date}") {
+                                DayHeader(day.header, day.events.size)
+                            }
+                            // Key includes the per-day index: summary+start alone collides
+                            // for repeated-title events that share (or both lack) a start
+                            // time, e.g. two all-day events whose start parses to null both
+                            // keyed "Lunch|null": duplicate LazyColumn keys throw at
+                            // composition. The index keeps every row distinct while
+                            // preserving stability within a single loaded window.
+                            itemsIndexed(
+                                items = day.events,
+                                key = { index, e ->
+                                    "${day.date}|$index|${e.summary}|${e.start?.toEpochMilli()}"
+                                },
+                            ) { _, e ->
+                                EventRow(e, isHappeningNow = isHappeningNow(e, now), now = now)
+                            }
                         }
                     }
                 }
@@ -195,7 +212,30 @@ fun CalendarEventsScreen(
 }
 
 @Composable
-private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean) {
+private fun DayHeader(header: String, count: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = R1.space.s, bottom = R1.space.xxs)
+            .semantics(mergeDescendants = true) { heading() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = header, style = R1.sectionHeader, color = R1.AccentWarm)
+        Spacer(Modifier.width(R1.space.s))
+        Box(
+            modifier = Modifier
+                .height(1.dp)
+                .weight(1f)
+                .background(R1.Hairline),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        Text(text = count.toString(), style = R1.labelMicro, color = R1.InkMuted)
+    }
+}
+
+@Composable
+private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean, now: Instant) {
+    val allDay = isAllDay(e)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -212,15 +252,27 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean) {
             if (isHappeningNow) {
                 R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
                 Spacer(Modifier.width(R1.space.s))
-            }
-            if (e.allDay) {
+            } else if (allDay) {
                 R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
                 Spacer(Modifier.width(R1.space.s))
             }
             Text(text = e.summary, style = R1.bodyEmph, color = R1.Ink, maxLines = 2, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(R1.space.s))
-            RelativeTimeLabel(at = e.start, color = R1.InkMuted, style = R1.labelMicro)
+            // Forward-looking hint ("IN 2H" / "IN 3D"): RelativeTimeLabel only
+            // renders past "ago" strings, so for an upcoming-events list it
+            // collapsed every future event to "just now". The NOW pill already
+            // covers in-progress events, so only show the hint otherwise.
+            if (!isHappeningNow) {
+                val hint = relativeStartHint(e, now)
+                if (hint.isNotEmpty() && hint != "NOW") {
+                    Spacer(Modifier.width(R1.space.s))
+                    Text(text = hint, style = R1.labelMicro, color = R1.InkMuted)
+                }
+            }
         }
+        // Concrete time range under the title so the user sees the clock time,
+        // not just a relative hint (and an unambiguous span for multi-day events).
+        Spacer(Modifier.size(R1.space.xxs))
+        Text(text = formatEventTime(e), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         if (!e.location.isNullOrBlank()) {
             Spacer(Modifier.size(R1.space.xxs))
             Text(text = "@ ${e.location}", style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)

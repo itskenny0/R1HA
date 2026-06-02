@@ -39,9 +39,9 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
-import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import java.time.Instant
 
 /**
  * Calendars surface — shows each `calendar.*` entity HA exposes with
@@ -162,8 +162,9 @@ fun CalendarsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
+                    val now = Instant.now()
                     items(items = ui.calendars, key = { it.entityId }) { c ->
-                        CalendarRow(c, onTap = { drillingInto = c })
+                        CalendarRow(c, now = now, onTap = { drillingInto = c })
                     }
                 }
             }
@@ -173,7 +174,7 @@ fun CalendarsScreen(
 }
 
 @Composable
-private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
+private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -184,11 +185,20 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.s)
             .clearAndSetSemantics {
+                // Spoken timing mirrors the visible hint: "starts in 2 h" for an
+                // upcoming event so a screen reader hears more than just the name.
+                val spokenTime = if (c.state != "on" && !c.allDay) {
+                    relativeFutureHint(c.eventStart, now)
+                        .lowercase()
+                        .replace("in ", "starts in ")
+                } else {
+                    ""
+                }
                 contentDescription = calendarRowDescription(
                     name = c.name,
                     happeningNow = c.state == "on",
                     allDay = c.allDay,
-                    relativeTime = "",
+                    relativeTime = spokenTime,
                     message = c.eventMessage,
                     location = c.eventLocation,
                 )
@@ -208,17 +218,23 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, onTap: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            if (c.allDay) {
-                // ALL-DAY pill — surfaced instead of a relative-time
-                // countdown that would be misleading for events without
-                // a specific start time. Sits in the position the
-                // RelativeTimeLabel would normally occupy.
+            if (c.allDay && c.state != "on") {
+                // ALL-DAY pill: surfaced instead of a relative-time countdown
+                // that would be misleading for events without a specific start
+                // time. Sits in the position the time hint normally occupies.
                 R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentWarm)
             } else {
-                // Relative timestamp for the next event (or current event end
-                // if NOW). Same ticker as the rest of the app.
-                val ts = if (c.state == "on") c.eventEnd else c.eventStart
-                RelativeTimeLabel(at = ts, color = R1.InkMuted, style = R1.labelMicro)
+                // Forward-looking hint for the next event ("IN 2H" / "IN 3D"),
+                // or the end of the current one if it's happening now ("ENDS
+                // IN 1H"). RelativeTimeLabel only renders past "ago" strings, so
+                // it collapsed every upcoming event here to "just now".
+                val isNow = c.state == "on"
+                val ts = if (isNow) c.eventEnd else c.eventStart
+                val hint = relativeFutureHint(ts, now)
+                if (hint.isNotBlank()) {
+                    val label = if (isNow && hint.startsWith("IN ")) "ENDS $hint" else hint
+                    Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
+                }
             }
         }
         if (!c.eventMessage.isNullOrBlank()) {
