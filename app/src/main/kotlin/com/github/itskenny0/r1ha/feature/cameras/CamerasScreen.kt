@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -24,9 +25,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.produceState
 import kotlinx.coroutines.flow.first
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +38,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -47,6 +49,9 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.CameraSnapshot
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -132,11 +137,11 @@ fun CamerasScreen(
             ViewModeRow(current = viewMode, onSelect = { viewModeOverride = it })
         }
         when {
-            ui.loading -> androidx.compose.foundation.layout.Column(
+            ui.loading -> Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
                 // Skeleton rows give the eye a hint of "list of cameras
                 // incoming" instead of a context-free centred spinner. Three
@@ -146,11 +151,11 @@ fun CamerasScreen(
                 }
             }
             ui.error != null && ui.cameras.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 // The camera registry fetch itself failed (auth, DNS,
-                // server down) — distinct from "no cameras in HA".
+                // server down). Distinct from "no cameras in HA".
                 Text(
                     text = "Cameras load failed: ${ui.error}",
                     style = R1.body,
@@ -158,7 +163,7 @@ fun CamerasScreen(
                 )
             }
             ui.cameras.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -183,10 +188,10 @@ fun CamerasScreen(
                     ),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 8.dp, vertical = 6.dp,
+                        horizontal = R1.space.s, vertical = R1.space.xs,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = ui.cameras, key = { it.entityId }) { camera ->
                         CameraTile(
@@ -210,9 +215,9 @@ fun CamerasScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = ui.cameras, key = { it.entityId }) { camera ->
                         CameraRow(camera, onTap = { viewingEntityId = camera.entityId })
@@ -237,29 +242,43 @@ fun CamerasScreen(
     }
 }
 
+/**
+ * Maps an HA camera state string to its display label + accent colour.
+ * Shared by the LIST row chip and the GRID tile overlay badge so both
+ * read the same semantics: streaming = healthy live feed (green),
+ * recording = capturing (red), idle = armed-but-quiet, unavailable /
+ * unknown = offline (amber). Unknown states pass through verbatim.
+ */
+private fun cameraStatusChip(state: String): Pair<String, Color> =
+    when (state.lowercase()) {
+        "streaming" -> "STREAMING" to R1.AccentGreen
+        "recording" -> "RECORDING" to R1.StatusRed
+        "idle" -> "IDLE" to R1.InkSoft
+        "unavailable", "unknown" -> "OFFLINE" to R1.StatusAmber
+        else -> state.uppercase() to R1.InkSoft
+    }
+
 @Composable
 private fun ViewModeRow(current: String, onSelect: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
+        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         for (mode in listOf("LIST", "GRID")) {
             val active = mode == current
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(if (active) R1.AccentWarm else R1.SurfaceMuted)
-                    .r1Pressable(onClick = { onSelect(mode) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            ) {
-                Text(
-                    text = mode,
-                    style = R1.labelMicro,
-                    color = if (active) R1.Bg else R1.InkSoft,
-                )
-            }
+            R1Chip(
+                text = mode,
+                variant = R1ChipVariant.Filter,
+                selected = active,
+                onClick = { onSelect(mode) },
+                contentDescription = if (mode == "LIST") {
+                    "Show cameras as a list" + if (active) ", selected" else ""
+                } else {
+                    "Show cameras as a polling grid" + if (active) ", selected" else ""
+                },
+            )
         }
     }
 }
@@ -272,12 +291,19 @@ private fun CameraTile(
     pollSec: Int,
     onTap: () -> Unit,
 ) {
+    val (statusLabel, statusColor) = cameraStatusChip(camera.state)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .r1Pressable(onClick = onTap),
+            .r1Pressable(
+                onClick = onTap,
+                // Reads the whole tile as a single actionable item to a
+                // screen reader: name + state, rather than announcing the
+                // raw bitmap contentDescription from CameraSnapshot.
+                contentDescription = "${camera.name}, $statusLabel. Open live view.",
+            ),
     ) {
         Box(
             modifier = Modifier
@@ -289,34 +315,53 @@ private fun CameraTile(
                 bearerToken = bearerToken,
                 entityId = camera.entityId,
                 // Polling cadence comes from the Camera grid polling
-                // setting — N tiles × this interval keeps total fetch
+                // setting: N tiles times this interval keeps total fetch
                 // rate predictable on big installs.
                 intervalMillis = pollSec * 1000L,
                 modifier = Modifier.fillMaxSize(),
             )
+            // State badge floats over the snapshot so the grid carries the
+            // same idle / recording / streaming / offline semantics the
+            // LIST chips show. Tinted so a glance separates a healthy feed
+            // from an offline one without reading the text.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(R1.space.xs)
+                    .clip(R1.ShapeS)
+                    .background(R1.Bg.copy(alpha = 0.7f))
+                    .padding(horizontal = R1.space.xs, vertical = R1.space.xxs),
+            ) {
+                Text(text = statusLabel, style = R1.labelMicro, color = statusColor)
+            }
         }
         Text(
             text = camera.name,
             style = R1.body,
             color = R1.Ink,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = R1.space.s, vertical = R1.space.xs),
         )
     }
 }
 
 @Composable
 private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
+    val (label, color) = cameraStatusChip(camera.state)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .r1Pressable(onClick = onTap)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .r1Pressable(
+                onClick = onTap,
+                contentDescription = "${camera.name}, $label. Open live view.",
+            )
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(end = 8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(end = R1.space.s)) {
             Text(text = camera.name, style = R1.body, color = R1.Ink, maxLines = 2)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -326,16 +371,30 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
                     maxLines = 1,
                     modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.width(6.dp))
-                // State chip — coloured by HA state. "streaming" is the
-                // healthy live-feed state.
-                val (label, color) = when (camera.state.lowercase()) {
-                    "streaming" -> "STREAMING" to R1.AccentGreen
-                    "recording" -> "RECORDING" to R1.StatusRed
-                    "idle" -> "IDLE" to R1.InkSoft
-                    "unavailable", "unknown" -> "OFFLINE" to R1.StatusAmber
-                    else -> camera.state.uppercase() to R1.InkSoft
+                // Relative "since X" so a stuck or offline camera reads as
+                // stale at a glance. Hidden (empty) when HA gave no
+                // last_changed. Decorative next to the chip, so excluded
+                // from the row's spoken description above.
+                RelativeTimeLabel(
+                    at = camera.lastChanged,
+                    color = R1.InkMuted,
+                    style = R1.labelMicro,
+                    modifier = Modifier.padding(end = R1.space.xs),
+                )
+                // MOTION badge when the integration reports motion
+                // detection armed (HA's `motion_detection` attribute,
+                // also surfaced by the picture-glance card). Null = the
+                // integration doesn't model it, so we show nothing.
+                if (camera.motionDetection == true) {
+                    Text(
+                        text = "MOTION",
+                        style = R1.labelMicro,
+                        color = R1.AccentCool,
+                        modifier = Modifier.padding(end = R1.space.xs),
+                    )
                 }
+                // State chip, coloured by HA state. "streaming" is the
+                // healthy live-feed state.
                 Text(text = label, style = R1.labelMicro, color = color)
             }
         }
@@ -383,37 +442,43 @@ private fun CameraDetailOverlay(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(horizontal = 12.dp),
+                    .height(R1.MinTarget)
+                    .padding(horizontal = R1.space.m),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(R1.MinTarget)
                         .clip(R1.ShapeS)
-                        .r1Pressable(onClick = onDismiss),
+                        .r1Pressable(
+                            onClick = onDismiss,
+                            contentDescription = "Close live view",
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = "✕", style = R1.body, color = R1.InkSoft)
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = displayName.uppercase(),
                     style = R1.sectionHeader,
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                 )
-                // 90° increments. Holding modulo-360 in floats stays exact
-                // for the four canonical values we care about; the rotate
-                // modifier inside CameraSnapshot treats anything in the
-                // range as a transform.
+                // 90-degree increments. Holding modulo-360 in floats stays
+                // exact for the four canonical values we care about; the
+                // rotate modifier inside CameraSnapshot treats anything in
+                // the range as a transform.
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
+                        .size(R1.MinTarget)
                         .clip(R1.ShapeS)
-                        .r1Pressable(onClick = {
-                            rotationDegrees = (rotationDegrees + 90f) % 360f
-                        }),
+                        .r1Pressable(
+                            onClick = {
+                                rotationDegrees = (rotationDegrees + 90f) % 360f
+                            },
+                            contentDescription = "Rotate view 90 degrees",
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = "↻", style = R1.body, color = R1.AccentWarm)
@@ -428,7 +493,7 @@ private fun CameraDetailOverlay(
                     Text(text = "Loading…", style = R1.body, color = R1.InkMuted)
                 }
             } else {
-                // Use the available vertical space rather than locking to 16:9 — portrait
+                // Use the available vertical space rather than locking to 16:9. Portrait
                 // cameras (Reolink doorbells, baby monitors) otherwise waste ~70% of the
                 // overlay below the image strip. CameraSnapshot still ContentScale.Fit's the
                 // bitmap inside this box so non-16:9 sources letterbox cleanly.
@@ -436,7 +501,7 @@ private fun CameraDetailOverlay(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .padding(horizontal = R1.space.m, vertical = R1.space.xs)
                         .clip(R1.ShapeS)
                         .border(1.dp, R1.Hairline, R1.ShapeS),
                 ) {
@@ -449,7 +514,7 @@ private fun CameraDetailOverlay(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 // Refresh-rate stepper. Steps walk the practical range
                 // (~realtime to "background poll") on a non-linear schedule
                 // so a single tap moves meaningfully whether the user is
@@ -459,23 +524,27 @@ private fun CameraDetailOverlay(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.m, vertical = R1.space.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = "REFRESH",
                         style = R1.labelMicro,
                         color = R1.InkMuted,
-                        modifier = Modifier.padding(end = 8.dp),
+                        modifier = Modifier.padding(end = R1.space.s),
                     )
                     Box(
                         modifier = Modifier
+                            .size(R1.MinTarget)
                             .clip(R1.ShapeS)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                pollMillisLive = nextRefreshStep(pollMillisLive, faster = true)
-                            })
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .r1Pressable(
+                                onClick = {
+                                    pollMillisLive = nextRefreshStep(pollMillisLive, faster = true)
+                                },
+                                contentDescription = "Refresh faster",
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "◀", style = R1.labelMicro, color = R1.AccentWarm)
                     }
@@ -485,16 +554,23 @@ private fun CameraDetailOverlay(
                         color = R1.AccentWarm,
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 12.dp),
+                            .padding(horizontal = R1.space.m)
+                            .semantics {
+                                contentDescription = "Refresh interval ${formatPollInterval(pollMillisLive)}"
+                            },
                     )
                     Box(
                         modifier = Modifier
+                            .size(R1.MinTarget)
                             .clip(R1.ShapeS)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = {
-                                pollMillisLive = nextRefreshStep(pollMillisLive, faster = false)
-                            })
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .r1Pressable(
+                                onClick = {
+                                    pollMillisLive = nextRefreshStep(pollMillisLive, faster = false)
+                                },
+                                contentDescription = "Refresh slower",
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "▶", style = R1.labelMicro, color = R1.AccentWarm)
                     }
@@ -503,13 +579,13 @@ private fun CameraDetailOverlay(
                     text = entityId,
                     style = R1.labelMicro,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.m),
                 )
                 Text(
                     text = "Rotate ↻ · tap ✕ to close",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
-                    modifier = Modifier.padding(horizontal = 12.dp),
+                    modifier = Modifier.padding(horizontal = R1.space.m),
                 )
             }
         }
