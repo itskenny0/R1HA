@@ -49,11 +49,25 @@ class WeatherViewModel(
         val windBearingText: String?,
         val pressure: Double?,
         val pressureUnit: String?,
-        /** Hourly forecast entries parsed from the legacy `forecast`
-         *  attribute when the integration reports it at hourly cadence. */
+        /** "Feels like" temperature (`apparent_temperature`); null when the
+         *  integration doesn't report it. Shares the temperature unit. */
+        val apparentTemperature: Double?,
+        /** Dew point (`dew_point`) in the temperature unit; null when absent. */
+        val dewPoint: Double?,
+        /** Horizontal visibility (`visibility`) in [visibilityUnit]; null absent. */
+        val visibility: Double?,
+        val visibilityUnit: String?,
+        /** UV index (`uv_index`), a unitless 0..11+ scale; null when absent. */
+        val uvIndex: Double?,
+        /** Cloud coverage as a percentage 0..100 (`cloud_coverage`); null absent. */
+        val cloudCoverage: Int?,
+        /** Wind gust speed (`wind_gust_speed`) in [windUnit]; null when absent. */
+        val windGust: Double?,
+        /** Hourly forecast entries from `weather.get_forecasts` (modern HA),
+         *  or the legacy `forecast` attribute when it reads as hourly. */
         val hourly: List<ForecastEntry>,
-        /** Daily forecast entries parsed from the legacy `forecast`
-         *  attribute when the integration reports it at daily cadence. */
+        /** Daily forecast entries from `weather.get_forecasts` (modern HA),
+         *  or the legacy `forecast` attribute when it reads as daily. */
         val daily: List<ForecastEntry>,
     ) {
         /** True when both cadences are present, so the UI shows a toggle. */
@@ -93,6 +107,15 @@ class WeatherViewModel(
                                 ?.takeIf { it.toDoubleOrNull() == null },
                             pressure = (attrs["pressure"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
                             pressureUnit = (attrs["pressure_unit"] as? JsonPrimitive)?.content,
+                            apparentTemperature = (attrs["apparent_temperature"] as? JsonPrimitive)
+                                ?.content?.toDoubleOrNull(),
+                            dewPoint = (attrs["dew_point"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
+                            visibility = (attrs["visibility"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
+                            visibilityUnit = (attrs["visibility_unit"] as? JsonPrimitive)?.content,
+                            uvIndex = (attrs["uv_index"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
+                            cloudCoverage = (attrs["cloud_coverage"] as? JsonPrimitive)?.content
+                                ?.toDoubleOrNull()?.let { Math.round(it).toInt() },
+                            windGust = (attrs["wind_gust_speed"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
                             hourly = hourly,
                             daily = daily,
                         )

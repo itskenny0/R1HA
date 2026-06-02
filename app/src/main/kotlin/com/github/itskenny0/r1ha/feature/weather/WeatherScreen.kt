@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -154,6 +156,12 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 text = conditionGlyph(w.condition),
                 style = R1.body,
                 color = conditionAccent(w.condition),
+                // The glyph is decorative shorthand for the condition label
+                // that follows; expose the readable condition to a11y so the
+                // symbol font doesn't get announced literally.
+                modifier = Modifier.semantics {
+                    contentDescription = conditionLabel(w.condition)
+                },
             )
             Spacer(Modifier.width(R1.space.s))
             Text(
@@ -172,11 +180,24 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             }
         }
         Spacer(Modifier.size(R1.space.xs))
-        Text(
-            text = w.condition.replace('-', ' ').uppercase(),
-            style = R1.labelMicro,
-            color = conditionAccent(w.condition),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = conditionLabel(w.condition).uppercase(),
+                style = R1.labelMicro,
+                color = conditionAccent(w.condition),
+                modifier = Modifier.weight(1f),
+            )
+            // "Feels like" sits next to the condition: it qualifies the
+            // headline temperature, so it reads better here than buried in
+            // the metrics line. Only shown when it differs from the actual.
+            if (w.apparentTemperature != null && w.apparentTemperature != w.temperature) {
+                Text(
+                    text = "FEELS ${formatTemp(w.apparentTemperature, w.temperatureUnit)}",
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                )
+            }
+        }
         // Secondary readings — only render when present. Avoids blank
         // columns when HA's integration omits an attribute (e.g. some
         // sensors only report temperature + condition).
@@ -186,11 +207,20 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 val bearing = w.windBearingText
                     ?: w.windBearingDeg?.let { degreesToCompass(it) }
                 val windStr = "${formatNumber(w.windSpeed)} ${w.windUnit ?: ""}".trim()
-                add(if (bearing != null) "$windStr $bearing" else windStr)
+                val gust = w.windGust?.let { " G${formatNumber(it)}" } ?: ""
+                add((if (bearing != null) "$windStr $bearing" else windStr) + gust)
             }
             if (w.pressure != null) {
                 add("${formatNumber(w.pressure)} ${w.pressureUnit ?: ""}".trim())
             }
+            if (w.visibility != null) {
+                add("VIS ${formatNumber(w.visibility)} ${w.visibilityUnit ?: ""}".trim())
+            }
+            if (w.uvIndex != null) add("UV ${formatNumber(w.uvIndex)}")
+            if (w.dewPoint != null) {
+                add("DEW ${formatTemp(w.dewPoint, w.temperatureUnit)}")
+            }
+            if (w.cloudCoverage != null) add("${w.cloudCoverage}% CLOUD")
         }
         if (parts.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.xxs))
@@ -200,10 +230,10 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 color = R1.InkSoft,
             )
         }
-        // Forecast strip from the legacy `forecast` attribute. Newer HA
-        // installs that dropped the attribute for the
-        // weather.get_forecasts service-with-response need a repository
-        // method that forwards `?return_response`; see the agent report.
+        // Forecast strip. The VM fills hourly/daily from the modern
+        // weather.get_forecasts service (HaRepository.getWeatherForecasts)
+        // and falls back to the legacy `forecast` attribute, so this stays
+        // populated on both old and new HA installs.
         val entries = if (mode == ForecastKind.Hourly) w.hourly else w.daily
         if (w.hourly.isNotEmpty() || w.daily.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.s))
@@ -232,9 +262,8 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
-                val kind = if (mode == ForecastKind.Hourly) ForecastKind.Hourly else ForecastKind.Daily
                 for (entry in entries) {
-                    ForecastTile(entry, kind, w.temperatureUnit, w.windUnit)
+                    ForecastTile(entry, mode, w.temperatureUnit, w.windUnit)
                 }
             }
         }
@@ -326,7 +355,17 @@ private fun conditionGlyph(condition: String): String = when (condition.lowercas
     "lightning", "lightning-rainy" -> "⚡"
     "windy", "windy-variant" -> "🌬"
     "hail" -> "•"
+    "exceptional" -> "!"
+    "unavailable", "unknown", "" -> "·"
     else -> "·"
+}
+
+/** Human-readable condition label. Empty / missing states read as a
+ *  clear word rather than a blank or a bare slug. */
+private fun conditionLabel(condition: String): String = when (condition.lowercase()) {
+    "", "unknown" -> "unknown"
+    "unavailable" -> "unavailable"
+    else -> condition.replace('-', ' ')
 }
 
 private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Color =
@@ -334,7 +373,8 @@ private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Col
         "sunny", "clear" -> R1.AccentWarm
         "rainy", "pouring", "snowy", "snowy-rainy", "fog" -> R1.AccentCool
         "lightning", "lightning-rainy" -> R1.StatusAmber
+        "exceptional" -> R1.StatusRed
         "windy", "windy-variant" -> R1.AccentNeutral
-        "unavailable", "unknown" -> R1.InkMuted
+        "unavailable", "unknown", "" -> R1.InkMuted
         else -> R1.InkSoft
     }
