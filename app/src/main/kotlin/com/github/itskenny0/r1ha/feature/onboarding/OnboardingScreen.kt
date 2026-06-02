@@ -13,14 +13,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -224,11 +227,16 @@ fun OnboardingScreen(
  */
 @Composable
 private fun StepCallout(number: String, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = "Step $number: $label"
+        },
+    ) {
         Text(text = number, style = R1.labelMicro, color = R1.AccentWarm)
-        Spacer(Modifier.size(6.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Box(modifier = Modifier.size(width = 14.dp, height = 1.dp).background(R1.AccentWarm))
-        Spacer(Modifier.size(6.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Text(text = label, style = R1.labelMicro, color = R1.AccentWarm)
     }
 }
@@ -243,32 +251,32 @@ private fun ExchangingStep() {
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding()
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = R1.space.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.Start,
     ) {
         StepCallout(number = "02", label = "AUTHORISE")
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text(
             text = "Exchanging tokens",
             style = R1.screenTitle,
             color = R1.Ink,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(R1.space.s))
         Text(
             text = "Swapping the authorisation code for an access token. " +
                 "One round-trip, usually a second.",
             style = R1.body,
             color = R1.InkMuted,
         )
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(R1.space.xl))
         Row(verticalAlignment = Alignment.CenterVertically) {
             CircularProgressIndicator(
                 modifier = Modifier.size(16.dp),
                 strokeWidth = 2.dp,
                 color = R1.AccentWarm,
             )
-            Spacer(Modifier.size(10.dp))
+            Spacer(Modifier.size(R1.space.s))
             Text(
                 text = "WORKING",
                 style = R1.labelMicro,
@@ -315,17 +323,17 @@ private fun UrlEntryForm(
                 .widthIn(max = 560.dp)
                 .fillMaxHeight()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 22.dp, vertical = 28.dp),
+                .padding(horizontal = R1.space.xl, vertical = R1.space.xl),
             horizontalAlignment = Alignment.Start,
         ) {
             StepCallout(number = "01", label = "LINK")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.m))
             Text(
                 text = "Point me at\nHome Assistant.",
                 style = R1.screenTitle,
                 color = R1.Ink,
             )
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(R1.space.m))
             Text(
                 text = "Type a host. Protocol and port are optional: " +
                     "local hosts default to http:// :8123, public domains " +
@@ -333,9 +341,9 @@ private fun UrlEntryForm(
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             ExampleHostsBlock()
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(R1.space.xl))
 
             // ── Field ────────────────────────────────────────────────
             Text(
@@ -343,7 +351,7 @@ private fun UrlEntryForm(
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             R1TextField(
                 value = urlText,
                 onValueChange = {
@@ -367,14 +375,19 @@ private fun UrlEntryForm(
             // shown when the preview differs from the raw input.
             val normalised = remember(urlText) { normalizeServerUrl(urlText) }
             if (normalised.isNotBlank() && normalised != urlText.trim().trimEnd('/')) {
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.height(R1.space.xs))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Will probe $normalised"
+                    },
+                ) {
                     Text(
                         text = "WILL PROBE",
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                     )
-                    Spacer(Modifier.size(6.dp))
+                    Spacer(Modifier.size(R1.space.xs))
                     Text(
                         text = normalised,
                         style = R1.numeralS,
@@ -388,23 +401,28 @@ private fun UrlEntryForm(
             // this LAN" questions.
             if (normalised.isNotBlank() && normalised.startsWith("http", ignoreCase = true)) {
                 val ctx = LocalContext.current
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(R1.space.s))
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = {
-                            runCatching {
-                                ctx.startActivity(
-                                    android.content.Intent(
-                                        android.content.Intent.ACTION_VIEW,
-                                        android.net.Uri.parse(normalised),
-                                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            }
-                        })
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .r1Pressable(
+                            onClick = {
+                                runCatching {
+                                    ctx.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(normalised),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            },
+                            contentDescription = "Open $normalised in browser",
+                        )
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
                         text = "OPEN IN BROWSER",
@@ -415,16 +433,20 @@ private fun UrlEntryForm(
             }
 
             if (error != null) {
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(R1.space.l))
                 ErrorPanel(message = error)
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(R1.space.xl))
 
             R1Button(
                 text = if (isProbing) "PROBING" else "CONNECT",
                 onClick = { onProbe(urlText) },
-                enabled = !isProbing && urlText.isNotBlank(),
+                // Gate on the normalised result rather than the raw text so a
+                // whitespace-only entry (which normalises to blank and would
+                // otherwise immediately error out on probe) leaves CONNECT
+                // disabled instead of inviting a guaranteed failure.
+                enabled = !isProbing && normalised.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
                 leadingContent = if (isProbing) {
                     {
@@ -445,7 +467,7 @@ private fun UrlEntryForm(
             // OAuth). Muted styling so it doesn't compete with CONNECT
             // as the primary action.
             if (onUseLongLivedToken != null) {
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(R1.space.xl))
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center,
@@ -455,14 +477,19 @@ private fun UrlEntryForm(
                         style = R1.labelMicro,
                         color = R1.AccentWarm,
                         modifier = Modifier
-                            .r1Pressable(onClick = onUseLongLivedToken)
-                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                            .heightIn(min = R1.MinTarget)
+                            .r1Pressable(
+                                onClick = onUseLongLivedToken,
+                                contentDescription = "Use a long-lived access token instead of OAuth",
+                            )
+                            .wrapContentHeight(Alignment.CenterVertically)
+                            .padding(horizontal = R1.space.m, vertical = R1.space.m),
                     )
                 }
             }
             // Bottom spacer so the LLAT link clears the IME / nav bar on
             // short displays (R1's 320dp tall screen).
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(R1.space.l))
         }
     }
 }
@@ -483,7 +510,7 @@ private fun ExampleHostsBlock() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp),
+                    .padding(vertical = R1.space.xxs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -510,24 +537,27 @@ private fun ErrorPanel(message: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
+            .clip(R1.ShapeM)
             .background(R1.StatusRed.copy(alpha = 0.08f))
-            .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-            .padding(12.dp),
+            .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeM)
+            .padding(R1.space.m)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Probe failed: $message"
+            },
     ) {
         Box(
             modifier = Modifier
                 .size(width = 2.dp, height = 28.dp)
                 .background(R1.StatusRed),
         )
-        Spacer(Modifier.size(10.dp))
+        Spacer(Modifier.size(R1.space.s))
         Column {
             Text(
                 text = "PROBE FAILED",
                 style = R1.labelMicro,
                 color = R1.StatusRed,
             )
-            Spacer(Modifier.size(2.dp))
+            Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = message,
                 style = R1.body,

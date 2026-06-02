@@ -94,7 +94,21 @@ class OnboardingViewModel(
             } catch (e: Exception) {
                 R1Log.e("Onboarding.probe", "failed", e)
                 Toaster.error("Probe failed: ${e.message}")
-                _state.value = State.Error("Cannot reach server: ${e.message}")
+                // Distinguish the two failure shapes the user can actually act
+                // on: a name/route problem ("can't find or reach the host") vs a
+                // generic transport error. Both are reachability failures rather
+                // than auth failures, since auth only happens later in the
+                // WebView, so frame them as "couldn't connect" not "login failed".
+                val detail = e.message ?: e.javaClass.simpleName
+                val message = when (e) {
+                    is java.net.UnknownHostException ->
+                        "Couldn't find that host. Check the address (and that you're on the same network as Home Assistant): $detail"
+                    is java.net.ConnectException, is java.net.SocketTimeoutException ->
+                        "Couldn't reach the server. It may be offline, or the port/protocol may be wrong: $detail"
+                    else ->
+                        "Couldn't connect to the server: $detail"
+                }
+                _state.value = State.Error(message)
             }
         }
     }

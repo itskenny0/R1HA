@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -29,6 +30,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.prefs.ServerConfig
@@ -111,7 +114,7 @@ fun LongLivedTokenScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 22.dp, vertical = 12.dp)
+                .padding(horizontal = R1.space.xl, vertical = R1.space.m)
                 .verticalScroll(scrollState),
         ) {
             Text(
@@ -121,9 +124,9 @@ fun LongLivedTokenScreen(
                 style = R1.body,
                 color = R1.InkMuted,
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(R1.space.l))
             Text(text = "HA URL", style = R1.labelMicro, color = R1.InkSoft)
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             R1TextField(
                 value = url,
                 onValueChange = { url = it },
@@ -141,14 +144,14 @@ fun LongLivedTokenScreen(
             }
             if (normalisedUrlPreview.isNotBlank() &&
                 normalisedUrlPreview != url.trim().trimEnd('/')) {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(
                     text = "Will save: $normalisedUrlPreview",
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                 )
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(R1.space.m))
             // Mask the token field by default with an eye-toggle to reveal. The token
             // is highly sensitive (root access to HA); over-the-shoulder users could
             // memorise it from the screen otherwise.
@@ -162,11 +165,20 @@ fun LongLivedTokenScreen(
                 )
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { revealed = !revealed })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .r1Pressable(
+                            onClick = { revealed = !revealed },
+                            contentDescription = if (revealed) {
+                                "Hide access token"
+                            } else {
+                                "Reveal access token"
+                            },
+                        )
+                        .wrapContentHeight(Alignment.CenterVertically)
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(
                         text = if (revealed) "HIDE" else "REVEAL",
@@ -175,7 +187,7 @@ fun LongLivedTokenScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(R1.space.xs))
             // Keep the field enabled even while masked so the user can still backspace /
             // append to fix a typo without REVEAL-ing the token first; just show the dot
             // mask in the display value. Only suppress the mask when the user explicitly
@@ -208,14 +220,14 @@ fun LongLivedTokenScreen(
                 cleaned.isBlank() || (cleaned.count { it == '.' } == 2 && cleaned.length in 50..2000)
             }
             if (!looksLikeJwt) {
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "Doesn't look like a HA token. Generate one via your HA profile → Long-lived access tokens.",
                     style = R1.labelMicro,
                     color = R1.StatusAmber,
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(R1.space.l))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 R1Button(
                     text = if (saving) "SAVING…" else "SAVE & CONNECT",
@@ -276,7 +288,7 @@ fun LongLivedTokenScreen(
                         }
                     },
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "no refresh; revoke from HA to invalidate",
                     style = R1.labelMicro,
@@ -285,14 +297,37 @@ fun LongLivedTokenScreen(
             }
             val e = error
             if (e != null) {
-                Spacer(Modifier.height(12.dp))
-                Box(
+                Spacer(Modifier.height(R1.space.m))
+                // Match the Onboarding flow's ErrorPanel: a StatusRed left rail
+                // plus a labelled heading so a save failure reads as a distinct
+                // error state rather than a stray red line.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(R1.StatusRed.copy(alpha = 0.18f))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .clip(R1.ShapeM)
+                        .background(R1.StatusRed.copy(alpha = 0.08f))
+                        .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeM)
+                        .padding(R1.space.m)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = "Save failed: $e"
+                        },
                 ) {
-                    Text(text = e, style = R1.body, color = R1.StatusRed)
+                    Box(
+                        modifier = Modifier
+                            .width(2.dp)
+                            .heightIn(min = 28.dp)
+                            .background(R1.StatusRed),
+                    )
+                    Spacer(Modifier.width(R1.space.s))
+                    Column {
+                        Text(
+                            text = "SAVE FAILED",
+                            style = R1.labelMicro,
+                            color = R1.StatusRed,
+                        )
+                        Spacer(Modifier.height(R1.space.xxs))
+                        Text(text = e, style = R1.body, color = R1.Ink)
+                    }
                 }
             }
         }
