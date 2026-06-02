@@ -41,6 +41,15 @@ data class AssistUiState(
     val messages: List<AssistMessage> = emptyList(),
     val inFlight: Boolean = false,
     val draft: String = "",
+    /** True once HA has handed back a conversation_id, i.e. there is a live
+     *  multi-turn thread the RESET control can actually clear. Lets the screen
+     *  disable RESET on a fresh open so it doesn't read as a live control with
+     *  nothing to do. */
+    val conversationActive: Boolean = false,
+    /** True when HA replied with `continue_conversation`, i.e. it expects a
+     *  follow-up turn and the input should stay primed. Mirrors HA's own
+     *  Assist UI re-opening the mic after a turn that asks a question. */
+    val awaitingFollowUp: Boolean = false,
 )
 
 class AssistViewModel(
@@ -64,10 +73,16 @@ class AssistViewModel(
     private var sendJob: kotlinx.coroutines.Job? = null
 
     fun cancel() {
+        // Guard: only synthesise a cancel turn when something is actually in
+        // flight. Without this a stray cancel (e.g. STOP tapped right as the
+        // reply lands) appends a spurious "(cancelled)" bubble after a
+        // successful turn.
+        if (!_ui.value.inFlight) return
         sendJob?.cancel()
         sendJob = null
         _ui.value = _ui.value.copy(
             inFlight = false,
+            awaitingFollowUp = false,
             messages = AssistTranscript.appendErrorTurn(
                 _ui.value.messages,
                 AssistTranscript.cancelledTurnText(),
@@ -108,6 +123,14 @@ class AssistViewModel(
                             responseType = response.responseType,
                         ),
                         inFlight = false,
+                        conversationActive = conversationId != null,
+                        // HA signals continue_conversation when it asked a
+                        // question and expects an immediate follow-up. The repo
+                        // doesn't surface that flag yet (see SHARED CHANGE
+                        // REQUESTS), so this stays false until the field lands;
+                        // wiring it here means the UI lights up the moment the
+                        // plumbing is added with no further screen change.
+                        awaitingFollowUp = false,
                     )
                 },
                 onFailure = { t ->
@@ -118,6 +141,7 @@ class AssistViewModel(
                             AssistTranscript.errorTurnText(t.message),
                         ),
                         inFlight = false,
+                        awaitingFollowUp = false,
                     )
                 },
             )

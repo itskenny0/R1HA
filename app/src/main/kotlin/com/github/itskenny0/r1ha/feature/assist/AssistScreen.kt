@@ -115,6 +115,15 @@ fun AssistScreen(
             runCatching { focus.requestFocus() }
         }
     }
+    // When HA asks a follow-up (continue_conversation), prime the input so the
+    // user can answer without re-tapping the field, mirroring HA's own Assist
+    // re-opening the mic. No-op today because the repo doesn't surface the
+    // flag yet (see SHARED CHANGE REQUESTS); harmless until it lands.
+    LaunchedEffect(ui.awaitingFollowUp) {
+        if (ui.awaitingFollowUp) {
+            runCatching { focus.requestFocus() }
+        }
+    }
     // Collect pre-filled drafts pushed by other screens (e.g. SearchScreen's
     // empty-state 'Ask Assist about <query>' CTA). The bus uses SharedFlow with
     // capacity 1 + DROP_OLDEST, so a draft staged before AssistScreen first
@@ -155,7 +164,7 @@ fun AssistScreen(
                             onClick = { agentDialogOpen.value = true },
                             contentDescription = "Pick conversation agent",
                         )
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(
                         text = AssistTranscript.agentLabel(current),
@@ -164,9 +173,7 @@ fun AssistScreen(
                     )
                 }
                 if (onOpenVoiceSatellite != null) {
-                    androidx.compose.foundation.layout.Spacer(
-                        modifier = Modifier.width(6.dp),
-                    )
+                    Spacer(modifier = Modifier.width(R1.space.xs))
                     Box(
                         modifier = Modifier
                             .clip(R1.ShapeS)
@@ -176,7 +183,7 @@ fun AssistScreen(
                                 onClick = onOpenVoiceSatellite,
                                 contentDescription = "Open voice satellite",
                             )
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(
                             text = "VOICE",
@@ -242,7 +249,7 @@ fun AssistScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 22.dp, vertical = 16.dp),
+                        .padding(horizontal = R1.space.l, vertical = R1.space.l),
                     verticalArrangement = Arrangement.Top,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -252,13 +259,13 @@ fun AssistScreen(
                         color = R1.AccentWarm,
                         modifier = Modifier.semantics { heading() },
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     Text(
                         text = "Type below or tap one of these prompts to start.",
                         style = R1.body,
                         color = R1.InkMuted,
                     )
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(R1.space.m))
                     val examples = listOf(
                         "Turn off the kitchen light",
                         "What's the temperature in the bedroom?",
@@ -272,8 +279,8 @@ fun AssistScreen(
                         val rows = examples.chunked(2)
                         for (row in rows) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xxs),
+                                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                             ) {
                                 for (example in row) {
                                     Box(
@@ -287,7 +294,7 @@ fun AssistScreen(
                                                 onClick = { vm.setDraft(example); vm.send() },
                                                 contentDescription = AssistA11y.examplePromptLabel(example),
                                             )
-                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
                                         contentAlignment = Alignment.CenterStart,
                                     ) {
                                         Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
@@ -302,7 +309,7 @@ fun AssistScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 3.dp)
+                                    .padding(vertical = R1.space.xxs)
                                     .heightIn(min = R1.MinTarget)
                                     .clip(R1.ShapeS)
                                     .background(R1.SurfaceMuted)
@@ -314,7 +321,7 @@ fun AssistScreen(
                                         },
                                         contentDescription = AssistA11y.examplePromptLabel(example),
                                     )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
                                 contentAlignment = Alignment.CenterStart,
                             ) {
                                 Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
@@ -336,10 +343,10 @@ fun AssistScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = R1.space.m),
                     reverseLayout = true,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = R1.space.s),
                 ) {
                     // In-flight pip belongs at the very bottom (visually just above
                     // the input row). With reverseLayout the FIRST declared item is
@@ -363,7 +370,7 @@ fun AssistScreen(
                                     modifier = Modifier
                                         .clip(R1.ShapeS)
                                         .background(R1.SurfaceMuted)
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                                 ) {
                                     // Animate the trailing dots so a slow local-LLM Assist call
                                     // reads as "working" rather than "frozen". One dot at 0-500 ms,
@@ -402,13 +409,14 @@ fun AssistScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = R1.space.m, vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 for (macro in macros) {
                     Box(
                         modifier = Modifier
-                            .padding(end = 4.dp)
+                            .padding(end = R1.space.xs)
+                            .heightIn(min = R1.MinTarget)
                             .clip(R1.ShapeS)
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -422,7 +430,8 @@ fun AssistScreen(
                                 },
                                 contentDescription = AssistA11y.macroChipLabel(macro),
                             )
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+                        contentAlignment = Alignment.CenterStart,
                     ) {
                         Text(
                             text = macro.take(40) + if (macro.length > 40) "…" else "",
@@ -461,23 +470,31 @@ fun AssistScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // RESET is disabled until there's actually a conversation to clear,
+            // so a fresh-open tap doesn't read as a live control with nothing
+            // to do. Muted ink + no-op onClick when empty.
+            val canReset = ui.messages.isNotEmpty() || ui.conversationActive
             Box(
                 modifier = Modifier
                     .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .border(1.dp, R1.Hairline, R1.ShapeS)
                     .r1Pressable(
-                        onClick = { vm.reset() },
+                        onClick = { if (canReset) vm.reset() },
                         contentDescription = AssistA11y.resetControlLabel(),
                     ),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "↺", style = R1.labelMicro, color = R1.InkSoft)
+                Text(
+                    text = "↺",
+                    style = R1.labelMicro,
+                    color = if (canReset) R1.InkSoft else R1.InkMuted,
+                )
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(R1.space.xs))
             // Save-as-macro chip — turns the current draft into a saved macro
             // chip rendered above the input row. Disabled when the draft is
             // blank so an empty tap doesn't save an unusable empty macro.
@@ -485,7 +502,9 @@ fun AssistScreen(
             // do something" rather than dead chrome.
             val saveActive = ui.draft.isNotBlank()
             Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .size(R1.MinTarget)
                     .clip(R1.ShapeS)
                     .background(
                         if (saveActive) R1.AccentWarm.copy(alpha = 0.18f)
@@ -500,7 +519,7 @@ fun AssistScreen(
                         onClick = { if (saveActive) vm.saveCurrentDraftAsMacro() },
                         contentDescription = AssistA11y.saveMacroControlLabel(saveActive),
                     )
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.s),
             ) {
                 Text(
                     text = "★+",
@@ -508,7 +527,7 @@ fun AssistScreen(
                     color = if (saveActive) R1.AccentWarm else R1.InkMuted,
                 )
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(R1.space.xs))
             // Voice button — fires the system speech recognizer. Disabled
             // while a send is in flight so a quick voice tap doesn't queue a
             // second prompt over the first. Same hand-drawn AssistMicGlyph as
@@ -543,11 +562,11 @@ fun AssistScreen(
                                 )
                             }
                     })
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.s),
             ) {
                 com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 14.dp)
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Box(modifier = Modifier.weight(1f)) {
                 R1TextField(
                     value = ui.draft,
@@ -559,7 +578,7 @@ fun AssistScreen(
                     keyboardActions = KeyboardActions(onSend = { vm.send() }),
                 )
             }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             // While in flight the SEND button morphs into STOP so a slow Assist
             // call (local-LLM agents take 5-30s on weaker hardware) is
             // interruptible instead of just disabled.
@@ -629,7 +648,7 @@ private fun AssistBubble(msg: AssistMessage) {
                     },
                     contentDescription = bubbleDescription,
                 )
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = R1.space.s, vertical = R1.space.xs),
         ) {
             Text(text = msg.text, style = R1.body, color = textColor)
         }
@@ -665,13 +684,13 @@ private fun AgentPickerDialog(
                     style = R1.body,
                     color = R1.InkMuted,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(
                     text = "homeassistant\nconversation.openai_conversation\n<pipeline UUID>",
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                 )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(R1.space.s))
                 R1TextField(
                     value = draft,
                     onValueChange = { draft = it },
