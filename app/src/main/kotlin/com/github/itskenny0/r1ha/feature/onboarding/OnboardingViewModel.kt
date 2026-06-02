@@ -78,7 +78,7 @@ class OnboardingViewModel(
             try {
                 withContext(Dispatchers.IO) {
                     val req = Request.Builder()
-                        .url("$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FRabbit-R1-HA%2F&redirect_uri=r1ha://auth-callback")
+                        .url("$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FR1HA%2F&redirect_uri=r1ha://auth-callback")
                         .head()
                         .build()
                     val code = http.newCall(req).execute().use { it.code }
@@ -89,7 +89,7 @@ class OnboardingViewModel(
                 // immediately — but tokens haven't been exchanged yet, so it toasted
                 // "Authentication tokens missing" before the user even saw the WebView. The
                 // URL gets written by exchangeCode() right after a successful token POST.
-                val authorizeUrl = "$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FRabbit-R1-HA%2F&redirect_uri=r1ha%3A%2F%2Fauth-callback"
+                val authorizeUrl = "$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FR1HA%2F&redirect_uri=r1ha%3A%2F%2Fauth-callback"
                 _state.value = State.ReadyToAuth(authorizeUrl = authorizeUrl, baseUrl = baseUrl)
             } catch (e: Exception) {
                 R1Log.e("Onboarding.probe", "failed", e)
@@ -116,7 +116,7 @@ class OnboardingViewModel(
                     val body = FormBody.Builder()
                         .add("grant_type", "authorization_code")
                         .add("code", code)
-                        .add("client_id", "https://itskenny0.github.io/Rabbit-R1-HA/")
+                        .add("client_id", "https://itskenny0.github.io/R1HA/")
                         .add("redirect_uri", "r1ha://auth-callback")
                         .build()
                     val req = Request.Builder()

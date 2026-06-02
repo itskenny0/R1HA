@@ -39,7 +39,7 @@ import java.io.File
  */
 class AppUpdater(
     private val http: OkHttpClient,
-    private val releasesUrl: String = "https://api.github.com/repos/itskenny0/Rabbit-R1-HA/releases/latest",
+    private val releasesUrl: String = "https://api.github.com/repos/itskenny0/R1HA/releases/latest",
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 

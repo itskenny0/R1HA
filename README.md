@@ -117,8 +117,8 @@ Or copy the APK to the device and open it with a file manager.
 **Prerequisites:** JDK 17+, Android SDK with `platforms;android-35` and `build-tools;35.0.0`.
 
 ```bash
-git clone https://github.com/itskenny0/Rabbit-R1-HA.git
-cd Rabbit-R1-HA
+git clone https://github.com/itskenny0/R1HA.git
+cd R1HA
 ./gradlew :app:assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```

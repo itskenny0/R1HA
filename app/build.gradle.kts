@@ -53,7 +53,7 @@ android {
         versionName = System.getenv("APP_VERSION_NAME") ?: defaultVersionName()
 
         // BuildConfig fields surfaced in the About screen
-        buildConfigField("String", "SOURCE_URL", "\"https://github.com/itskenny0/Rabbit-R1-HA\"")
+        buildConfigField("String", "SOURCE_URL", "\"https://github.com/itskenny0/R1HA\"")
         buildConfigField("String", "GIT_SHA", "\"${gitSha()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
