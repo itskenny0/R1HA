@@ -185,7 +185,7 @@ fun FavoritesPickerScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
-                    ui.loading -> CenteredLoading()
+                    ui.loading && ui.rows.isEmpty() -> CenteredLoading()
                     ui.error != null -> ErrorState(message = ui.error ?: "Error")
                     ui.rows.isEmpty() -> FilteredEmptyState(filter = ui.filter, query = ui.query)
                     else -> ChannelList(

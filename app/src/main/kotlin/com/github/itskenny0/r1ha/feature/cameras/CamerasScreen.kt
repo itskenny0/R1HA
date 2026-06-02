@@ -137,7 +137,7 @@ fun CamerasScreen(
             ViewModeRow(current = viewMode, onSelect = { viewModeOverride = it })
         }
         when {
-            ui.loading -> Column(
+            ui.loading && ui.cameras.isEmpty() -> Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = R1.space.m, vertical = R1.space.s),

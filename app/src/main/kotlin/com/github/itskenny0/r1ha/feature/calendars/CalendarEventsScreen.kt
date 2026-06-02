@@ -144,7 +144,7 @@ fun CalendarEventsScreen(
         R1TopBar(title = calendarName.uppercase().take(20), onBack = onBack)
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
-                ui.loading -> Box(
+                ui.loading && ui.events.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
