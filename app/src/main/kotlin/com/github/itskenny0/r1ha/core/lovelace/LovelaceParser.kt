@@ -121,8 +121,35 @@ object LovelaceParser {
     /**
      * Recursive: stack and conditional cards re-enter the parser for
      * their children. Cycles aren't possible (HA's config is a tree).
+     *
+     * Honours the per-card `visibility:` key HA applies to ANY card type
+     * (src/panels/lovelace/cards/hui-card.ts): a card with a non-empty
+     * `visibility:` array is wrapped in a [LovelaceCard.Conditional] so it
+     * renders only when every listed condition passes, exactly like an
+     * explicit conditional card. This keeps a single evaluation + slicing
+     * path for both forms.
      */
     fun parseCard(obj: JsonObject): LovelaceCard {
+        val card = parseCardInner(obj)
+        // Per-card `visibility:` wraps ANY card in conditional gating. HA
+        // applies these in addition to (and outside of) a conditional card's
+        // own conditions, so wrapping here composes correctly even when the
+        // card is itself a `type: conditional`.
+        val visibility = obj["visibility"]
+        if (visibility is JsonArray && visibility.isNotEmpty()) {
+            val conditions = parseConditions(visibility)
+            if (conditions.isNotEmpty()) {
+                return LovelaceCard.Conditional(
+                    raw = obj,
+                    conditions = conditions,
+                    card = card,
+                )
+            }
+        }
+        return card
+    }
+
+    private fun parseCardInner(obj: JsonObject): LovelaceCard {
         val type = obj["type"]?.asStringOrNull()?.lowercase() ?: return LovelaceCard.Unsupported(obj, type = "(missing type)")
         return when (type) {
             "entities" -> LovelaceCard.Entities(
@@ -711,52 +738,104 @@ object LovelaceParser {
         }
     }
 
-    private fun parseConditions(el: JsonElement?): List<LovelaceCondition> {
+    fun parseConditions(el: JsonElement?): List<LovelaceCondition> {
         val arr = el as? JsonArray ?: return emptyList()
-        return arr.mapNotNull { cond ->
-            val obj = cond as? JsonObject ?: return@mapNotNull null
-            val condition = obj["condition"]?.asStringOrNull()?.lowercase()
-            val entity = obj["entity"]?.asStringOrNull()
-            when {
-                // `state` / `state_not` — HA's most common gate. Accepts a single
-                // `state:` value or a `state:` list; `state_not` negates the match.
-                // A state condition with no entity, or with neither state nor
-                // state_not, can't be evaluated, so it fails closed.
-                condition == "state" || condition == "state_not" ||
-                    (condition == null && entity != null) -> {
-                    if (entity == null) return@mapNotNull LovelaceCondition.Never
-                    val negate = condition == "state_not" || obj["state_not"] != null
-                    val raw = if (negate) obj["state_not"] else obj["state"]
-                    val states = parseConditionStates(raw)
-                    if (states.isEmpty()) LovelaceCondition.Never
-                    else LovelaceCondition.StateEquals(entityId = entity, states = states, negate = negate)
-                }
-                condition == "numeric_state" && entity != null -> {
-                    val above = obj["above"]?.asDoubleOrNull()
-                    val below = obj["below"]?.asDoubleOrNull()
-                    // A numeric_state with no parseable bound can never be proven
-                    // (the reported `above: never` on a timestamp helper parsed to
-                    // an unbounded range that matched everything and leaked the
-                    // card). With neither side numeric there is nothing to compare,
-                    // so fail closed.
-                    if (above == null && below == null) LovelaceCondition.Never
-                    else LovelaceCondition.NumericState(
+        return arr.mapNotNull { cond -> (cond as? JsonObject)?.let(::parseCondition) }
+    }
+
+    /**
+     * Parse one condition object. Recursive for the `and` / `or` / `not`
+     * groups. Mirrors HA's `checkConditionsMet` switch: a recognised shape we
+     * can evaluate maps to its typed condition; a shape we can't (`time`,
+     * `location`, `view_columns`, a `template`, or a malformed rule) maps to
+     * [Never] so the card fails closed. `screen` fails open and `user` is
+     * modelled (the evaluator fails it open today).
+     */
+    private fun parseCondition(obj: JsonObject): LovelaceCondition {
+        val condition = obj["condition"]?.asStringOrNull()?.lowercase()
+        val entity = obj["entity"]?.asStringOrNull()
+        val attribute = obj["attribute"]?.asStringOrNull()
+        return when {
+            // `state` / `state_not` — HA's most common gate. Accepts a single
+            // `state:` value or a `state:` list; `state_not` negates the match.
+            // A state condition with no entity, or with neither state nor
+            // state_not, can't be evaluated, so it fails closed.
+            condition == "state" || condition == "state_not" ||
+                (condition == null && entity != null) -> {
+                if (entity == null) return LovelaceCondition.Never
+                val negate = condition == "state_not" || obj["state_not"] != null
+                val raw = if (negate) obj["state_not"] else obj["state"]
+                val states = parseConditionStates(raw)
+                if (states.isEmpty()) LovelaceCondition.Never
+                else LovelaceCondition.StateEquals(
+                    entityId = entity,
+                    states = states,
+                    negate = negate,
+                    attribute = attribute,
+                )
+            }
+            condition == "numeric_state" && entity != null -> {
+                // A bound is either a literal number or a reference to another
+                // entity's numeric state (HA's `above: sensor.x` form). We split
+                // the two: a numeric string / number becomes a literal bound, an
+                // entity-id-shaped string becomes an entity reference resolved at
+                // evaluation time.
+                val (above, aboveEntity) = parseNumericBound(obj["above"])
+                val (below, belowEntity) = parseNumericBound(obj["below"])
+                // A numeric_state with no usable bound at all can never be proven
+                // (the reported `above: never` on a timestamp helper parsed to an
+                // unbounded range that matched everything and leaked the card). With
+                // nothing to compare on either side, fail closed.
+                if (above == null && below == null && aboveEntity == null && belowEntity == null) {
+                    LovelaceCondition.Never
+                } else {
+                    LovelaceCondition.NumericState(
                         entityId = entity,
                         above = above,
                         below = below,
+                        aboveEntity = aboveEntity,
+                        belowEntity = belowEntity,
+                        attribute = attribute,
                     )
                 }
-                // `screen` is a media-query breakpoint hint. We can't evaluate the
-                // query locally, but on a single-window app the card is meant to be
-                // visible, so fail OPEN rather than hiding content the user expects.
-                condition == "screen" -> LovelaceCondition.AlwaysTrue
-                // Conditions we can't evaluate locally — `user` (logged-in user id),
-                // template conditions, an `and`/`or`/`not` group, or a malformed
-                // rule. HA evaluates these server/client-side; we can't, so we fail
-                // closed and hide the card rather than leaking it.
-                else -> LovelaceCondition.Never
             }
+            // Logical groups recurse. An empty group is vacuously true for `and`
+            // / `or` (matching HA), and a `not` over an empty group is true.
+            // Unparseable children become [Never] (not dropped) so a group that
+            // contains a condition we can't evaluate fails closed exactly the way
+            // HA would, instead of silently passing on the evaluable siblings.
+            condition == "and" -> LovelaceCondition.And(parseConditions(obj["conditions"]))
+            condition == "or" -> LovelaceCondition.Or(parseConditions(obj["conditions"]))
+            condition == "not" -> LovelaceCondition.Not(parseConditions(obj["conditions"]))
+            // `user`: gated on the logged-in user id, which the renderer can't
+            // read today. Modelled so a future change can evaluate it; for now
+            // the evaluator fails it OPEN (see LovelaceCondition.User).
+            condition == "user" -> LovelaceCondition.User(parseConditionStates(obj["users"]))
+            // `screen` is a media-query breakpoint hint. We can't evaluate the
+            // query locally, but on a single-window app the card is meant to be
+            // visible, so fail OPEN rather than hiding content the user expects.
+            condition == "screen" -> LovelaceCondition.AlwaysTrue
+            // Conditions we can't evaluate locally — `time`, `location`,
+            // `view_columns`, a `template`, or a malformed rule. HA evaluates
+            // these server/client-side; we can't, so we fail closed and hide the
+            // card rather than leaking it.
+            else -> LovelaceCondition.Never
         }
+    }
+
+    /**
+     * Split a numeric_state bound into (literalNumber, entityReference). HA
+     * accepts a number, a numeric string, or an entity id (`sensor.x`) whose
+     * live numeric state supplies the bound. Returns (null, null) for an
+     * absent/unparseable bound, (n, null) for a literal, (null, id) for a
+     * reference. A non-numeric, non-entity string (e.g. `never`) yields
+     * (null, null) so the caller can fail closed.
+     */
+    private fun parseNumericBound(el: JsonElement?): Pair<Double?, String?> {
+        if (el == null) return null to null
+        el.asDoubleOrNull()?.let { return it to null }
+        val s = el.asStringOrNull() ?: return null to null
+        return if (s.looksLikeEntityId()) null to s else null to null
     }
 
     /**

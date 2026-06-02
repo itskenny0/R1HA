@@ -98,17 +98,9 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Conditional -> {
             // A conditional gates on its own condition entities AND renders a
             // child, so the slice must cover both or the wrapper would never
-            // re-evaluate when the gating entity changes.
-            card.conditions.forEach { cond ->
-                when (cond) {
-                    is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals ->
-                        sink.addEntity(cond.entityId)
-                    is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState ->
-                        sink.addEntity(cond.entityId)
-                    com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
-                    com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
-                }
-            }
+            // re-evaluate when the gating entity changes. Recurses through
+            // and/or/not groups and picks up cross-entity numeric bounds.
+            card.conditions.forEach { collectConditionEntities(it, sink) }
             collectEntityIds(card.card, sink)
         }
         is LovelaceCard.Sensor -> sink.addEntity(card.entityId)
@@ -131,6 +123,37 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Logbook -> Unit
         is LovelaceCard.Clock -> Unit
         is LovelaceCard.Unsupported -> card.entityRefs.forEach { sink.addEntity(it) }
+    }
+}
+
+/**
+ * Collect every entity id a [condition] gates on, recursing through the
+ * and/or/not logical groups and the cross-entity numeric bounds. Keeping this
+ * exhaustive guarantees the per-card slice (and the ViewModel's subscription
+ * set, which delegates here) covers each gating entity, so a conditional card
+ * re-evaluates whenever any of its inputs change.
+ */
+internal fun collectConditionEntities(
+    condition: com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition,
+    sink: MutableSet<String>,
+) {
+    when (condition) {
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals ->
+            sink.addEntity(condition.entityId)
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState -> {
+            sink.addEntity(condition.entityId)
+            condition.aboveEntity?.let { sink.addEntity(it) }
+            condition.belowEntity?.let { sink.addEntity(it) }
+        }
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.And ->
+            condition.conditions.forEach { collectConditionEntities(it, sink) }
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Or ->
+            condition.conditions.forEach { collectConditionEntities(it, sink) }
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Not ->
+            condition.conditions.forEach { collectConditionEntities(it, sink) }
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.User,
+        com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
+        com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
     }
 }
 

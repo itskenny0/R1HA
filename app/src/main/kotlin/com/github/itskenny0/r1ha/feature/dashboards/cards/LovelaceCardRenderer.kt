@@ -211,39 +211,123 @@ fun LovelaceAction.boundTo(entityId: String?): LovelaceAction = when (this) {
 }
 
 /**
+ * Whether a [card] will render any content given the live [stateMap]. A
+ * conditional card (an explicit `type: conditional` OR any card carrying a
+ * per-card `visibility:` array, both of which the parser models as
+ * [LovelaceCard.Conditional]) contributes nothing when its conditions fail.
+ *
+ * Layout containers (the view body, stacks, grid) consult this BEFORE
+ * allocating a slot / inter-card gap so a hidden conditional consumes no
+ * layout, matching HA where a failed condition removes the card entirely
+ * rather than leaving a hole. Recurses through a conditional that wraps
+ * another conditional (e.g. a `visibility:` gate on a `type: conditional`).
+ */
+fun cardWillRender(card: LovelaceCard, stateMap: EntityStates): Boolean =
+    if (card is LovelaceCard.Conditional) {
+        evaluateConditions(card.conditions, stateMap) && cardWillRender(card.card, stateMap)
+    } else {
+        true
+    }
+
+/** HA state strings that mean "no usable value"; a state/numeric gate over one
+ *  of these fails closed (mirrors the core evaluator's UNUSABLE_STATES). */
+private val UNUSABLE_CONDITION_STATES = setOf("unavailable", "unknown", "none", "")
+
+/**
  * Pure helper: evaluate the (already-parsed) conditional rules against
- * the live state map. Empty conditions list → true (HA semantics).
+ * the live state map. Empty conditions list → true (HA semantics). This is
+ * the EntityStates-backed twin of [com.github.itskenny0.r1ha.core.lovelace.evaluateLovelaceConditions];
+ * unlike the core (state-only) evaluator it can resolve `attribute:` comparisons
+ * from the live attributes JSON, and it reads numeric values from the parsed
+ * [com.github.itskenny0.r1ha.core.ha.EntityState] rather than re-parsing strings.
  */
 fun evaluateConditions(
     conditions: List<LovelaceCondition>,
     stateMap: EntityStates,
 ): Boolean {
     if (conditions.isEmpty()) return true
-    return conditions.all { cond ->
-        when (cond) {
-            is LovelaceCondition.StateEquals -> {
-                // Fail closed when the gating entity has no live state: HA hides
-                // a conditional whose entity is missing/unknown rather than
-                // showing it. Condition entities are subscribed (see the
-                // ViewModel + EntityStates traversal), so a genuinely-present
-                // entity will have state here; only truly-absent entities fail.
-                val state = stateMap.byRaw(cond.entityId) ?: return@all false
-                val current = state.rawState.orEmpty()
+    return conditions.all { evaluateOneCondition(it, stateMap) }
+}
+
+private fun evaluateOneCondition(cond: LovelaceCondition, stateMap: EntityStates): Boolean =
+    when (cond) {
+        is LovelaceCondition.StateEquals -> {
+            // Fail closed when the gating entity has no live state: HA hides a
+            // conditional whose entity is missing/unknown rather than showing it.
+            // Condition entities are subscribed (see the ViewModel + EntityStates
+            // traversal), so a genuinely-present entity will have state here; only
+            // truly-absent entities fail.
+            val current = conditionValue(stateMap, cond.entityId, cond.attribute)
+            if (current == null || current.lowercase() in UNUSABLE_CONDITION_STATES) {
+                false
+            } else {
                 val matches = cond.states.any { current.equals(it, ignoreCase = true) }
                 if (cond.negate) !matches else matches
             }
-            is LovelaceCondition.NumericState -> {
-                val state = stateMap.byRaw(cond.entityId) ?: return@all false
-                val value = state.raw?.toDouble() ?: state.rawState?.toDoubleOrNull() ?: return@all false
-                val above = cond.above?.let { value > it } ?: true
-                val below = cond.below?.let { value < it } ?: true
-                above && below
-            }
-            // Unmodelled condition shape: fail closed (hide the card).
-            LovelaceCondition.Never -> false
-            LovelaceCondition.AlwaysTrue -> true
         }
+        is LovelaceCondition.NumericState -> {
+            val value = conditionNumeric(stateMap, cond.entityId, cond.attribute)
+            if (value == null) {
+                false
+            } else {
+                // Literal bound wins; otherwise resolve the referenced entity's
+                // numeric state. An unresolvable reference fails closed.
+                val above = cond.above ?: cond.aboveEntity?.let { conditionNumeric(stateMap, it, null) ?: return false }
+                val below = cond.below ?: cond.belowEntity?.let { conditionNumeric(stateMap, it, null) ?: return false }
+                val aboveOk = above?.let { value > it } ?: true
+                val belowOk = below?.let { value < it } ?: true
+                aboveOk && belowOk
+            }
+        }
+        is LovelaceCondition.And -> cond.conditions.all { evaluateOneCondition(it, stateMap) }
+        is LovelaceCondition.Or ->
+            cond.conditions.isEmpty() || cond.conditions.any { evaluateOneCondition(it, stateMap) }
+        // HA's `not` is the negation of an AND over the group: it passes when NOT
+        // every child passes (i.e. at least one fails). An empty group is all-pass,
+        // so `not` over it is false-of-true = false... but HA returns true for an
+        // absent group, so guard the empty case to match.
+        is LovelaceCondition.Not ->
+            cond.conditions.isEmpty() || !cond.conditions.all { evaluateOneCondition(it, stateMap) }
+        // `user`: the logged-in user id isn't reachable in the renderer, so fail
+        // OPEN rather than hide a card the user likely should see.
+        is LovelaceCondition.User -> true
+        // Unmodelled condition shape: fail closed (hide the card).
+        LovelaceCondition.Never -> false
+        LovelaceCondition.AlwaysTrue -> true
     }
+
+/**
+ * Resolve the value a state/numeric condition compares against: the entity's
+ * raw state, or the named [attribute] read out of the live attributes JSON.
+ * Returns null when the entity (or attribute) is absent.
+ */
+private fun conditionValue(
+    stateMap: EntityStates,
+    entityId: String,
+    attribute: String?,
+): String? {
+    val state = stateMap.byRaw(entityId) ?: return null
+    if (attribute == null) return state.rawState
+    val attrs = state.attributesJson ?: return null
+    val el = attrs[attribute] ?: return null
+    return (el as? kotlinx.serialization.json.JsonPrimitive)?.content
+}
+
+/** Numeric counterpart of [conditionValue]. Prefers the parsed scalar when
+ *  reading the state itself; falls back to parsing the string / attribute. */
+private fun conditionNumeric(
+    stateMap: EntityStates,
+    entityId: String,
+    attribute: String?,
+): Double? {
+    if (attribute == null) {
+        val state = stateMap.byRaw(entityId) ?: return null
+        val rawState = state.rawState
+        if (rawState != null && rawState.lowercase() in UNUSABLE_CONDITION_STATES) return null
+        return state.raw?.toDouble() ?: rawState?.trim()?.toDoubleOrNull()
+    }
+    val raw = conditionValue(stateMap, entityId, attribute) ?: return null
+    return raw.trim().toDoubleOrNull()
 }
 
 /**

@@ -287,13 +287,18 @@ private fun ViewModeBody(
             // Single column: render cards in order, one per row. This is the
             // R1 / compact-phone path and must stay a plain vertical list so
             // the narrow panel never tries to share a row between two cards.
-            cards.forEachIndexed { index, card ->
-                if (index > 0) Spacer(Modifier.height(10.dp))
-                // key() keeps each card's composition identity stable across
-                // state churn; the per-card slice means an unrelated entity
-                // update doesn't invalidate this card. Index is folded into
-                // the key so two cards with identical raw JSON stay distinct.
-                androidx.compose.runtime.key(index, card.raw) {
+            // Drop cards whose visibility conditions fail first, so a hidden
+            // conditional leaves no double inter-card gap (the gap is emitted
+            // per-visible-card, not per-original-index). The original index is
+            // carried into the key so composition identity stays stable when a
+            // conditional toggles visibility (the surviving cards keep their key
+            // even though their position in the visible list shifts).
+            val visible = cards.withIndex().filter { (_, card) ->
+                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(card, states.sliceFor(card))
+            }
+            visible.forEachIndexed { position, (originalIndex, card) ->
+                if (position > 0) Spacer(Modifier.height(10.dp))
+                androidx.compose.runtime.key(originalIndex, card.raw) {
                     LovelaceCardRenderer(
                         card = card,
                         stateMap = states.sliceFor(card),
@@ -307,7 +312,14 @@ private fun ViewModeBody(
             // uses). Each lane gets an equal fraction of the width via
             // weight(), so inner grids inside a card clamp to the lane and
             // can't overflow the screen.
-            val lanes = distributeCardsIntoLanes(cards.size, columns)
+            // Distribute only the cards that will actually render, so a hidden
+            // conditional doesn't leave an empty slot (and the per-lane gaps in
+            // spacedBy don't stack around a zero-height child). Original indices
+            // are preserved for stable composition keys.
+            val visibleIndices = cards.indices.filter {
+                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(cards[it], states.sliceFor(cards[it]))
+            }
+            val lanes = distributeIndicesIntoLanes(visibleIndices, columns)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 lanes.forEach { laneIndices ->
                     Column(
@@ -376,11 +388,21 @@ internal fun dashboardColumnCount(tier: WindowTier, requestedColumns: Int?): Int
  * list with exactly [columns] lanes (some may be empty when there are fewer
  * cards than columns). [columns] is clamped to at least one.
  */
-internal fun distributeCardsIntoLanes(count: Int, columns: Int): List<List<Int>> {
+internal fun distributeCardsIntoLanes(count: Int, columns: Int): List<List<Int>> =
+    distributeIndicesIntoLanes((0 until count).toList(), columns)
+
+/**
+ * Distribute an explicit list of card [indices] round-robin into [columns]
+ * lanes, preserving the original index values (so composition keys stay stable
+ * even after hidden conditionals are filtered out). The Nth entry of [indices]
+ * goes to lane `N % columns`. Returns exactly [columns] lanes (some may be
+ * empty). [columns] is clamped to at least one.
+ */
+internal fun distributeIndicesIntoLanes(indices: List<Int>, columns: Int): List<List<Int>> {
     val lanes = columns.coerceAtLeast(1)
     val result = List(lanes) { mutableListOf<Int>() }
-    for (index in 0 until count) {
-        result[index % lanes].add(index)
+    indices.forEachIndexed { position, originalIndex ->
+        result[position % lanes].add(originalIndex)
     }
     return result
 }

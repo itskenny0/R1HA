@@ -582,11 +582,17 @@ data class GaugeSeverity(
 )
 
 /**
- * Condition for [LovelaceCard.Conditional]. We model the common shapes
- * (state / state_not / numeric_state). A condition shape we cannot evaluate
- * locally maps to [Never] so the wrapped card is hidden rather than shown:
- * a condition exists precisely to gate visibility, and showing a card whose
- * gate we cannot evaluate is the wrong default (it leaks cards HA would hide).
+ * Condition for [LovelaceCard.Conditional] and per-card `visibility:`. Mirrors
+ * HA's `checkConditionsMet` (src/panels/lovelace/common/validate-condition.ts):
+ * `state` / `state_not`, `numeric_state` (with attribute + cross-entity bound
+ * support), the legacy entity+state shorthand, and the `and` / `or` / `not`
+ * logical groups (nested arbitrarily deep). A condition shape we cannot
+ * evaluate locally maps to [Never] so the wrapped card is hidden rather than
+ * shown: a condition exists precisely to gate visibility, and showing a card
+ * whose gate we cannot evaluate is the wrong default (it leaks cards HA would
+ * hide). The two deliberate fail-open shapes are [AlwaysTrue] (used for
+ * `screen` media-queries we can't evaluate) and [User] (the logged-in-user id
+ * isn't reachable in the renderer today; see the evaluator).
  */
 @Immutable
 sealed class LovelaceCondition {
@@ -594,25 +600,66 @@ sealed class LovelaceCondition {
      * HA `state` / `state_not` condition. [states] is the set of accepted
      * state strings (HA allows a single `state:` value or a `state:` list).
      * When [negate] is true (a `state_not` condition) the rule passes when the
-     * entity's state is NOT in [states].
+     * entity's state is NOT in [states]. [attribute] (HA's `attribute:` key)
+     * compares the named attribute rather than the entity's state when set.
      */
     @Immutable
     data class StateEquals(
         val entityId: String,
         val states: List<String>,
         val negate: Boolean = false,
+        val attribute: String? = null,
     ) : LovelaceCondition() {
         /** Back-compat single-state constructor used by tests + simple call sites. */
         constructor(entityId: String, state: String, negate: Boolean = false) :
-            this(entityId, listOf(state), negate)
+            this(entityId, listOf(state), negate, null)
     }
 
+    /**
+     * HA `numeric_state`. A bound is either a literal number ([above] /
+     * [below]) or a reference to another entity's numeric state ([aboveEntity]
+     * / [belowEntity], HA's "above: sensor.x" form). [attribute] compares the
+     * named attribute instead of the entity's state. When a bound is an entity
+     * reference the literal counterpart is null and vice-versa; the evaluator
+     * resolves the referenced entity at evaluation time.
+     */
     @Immutable
     data class NumericState(
         val entityId: String,
         val above: Double?,
         val below: Double?,
+        val aboveEntity: String? = null,
+        val belowEntity: String? = null,
+        val attribute: String? = null,
     ) : LovelaceCondition()
+
+    /** HA `and`: passes only when EVERY nested condition passes. An empty
+     *  group is vacuously true (matches HA's `checkAndCondition`). */
+    @Immutable
+    data class And(val conditions: List<LovelaceCondition>) : LovelaceCondition()
+
+    /** HA `or`: passes when ANY nested condition passes. An empty group is
+     *  vacuously true (matches HA's `checkOrCondition`, which returns true
+     *  when `conditions` is absent). */
+    @Immutable
+    data class Or(val conditions: List<LovelaceCondition>) : LovelaceCondition()
+
+    /** HA `not`: the negation of an AND over the group, i.e. it passes when NOT
+     *  every nested condition passes (at least one fails). An empty group is
+     *  true (matches HA's `checkNotCondition`). */
+    @Immutable
+    data class Not(val conditions: List<LovelaceCondition>) : LovelaceCondition()
+
+    /**
+     * HA `user`: visible only to the listed user ids. The renderer can't read
+     * the logged-in user's id today (it lives behind a `core/ha` change we
+     * don't own), so the evaluator treats this as fail OPEN rather than hiding
+     * a card the user most likely should see. Modelled (rather than collapsed
+     * to [AlwaysTrue] at parse time) so a future change can supply the id and
+     * flip the evaluator to a real membership test without touching the parser.
+     */
+    @Immutable
+    data class User(val userIds: List<String>) : LovelaceCondition()
 
     /** Catch-all for a condition shape we can't evaluate. Fails CLOSED
      *  (hides the card) so an unmodelled condition never leaks a card HA

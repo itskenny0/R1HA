@@ -146,4 +146,118 @@ class LovelaceConditionEvaluatorTest {
         assertThat(eval(c, mapOf("s.t" to "unavailable"))).isFalse()
         assertThat(eval(c, mapOf("s.t" to "unknown"))).isFalse()
     }
+
+    @Test
+    fun `numeric bound referencing another entity resolves at eval time`() {
+        val c = LovelaceCondition.NumericState("s.in", above = null, below = null, aboveEntity = "s.out")
+        // s.in must be strictly greater than the referenced s.out value.
+        assertThat(eval(c, mapOf("s.in" to "21", "s.out" to "20"))).isTrue()
+        assertThat(eval(c, mapOf("s.in" to "20", "s.out" to "20"))).isFalse()
+        assertThat(eval(c, mapOf("s.in" to "19", "s.out" to "20"))).isFalse()
+    }
+
+    @Test
+    fun `numeric entity-bound fails closed when the referenced entity is missing or non-numeric`() {
+        val c = LovelaceCondition.NumericState("s.in", above = null, below = null, aboveEntity = "s.out")
+        assertThat(eval(c, mapOf("s.in" to "21"))).isFalse()
+        assertThat(eval(c, mapOf("s.in" to "21", "s.out" to "unavailable"))).isFalse()
+        assertThat(eval(c, mapOf("s.in" to "21", "s.out" to "warm"))).isFalse()
+    }
+
+    @Test
+    fun `state attribute condition fails closed in the state-only evaluator`() {
+        // The core evaluator has no attribute data, so an attribute gate hides
+        // the card; the renderer's EntityStates evaluator resolves it instead.
+        val c = LovelaceCondition.StateEquals("climate.x", listOf("heating"), negate = false, attribute = "hvac_action")
+        assertThat(eval(c, mapOf("climate.x" to "heat"))).isFalse()
+    }
+
+    // --- logical groups ----------------------------------------------------
+
+    @Test
+    fun `and passes only when every child passes`() {
+        val c = LovelaceCondition.And(
+            listOf(
+                LovelaceCondition.StateEquals("a", "on"),
+                LovelaceCondition.StateEquals("b", "on"),
+            ),
+        )
+        assertThat(eval(c, mapOf("a" to "on", "b" to "on"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "on", "b" to "off"))).isFalse()
+    }
+
+    @Test
+    fun `empty and is vacuously true`() {
+        assertThat(eval(LovelaceCondition.And(emptyList()), emptyMap())).isTrue()
+    }
+
+    @Test
+    fun `or passes when any child passes`() {
+        val c = LovelaceCondition.Or(
+            listOf(
+                LovelaceCondition.StateEquals("a", "on"),
+                LovelaceCondition.StateEquals("b", "on"),
+            ),
+        )
+        assertThat(eval(c, mapOf("a" to "off", "b" to "on"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "off", "b" to "off"))).isFalse()
+    }
+
+    @Test
+    fun `empty or is vacuously true`() {
+        assertThat(eval(LovelaceCondition.Or(emptyList()), emptyMap())).isTrue()
+    }
+
+    @Test
+    fun `not passes when none of its children pass`() {
+        val c = LovelaceCondition.Not(
+            listOf(LovelaceCondition.StateEquals("a", "on")),
+        )
+        assertThat(eval(c, mapOf("a" to "off"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "on"))).isFalse()
+        // not over a missing entity: the inner state fails closed, so none-pass
+        // is satisfied and the not is true (matches HA's negation of an AND).
+        assertThat(eval(c, emptyMap())).isTrue()
+    }
+
+    @Test
+    fun `not over multiple children passes when at least one child fails (HA negation-of-AND)`() {
+        // HA's `not` is !(every child passes), so it shows when ANY child fails.
+        val c = LovelaceCondition.Not(
+            listOf(
+                LovelaceCondition.StateEquals("a", "on"),
+                LovelaceCondition.StateEquals("b", "on"),
+            ),
+        )
+        // both pass -> the inner AND is true -> not is false (hidden)
+        assertThat(eval(c, mapOf("a" to "on", "b" to "on"))).isFalse()
+        // one fails -> inner AND false -> not is true (shown)
+        assertThat(eval(c, mapOf("a" to "on", "b" to "off"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "off", "b" to "off"))).isTrue()
+    }
+
+    @Test
+    fun `nested and-or-not composes`() {
+        // (a == on) AND ( (b == on) OR NOT(c == on) )
+        val c = LovelaceCondition.And(
+            listOf(
+                LovelaceCondition.StateEquals("a", "on"),
+                LovelaceCondition.Or(
+                    listOf(
+                        LovelaceCondition.StateEquals("b", "on"),
+                        LovelaceCondition.Not(listOf(LovelaceCondition.StateEquals("c", "on"))),
+                    ),
+                ),
+            ),
+        )
+        assertThat(eval(c, mapOf("a" to "on", "b" to "off", "c" to "off"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "on", "b" to "on", "c" to "on"))).isTrue()
+        assertThat(eval(c, mapOf("a" to "on", "b" to "off", "c" to "on"))).isFalse()
+        assertThat(eval(c, mapOf("a" to "off", "b" to "on", "c" to "off"))).isFalse()
+    }
+
+    @Test
+    fun `user condition fails open (current user id unavailable)`() {
+        assertThat(eval(LovelaceCondition.User(listOf("some-uuid")), emptyMap())).isTrue()
+    }
 }

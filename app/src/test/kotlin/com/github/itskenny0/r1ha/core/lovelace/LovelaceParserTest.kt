@@ -639,16 +639,155 @@ class LovelaceParserTest {
     }
 
     @Test
-    fun `user condition fails closed as Never`() {
+    fun `user condition parses to a modelled User (evaluator fails it open)`() {
         Locale.setDefault(Locale.US)
-        val parsed = conditions("""[{"condition":"user","users":["abc"]}]""")
-        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+        val parsed = conditions("""[{"condition":"user","users":["abc","def"]}]""")
+        val u = parsed.single() as LovelaceCondition.User
+        assertThat(u.userIds).containsExactly("abc", "def")
     }
 
     @Test
-    fun `unknown condition type fails closed as Never`() {
+    fun `unmodelled condition type (time) fails closed as Never`() {
         Locale.setDefault(Locale.US)
-        val parsed = conditions("""[{"condition":"and","conditions":[]}]""")
+        val parsed = conditions("""[{"condition":"time","after":"08:00:00"}]""")
         assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+    }
+
+    // ----------------------------------------------------------------
+    // Logical groups: and / or / not (nested arbitrarily)
+    // ----------------------------------------------------------------
+    @Test
+    fun `parses and group with nested state and numeric conditions`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"and","conditions":[
+                 {"condition":"state","entity":"light.k","state":"on"},
+                 {"condition":"numeric_state","entity":"s.t","above":10}
+               ]}]""",
+        )
+        val and = parsed.single() as LovelaceCondition.And
+        assertThat(and.conditions).hasSize(2)
+        assertThat(and.conditions[0]).isInstanceOf(LovelaceCondition.StateEquals::class.java)
+        assertThat(and.conditions[1]).isInstanceOf(LovelaceCondition.NumericState::class.java)
+    }
+
+    @Test
+    fun `parses or group`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"or","conditions":[
+                 {"condition":"state","entity":"a","state":"on"},
+                 {"condition":"state","entity":"b","state":"on"}
+               ]}]""",
+        )
+        val or = parsed.single() as LovelaceCondition.Or
+        assertThat(or.conditions).hasSize(2)
+    }
+
+    @Test
+    fun `parses not group`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"not","conditions":[{"condition":"state","entity":"a","state":"on"}]}]""",
+        )
+        val not = parsed.single() as LovelaceCondition.Not
+        assertThat(not.conditions).hasSize(1)
+    }
+
+    @Test
+    fun `parses deeply nested and-or-not`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"and","conditions":[
+                 {"condition":"or","conditions":[
+                   {"condition":"state","entity":"a","state":"on"},
+                   {"condition":"not","conditions":[{"condition":"state","entity":"b","state":"off"}]}
+                 ]}
+               ]}]""",
+        )
+        val and = parsed.single() as LovelaceCondition.And
+        val or = and.conditions.single() as LovelaceCondition.Or
+        assertThat(or.conditions[0]).isInstanceOf(LovelaceCondition.StateEquals::class.java)
+        assertThat(or.conditions[1]).isInstanceOf(LovelaceCondition.Not::class.java)
+    }
+
+    @Test
+    fun `and group keeps an unmodelled child as Never so it fails closed`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"and","conditions":[
+                 {"condition":"state","entity":"a","state":"on"},
+                 {"condition":"time","after":"08:00:00"}
+               ]}]""",
+        )
+        // The `time` child can't be evaluated locally, so it becomes Never. Keeping
+        // it (rather than dropping it) makes the AND fail closed the way HA would,
+        // instead of passing on the evaluable state sibling alone.
+        val and = parsed.single() as LovelaceCondition.And
+        assertThat(and.conditions).hasSize(2)
+        assertThat(and.conditions[0]).isInstanceOf(LovelaceCondition.StateEquals::class.java)
+        assertThat(and.conditions[1]).isEqualTo(LovelaceCondition.Never)
+    }
+
+    // ----------------------------------------------------------------
+    // attribute + cross-entity numeric bounds
+    // ----------------------------------------------------------------
+    @Test
+    fun `state condition carries the attribute key`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"state","entity":"climate.x","attribute":"hvac_action","state":"heating"}]""",
+        )
+        val s = parsed.single() as LovelaceCondition.StateEquals
+        assertThat(s.attribute).isEqualTo("hvac_action")
+        assertThat(s.states).containsExactly("heating")
+    }
+
+    @Test
+    fun `numeric_state above referencing another entity parses as an entity bound`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"numeric_state","entity":"sensor.in","above":"sensor.out"}]""",
+        )
+        val n = parsed.single() as LovelaceCondition.NumericState
+        assertThat(n.above).isNull()
+        assertThat(n.aboveEntity).isEqualTo("sensor.out")
+    }
+
+    @Test
+    fun `numeric_state with attribute carries the attribute key`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions(
+            """[{"condition":"numeric_state","entity":"climate.x","attribute":"temperature","above":20}]""",
+        )
+        val n = parsed.single() as LovelaceCondition.NumericState
+        assertThat(n.attribute).isEqualTo("temperature")
+        assertThat(n.above).isEqualTo(20.0)
+    }
+
+    // ----------------------------------------------------------------
+    // per-card `visibility:` wraps any card in a Conditional
+    // ----------------------------------------------------------------
+    @Test
+    fun `card-level visibility wraps the card in a conditional`() {
+        Locale.setDefault(Locale.US)
+        val card = LovelaceParser.parseCard(
+            obj(
+                """{"type":"tile","entity":"light.k",
+                    "visibility":[{"condition":"state","entity":"sun.sun","state":"above_horizon"}]}""",
+            ),
+        )
+        val cond = card as LovelaceCard.Conditional
+        assertThat((cond.conditions.single() as LovelaceCondition.StateEquals).entityId).isEqualTo("sun.sun")
+        assertThat(cond.card).isInstanceOf(LovelaceCard.Tile::class.java)
+    }
+
+    @Test
+    fun `empty visibility array leaves the card unwrapped`() {
+        Locale.setDefault(Locale.US)
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"tile","entity":"light.k","visibility":[]}"""),
+        )
+        assertThat(card).isInstanceOf(LovelaceCard.Tile::class.java)
     }
 }

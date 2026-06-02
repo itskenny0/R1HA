@@ -30,6 +30,10 @@ fun VerticalStackCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Drop children whose visibility conditions fail BEFORE laying out, so a
+    // hidden conditional consumes no inter-row gap (a zero-height child would
+    // still pick up the spacedBy spacing on both sides).
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -41,7 +45,7 @@ fun VerticalStackCard(
                 color = R1.InkSoft,
             )
         }
-        card.cards.forEach { child ->
+        visible.forEach { child ->
             // Hand each child only its own entity slice so a state change on
             // one row doesn't recompose its siblings.
             LovelaceCardRenderer(child, stateMap.sliceFor(child), onAction)
@@ -61,7 +65,10 @@ fun HorizontalStackCard(
     modifier: Modifier = Modifier,
 ) {
     val tier = LocalWindowTier.current.tier
-    val maxPerRow = horizontalStackMaxPerRow(card.cards.size, tier)
+    // Hide cards whose conditions fail so they don't claim an equal-weight slot
+    // that would shrink the surviving siblings (HA removes the card entirely).
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
+    val maxPerRow = horizontalStackMaxPerRow(visible.size, tier)
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -73,7 +80,7 @@ fun HorizontalStackCard(
                 color = R1.InkSoft,
             )
         }
-        card.cards.chunked(maxPerRow).forEach { rowCards ->
+        visible.chunked(maxPerRow).forEach { rowCards ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -110,11 +117,14 @@ fun GridCard(
 ) {
     val tier = LocalWindowTier.current.tier
     val cols = responsiveColumnCount(card.columns, tier)
+    // Hidden conditionals are removed before chunking so the grid doesn't leave
+    // an empty weighted cell where a failed-condition card would have sat.
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!card.title.isNullOrBlank()) {
             Text(text = card.title, style = R1.sectionHeader, color = R1.InkSoft)
         }
-        card.cards.chunked(cols).forEach { rowCards ->
+        visible.chunked(cols).forEach { rowCards ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
