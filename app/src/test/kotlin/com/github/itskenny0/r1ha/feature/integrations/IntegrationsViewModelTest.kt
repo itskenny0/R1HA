@@ -71,7 +71,7 @@ class IntegrationsViewModelTest {
         assertThat(IntegrationsViewModel.stateRank("setup_error")).isEqualTo(StateBucket.FAILED)
         assertThat(IntegrationsViewModel.stateRank("migration_error")).isEqualTo(StateBucket.FAILED)
         assertThat(IntegrationsViewModel.stateRank("failed_unload")).isEqualTo(StateBucket.FAILED)
-        assertThat(IntegrationsViewModel.stateRank("setup_retry")).isEqualTo(StateBucket.PENDING)
+        assertThat(IntegrationsViewModel.stateRank("setup_retry")).isEqualTo(StateBucket.FAILED)
         assertThat(IntegrationsViewModel.stateRank("not_loaded")).isEqualTo(StateBucket.PENDING)
         assertThat(IntegrationsViewModel.stateRank("setup_in_progress")).isEqualTo(StateBucket.PENDING)
     }
@@ -117,7 +117,11 @@ class IntegrationsViewModelTest {
     @Test fun `matchesFilter FAILED only matches failed bucket`() {
         assertThat(IntegrationsViewModel.matchesFilter(entry(domain = "d", title = "t", state = "setup_error"), Filter.FAILED))
             .isTrue()
+        // setup_retry is an error state (HA's ERROR_STATES), so it belongs to FAILED;
+        // not_loaded is the genuinely-non-failed negative example here.
         assertThat(IntegrationsViewModel.matchesFilter(entry(domain = "d", title = "t", state = "setup_retry"), Filter.FAILED))
+            .isTrue()
+        assertThat(IntegrationsViewModel.matchesFilter(entry(domain = "d", title = "t", state = "not_loaded"), Filter.FAILED))
             .isFalse()
     }
 

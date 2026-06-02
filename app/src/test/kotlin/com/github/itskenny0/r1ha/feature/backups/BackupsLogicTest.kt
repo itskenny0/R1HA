@@ -52,8 +52,10 @@ class BackupsLogicTest {
             .isEqualTo("2024-06-12 08:31")
         assertThat(BackupsLogic.formatCreatedAt("2024-06-12T08:31:45Z"))
             .isEqualTo("2024-06-12 08:31")
+        // A non-UTC offset is normalized to UTC (08:31 minus 05:00 = 13:31 UTC),
+        // not silently dropped, so the displayed time is the real instant.
         assertThat(BackupsLogic.formatCreatedAt("2024-06-12T08:31:45-05:00"))
-            .isEqualTo("2024-06-12 08:31")
+            .isEqualTo("2024-06-12 13:31")
     }
 
     @Test
