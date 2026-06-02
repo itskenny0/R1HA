@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -20,6 +21,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.toArgb
@@ -104,9 +109,9 @@ fun ThemePickerScreen(
 
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(top = 6.dp),
+                modifier = Modifier.fillMaxSize().padding(top = R1.space.s),
             ) {
-                items(ALL_THEMES) { theme ->
+                items(ALL_THEMES, key = { it.id }) { theme ->
                     ThemeRow(
                         theme = theme,
                         isSelected = theme.id == currentThemeId,
@@ -142,16 +147,23 @@ private fun ThemeRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // 48dp min target for the whole selectable row; TalkBack announces the
+            // theme name, its description, and the on/off selection state as one node.
+            .heightIn(min = R1.MinTarget)
             .r1Pressable(onClick)
-            .padding(horizontal = 22.dp, vertical = 12.dp),
+            .semantics {
+                selected = isSelected
+                stateDescription = if (isSelected) "Selected" else "Not selected"
+            }
+            .padding(horizontal = R1.space.xl, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Selection indicator — accent fill when active, otherwise a hairline-outlined hollow
         // square so the unselected state is *visible* on the near-black background instead of
-        // a hairline-coloured 14dp square that just disappeared into the bg.
+        // a hairline-coloured square that just disappeared into the bg.
         Box(
             modifier = Modifier
-                .size(14.dp)
+                .size(R1.space.l)
                 .clip(R1.ShapeS)
                 .background(if (isSelected) R1.AccentWarm else R1.Bg)
                 .then(
@@ -160,7 +172,7 @@ private fun ThemeRow(
                 ),
         )
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(R1.space.m))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
@@ -168,7 +180,7 @@ private fun ThemeRow(
                 style = R1.labelMicro,
                 color = if (isSelected) R1.AccentWarm else R1.InkSoft,
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             // Short description so the user knows what the theme actually does
             // without having to switch and see. The body line used to just
             // restate the title in a different case, which was redundant once
@@ -187,13 +199,16 @@ private fun ThemeRow(
             )
         }
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(R1.space.m))
 
         // Miniature preview — render the actual theme.Card with a sample model.
         Box(
             modifier = Modifier
                 .size(width = 92.dp, height = 112.dp)
                 .clip(R1.ShapeS)
+                // Decorative preview: drop the sample card's text from the a11y
+                // tree so TalkBack reads only the row's name + selection state.
+                .clearAndSetSemantics {}
                 .border(
                     width = 1.dp,
                     color = if (isSelected) R1.AccentWarm else R1.Hairline,
@@ -225,20 +240,20 @@ private fun AccentPickerSection(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 14.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.l),
     ) {
         Text(
             text = "ACCENT",
             style = R1.labelMicro,
             color = R1.InkSoft,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = "Override every theme's accent colour. Reset = use the theme's own palette.",
             style = R1.body,
             color = R1.InkMuted,
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         // Flow-style wrap with 6 columns, hand-rolled because androidx.compose.foundation.layout.FlowRow
         // is still experimental and we avoid that elsewhere in the codebase.
         val columns = 6
@@ -259,7 +274,7 @@ private fun AccentPickerSection(
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
         }
     }
 }
@@ -274,8 +289,19 @@ private fun AccentSwatch(
 ) {
     Column(
         modifier = modifier
-            .r1Pressable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            // Keep each swatch a 48dp min tap target even though the visible
+            // circle is only 36dp; the label sits inside the same target.
+            .heightIn(min = R1.MinTarget)
+            .r1Pressable(
+                onClick = onClick,
+                contentDescription = if (label == "RESET") {
+                    "Reset accent to theme default${if (isSelected) ", selected" else ""}"
+                } else {
+                    "$label accent${if (isSelected) ", selected" else ""}"
+                },
+            )
+            .semantics { selected = isSelected }
+            .padding(vertical = R1.space.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
@@ -298,7 +324,7 @@ private fun AccentSwatch(
                     },
                 ),
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(
             text = label,
             style = R1.labelMicro,

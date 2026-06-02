@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.ui.components.Chevron
+import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import com.github.itskenny0.r1ha.BuildConfig
@@ -196,7 +199,7 @@ fun AboutScreen(
                             "Copy, modify, redistribute. Commercial or not, by any means.",
                         style = R1.body,
                         color = R1.InkSoft,
-                        modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                     )
                 }
                 item { SectionDivider() }
@@ -206,8 +209,13 @@ fun AboutScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .r1Pressable(onClick = onOpenDevMenu)
-                            .padding(horizontal = 22.dp, vertical = 10.dp),
+                            .heightIn(min = R1.MinTarget)
+                            .r1Pressable(
+                                onClick = onOpenDevMenu,
+                                contentDescription = "Open dev menu: advanced tunables, " +
+                                    "behaviour flags, in-app log viewer",
+                            )
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -218,11 +226,11 @@ fun AboutScreen(
                                 color = R1.InkMuted,
                             )
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Text(text = "→", style = R1.bodyEmph, color = R1.InkSoft)
+                        Spacer(Modifier.width(R1.space.m))
+                        Chevron(direction = ChevronDirection.Right, tint = R1.InkSoft)
                     }
                 }
-                item { Spacer(Modifier.height(48.dp)) }
+                item { Spacer(Modifier.height(R1.MinTarget)) }
             }
         } // AdaptiveContent
     }
@@ -272,7 +280,7 @@ private fun LastEventRow(haRepository: HaRepository) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("Last event", style = R1.bodyEmph, color = R1.Ink)
@@ -317,7 +325,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 10.dp),
+                .padding(horizontal = R1.space.xl, vertical = R1.space.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Entities", style = R1.bodyEmph, color = R1.Ink)
@@ -348,7 +356,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                             loading.value = false
                         }
                     })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
             ) {
                 Text(
                     text = pillText,
@@ -369,7 +377,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 4.dp),
+                .padding(horizontal = R1.space.xl, vertical = R1.space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -378,7 +386,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                 color = R1.InkMuted,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
                     .background(R1.SurfaceMuted, shape = R1.ShapeS)
@@ -393,7 +401,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                             loading.value = false
                         }
                     })
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
             ) {
                 Text(
                     text = if (rawByPrefix.value == null) "PROBE RAW" else "${rawByPrefix.value!!.values.sum()} RAW",
@@ -412,7 +420,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 22.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -421,7 +429,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                         color = if (supported) R1.Ink else R1.InkMuted,
                     )
                     if (!supported) {
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(R1.space.xs))
                         Text(
                             text = "(filtered)",
                             style = R1.labelMicro,
@@ -449,7 +457,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                             .r1Pressable(onClick = {
                                 expandedDomain.value = if (expandedDomain.value == domain) null else domain
                             })
-                            .padding(horizontal = 22.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -475,7 +483,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                                 text = eid,
                                 style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
                                 color = R1.InkMuted,
-                                modifier = Modifier.padding(start = 44.dp, end = 22.dp, top = 2.dp, bottom = 2.dp),
+                                modifier = Modifier.padding(start = 44.dp, end = R1.space.xl, top = R1.space.xxs, bottom = R1.space.xxs),
                             )
                         }
                     }
@@ -487,7 +495,7 @@ private fun EntitiesDiagnosticRow(haRepository: HaRepository) {
                 text = msg,
                 style = R1.labelMicro,
                 color = R1.StatusRed,
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
             )
         }
     }
@@ -515,10 +523,10 @@ private fun FdroidUpdateHint() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
     ) {
         Text(text = "UPDATES", style = R1.labelMicro, color = R1.InkSoft)
-        androidx.compose.foundation.layout.Spacer(Modifier.height(2.dp))
+        androidx.compose.foundation.layout.Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = "F-Droid distribution: install updates via your F-Droid client. GitHub Releases also publishes the same APK.",
             style = R1.body,
@@ -542,7 +550,7 @@ private fun UpdaterRow() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Updates", style = R1.bodyEmph, color = R1.Ink)
@@ -608,7 +616,7 @@ private fun UpdaterRow() {
                                 }
                             }
                         })
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(pillText, style = R1.labelMicro, color = pillColor)
                 }
@@ -617,7 +625,7 @@ private fun UpdaterRow() {
                 // slow / failed download can be backed out without restarting
                 // the app.
                 if (state.value is UpdaterState.Downloading) {
-                    androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                    androidx.compose.foundation.layout.Spacer(Modifier.width(R1.space.xs))
                     Box(
                         modifier = Modifier
                             .background(R1.StatusRed.copy(alpha = 0.18f), shape = R1.ShapeS)
@@ -625,7 +633,7 @@ private fun UpdaterRow() {
                                 downloadJob.value?.cancel()
                                 downloadJob.value = null
                             })
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(text = "CANCEL", style = R1.labelMicro, color = R1.StatusRed)
                     }
@@ -637,7 +645,7 @@ private fun UpdaterRow() {
         // doesn't grow unreasonably for a long changelog.
         when (val s = state.value) {
             is UpdaterState.Available -> if (s.info.notes.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(
                     text = s.info.notes,
                     style = R1.body,
@@ -647,7 +655,7 @@ private fun UpdaterRow() {
                 )
             }
             is UpdaterState.Error -> {
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(R1.space.xs))
                 Text(s.message, style = R1.labelMicro, color = R1.StatusRed)
             }
             else -> Unit
@@ -673,11 +681,11 @@ private fun Section(title: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 8.dp),
+            .padding(start = R1.space.xl, end = R1.space.xl, top = R1.space.xl, bottom = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
                 .height(1.dp)
@@ -689,7 +697,7 @@ private fun Section(title: String) {
 
 @Composable
 private fun SectionDivider() {
-    Spacer(Modifier.height(2.dp))
+    Spacer(Modifier.height(R1.space.xxs))
 }
 
 @Composable
@@ -697,11 +705,11 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.Top,
     ) {
         Text(label, style = R1.bodyEmph, color = R1.Ink)
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(R1.space.l))
         Text(
             text = value,
             style = if (mono) R1.body.copy(fontFamily = FontFamily.Monospace) else R1.body,
@@ -775,12 +783,16 @@ private fun LinkRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .r1Pressable(onOpen)
-            .padding(horizontal = 22.dp, vertical = 10.dp),
+            .heightIn(min = R1.MinTarget)
+            // Icon-less link: read the label plus the destination so TalkBack
+            // announces "Source code link, opens github.com/..." rather than the
+            // raw underlined URL on its own line.
+            .r1Pressable(onOpen, contentDescription = "$label link, opens $displayUrl")
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         horizontalAlignment = Alignment.Start,
     ) {
         Text(label, style = R1.bodyEmph, color = R1.Ink)
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = displayUrl,
             // Underline so the URL reads as interactive even without a chevron.
