@@ -98,6 +98,25 @@ object LabelLogic {
     }
 
     /**
+     * Accent legible against the dark Mission Control surface. HA contrasts a
+     * label color against light/dark backgrounds; we only ever paint onto
+     * [com.github.itskenny0.r1ha.core.theme.R1.SurfaceMuted], so a near-black
+     * label color (HA's "black", a dark custom hex) would render an invisible
+     * swatch and an unreadable count. When the resolved color is too dark to
+     * read on the dark surface we substitute [fallback] (the warm accent) so the
+     * label still reads. Pure: the threshold is perceptual luminance.
+     */
+    fun accentOnDark(resolved: Color, fallback: Color): Color =
+        if (relativeLuminance(resolved) < MIN_ON_DARK_LUMINANCE) fallback else resolved
+
+    /** Rec. 709 relative luminance of an sRGB color in 0f..1f. */
+    private fun relativeLuminance(c: Color): Float =
+        0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue
+
+    /** Below this luminance a color is indistinguishable from the dark surface. */
+    private const val MIN_ON_DARK_LUMINANCE = 0.16f
+
+    /**
      * Parse a "#RRGGBB" / "#AARRGGBB" / bare-hex string into a [Color]. Returns
      * null for anything that is not a clean 6- or 8-digit hex value.
      */
@@ -180,12 +199,19 @@ object LabelLogic {
         "orange" to Color(0xFFFB8C00),
         "deep-orange" to Color(0xFFF4511E),
         "brown" to Color(0xFF6D4C41),
+        "light-grey" to Color(0xFFBDBDBD),
+        "light-gray" to Color(0xFFBDBDBD),
         "grey" to Color(0xFF757575),
         "gray" to Color(0xFF757575),
+        "dark-grey" to Color(0xFF616161),
+        "dark-gray" to Color(0xFF616161),
         "blue-grey" to Color(0xFF546E7A),
         "blue-gray" to Color(0xFF546E7A),
         "black" to Color(0xFF000000),
         "white" to Color(0xFFFFFFFF),
+        // HA's YAML-only theme colors that can appear as a label color.
+        "primary-text" to Color(0xFFEDEDED),
+        "secondary-text" to Color(0xFFA8A8A8),
         "disabled" to Color(0xFF9E9E9E),
     )
 }

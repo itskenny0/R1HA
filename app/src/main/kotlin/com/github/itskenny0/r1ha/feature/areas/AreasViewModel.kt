@@ -54,7 +54,28 @@ class AreasViewModel(
          *  template's `id` field. Drives the drill-in's entity lookup
          *  and is the handle a future rename call would key on. */
         val areaId: String? = null,
-    )
+        /**
+         * Compact sensor readout for the row's secondary line, mirroring HA's
+         * area-card "secondary" (median temperature, then humidity, joined with
+         * a dot). Empty when the area has no readable temperature / humidity
+         * sensor. Populated lazily by [enrichSummaries] once the live entity
+         * snapshot is in; null until then so the row knows summaries are pending.
+         */
+        val summary: String? = null,
+        /**
+         * Count of active alert binary sensors in this area (device_class motion /
+         * moisture / smoke / gas / etc. currently `on`). Mirrors HA's alert badges.
+         * Drives the small amber alert pip on the row.
+         */
+        val activeAlerts: Int = 0,
+    ) {
+        /**
+         * Stable LazyColumn / expansion key. HA keys areas on area_id, and two
+         * areas may share a display name, so we prefer the id and fall back to
+         * the name only when the registry didn't hand us one.
+         */
+        val key: String get() = areaId ?: "name:$name"
+    }
 
     enum class Sort { ALPHA, COUNT }
 
@@ -86,6 +107,11 @@ class AreasViewModel(
         val groups: List<DomainGroup> = emptyList(),
         val unmatchedCount: Int = 0,
         val error: String? = null,
+        /** Temperature / humidity readout for this area, same source as the list
+         *  row's [Area.summary]; null when the area has nothing to summarise. */
+        val summary: String? = null,
+        /** Count of active alert binary sensors in this area (see [isActiveAlert]). */
+        val activeAlerts: Int = 0,
     )
 
     @androidx.compose.runtime.Stable
@@ -151,6 +177,12 @@ class AreasViewModel(
                         }.sortedBy { it.name.lowercase() }
                         R1Log.i("Areas", "loaded ${list.size}")
                         _ui.value = _ui.value.copy(loading = false, areas = list, error = null)
+                        // The template only gives us names + entity_ids; the live
+                        // sensor summary (temperature / humidity) and the active-alert
+                        // count need the state snapshot. Pull it once and fold the
+                        // per-area readouts in, so the list rows match HA's area card
+                        // without an O(N) per-area round trip.
+                        enrichSummaries(list)
                     }.onFailure { t ->
                         R1Log.w("Areas", "parse failed: ${t.message}")
                         Toaster.error("Areas parse failed. Try Templates to debug")
@@ -161,6 +193,39 @@ class AreasViewModel(
                     R1Log.w("Areas", "fetch failed: ${t.message}")
                     Toaster.error("Areas load failed: ${t.message ?: "unknown"}")
                     _ui.value = _ui.value.copy(loading = false, error = t.message)
+                },
+            )
+        }
+    }
+
+    /**
+     * Fold per-area sensor summaries + alert counts into the loaded area list.
+     * Runs after [refresh] has surfaced the names so the list paints immediately;
+     * the readouts then fill in once the state snapshot arrives. A failure here is
+     * non-fatal: the list still works, it just shows counts without summaries.
+     */
+    private fun enrichSummaries(areas: List<Area>) {
+        if (areas.isEmpty()) return
+        viewModelScope.launch {
+            haRepository.listAllEntities().fold(
+                onSuccess = { all ->
+                    val byId = all.associateBy { it.id.value }
+                    val enriched = areas.map { area ->
+                        val states = area.entityIds.mapNotNull { byId[it] }
+                        area.copy(
+                            summary = sensorSummary(states),
+                            activeAlerts = states.count { isActiveAlert(it) },
+                        )
+                    }
+                    // Only patch if the list hasn't been replaced by a newer refresh
+                    // (compare by the stable key set, ignoring summary/alert fields).
+                    val current = _ui.value.areas
+                    if (current.map { it.key } == enriched.map { it.key }) {
+                        _ui.value = _ui.value.copy(areas = enriched)
+                    }
+                },
+                onFailure = { t ->
+                    R1Log.w("Areas", "summary enrich failed: ${t.message}")
                 },
             )
         }
@@ -205,19 +270,21 @@ class AreasViewModel(
                         )
                     // Only the current drill (the user may have backed out
                     // and reopened a different area while this was in flight).
-                    if (_drill.value?.area?.name == area.name) {
+                    if (_drill.value?.area?.key == area.key) {
                         _drill.value = DrillState(
                             area = area,
                             loading = false,
                             groups = groups,
                             unmatchedCount = unmatched,
                             error = null,
+                            summary = sensorSummary(matched),
+                            activeAlerts = matched.count { isActiveAlert(it) },
                         )
                     }
                 },
                 onFailure = { t ->
                     R1Log.w("Areas", "drill load failed: ${t.message}")
-                    if (_drill.value?.area?.name == area.name) {
+                    if (_drill.value?.area?.key == area.key) {
                         _drill.value = _drill.value?.copy(
                             loading = false,
                             error = t.message ?: "load failed",
@@ -290,7 +357,22 @@ class AreasViewModel(
         viewModelScope.launch {
             val target = entity.id
             var changed = false
+            // An unavailable entity can't take a control call: HA would reject it and
+            // the toast would read like a success. Surface its details instead so the
+            // tap still does something useful (matches HA dimming it but keeping info).
+            val controllable = entity.isAvailable ||
+                target.domain == Domain.SCENE || target.domain == Domain.SCRIPT
             when {
+                !controllable -> {
+                    Toaster.showExpandable(
+                        shortText = "${entity.friendlyName} is unavailable",
+                        fullText = buildString {
+                            append(entity.friendlyName).append('\n')
+                            append(entity.id.value).append('\n')
+                            append("state: ").append(entity.rawState ?: "unavailable")
+                        },
+                    )
+                }
                 target.domain == Domain.SCENE -> {
                     haRepository.call(ServiceCall(target, "turn_on", JsonObject(emptyMap())))
                     Toaster.show("Fired scene '${entity.friendlyName}'")
@@ -344,6 +426,55 @@ class AreasViewModel(
             domain.isAction -> 1
             domain.isSensor || domain == Domain.SENSOR || domain == Domain.BINARY_SENSOR -> 2
             else -> 3
+        }
+
+        /**
+         * binary_sensor device classes HA treats as "alerts" on the area card.
+         * Mirrors the card's default alert_classes plus the common safety classes,
+         * kept lower-case for a direct match against [EntityState.deviceClass].
+         */
+        private val ALERT_CLASSES = setOf(
+            "motion", "moisture", "smoke", "gas", "safety", "tamper",
+            "co", "problem", "door", "window",
+        )
+
+        /** An active alert: an `on` binary_sensor whose device_class is an alert class. */
+        private fun isActiveAlert(e: EntityState): Boolean =
+            e.id.domain == Domain.BINARY_SENSOR &&
+                e.isAvailable && e.isOn &&
+                (e.deviceClass?.lowercase() in ALERT_CLASSES)
+
+        /**
+         * Compact temperature / humidity readout for an area, matching HA's area-card
+         * secondary line: the median temperature reading, then the median humidity, each
+         * with its unit, joined with a middle dot. Only `sensor` entities of the matching
+         * device_class with a parseable numeric, available state contribute. Returns null
+         * when the area has nothing readable to summarise.
+         */
+        private fun sensorSummary(states: List<EntityState>): String? {
+            fun median(values: List<Double>): Double? {
+                if (values.isEmpty()) return null
+                val s = values.sorted()
+                val mid = s.size / 2
+                return if (s.size % 2 == 0) (s[mid - 1] + s[mid]) / 2.0 else s[mid]
+            }
+            fun reading(deviceClass: String): String? {
+                val matching = states.filter {
+                    it.id.domain == Domain.SENSOR &&
+                        it.isAvailable &&
+                        it.deviceClass?.lowercase() == deviceClass
+                }
+                if (matching.isEmpty()) return null
+                // Take the unit from the first contributing sensor; HA assumes a
+                // consistent unit across an area's same-class sensors.
+                val unit = matching.firstNotNullOfOrNull { it.unit }
+                val values = matching.mapNotNull { it.rawState?.trim()?.toDoubleOrNull() }
+                val m = median(values) ?: return null
+                val num = if (m == m.toLong().toDouble()) m.toLong().toString() else "%.1f".format(m)
+                return if (unit.isNullOrBlank()) num else "$num$unit"
+            }
+            val parts = listOfNotNull(reading("temperature"), reading("humidity"))
+            return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
 
         /** Plural, uppercase domain header (e.g. "LIGHTS", "BINARY SENSORS"). */

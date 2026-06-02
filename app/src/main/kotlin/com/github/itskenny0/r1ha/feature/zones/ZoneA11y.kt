@@ -30,10 +30,14 @@ object ZoneA11y {
         name: String,
         occupants: List<String>,
         radiusMeters: Double?,
+        isHome: Boolean = false,
+        passive: Boolean = false,
     ): String {
         val cleanName = name.trim().ifEmpty { "Unnamed zone" }
         val occ = occupants.map { it.trim() }.filter { it.isNotEmpty() }
-        val parts = mutableListOf("Zone $cleanName")
+        val lead = if (isHome) "Home zone $cleanName" else "Zone $cleanName"
+        val parts = mutableListOf(lead)
+        if (passive) parts += "passive"
         parts += when (occ.size) {
             0 -> "empty"
             1 -> "1 person inside, ${occ[0]}"

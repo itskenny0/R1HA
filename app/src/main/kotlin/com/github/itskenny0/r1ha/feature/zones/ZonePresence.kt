@@ -28,8 +28,20 @@ data class ZoneInput(
     val radiusMeters: Double?,
     /** HA `icon` attribute, e.g. "mdi:home". Null when none configured. */
     val icon: String?,
-    /** True for HA's configured home zone (its `is_home` attribute). */
+    /**
+     * True for HA's configured home zone. HA core does not expose an `is_home`
+     * state attribute; the home zone is canonically the entity `zone.home`. The
+     * reserved person/tracker state `"home"` resolves to this zone, so getting
+     * this flag right is what keeps people who are at home from spilling into
+     * the OUTSIDE bucket.
+     */
     val isHome: Boolean,
+    /**
+     * HA `passive` attribute. Passive zones still detect presence but do not set
+     * a person's state to the zone name, so HA treats them as orientation-only
+     * geofences. Surfaced so the UI can mark them the way the HA map does.
+     */
+    val passive: Boolean = false,
 )
 
 /**
@@ -56,6 +68,7 @@ data class ResolvedZone(
     val radiusMeters: Double?,
     val icon: String?,
     val isHome: Boolean,
+    val passive: Boolean,
     val occupants: List<String>,
 )
 
@@ -97,7 +110,9 @@ private val OUTSIDE_STATES = setOf("not_home", "away", "unknown", "unavailable",
  *   - outside/unknown states collect under [ZoneResolution.outside].
  *
  * Zones are returned most-occupied first so the busiest places sort to the
- * top of the list. Occupant names are de-duplicated.
+ * top of the list, with name as a stable tie-breaker so equal-occupancy zones
+ * keep a fixed order across refreshes (an unstable sort would let rows swap
+ * places and jump the scroll position). Occupant names are de-duplicated.
  */
 fun resolveZoneMembership(
     zones: List<ZoneInput>,
@@ -118,6 +133,10 @@ fun resolveZoneMembership(
     val homeOccupants = byState["home"].orEmpty()
     val resolved = zones.map { z ->
         val direct = byState[z.name.trim().lowercase(Locale.US)].orEmpty()
+        // The reserved state "home" maps to whichever zone is the home zone, so
+        // fold those occupants in there too. Without this, anyone reporting
+        // "home" (the common case) would never match a zone and would wrongly
+        // appear under OUTSIDE.
         val occupants = if (z.isHome) (direct + homeOccupants) else direct
         ResolvedZone(
             entityId = z.entityId,
@@ -127,9 +146,14 @@ fun resolveZoneMembership(
             radiusMeters = z.radiusMeters,
             icon = z.icon,
             isHome = z.isHome,
+            passive = z.passive,
             occupants = occupants.distinct(),
         )
-    }.sortedByDescending { it.occupants.size }
+    }.sortedWith(
+        compareByDescending<ResolvedZone> { it.occupants.size }
+            .thenBy { it.name.lowercase(Locale.US) }
+            .thenBy { it.entityId },
+    )
     return ZoneResolution(zones = resolved, outside = outside.distinct())
 }
 

@@ -151,9 +151,9 @@ fun ZonesScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     // Map preview — only when at least two points (zones
                     // and/or trackers) carry lat/lon so there's something
@@ -266,6 +266,15 @@ private fun ZoneMap(
                 val rMax = (w * 0.18f).coerceAtMost(96f)
                 val r = (radiusM.toFloat() * canvasPerMeter).coerceIn(rMin, rMax)
                 val occupied = zone.occupants.isNotEmpty()
+                // Passive zones detect presence but never set a person's state,
+                // so HA renders their radius in a muted colour. Mirror that: an
+                // occupied passive zone is rare but still drawn warm, otherwise
+                // passive reads as the faintest outline.
+                val outline = when {
+                    occupied -> R1.AccentWarm
+                    zone.passive -> R1.InkMuted
+                    else -> R1.Hairline
+                }
                 if (occupied) {
                     drawCircle(
                         color = R1.AccentWarm.copy(alpha = 0.24f),
@@ -274,7 +283,7 @@ private fun ZoneMap(
                     )
                 }
                 drawCircle(
-                    color = if (occupied) R1.AccentWarm else R1.Hairline,
+                    color = outline,
                     radius = r,
                     center = centre,
                     style = Stroke(width = 1.5f),
@@ -328,9 +337,11 @@ private fun ZoneRow(zone: ResolvedZone) {
                     name = zone.name,
                     occupants = zone.occupants,
                     radiusMeters = zone.radiusMeters,
+                    isHome = zone.isHome,
+                    passive = zone.passive,
                 )
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             zone.icon?.let { icon ->
@@ -339,7 +350,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                     style = R1.labelMicro,
                     color = R1.AccentNeutral,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.xs))
             }
             Text(
                 text = zone.name,
@@ -348,8 +359,8 @@ private fun ZoneRow(zone: ResolvedZone) {
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(6.dp))
-            // Occupancy badge — filled accent when ≥1, muted when 0.
+            Spacer(Modifier.width(R1.space.xs))
+            // Occupancy badge — filled accent when one or more, muted when 0.
             Text(
                 text = "${zone.occupants.size}",
                 style = R1.labelMicro,
@@ -364,8 +375,28 @@ private fun ZoneRow(zone: ResolvedZone) {
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
+            // The home zone gets a small marker so the "home" special-case is
+            // visible to sighted users, mirroring how HA highlights zone.home.
+            if (zone.isHome) {
+                Spacer(Modifier.width(R1.space.xs))
+                Text(
+                    text = "HOME",
+                    style = R1.labelMicro,
+                    color = R1.AccentWarm,
+                )
+            }
+            // Passive zones are orientation-only geofences; flag them so an
+            // empty passive zone doesn't read as a misconfigured active one.
+            if (zone.passive) {
+                Spacer(Modifier.width(R1.space.xs))
+                Text(
+                    text = "PASSIVE",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
             zone.radiusMeters?.let { r ->
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = formatRadius(r),
                     style = R1.labelMicro,
@@ -374,7 +405,7 @@ private fun ZoneRow(zone: ResolvedZone) {
             }
         }
         if (zone.occupants.isNotEmpty()) {
-            Spacer(Modifier.size(4.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = zone.occupants.joinToString(" · "),
                 style = R1.body,
@@ -397,7 +428,7 @@ private fun OutsideRow(names: List<String>) {
             .semantics(mergeDescendants = true) {
                 contentDescription = ZoneA11y.outsideRowLabel(names)
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -412,7 +443,7 @@ private fun OutsideRow(names: List<String>) {
                 color = R1.StatusAmber,
             )
         }
-        Spacer(Modifier.size(4.dp))
+        Spacer(Modifier.size(R1.space.xs))
         Text(
             text = names.joinToString(" · "),
             style = R1.body,

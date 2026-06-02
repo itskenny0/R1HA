@@ -31,7 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -83,7 +86,9 @@ fun AreasScreen(
         settings = settings,
     )
     LaunchedEffect(Unit) { vm.refresh() }
-    var expandedAreaName by remember { mutableStateOf<String?>(null) }
+    // Tracks the expanded row by its stable key (area_id when present), not the
+    // display name: two areas can share a name and would otherwise expand together.
+    var expandedAreaKey by remember { mutableStateOf<String?>(null) }
     // Back closes the drill-in first, then leaves the screen.
     androidx.activity.compose.BackHandler(enabled = drill != null) { vm.closeArea() }
     drill?.let { d ->
@@ -190,13 +195,13 @@ fun AreasScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(items = sortedAreas, key = { it.name }) { area ->
+                    items(items = sortedAreas, key = { it.key }) { area ->
                         AreaRow(
                             area = area,
-                            expanded = expandedAreaName == area.name,
+                            expanded = expandedAreaKey == area.key,
                             onOpen = { vm.openArea(area) },
                             onToggle = {
-                                expandedAreaName = if (expandedAreaName == area.name) null else area.name
+                                expandedAreaKey = if (expandedAreaKey == area.key) null else area.key
                             },
                             onTapEntity = { eid -> openInHa(eid) },
                         )
@@ -230,18 +235,58 @@ private fun AreaRow(
                 // primary action. The abstract in-place entity list stays
                 // available via the count/▸ region at the trailing edge.
                 .r1Pressable(onClick = onOpen)
+                .heightIn(min = 48.dp)
+                .semantics {
+                    contentDescription = buildString {
+                        append(area.name)
+                        append(", ${area.entityIds.size} entities")
+                        area.summary?.let { append(", $it") }
+                        if (area.activeAlerts > 0) append(", ${area.activeAlerts} active alerts")
+                        append(". Opens controls.")
+                    }
+                }
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = area.name, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = area.name, style = R1.body, color = R1.Ink, maxLines = 1)
+                // Secondary line: HA's area-card temperature / humidity readout.
+                // Only painted once the state snapshot enriched the row.
+                area.summary?.takeIf { it.isNotBlank() }?.let { s ->
+                    Text(text = s, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+                }
+            }
             Spacer(Modifier.width(8.dp))
+            // Active-alert pip: an amber dot + count, mirroring HA's alert badges
+            // (motion / moisture / smoke firing in this area). Hidden when quiet.
+            if (area.activeAlerts > 0) {
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeRound)
+                        .background(R1.StatusAmber.copy(alpha = 0.18f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = "! ${area.activeAlerts}",
+                        style = R1.labelMicro,
+                        color = R1.StatusAmber,
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
             // Count + expand chevron: a separate tap target that toggles
             // the quick abstract peek without leaving the list. 48 dp so
             // it's a comfortable wheel-tap.
             Row(
                 modifier = Modifier
                     .heightIn(min = 48.dp)
+                    .clip(R1.ShapeS)
                     .r1Pressable(onClick = onToggle)
+                    .semantics {
+                        contentDescription =
+                            if (expanded) "Hide ${area.name} entity list"
+                            else "Show ${area.name} entity list, ${area.entityIds.size} entities"
+                    }
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -408,17 +453,31 @@ private fun AreaDrillScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         item("__drill_summary") {
-                            Text(
-                                text = buildString {
-                                    append("$matchedCount controllable")
-                                    if (drill.unmatchedCount > 0) {
-                                        append(" · ${drill.unmatchedCount} other")
-                                    }
-                                },
-                                style = R1.labelMicro,
-                                color = R1.InkMuted,
-                                modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
-                            )
+                            Column(modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)) {
+                                Text(
+                                    text = buildString {
+                                        append("$matchedCount controllable")
+                                        if (drill.unmatchedCount > 0) {
+                                            append(" · ${drill.unmatchedCount} other")
+                                        }
+                                        if (drill.activeAlerts > 0) {
+                                            append(" · ${drill.activeAlerts} alert")
+                                            if (drill.activeAlerts != 1) append("s")
+                                        }
+                                    },
+                                    style = R1.labelMicro,
+                                    color = if (drill.activeAlerts > 0) R1.StatusAmber else R1.InkMuted,
+                                )
+                                // Temperature / humidity readout, matching the list row
+                                // and HA's area-card secondary line.
+                                drill.summary?.takeIf { it.isNotBlank() }?.let { s ->
+                                    Text(
+                                        text = s,
+                                        style = R1.labelMicro,
+                                        color = R1.InkSoft,
+                                    )
+                                }
+                            }
                         }
                         for (group in drill.groups) {
                             item(key = "__hdr_${group.domain.prefix}") {
@@ -453,20 +512,36 @@ private fun AreaEntityRow(
     entity: EntityState,
     onTap: () -> Unit,
 ) {
-    val actionLabel = when (entity.id.domain) {
-        Domain.SCENE, Domain.SCRIPT -> "FIRE"
-        Domain.BUTTON, Domain.INPUT_BUTTON -> "PRESS"
+    // Unavailable / unknown entities can't be controlled: HA's own tile dims them
+    // and a turn_on/off call would just bounce. Tapping still opens info, but the
+    // row reads as inert and the action label says so rather than promising a toggle.
+    val unavailable = !entity.isAvailable
+    val toggleable = when (entity.id.domain) {
         Domain.LIGHT, Domain.SWITCH, Domain.FAN, Domain.COVER, Domain.LOCK,
         Domain.MEDIA_PLAYER, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
         Domain.HUMIDIFIER, Domain.CLIMATE, Domain.WATER_HEATER, Domain.VACUUM,
-        Domain.LAWN_MOWER, Domain.VALVE -> if (entity.isOn) "TURN OFF" else "TURN ON"
+        Domain.LAWN_MOWER, Domain.VALVE -> true
+        else -> false
+    }
+    val actionLabel = when {
+        unavailable -> "UNAVAILABLE"
+        entity.id.domain == Domain.SCENE || entity.id.domain == Domain.SCRIPT -> "FIRE"
+        entity.id.domain == Domain.BUTTON || entity.id.domain == Domain.INPUT_BUTTON -> "PRESS"
+        toggleable -> if (entity.isOn) "TURN OFF" else "TURN ON"
         else -> "INFO"
     }
-    val isToggle = actionLabel == "TURN ON" || actionLabel == "TURN OFF"
-    val stateLine = buildString {
+    val isToggle = toggleable && !unavailable
+    val stateLine = if (unavailable) {
+        "unavailable"
+    } else buildString {
         entity.rawState?.let { append(it) }
         entity.unit?.let { append(' ').append(it) }
     }.ifBlank { entity.id.value }
+    val stateColor = when {
+        unavailable -> R1.InkMuted
+        isToggle && entity.isOn -> R1.AccentWarm
+        else -> R1.InkSoft
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -475,6 +550,14 @@ private fun AreaEntityRow(
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
             .heightIn(min = 48.dp)
+            .then(if (unavailable) Modifier.alpha(0.55f) else Modifier)
+            .semantics {
+                contentDescription = buildString {
+                    append(entity.friendlyName)
+                    append(", ").append(stateLine)
+                    if (!unavailable) append(", tap to ${actionLabel.lowercase()}")
+                }
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -483,7 +566,7 @@ private fun AreaEntityRow(
             Text(
                 text = stateLine,
                 style = R1.labelMicro,
-                color = if (isToggle && entity.isOn) R1.AccentWarm else R1.InkSoft,
+                color = stateColor,
                 maxLines = 1,
             )
         }
@@ -491,7 +574,7 @@ private fun AreaEntityRow(
         Text(
             text = actionLabel,
             style = R1.labelMicro,
-            color = if (isToggle && entity.isOn) R1.AccentWarm else R1.InkSoft,
+            color = stateColor,
         )
     }
 }

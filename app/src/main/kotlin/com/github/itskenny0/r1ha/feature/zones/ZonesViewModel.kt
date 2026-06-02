@@ -106,6 +106,9 @@ private fun RawEntityRow.attrDouble(key: String): Double? =
 private fun RawEntityRow.attrString(key: String): String? =
     (attributes[key] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
 
+private fun RawEntityRow.attrBool(key: String): Boolean =
+    (attributes[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
+
 private fun RawEntityRow.toZoneInput(): ZoneInput = ZoneInput(
     entityId = entityId,
     name = friendlyName,
@@ -113,8 +116,11 @@ private fun RawEntityRow.toZoneInput(): ZoneInput = ZoneInput(
     longitude = attrDouble("longitude"),
     radiusMeters = attrDouble("radius"),
     icon = attrString("icon"),
-    isHome = (attributes["is_home"] as? JsonPrimitive)?.content
-        ?.toBooleanStrictOrNull() == true,
+    // HA core does not put an `is_home` attribute on zone entities; the home
+    // zone is canonically the entity `zone.home`. Keep the attribute as a
+    // best-effort fallback for any custom integration that does set it.
+    isHome = entityId == "zone.home" || attrBool("is_home"),
+    passive = attrBool("passive"),
 )
 
 private fun RawEntityRow.toTrackedInput(): TrackedInput = TrackedInput(

@@ -47,6 +47,7 @@ class LabelsViewModel(
         val name: String,
         val color: String?,
         val icon: String?,
+        val description: String?,
         val entities: Map<String, String>,
         val devices: Map<String, String>,
         val areas: Map<String, String>,
@@ -80,9 +81,12 @@ class LabelsViewModel(
                 LabelLogic.matchesQuery(
                     query = s.query,
                     labelName = label.name,
+                    // Match member names and the label description too, so a
+                    // search surfaces a label by what it tags or by its note.
                     memberNames = label.entities.values +
                         label.devices.values +
-                        label.areas.values,
+                        label.areas.values +
+                        listOfNotNull(label.description),
                 )
             }
             when (s.sort) {
@@ -119,6 +123,7 @@ class LabelsViewModel(
                     "name": label_name(label),
                     "color": label_color(label) | default(none, true),
                     "icon": label_icon(label) | default(none, true),
+                    "description": label_description(label) | default(none, true),
                     "entities": ents.m,
                     "devices": devs.m,
                     "areas": ars.m
@@ -176,6 +181,7 @@ class LabelsViewModel(
                     name = name,
                     color = (obj["color"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() },
                     icon = (obj["icon"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() },
+                    description = (obj["description"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() },
                     entities = stringMap(obj["entities"]),
                     devices = stringMap(obj["devices"]),
                     areas = stringMap(obj["areas"]),

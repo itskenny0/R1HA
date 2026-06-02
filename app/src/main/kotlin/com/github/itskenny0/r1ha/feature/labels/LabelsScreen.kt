@@ -137,17 +137,20 @@ fun LabelsScreen(
                     )
                 }
                 ui.error != null && ui.labels.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
                 }
                 ui.labels.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = "No labels defined in HA. Settings, Labels in HA's web UI.",
+                        text = "No labels yet. Labels are optional cross-axis tags " +
+                            "(\"needs batteries\", \"rec room AV\") you add in Home " +
+                            "Assistant under Settings, Labels. Once you tag entities, " +
+                            "devices, or areas they show up here.",
                         style = R1.body,
                         color = R1.InkMuted,
                     )
@@ -161,9 +164,9 @@ fun LabelsScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         item(key = "__search") {
                             R1TextField(
@@ -176,7 +179,7 @@ fun LabelsScreen(
                         if (visibleLabels.isEmpty()) {
                             item(key = "__noresults") {
                                 Box(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 22.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xl),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
@@ -212,7 +215,11 @@ private fun LabelRow(
     onToggle: () -> Unit,
     onTapEntity: (String) -> Unit,
 ) {
-    val accent: Color = LabelLogic.parseLabelColor(label.color, R1.AccentWarm)
+    // The raw label color drives the small swatch (HA shows the true color
+    // there); the accent used for text/count is lifted to a legible tone so a
+    // near-black label color is not invisible on the dark surface.
+    val swatchColor: Color = LabelLogic.parseLabelColor(label.color, R1.AccentWarm)
+    val accent: Color = LabelLogic.accentOnDark(swatchColor, R1.AccentWarm)
     val iconSlug = LabelLogic.normalizeIcon(label.icon)
     Column(
         modifier = Modifier
@@ -220,7 +227,7 @@ private fun LabelRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         // The header Row is the toggle target. Merge swatch / name / icon-slug /
         // count / chevron into one spoken phrase (count in words, expand state
@@ -233,24 +240,44 @@ private fun LabelRow(
                 .heightIn(min = R1.MinTarget)
                 .r1Pressable(
                     onClick = onToggle,
-                    contentDescription = LabelLogic.labelRowLabel(
-                        name = label.name,
-                        memberCount = label.memberCount,
-                        expanded = expanded,
-                    ),
+                    contentDescription = buildString {
+                        append(
+                            LabelLogic.labelRowLabel(
+                                name = label.name,
+                                memberCount = label.memberCount,
+                                expanded = expanded,
+                            ),
+                        )
+                        // Speak the description too; r1Pressable's explicit
+                        // contentDescription replaces descendant text, so the
+                        // visible description line is otherwise silent.
+                        if (!label.description.isNullOrBlank()) {
+                            append(" ")
+                            append(label.description.trim())
+                        }
+                    },
                 ),
         ) {
-            // Color swatch is the consistent accent for the label.
+            // Swatch shows the label's true HA color; the hairline keeps it
+            // visible even for a near-black or white color.
             Box(
                 modifier = Modifier
-                    .size(10.dp)
+                    .size(R1.space.m)
                     .clip(R1.ShapeS)
-                    .background(accent)
+                    .background(swatchColor)
                     .border(1.dp, R1.Hairline, R1.ShapeS),
             )
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(R1.space.s))
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = label.name, style = R1.body, color = R1.Ink, maxLines = 1)
+                if (!label.description.isNullOrBlank()) {
+                    Text(
+                        text = label.description,
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        maxLines = 2,
+                    )
+                }
                 if (iconSlug != null) {
                     Text(
                         text = "mdi:$iconSlug",
@@ -260,13 +287,13 @@ private fun LabelRow(
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "${label.memberCount}",
                 style = R1.labelMicro,
                 color = accent,
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = if (expanded) "v" else ">",
                 style = R1.labelMicro,
@@ -281,7 +308,7 @@ private fun LabelRow(
                     areas = label.areas,
                 )
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(R1.space.xs))
             if (membership.isEmpty) {
                 Text(
                     text = "Nothing is tagged with this label yet.",
@@ -350,12 +377,12 @@ private fun MemberGroup(
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(rowMod)
-                    .padding(horizontal = R1.space.l, vertical = 3.dp),
+                    .padding(horizontal = R1.space.l, vertical = R1.space.xxs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(5.dp)
+                        .size(R1.space.xs)
                         .clip(R1.ShapeS)
                         .background(accent),
                 )

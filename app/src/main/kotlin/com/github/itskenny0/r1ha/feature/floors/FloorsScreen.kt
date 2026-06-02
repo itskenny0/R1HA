@@ -5,19 +5,22 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -29,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
@@ -37,12 +42,14 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
  * Floors registry browser — lists HA's floor primitives (groupings of
- * areas) with the constituent areas and their entity counts rolled up.
- * Useful at-a-glance overview of "what's installed where" on a multi-
- * storey install.
+ * areas) ordered by building level, with the constituent areas and their
+ * entity counts rolled up. A useful at-a-glance overview of "what's
+ * installed where" on a multi-storey install. Floors are an optional HA
+ * concept, so the empty state explains that rather than reading as an error.
  */
 @Composable
 fun FloorsScreen(
@@ -56,7 +63,9 @@ fun FloorsScreen(
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
-    var expandedFloorName by remember { mutableStateOf<String?>(null) }
+    // Expansion is keyed on the stable floor_id, not the display name: two
+    // floors can share a name, and a rename mustn't silently move the open row.
+    var expandedFloorId by remember { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -64,7 +73,7 @@ fun FloorsScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "FLOORS", onBack = onBack)
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
+        AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading -> Box(
                     modifier = Modifier.fillMaxSize(),
@@ -77,40 +86,52 @@ fun FloorsScreen(
                     )
                 }
                 ui.error != null && ui.floors.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
                 }
                 ui.floors.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(R1.space.xxl),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "No floors defined in HA. Settings → Areas & Zones → Floors.",
-                        style = R1.body,
-                        color = R1.InkMuted,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "NO FLOORS",
+                            style = R1.sectionHeader,
+                            color = R1.InkSoft,
+                        )
+                        Spacer(Modifier.size(R1.space.s))
+                        Text(
+                            text = "Floors are an optional HA concept that group areas " +
+                                "by building storey. Add them under Settings, Areas & Zones, " +
+                                "Floors to see them here.",
+                            style = R1.body,
+                            color = R1.InkMuted,
+                        )
+                    }
                 }
-                else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                    isRefreshing = ui.loading,
+                else -> PullToRefreshBox(
+                    isRefreshing = ui.refreshing,
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                        contentPadding = PaddingValues(
+                            horizontal = R1.space.m,
+                            vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        items(items = ui.floors, key = { it.name }) { floor ->
+                        items(items = ui.floors, key = { it.floorId }) { floor ->
                             FloorRow(
                                 floor = floor,
-                                expanded = expandedFloorName == floor.name,
+                                expanded = expandedFloorId == floor.floorId,
                                 onToggle = {
-                                    expandedFloorName = if (expandedFloorName == floor.name) null else floor.name
+                                    expandedFloorId =
+                                        if (expandedFloorId == floor.floorId) null else floor.floorId
                                 },
                             )
                         }
@@ -119,6 +140,17 @@ fun FloorsScreen(
             }
         }
     }
+}
+
+/**
+ * Compact, human label for a floor's building level. HA stores level as a
+ * signed integer (0 = ground, negative = below ground), so we surface the
+ * common cases by name and fall back to a signed "L" badge for the rest.
+ */
+private fun levelLabel(level: Int): String = when (level) {
+    0 -> "GROUND"
+    -1 -> "BASEMENT"
+    else -> if (level > 0) "L$level" else "B${-level}"
 }
 
 @Composable
@@ -135,17 +167,47 @@ private fun FloorRow(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onToggle)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .heightIn(min = R1.MinTarget)
+            .semantics {
+                contentDescription = buildString {
+                    append(floor.name)
+                    floor.level?.let { append(", level ${levelLabel(it).lowercase()}") }
+                    append(", ${floor.areas.size} areas, $totalEntities entities")
+                    append(if (expanded) ". Expanded." else ". Tap to expand.")
+                }
+            }
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = floor.name, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f))
-            Spacer(Modifier.width(8.dp))
+            // Level badge leads the row: it is the axis HA orders floors on,
+            // so showing it makes the list's ordering legible at a glance.
+            floor.level?.let { lvl ->
+                Text(
+                    text = levelLabel(lvl),
+                    style = R1.labelMicro,
+                    color = R1.AccentNeutral,
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.Surface)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+                )
+                Spacer(Modifier.width(R1.space.s))
+            }
+            Text(
+                text = floor.name,
+                style = R1.body,
+                color = R1.Ink,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "${floor.areas.size} areas · $totalEntities entities",
                 style = R1.labelMicro,
                 color = R1.AccentWarm,
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = if (expanded) "▾" else "▸",
                 style = R1.labelMicro,
@@ -153,8 +215,8 @@ private fun FloorRow(
             )
         }
         if (expanded && floor.areas.isNotEmpty()) {
-            Spacer(Modifier.size(6.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Spacer(Modifier.size(R1.space.xs))
+            Column(verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
                 for (a in floor.areas) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -164,7 +226,7 @@ private fun FloorRow(
                             maxLines = 1,
                             modifier = Modifier.weight(1f),
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = "${a.entityCount}",
                             style = R1.labelMicro,
@@ -175,7 +237,7 @@ private fun FloorRow(
             }
         }
         if (expanded && floor.areas.isEmpty()) {
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = "No areas assigned to this floor.",
                 style = R1.labelMicro,

@@ -26,8 +26,14 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  *     {% for floor in floors() %}
  *       floor_name(floor) → human label
+ *       floor_attr(floor, "level") → building level (number, may be null)
+ *       floor_attr(floor, "icon") → user-set mdi icon (may be null)
  *       floor_areas(floor) → list of area_ids
  *       area_entities(area_id) → entities in each constituent area
+ *
+ * HA orders floors by building [Floor.level] (basement below ground floor
+ * below upper storeys), matching the canonical frontend, so we sort on
+ * level first and fall back to name for floors that share (or omit) one.
  */
 class FloorsViewModel(
     private val haRepository: HaRepository,
@@ -35,19 +41,31 @@ class FloorsViewModel(
 
     @androidx.compose.runtime.Stable
     data class AreaInFloor(
+        /** Stable HA area_id (e.g. "kitchen"), used as the list key. */
+        val areaId: String,
         val name: String,
         val entityCount: Int,
     )
 
     @androidx.compose.runtime.Stable
     data class Floor(
+        /** Stable HA floor_id (e.g. "ground_floor"), used as the list key. */
+        val floorId: String,
         val name: String,
+        /** Building level: lower is further down. Null when unset in HA. */
+        val level: Int?,
+        /** User-set mdi icon slug (e.g. "mdi:home-floor-1"), null when unset. */
+        val icon: String?,
         val areas: List<AreaInFloor>,
     )
 
     @androidx.compose.runtime.Stable
     data class UiState(
+        /** True only on the initial load (full-screen spinner). Subsequent
+         *  pull-to-refresh passes set [refreshing] instead so the list stays
+         *  on screen rather than blanking back to the spinner. */
         val loading: Boolean = true,
+        val refreshing: Boolean = false,
         val floors: List<Floor> = emptyList(),
         val error: String? = null,
     )
@@ -57,17 +75,26 @@ class FloorsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
-            // Single template pass: for each floor, name + per-area entity
-            // count. Avoids the N+1 round trip we'd otherwise pay.
+            // First load shows the full-screen spinner; a re-fetch over an
+            // already-populated list keeps the rows on screen and drives the
+            // pull-to-refresh indicator instead.
+            val firstLoad = _ui.value.floors.isEmpty()
+            _ui.value = _ui.value.copy(
+                loading = firstLoad,
+                refreshing = !firstLoad,
+                error = null,
+            )
+            // Single template pass: for each floor, its id/name/level/icon plus
+            // each constituent area's id, name and entity count. One round trip
+            // avoids the N+1 we'd otherwise pay per floor and per area.
             val tpl = """
                 {%- set out = namespace(items=[]) -%}
                 {%- for floor in floors() -%}
                   {%- set areas_list = namespace(items=[]) -%}
                   {%- for a in floor_areas(floor) -%}
-                    {%- set _ = areas_list.items.append({"name": area_name(a), "count": area_entities(a) | length}) -%}
+                    {%- set _ = areas_list.items.append({"id": a, "name": area_name(a), "count": area_entities(a) | length}) -%}
                   {%- endfor -%}
-                  {%- set _ = out.items.append({"id": floor, "name": floor_name(floor), "areas": areas_list.items}) -%}
+                  {%- set _ = out.items.append({"id": floor, "name": floor_name(floor), "level": floor_attr(floor, "level"), "icon": floor_attr(floor, "icon"), "areas": areas_list.items}) -%}
                 {%- endfor -%}
                 {{ out.items | tojson }}
             """.trimIndent()
@@ -79,30 +106,56 @@ class FloorsViewModel(
                             ?: error("Unexpected template response shape. Not an array")
                         val list = arr.mapNotNull { el ->
                             val obj = el as? JsonObject ?: return@mapNotNull null
-                            val name = (obj["name"] as? JsonPrimitive)?.content
-                                ?: (obj["id"] as? JsonPrimitive)?.content
+                            val floorId = (obj["id"] as? JsonPrimitive)?.content
                                 ?: return@mapNotNull null
+                            val name = (obj["name"] as? JsonPrimitive)?.content ?: floorId
+                            // level/icon come back as JSON null when unset in HA;
+                            // toIntOrNull also guards a stray non-numeric level.
+                            val level = (obj["level"] as? JsonPrimitive)
+                                ?.takeUnless { it.content == "null" }
+                                ?.content?.toIntOrNull()
+                            val icon = (obj["icon"] as? JsonPrimitive)
+                                ?.content?.takeIf { it.isNotBlank() && it != "null" }
                             val areasArr = obj["areas"] as? JsonArray
                             val areas = areasArr?.mapNotNull { a ->
                                 val aObj = a as? JsonObject ?: return@mapNotNull null
-                                val aName = (aObj["name"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                                val aId = (aObj["id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                                val aName = (aObj["name"] as? JsonPrimitive)?.content ?: aId
                                 val cnt = (aObj["count"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0
-                                AreaInFloor(name = aName, entityCount = cnt)
+                                AreaInFloor(areaId = aId, name = aName, entityCount = cnt)
                             }.orEmpty()
-                            Floor(name = name, areas = areas.sortedBy { it.name.lowercase() })
-                        }.sortedBy { it.name.lowercase() }
+                            Floor(
+                                floorId = floorId,
+                                name = name,
+                                level = level,
+                                icon = icon,
+                                areas = areas.sortedBy { it.name.lowercase() },
+                            )
+                        }
+                            // Canonical HA ordering: by building level (lowest
+                            // first), floors with no level last, name as the
+                            // tie-break so the list is deterministic.
+                            .sortedWith(
+                                compareBy(
+                                    { it.level == null },
+                                    { it.level ?: 0 },
+                                    { it.name.lowercase() },
+                                ),
+                            )
                         R1Log.i("Floors", "loaded ${list.size}")
-                        _ui.value = _ui.value.copy(loading = false, floors = list, error = null)
+                        _ui.value = _ui.value.copy(
+                            loading = false, refreshing = false, floors = list, error = null,
+                        )
                     }.onFailure { t ->
                         R1Log.w("Floors", "parse failed: ${t.message}")
                         Toaster.error("Floors parse failed. Try Templates to debug")
-                        _ui.value = _ui.value.copy(loading = false, error = t.message)
+                        _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                     }
                 },
                 onFailure = { t ->
                     R1Log.w("Floors", "fetch failed: ${t.message}")
                     Toaster.error("Floors load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }
