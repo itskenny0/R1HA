@@ -85,10 +85,17 @@ class EnergyViewModel(
          *  hints in the entity_id. Conservative — only known
          *  patterns count. */
         val productionW: Double? = null,
-        /** Today's energy total in kWh — sum of every
-         *  `device_class=energy` total_increasing sensor that resets
-         *  daily. */
+        /** Today's energy total in kWh. Prefer [statsTodayKwh] (recorder
+         *  `change` summed since local midnight, exactly how HA's Energy
+         *  panel computes it); fall back to the live-template sum only when
+         *  the recorder hasn't answered yet. */
         val todayKwh: Double? = null,
+        /** Today's consumption derived from the recorder: sum of every
+         *  energy meter's per-bucket `change` since local midnight. Null
+         *  until a history fetch covering today has succeeded. This is the
+         *  authoritative TODAY figure; [todayKwh] holds the template
+         *  fallback used before the recorder answers. */
+        val statsTodayKwh: Double? = null,
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
         val error: String? = null,
@@ -230,15 +237,29 @@ class EnergyViewModel(
             ).fold(
                 onSuccess = { byId ->
                     val bars = aggregateConsumption(byId)
+                    // Sum the consumption of buckets that fall on or after
+                    // local midnight: every window we request runs up to now,
+                    // so it always contains today's buckets. This is the
+                    // recorder-accurate TODAY figure, regardless of which
+                    // window is selected. Hour buckets give it per-hour
+                    // resolution; the 30-day day-bucket view still lands on a
+                    // single bucket for the current day.
+                    val midnight = end.atZone(ZoneId.systemDefault())
+                        .toLocalDate().atStartOfDay(ZoneId.systemDefault()).toInstant()
+                    val today = bars
+                        .filter { !it.timestamp.isBefore(midnight) }
+                        .sumOf { it.kwh }
+                        .takeIf { bars.any { b -> !b.timestamp.isBefore(midnight) } }
                     R1Log.i(
                         "Energy",
                         "history window=${window.label} period=${window.period()} " +
-                            "ids=${ids.size} bars=${bars.size}",
+                            "ids=${ids.size} bars=${bars.size} todayKwh=$today",
                     )
                     _ui.value = _ui.value.copy(
                         historyLoading = false,
                         historyBars = bars,
                         historyError = null,
+                        statsTodayKwh = today ?: _ui.value.statsTodayKwh,
                     )
                 },
                 onFailure = { t ->

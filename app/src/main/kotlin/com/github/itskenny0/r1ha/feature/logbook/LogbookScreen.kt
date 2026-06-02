@@ -51,9 +51,12 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -106,7 +109,11 @@ fun LogbookScreen(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
     )
     val refreshSec = appSettings.integrations.logbookRefreshSec
-    if (refreshSec > 0) {
+    // The periodic REST refresh is suppressed while TAIL is on: the event stream
+    // already delivers new rows live, so re-polling the window would only add
+    // cost and risk blanking freshly-tailed rows mid-merge. We still need the
+    // one-shot initial fetch, hence the LaunchedEffect in both branches.
+    if (refreshSec > 0 && !ui.tail) {
         com.github.itskenny0.r1ha.ui.components.AutoRefresh(refreshSec * 1000L) { vm.refresh() }
     } else {
         androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
@@ -164,6 +171,13 @@ fun LogbookScreen(
                     tone = R1.AccentCool,
                     onClick = { vm.setTail(!ui.tail) },
                     contentDescription = "Toggle live tail",
+                    // Announce the new state when toggled, and expose on/off to
+                    // TalkBack as a switch-style stateDescription rather than
+                    // baking it into the label.
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        stateDescription = if (ui.tail) "Live tail on" else "Live tail off"
+                    },
                 )
             },
         )
@@ -180,20 +194,30 @@ fun LogbookScreen(
             onClearAll = { vm.clearFilters() },
         )
         when {
-            ui.loading -> Box(
-                modifier = Modifier.fillMaxSize(),
+            // Only take over the viewport with a spinner on the very first load
+            // (nothing to show yet). A refresh while content is on screen keeps
+            // the list visible and surfaces progress through the PullToRefreshBox
+            // indicator instead, so a periodic refresh tick can't blank the feed.
+            ui.loading && visibleEntries.isEmpty() -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading recent activity"
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .semantics { contentDescription = "Loading recent activity" },
+                    modifier = Modifier.size(22.dp),
                     strokeWidth = 2.dp,
                     color = R1.AccentWarm,
                 )
             }
             visibleEntries.isEmpty() && ui.error != null -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(R1.space.xl)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
                 contentAlignment = Alignment.Center,
             ) {
                 Text(text = ui.error!!, style = R1.body, color = R1.StatusRed)
@@ -254,13 +278,12 @@ fun LogbookScreen(
                         }
                         items(
                             items = group.entries,
-                            // Stable key: timestamp millis + entity-id + name keeps
-                            // duplicate-message rows distinct (two automations firing
-                            // at the same wall-clock second on different entities).
-                            key = {
-                                it.timestamp.toEpochMilli().toString() + "|" +
-                                    (it.entityId?.value ?: it.name)
-                            },
+                            // Stable key folding millis + entity/name + message so
+                            // two distinct events on the same entity in the same
+                            // millisecond (e.g. a state change and its context echo)
+                            // don't collide on one key and scramble the list. Shared
+                            // with the tail/REST dedupe so both agree on identity.
+                            key = { entryKey(it) },
                         ) { entry ->
                             LogbookRow(
                                 entry,

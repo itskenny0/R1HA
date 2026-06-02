@@ -137,11 +137,26 @@ class LogbookViewModel(
             haRepository.fetchLogbook(hours = window.hours).fold(
                 onSuccess = { entries ->
                     R1Log.i("Logbook", "loaded ${entries.size} entries (${window.label})")
-                    _ui.value = _ui.value.copy(
-                        loading = false,
-                        all = entries,
-                        error = null,
-                    )
+                    _ui.value = _ui.value.let { current ->
+                        // While TAIL is on the REST fetch is the authoritative
+                        // window, but events that arrived over the live stream
+                        // since the last fetch may not be in HA's response yet
+                        // (the logbook endpoint lags the event bus by a moment).
+                        // Merge rather than replace so a periodic AutoRefresh tick
+                        // can't blank freshly-tailed rows, and dedupe so an event
+                        // present in both the stream and the REST fill shows once.
+                        val merged = if (current.tail) {
+                            mergeLogbook(rest = entries, live = current.all)
+                                .take(tailBufferCap)
+                        } else {
+                            entries
+                        }
+                        current.copy(
+                            loading = false,
+                            all = merged,
+                            error = null,
+                        )
+                    }
                 },
                 onFailure = { t ->
                     R1Log.w("Logbook", "fetch failed: ${t.message}")
@@ -209,6 +224,12 @@ class LogbookViewModel(
 
     private fun startTail() {
         viewModelScope.launch {
+            // Defensive: tear down any handle left over from a prior session so a
+            // double-start (rapid toggle) can't strand the earlier subscription.
+            tailSubscription?.let { stale ->
+                tailSubscription = null
+                runCatching { stale.cancel() }
+            }
             haRepository.subscribeEvents("logbook_entry") { eventObj ->
                 // logbook_entry events look like {data: {name, message, entity_id,
                 // domain, state}, time_fired: ISO, ...}. parseHaInstant tolerates
@@ -233,16 +254,44 @@ class LogbookViewModel(
                     name = name,
                     message = message,
                     entityId = entityId,
-                    domain = str("domain"),
+                    domain = str("domain") ?: entityIdRaw?.substringBefore('.'),
                     state = str("state"),
+                    // Best-effort context attribution to match the REST fill. The
+                    // bare logbook_entry event bus payload usually omits these
+                    // resolved fields, so they're commonly null on a tailed row;
+                    // we still read them so any HA build that does emit them gets
+                    // the same "triggered by" line as a refreshed row.
+                    contextUserId = str("context_user_id"),
+                    contextEntityId = str("context_entity_id"),
+                    contextName = str("context_entity_id_name") ?: str("context_name"),
                 )
                 _ui.value = _ui.value.let { current ->
-                    current.copy(all = (listOf(entry) + current.all).take(tailBufferCap))
+                    // Drop the event if an identical one is already buffered: HA
+                    // can echo a logbook_entry that the REST fill also carried,
+                    // and a flaky WS can redeliver on reconnect. Otherwise splice
+                    // it in by timestamp so the newest-first invariant the day
+                    // grouping and list keys rely on holds even when HA delivers
+                    // an event slightly out of order (clock skew, batched flush).
+                    if (current.all.any { sameLogbookEvent(it, entry) }) {
+                        current
+                    } else {
+                        current.copy(all = insertNewestFirst(current.all, entry).take(tailBufferCap))
+                    }
                 }
             }.fold(
                 onSuccess = { sub ->
-                    tailSubscription = sub
-                    R1Log.i("Logbook.tail", "subscribe registered")
+                    // subscribeEvents suspends, so the user may have toggled TAIL
+                    // back off (or onCleared may have fired) while it was in
+                    // flight. If so, the subscription we just got is orphaned:
+                    // cancel it now instead of stashing a handle nothing will tear
+                    // down, which would leak the WS until process death.
+                    if (_ui.value.tail) {
+                        tailSubscription = sub
+                        R1Log.i("Logbook.tail", "subscribe registered")
+                    } else {
+                        R1Log.i("Logbook.tail", "subscribe resolved after toggle-off; cancelling")
+                        runCatching { sub.cancel() }
+                    }
                 },
                 onFailure = { t ->
                     R1Log.w("Logbook.tail", "subscribe failed: ${t.message}")

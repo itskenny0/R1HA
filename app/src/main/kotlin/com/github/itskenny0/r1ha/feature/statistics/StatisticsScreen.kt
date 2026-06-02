@@ -41,6 +41,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
@@ -123,7 +125,12 @@ fun StatisticsScreen(
                         NoPlottablePanel()
                     } else {
                         WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
-                        PeriodChips(current = ui.period, onSelect = { vm.setPeriod(it) })
+                        PeriodChips(
+                            current = ui.period,
+                            window = ui.window,
+                            isAllowed = { p -> vm.periodAllowedFor(p, ui.window) },
+                            onSelect = { vm.setPeriod(it) },
+                        )
                         AggregationChips(
                             current = ui.aggregation,
                             supported = vm.supportedAggregations(ui),
@@ -246,6 +253,8 @@ private fun WindowChips(
 @Composable
 private fun PeriodChips(
     current: StatisticsViewModel.Period,
+    window: StatisticsViewModel.Window,
+    isAllowed: (StatisticsViewModel.Period) -> Boolean,
     onSelect: (StatisticsViewModel.Period) -> Unit,
 ) {
     Row(
@@ -253,12 +262,20 @@ private fun PeriodChips(
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Period.entries.forEach { p ->
+            // 5-minute buckets are only retained for short windows; gate the
+            // chip rather than fire a fetch that HA returns empty for. Null
+            // onClick reads as inert, matching the aggregation chip row.
+            val allowed = isAllowed(p)
             R1Chip(
                 text = p.label,
                 variant = R1ChipVariant.Filter,
-                selected = p == current,
-                onClick = { onSelect(p) },
-                contentDescription = "Period ${p.label}",
+                selected = p == current && allowed,
+                onClick = if (allowed) ({ onSelect(p) }) else null,
+                contentDescription = if (allowed) {
+                    "Period ${p.label}"
+                } else {
+                    "Period ${p.label}, unavailable for ${window.label} window"
+                },
             )
         }
     }
@@ -400,6 +417,16 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
         // hold reveals the precise bucket value; release clears it. Same
         // affordance HistoryChartPanel offers.
         val scrubIdx = remember(proj) { mutableStateOf<Int?>(null) }
+        // The Canvas is opaque to a screen reader; spell the trend out so it
+        // still carries meaning. Built once per projection from the plotted
+        // span and range rather than per frame.
+        val unitSpoken = unit?.let { " $it" } ?: ""
+        val chartDescription = remember(proj, ui.aggregation) {
+            "${ui.aggregation.label} trend, ${points.size} buckets, " +
+                "from ${formatNum(points.first().value)}$unitSpoken at ${fmt.format(tStart)} " +
+                "to ${formatNum(points.last().value)}$unitSpoken at ${fmt.format(tEnd)}, " +
+                "range ${formatNum(yMin)}$unitSpoken to ${formatNum(yMax)}$unitSpoken"
+        }
         Row {
             Column(modifier = Modifier.weight(1f)) {
                 Canvas(
@@ -408,6 +435,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                         .height(180.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(R1.Surface)
+                        .semantics { contentDescription = chartDescription }
                         .padding(horizontal = 6.dp, vertical = 6.dp)
                         .pointerInput(proj) {
                             val canvasW = size.width.toFloat()

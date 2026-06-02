@@ -48,6 +48,7 @@ class StatisticsViewModel(
      *  `statistics_during_period` accepts; coarser periods keep long
      *  windows readable, finer periods zoom into a recent window. */
     enum class Period(val label: String, val wire: String, val approxSeconds: Long) {
+        FIVE_MIN("5MIN", "5minute", 300L),
         HOUR("HOUR", "hour", 3600L),
         DAY("DAY", "day", 86_400L),
         WEEK("WEEK", "week", 7L * 86_400L),
@@ -179,7 +180,13 @@ class StatisticsViewModel(
 
     fun setWindow(window: Window) {
         if (_ui.value.window == window) return
-        _ui.value = _ui.value.copy(window = window)
+        // The recorder only retains 5-minute statistics for a short span (HA's
+        // own UI never offers it beyond a recent window), so a 5MIN bucket over
+        // 30/90 days would ask for tens of thousands of empty buckets. Snap the
+        // period coarser when the user widens the window past where 5MIN is
+        // useful, mirroring HA's period gating.
+        val period = clampPeriodToWindow(_ui.value.period, window)
+        _ui.value = _ui.value.copy(window = window, period = period)
         refreshSeries()
     }
 
@@ -188,6 +195,15 @@ class StatisticsViewModel(
         _ui.value = _ui.value.copy(period = period)
         refreshSeries()
     }
+
+    /** Whether a [period] is sensible for a [window]: 5-minute buckets are only
+     *  offered for windows of a week or less, matching HA's recorder retention
+     *  and its own period picker. */
+    fun periodAllowedFor(period: Period, window: Window): Boolean =
+        period != Period.FIVE_MIN || window.hours <= Window.D7.hours
+
+    private fun clampPeriodToWindow(period: Period, window: Window): Period =
+        if (periodAllowedFor(period, window)) period else Period.HOUR
 
     fun setAggregation(aggregation: Aggregation) {
         if (_ui.value.aggregation == aggregation) return
@@ -257,7 +273,7 @@ class StatisticsViewModel(
 
     fun windowSummary(state: UiState = _ui.value): WindowSummary =
         windowSummary(
-            kind = classify(state.selected),
+            kind = summaryKind(state.selected, state.aggregation),
             buckets = state.buckets,
             points = seriesPoints(state),
         )
@@ -284,6 +300,28 @@ fun classify(id: StatisticId?): StatisticsViewModel.StatKind = when {
     id.hasMean -> StatisticsViewModel.StatKind.MEASUREMENT
     id.hasSum -> StatisticsViewModel.StatKind.METERED
     else -> StatisticsViewModel.StatKind.NONE
+}
+
+/** Effective summary kind for the headline rows: a statistic that carries
+ *  both a mean and a sum (e.g. a power sensor that also totals energy) is
+ *  classified MEASUREMENT for its default chart, but while the user views a
+ *  cumulative SUM or per-bucket CHANGE series the measurement headline (avg /
+ *  min / max of a cumulative reading) is meaningless. Treat the summary as
+ *  METERED in that case so it shows total / per-bucket / peak instead. The
+ *  per-statistic columns still gate which aggregation chips exist, so a
+ *  pure-measurement series can never reach this branch. */
+fun summaryKind(
+    id: StatisticId?,
+    aggregation: StatisticsViewModel.Aggregation,
+): StatisticsViewModel.StatKind {
+    val base = classify(id)
+    val viewingSumSeries = aggregation == StatisticsViewModel.Aggregation.SUM ||
+        aggregation == StatisticsViewModel.Aggregation.CHANGE
+    return if (base == StatisticsViewModel.StatKind.MEASUREMENT && viewingSumSeries) {
+        StatisticsViewModel.StatKind.METERED
+    } else {
+        base
+    }
 }
 
 /** Which aggregation chips a statistic supports, derived from its
@@ -352,23 +390,37 @@ fun windowTotal(buckets: List<StatisticsBucket>): Double? {
     return if (any) sum else null
 }
 
-/** Build the type-aware window summary. Metered statistics headline the
- *  window total (consumption); measurement statistics headline avg with
- *  min/max of the plotted series. */
+/** Build the type-aware window summary. Measurement statistics headline avg
+ *  with min/max of the plotted series. Metered statistics headline the window
+ *  total (consumption) with per-bucket and peak consumption derived from the
+ *  recorder's per-bucket `change`, not the plotted column: when the user is
+ *  viewing the cumulative SUM series, the min/max/avg of those ever-growing
+ *  readings would be meaningless, whereas the consumption stays correct. */
 fun windowSummary(
     kind: StatisticsViewModel.StatKind,
     buckets: List<StatisticsBucket>,
     points: List<StatisticsViewModel.TimedValue>,
 ): StatisticsViewModel.WindowSummary {
+    if (kind == StatisticsViewModel.StatKind.METERED) {
+        val changes = buckets.mapNotNull { it.change?.takeIf { c -> c.isFinite() } }
+        return StatisticsViewModel.WindowSummary(
+            kind = kind,
+            current = points.lastOrNull()?.value,
+            min = changes.minOrNull(),
+            max = changes.maxOrNull(),
+            avg = if (changes.isNotEmpty()) changes.sum() / changes.size else null,
+            total = if (changes.isNotEmpty()) changes.sum() else null,
+            count = points.size,
+        )
+    }
     val values = points.map { it.value }
-    val total = if (kind == StatisticsViewModel.StatKind.METERED) windowTotal(buckets) else null
     return StatisticsViewModel.WindowSummary(
         kind = kind,
         current = values.lastOrNull(),
         min = values.minOrNull(),
         max = values.maxOrNull(),
         avg = if (values.isNotEmpty()) values.sum() / values.size else null,
-        total = total,
+        total = null,
         count = points.size,
     )
 }

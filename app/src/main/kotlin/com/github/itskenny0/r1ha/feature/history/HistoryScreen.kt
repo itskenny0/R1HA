@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -304,15 +305,25 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             buildMultiProjection(ui.series)
         }
         if (multi == null) {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(180.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (ui.isOverlay) "NO NUMERIC HISTORY YET" else "NOT ENOUGH HISTORY YET",
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
+            // No numeric line to draw. For a single non-numeric entity (the
+            // common drill-in: a binary_sensor, person, climate mode, text
+            // sensor), fall back to HA's state-timeline rendering instead of
+            // an empty message. Overlays stay numeric-only (a shared line
+            // chart can't host categorical states), so they keep the prompt.
+            val primaryPoints = ui.primary?.points.orEmpty()
+            if (!ui.isOverlay && isCategoricalHistory(primaryPoints) && primaryPoints.isNotEmpty()) {
+                StateTimelinePanel(name = ui.displayName, points = primaryPoints)
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = if (ui.isOverlay) "NO NUMERIC HISTORY YET" else "NOT ENOUGH HISTORY YET",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
             }
             return@Column
         }
@@ -502,6 +513,143 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
 }
 
 /**
+ * State-timeline rendering for a non-numeric entity: HA's categorical history
+ * view. Draws one coloured horizontal band per run of identical consecutive
+ * states across the window, with axis time labels and a press-to-read scrub
+ * that names the state under the guide. A swatch legend below maps each colour
+ * to its state. This is what makes the History surface complete for the many
+ * entities (binary_sensor, person, climate mode, text sensors) that have no
+ * line to plot.
+ */
+@Composable
+private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
+    val timeline = androidx.compose.runtime.remember(points) { buildTimelineProjection(points) }
+    if (timeline == null) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(180.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "NO HISTORY YET", style = R1.labelMicro, color = R1.InkMuted)
+        }
+        return
+    }
+    // Stable colour slot per distinct state, by first-seen order.
+    val colorOf = androidx.compose.runtime.remember(timeline) {
+        timeline.distinctStates.withIndex().associate { (slot, st) ->
+            st to timelineStateColor(st, slot)
+        }
+    }
+    val zone = ZoneId.systemDefault()
+    val span = Duration.between(timeline.tStart, timeline.tEnd).toMillis()
+    val fmt = if (span < Duration.ofHours(36).toMillis()) {
+        DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+    } else {
+        DateTimeFormatter.ofPattern("d MMM").withZone(zone)
+    }
+    val scrubX = androidx.compose.runtime.remember(timeline) {
+        androidx.compose.runtime.mutableStateOf<Float?>(null)
+    }
+    val chartDescription = buildTimelineContentDescription(name, timeline)
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(R1.space.xxl + R1.space.l)
+            .clip(R1.ShapeS)
+            .background(R1.Surface)
+            .semantics { contentDescription = chartDescription }
+            .pointerInput(timeline) {
+                val canvasW = size.width.toFloat()
+                detectTapGestures(
+                    onPress = { pressOffset ->
+                        scrubX.value = (pressOffset.x / canvasW).coerceIn(0f, 1f)
+                        tryAwaitRelease()
+                        scrubX.value = null
+                    },
+                )
+            },
+    ) {
+        val w = size.width
+        val h = size.height
+        for (seg in timeline.segments) {
+            val x0 = seg.startFrac * w
+            val x1 = seg.endFrac * w
+            drawRect(
+                color = colorOf[seg.state] ?: R1.AccentNeutral,
+                topLeft = Offset(x0, 0f),
+                size = androidx.compose.ui.geometry.Size((x1 - x0).coerceAtLeast(1f), h),
+            )
+        }
+        val frac = scrubX.value
+        if (frac != null) {
+            drawLine(
+                color = R1.Ink,
+                start = Offset(frac * w, 0f),
+                end = Offset(frac * w, h),
+                strokeWidth = 1f,
+            )
+        }
+    }
+    Spacer(Modifier.height(R1.space.xs))
+    val frac = scrubX.value
+    if (frac != null) {
+        val seg = timeline.segments.firstOrNull { frac >= it.startFrac && frac <= it.endFrac }
+            ?: timeline.segments.lastOrNull()
+        val scrubTime = Instant.ofEpochMilli(
+            timeline.tStart.toEpochMilli() + (frac.toDouble() * span).toLong(),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = fmt.format(scrubTime),
+                style = R1.labelMicro,
+                color = R1.Ink,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = seg?.state?.let { formatStateLabel(it) } ?: "n/a",
+                style = R1.labelMicro,
+                color = seg?.let { colorOf[it.state] } ?: R1.InkSoft,
+            )
+        }
+    } else {
+        Row {
+            Text(
+                text = fmt.format(timeline.tStart),
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            Text(text = fmt.format(timeline.tEnd), style = R1.labelMicro, color = R1.InkSoft)
+        }
+    }
+    // State legend: swatch + label per distinct state, so colours are named.
+    Spacer(Modifier.height(R1.space.s))
+    timeline.distinctStates.forEach { st ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .padding(top = R1.space.xxs)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "State ${formatStateLabel(st)}"
+                },
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(end = R1.space.s)
+                    .size(R1.space.m)
+                    .clip(R1.ShapeS)
+                    .background(colorOf[st] ?: R1.AccentNeutral),
+            )
+            Text(
+                text = formatStateLabel(st),
+                style = R1.body,
+                color = R1.Ink,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
  * Legend + overlay management. Lists every loaded series with its accent
  * swatch, friendly name, and per-series min..max (the absolute scale the
  * chart's shared 0..1 axis hides). The primary entity (index 0) can't be
@@ -637,29 +785,52 @@ private fun SummaryPanel(ui: HistoryViewModel.UiState) {
         val pmin = ui.min
         val pmax = ui.max
         val pavg = ui.avg
+        val points = ui.points
+        val categorical = isCategoricalHistory(points) && points.isNotEmpty()
         SummaryRow(
             label = "CURRENT",
-            value = ui.current?.let { "$it${unit?.let { u -> " $u" } ?: ""}" } ?: "—",
+            value = ui.current?.let {
+                if (categorical) formatStateLabel(it)
+                else "$it${unit?.let { u -> " $u" } ?: ""}"
+            } ?: "—",
             accent = R1.Ink,
         )
-        if (pmin != null) SummaryRow(
-            label = "MIN",
-            value = "${formatNum(pmin)}${unit?.let { " $it" } ?: ""}",
-            accent = R1.AccentCool,
-        )
-        if (pmax != null) SummaryRow(
-            label = "MAX",
-            value = "${formatNum(pmax)}${unit?.let { " $it" } ?: ""}",
-            accent = R1.AccentWarm,
-        )
-        if (pavg != null) SummaryRow(
-            label = "AVG",
-            value = "${formatNum(pavg)}${unit?.let { " $it" } ?: ""}",
-            accent = R1.AccentNeutral,
-        )
+        if (categorical) {
+            // Non-numeric entity: min/max/avg are meaningless. Report the
+            // categorical equivalents HA's timeline conveys: how many state
+            // changes happened and how many distinct states were seen.
+            val timeline = remember(points) { buildTimelineProjection(points) }
+            val changes = (timeline?.segments?.size ?: 1) - 1
+            SummaryRow(
+                label = "CHANGES",
+                value = "${changes.coerceAtLeast(0)}",
+                accent = R1.AccentWarm,
+            )
+            SummaryRow(
+                label = "STATES",
+                value = "${timeline?.distinctStates?.size ?: 0}",
+                accent = R1.AccentCool,
+            )
+        } else {
+            if (pmin != null) SummaryRow(
+                label = "MIN",
+                value = "${formatNum(pmin)}${unit?.let { " $it" } ?: ""}",
+                accent = R1.AccentCool,
+            )
+            if (pmax != null) SummaryRow(
+                label = "MAX",
+                value = "${formatNum(pmax)}${unit?.let { " $it" } ?: ""}",
+                accent = R1.AccentWarm,
+            )
+            if (pavg != null) SummaryRow(
+                label = "AVG",
+                value = "${formatNum(pavg)}${unit?.let { " $it" } ?: ""}",
+                accent = R1.AccentNeutral,
+            )
+        }
         SummaryRow(
             label = "SAMPLES",
-            value = "${ui.points.size}",
+            value = "${points.size}",
             accent = R1.InkSoft,
         )
     }
@@ -686,7 +857,12 @@ private fun RewindPanel(ui: HistoryViewModel.UiState) {
         "6 HR" to 6L * 3600,
         "24 HR" to 24L * 3600,
     )
-    val windowSeconds = java.time.Duration.between(points.first().timestamp, points.last().timestamp).seconds
+    // Gate offsets on the SELECTED window, not the span between the first and
+    // last sample. A sensor whose value rarely changes can have its last point
+    // hours stale; deriving the window from the data then wrongly hides valid
+    // rewind rows (e.g. "6 HR ago" on a 24 h window). The loaded data always
+    // covers the selected window, so that's the correct bound.
+    val windowSeconds = ui.window.hours.toLong() * 3600L
     val applicable = candidateOffsets.filter { it.second <= windowSeconds }
     if (applicable.isEmpty()) return
     Column(
@@ -714,7 +890,7 @@ private fun RewindPanel(ui: HistoryViewModel.UiState) {
                 ?: points.first()
             val unit = ui.unit?.let { " $it" } ?: ""
             val displayValue = prior.numeric?.let { formatNum(it) + unit }
-                ?: prior.state.takeIf { it.isNotBlank() }
+                ?: prior.state.takeIf { it.isNotBlank() }?.let { formatStateLabel(it) }
                 ?: "—"
             SummaryRow(label = label, value = displayValue, accent = R1.InkSoft)
         }
@@ -889,13 +1065,17 @@ internal fun buildMultiProjection(series: List<HistoryViewModel.Series>): MultiP
         val ys = numeric.map { it.second }
         val yMin0 = ys.min()
         val yMax0 = ys.max()
-        val yRange0 = (yMax0 - yMin0).takeIf { it > 1e-9 } ?: 1.0
+        // A flat series (min == max) has no vertical range to normalize against.
+        // Center it at mid-height instead of pinning it to the bottom edge, which
+        // is how HA draws a constant value: a line through the middle of the band.
+        val flat = (yMax0 - yMin0) <= 1e-9
+        val yRange0 = if (flat) 1.0 else (yMax0 - yMin0)
         val xs = FloatArray(numeric.size)
         val ysn = FloatArray(numeric.size)
         for (i in numeric.indices) {
             val (ts, v) = numeric[i]
             xs[i] = Duration.between(tStart, ts).toMillis().toFloat() / tSpan
-            ysn[i] = 1f - (((v - yMin0) / yRange0).toFloat())
+            ysn[i] = if (flat) 0.5f else 1f - (((v - yMin0) / yRange0).toFloat())
         }
         SeriesProjection(
             colorIndex = s.colorIndex,
@@ -925,6 +1105,134 @@ internal fun nearestIndex(xsNorm: FloatArray, frac: Float): Int {
         }
     }
     return bestI
+}
+
+// ---------------------------------------------------------------------------
+// Categorical / state-timeline projection. HA renders non-numeric entities
+// (binary_sensor, person, climate hvac_action, text sensors, ...) not as a
+// line but as a timeline of coloured segments: one band per run of identical
+// consecutive states, deduped the way state-history-chart-timeline.ts does.
+// The numeric line chart can't represent these, so the History surface needs
+// its own segment renderer to be complete versus Lovelace.
+// ---------------------------------------------------------------------------
+
+/** One coloured run on the state timeline: a state that held from [start] to
+ *  [end] of the shared window, expressed as [0..1] fractions of the span. */
+internal data class TimelineSegment(
+    val state: String,
+    val startFrac: Float,
+    val endFrac: Float,
+    val start: Instant,
+    val end: Instant,
+)
+
+/** A built state timeline: the deduped segments plus the distinct states in
+ *  first-seen order, so the legend assigns each a stable colour slot. */
+internal data class TimelineProjection(
+    val segments: List<TimelineSegment>,
+    val distinctStates: List<String>,
+    val tStart: Instant,
+    val tEnd: Instant,
+)
+
+/**
+ * Build a state timeline from raw history points. Collapses runs of identical
+ * consecutive states into a single segment (matching HA's dedup) and projects
+ * each onto a [0..1] fraction of the window. The final segment runs to the
+ * last sample's timestamp. Returns null when there's nothing to draw (fewer
+ * than one state, or a zero-width window).
+ */
+internal fun buildTimelineProjection(points: List<HistoryPoint>): TimelineProjection? {
+    if (points.isEmpty()) return null
+    val sorted = points.sortedBy { it.timestamp }
+    val tStart = sorted.first().timestamp
+    val tEnd = sorted.last().timestamp
+    val spanMs = Duration.between(tStart, tEnd).toMillis()
+    if (spanMs <= 0L) {
+        // Single instant of history: render one full-width band so the user
+        // still sees the current state rather than an empty chart.
+        val only = sorted.first().state
+        return TimelineProjection(
+            segments = listOf(TimelineSegment(only, 0f, 1f, tStart, tEnd)),
+            distinctStates = listOf(only),
+            tStart = tStart,
+            tEnd = tEnd,
+        )
+    }
+    // Collapse consecutive duplicates into runs.
+    data class Run(val state: String, val start: Instant)
+    val runs = ArrayList<Run>()
+    for (p in sorted) {
+        if (runs.isEmpty() || runs.last().state != p.state) {
+            runs.add(Run(p.state, p.timestamp))
+        }
+    }
+    val segments = runs.mapIndexed { i, run ->
+        val end = if (i + 1 < runs.size) runs[i + 1].start else tEnd
+        TimelineSegment(
+            state = run.state,
+            startFrac = Duration.between(tStart, run.start).toMillis().toFloat() / spanMs,
+            endFrac = Duration.between(tStart, end).toMillis().toFloat() / spanMs,
+            start = run.start,
+            end = end,
+        )
+    }
+    val distinct = runs.map { it.state }.distinct()
+    return TimelineProjection(segments, distinct, tStart, tEnd)
+}
+
+/** True when the primary entity has no chartable numeric history but does have
+ *  state changes worth showing as a timeline. Drives the numeric-line vs
+ *  state-timeline fork. */
+internal fun isCategoricalHistory(points: List<HistoryPoint>): Boolean {
+    if (points.isEmpty()) return false
+    val numericCount = points.count { it.numeric != null }
+    // Two-plus numeric samples is enough for a line; otherwise treat as
+    // categorical so a mostly-text entity still gets a timeline.
+    return numericCount < 2
+}
+
+/** Human-readable spoken label for the state timeline, for the Canvas
+ *  contentDescription. Names the current state, how many changes occurred,
+ *  and the distinct states seen. Pure for unit testing. */
+internal fun buildTimelineContentDescription(
+    name: String,
+    timeline: TimelineProjection?,
+): String {
+    if (timeline == null || timeline.segments.isEmpty()) {
+        return "State timeline for $name with no history to display."
+    }
+    val current = formatStateLabel(timeline.segments.last().state)
+    val changes = timeline.segments.size - 1
+    val changesPart = when {
+        changes <= 0 -> "no changes"
+        changes == 1 -> "1 change"
+        else -> "$changes changes"
+    }
+    val states = timeline.distinctStates.joinToString(separator = ", ") { formatStateLabel(it) }
+    return "State timeline for $name. Currently $current, $changesPart in window. States seen: $states."
+}
+
+/** Title-case a raw HA state token for display: snake_case to Title Case,
+ *  with the common unavailable / unknown tokens spelled out. */
+internal fun formatStateLabel(raw: String): String = when (raw) {
+    "unavailable" -> "Unavailable"
+    "unknown" -> "Unknown"
+    "" -> "Empty"
+    else -> raw.split('_').joinToString(" ") { word ->
+        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.US) else it.toString() }
+    }
+}
+
+/** Stable colour for a distinct state, indexed by its slot in the distinct-
+ *  state list. Reuses the series accent palette but with semantic overrides
+ *  for the on/off/unavailable/unknown tokens the way HA's timeline colours do. */
+internal fun timelineStateColor(state: String, slot: Int): Color = when (state) {
+    "unavailable" -> R1.InkMuted
+    "unknown" -> R1.Hairline
+    "on", "open", "home", "active", "detected", "wet", "motion" -> R1.AccentGreen
+    "off", "closed", "away", "idle", "clear", "dry" -> R1.AccentNeutral
+    else -> SERIES_COLORS.getOrElse(slot % SERIES_COLORS.size) { R1.AccentNeutral }
 }
 
 /** True for entities worth overlaying on a numeric chart: sensors / numbers /

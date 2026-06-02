@@ -121,6 +121,77 @@ fun triggeredByLabel(entry: LogbookEntry): String? {
     return null
 }
 
+/**
+ * Stable identity for a logbook row, used both as the LazyColumn item key and as
+ * the dedupe key when the live tail stream and the REST window fill overlap.
+ *
+ * HA does not expose a stable per-entry id on the [LogbookEntry] we model
+ * (`context_id` isn't carried through), so we synthesise one from the fields
+ * that make a row unique: the event millis, the entity (or name when there's no
+ * entity), and the message. Folding the message in keeps two distinct events on
+ * the same entity in the same millisecond (e.g. a state change and the context
+ * echo that triggered it) from colliding on one key, which would crash the list
+ * or scramble its scroll position.
+ */
+fun entryKey(entry: LogbookEntry): String =
+    buildString {
+        append(entry.timestamp.toEpochMilli())
+        append('|')
+        append(entry.entityId?.value ?: entry.name)
+        append('|')
+        append(entry.message)
+    }
+
+/**
+ * Whether two entries describe the same logbook event. Used to dedupe an event
+ * that arrives over both the live tail stream and the next REST window fill.
+ * Compares the same dimensions [entryKey] folds in, plus the resulting state, so
+ * the comparison is exact rather than relying on key-string assembly.
+ */
+fun sameLogbookEvent(a: LogbookEntry, b: LogbookEntry): Boolean =
+    a.timestamp == b.timestamp &&
+        a.name == b.name &&
+        a.message == b.message &&
+        a.entityId?.value == b.entityId?.value &&
+        a.state == b.state
+
+/**
+ * Splice [entry] into an assumed newest-first [list] so the descending-timestamp
+ * invariant holds even when HA delivers a live event slightly out of order. The
+ * common case (the event is the newest) is an O(1) prepend; an older event walks
+ * to its slot. Does not dedupe: the caller checks [sameLogbookEvent] first.
+ */
+fun insertNewestFirst(list: List<LogbookEntry>, entry: LogbookEntry): List<LogbookEntry> {
+    if (list.isEmpty() || !entry.timestamp.isBefore(list.first().timestamp)) {
+        return listOf(entry) + list
+    }
+    val out = ArrayList<LogbookEntry>(list.size + 1)
+    var inserted = false
+    for (e in list) {
+        if (!inserted && entry.timestamp.isAfter(e.timestamp)) {
+            out.add(entry)
+            inserted = true
+        }
+        out.add(e)
+    }
+    if (!inserted) out.add(entry)
+    return out
+}
+
+/**
+ * Merge the authoritative [rest] window fetch with the [live]-tailed buffer,
+ * newest-first and de-duplicated. Live events that the REST fill hasn't picked
+ * up yet (the logbook endpoint lags the event bus) are folded in so a periodic
+ * refresh can't blank them; events present in both appear once. [rest] wins on a
+ * tie since it's the canonical record.
+ */
+fun mergeLogbook(rest: List<LogbookEntry>, live: List<LogbookEntry>): List<LogbookEntry> {
+    if (live.isEmpty()) return rest
+    val extras = live.filterNot { l -> rest.any { r -> sameLogbookEvent(r, l) } }
+    if (extras.isEmpty()) return rest
+    return (rest + extras).sortedByDescending { it.timestamp }
+}
+
 /** A run of logbook rows sharing a relative-day header. */
 data class LogbookDayGroup(
     val header: String,

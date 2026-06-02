@@ -159,11 +159,15 @@ fun EnergyScreen(
                     )
                 }
                 // ── TODAY (kWh) row ────────────────────────────────────
+                // Prefer the recorder-derived today total (HA-accurate sum of
+                // per-bucket consumption since midnight); fall back to the
+                // live-template sum until the first history fetch lands.
+                val today = ui.statsTodayKwh ?: ui.todayKwh
                 BigStatTile(
                     modifier = Modifier.fillMaxWidth(),
                     label = "TODAY",
-                    value = ui.todayKwh?.let { "${"%.2f".format(java.util.Locale.US, it)} kWh" } ?: NO_VALUE,
-                    accent = if ((ui.todayKwh ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
+                    value = today?.let { formatKwh(it) } ?: NO_VALUE,
+                    accent = if ((today ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
                 )
                 // ── CONSUMPTION HISTORY ────────────────────────────────
                 EnergyHistorySection(

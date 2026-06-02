@@ -54,7 +54,6 @@ internal object EnergyShareSnapshot {
         val tsPaint = paint(INK_MUTED, 28f, Typeface.DEFAULT)
         val labelPaint = paint(INK_MUTED, 30f, Typeface.DEFAULT_BOLD)
         val bigPaint = paint(INK, 84f, Typeface.DEFAULT_BOLD)
-        val unitPaint = paint(INK_MUTED, 30f, Typeface.DEFAULT)
         val rowPaint = paint(INK, 34f, Typeface.DEFAULT)
         val rowMutedPaint = paint(INK_MUTED, 30f, Typeface.DEFAULT)
         val hairlinePaint = Paint().apply {
@@ -73,7 +72,10 @@ internal object EnergyShareSnapshot {
         canvas.drawLine(PADDING, y, SIZE - PADDING, y, hairlinePaint)
         y += 72f
 
-        // DRAW (left) + PRODUCTION (right) paired row.
+        // DRAW (left) + PRODUCTION (right) paired row. The values already
+        // carry their unit (W or kW) so the share image matches the in-app
+        // tiles exactly, including PRODUCTION, which previously rendered as a
+        // bare number with no unit.
         val halfWidth = (SIZE - PADDING * 2) / 2
         canvas.drawText("DRAW", PADDING, y, labelPaint)
         canvas.drawText("PRODUCTION", PADDING + halfWidth, y, labelPaint)
@@ -82,19 +84,14 @@ internal object EnergyShareSnapshot {
         canvas.drawText(formatW(state.productionW), PADDING + halfWidth, y, bigPaint.apply { color = ACCENT_COOL })
         // Reset bigPaint colour for downstream uses (it'd otherwise stay cool).
         bigPaint.color = INK
-        y += 30f
-        canvas.drawText("W", PADDING + textWidth(formatW(state.currentDrawW), bigPaint) + 16f, y, unitPaint)
         y += 70f
 
-        // TODAY kWh — single row.
+        // TODAY kWh — single row. Prefer the recorder-derived figure so the
+        // share image carries the same authoritative TODAY total as the tile.
+        val today = state.statsTodayKwh ?: state.todayKwh
         canvas.drawText("TODAY", PADDING, y, labelPaint)
         y += 80f
-        canvas.drawText(formatKwh(state.todayKwh), PADDING, y, bigPaint)
-        canvas.drawText(
-            "kWh",
-            PADDING + textWidth(formatKwh(state.todayKwh), bigPaint) + 16f,
-            y, unitPaint,
-        )
+        canvas.drawText(formatKwh(today), PADDING, y, bigPaint)
         y += 70f
         canvas.drawLine(PADDING, y, SIZE - PADDING, y, hairlinePaint)
         y += 72f
@@ -107,7 +104,7 @@ internal object EnergyShareSnapshot {
             canvas.drawText("(no power sensors)", PADDING, y, rowMutedPaint)
         } else {
             for (row in rows) {
-                val w = String.format(FMT, "%.0f W", row.watts)
+                val w = formatW(row.watts)
                 canvas.drawText(row.name.take(28), PADDING, y, rowPaint)
                 val wWidth = textWidth(w, rowPaint)
                 canvas.drawText(w, SIZE - PADDING - wWidth, y, rowPaint.apply { color = ACCENT_WARM })
@@ -171,9 +168,19 @@ internal object EnergyShareSnapshot {
     // UI; preserving its number formatting keeps the artefact consistent.
     private val FMT = java.util.Locale.US
 
-    private fun formatW(w: Double?): String =
-        if (w == null) "—" else String.format(FMT, "%.0f", w)
+    // Match EnergyScreen.formatWatts / formatKwh so the snapshot reads the
+    // same as the live tiles: W up to ~999, kW above; sub-10 kWh keeps two
+    // decimals, larger one. "n/a" rather than an em-dash keeps the artefact
+    // em-dash-free and screen-reader friendly.
+    private fun formatW(w: Double?): String = when {
+        w == null -> "n/a"
+        kotlin.math.abs(w) >= 1000 -> String.format(FMT, "%.1f kW", w / 1000.0)
+        else -> String.format(FMT, "%.0f W", w)
+    }
 
-    private fun formatKwh(k: Double?): String =
-        if (k == null) "—" else String.format(FMT, "%.2f", k)
+    private fun formatKwh(k: Double?): String = when {
+        k == null -> "n/a"
+        kotlin.math.abs(k) < 10 -> String.format(FMT, "%.2f kWh", k)
+        else -> String.format(FMT, "%.1f kWh", k)
+    }
 }
