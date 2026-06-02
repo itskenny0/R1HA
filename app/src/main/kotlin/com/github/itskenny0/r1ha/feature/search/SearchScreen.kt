@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.Domain
@@ -88,6 +91,7 @@ fun SearchScreen(
     val results by vm.results.collectAsState()
     val listState = rememberLazyListState()
     val focus = remember { FocusRequester() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     // Active-page favourites set — used to swap the star glyph for
@@ -172,6 +176,14 @@ fun SearchScreen(
                     placeholder = "kitchen light, scene, .door, ...",
                     monospace = false,
                     focusRequester = focus,
+                    // Search-flavoured IME: the action key reads "Search" and dismisses the
+                    // keyboard rather than inserting a newline, so the user can review the
+                    // already-live result list without the IME covering it.
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    // Spoken label for the field itself: without it TalkBack falls back to
+                    // reading the placeholder, which disappears once the user types.
+                    modifier = Modifier.semantics { contentDescription = "Search entities" },
                 )
             }
             if (ui.query.isNotEmpty()) {
@@ -182,7 +194,14 @@ fun SearchScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .r1Pressable(
-                            onClick = { vm.setQuery("") },
+                            onClick = {
+                                vm.setQuery("")
+                                // R1TextField treats its local text as the source of truth
+                                // while focused, so an upstream reset to "" won't repaint the
+                                // field until it loses focus. Drop focus here so the cleared
+                                // value actually shows (and the keyboard retracts).
+                                focusManager.clearFocus()
+                            },
                             contentDescription = "Clear search",
                         ),
                     contentAlignment = Alignment.Center,
