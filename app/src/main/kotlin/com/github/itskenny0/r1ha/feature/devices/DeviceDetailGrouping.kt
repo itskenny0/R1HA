@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.devices
 
 import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
+import com.github.itskenny0.r1ha.core.ha.EntityState
 import java.util.Locale
 
 /**
@@ -104,3 +105,80 @@ fun entitiesForDevice(
     entities: List<EntityRegistryEntry>,
     deviceId: String,
 ): List<EntityRegistryEntry> = entities.filter { it.deviceId == deviceId }
+
+/**
+ * Health summary for a device's drill-in header: its battery reading (if any),
+ * whether the battery is charging, and how many of its live-reporting entities
+ * are currently unavailable. Mirrors HA's own device page, which surfaces a
+ * battery icon + charging state and dims unavailable entities.
+ *
+ * [batteryPercent] is the integer percent from the highest-priority `battery`
+ * device_class entity (HA prefers `sensor` over `binary_sensor`); null when the
+ * device exposes none. [charging] reflects a `battery_charging` binary_sensor.
+ * [unavailableCount] / [liveCount] count only entities HA is actually reporting
+ * a live state for, so the ratio is honest about coverage.
+ */
+data class DeviceHealth(
+    val batteryPercent: Int?,
+    val charging: Boolean,
+    val unavailableCount: Int,
+    val liveCount: Int,
+) {
+    val allUnavailable: Boolean get() = liveCount > 0 && unavailableCount == liveCount
+}
+
+/**
+ * Derives a [DeviceHealth] from the device's entities and the live-state map
+ * keyed by raw entity-id. [liveStates] only carries the entities whose domain
+ * the client models, so battery sensors (sensor / binary_sensor) are present
+ * once HA reports them.
+ */
+fun deviceHealth(
+    entities: List<EntityRegistryEntry>,
+    liveStates: Map<String, EntityState>,
+): DeviceHealth {
+    var batteryPercent: Int? = null
+    var batterySource: String? = null // domain of the chosen battery entity
+    var charging = false
+    var live = 0
+    var unavailable = 0
+    for (entity in entities) {
+        val state = liveStates[entity.entityId] ?: continue
+        live++
+        if (!state.isAvailable) unavailable++
+        when (state.deviceClass) {
+            "battery" -> {
+                val domain = domainOfEntityId(entity.entityId)
+                val pct = batteryPercentOf(state)
+                // HA prefers a `sensor` battery over a `binary_sensor` one; keep
+                // the first sensor we see, otherwise fall back to a binary_sensor.
+                if (pct != null && (batteryPercent == null || (batterySource != "sensor" && domain == "sensor"))) {
+                    batteryPercent = pct
+                    batterySource = domain
+                }
+            }
+            "battery_charging" -> if (state.isAvailable && state.isOn) charging = true
+        }
+    }
+    return DeviceHealth(
+        batteryPercent = batteryPercent,
+        charging = charging,
+        unavailableCount = unavailable,
+        liveCount = live,
+    )
+}
+
+/**
+ * Battery percent for a `battery` device_class entity. A `sensor` reports the
+ * number in [EntityState.percent] or parseable from [EntityState.rawState]; a
+ * `binary_sensor` battery (low-battery flag) has no number, so 0 when on
+ * (problem) and 100 when off (ok) keeps the readout sane. Null when the entity
+ * is unavailable or carries no usable value.
+ */
+private fun batteryPercentOf(state: EntityState): Int? {
+    if (!state.isAvailable) return null
+    state.percent?.let { return it.coerceIn(0, 100) }
+    state.rawState?.trim()?.toDoubleOrNull()?.let { return it.toInt().coerceIn(0, 100) }
+    // binary_sensor battery: on == low/problem.
+    return if (state.isOn) 0 else 100
+}

@@ -12,7 +12,6 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Drives the HA Updates surface — lists every `update.*` entity (HA Core,
@@ -74,6 +73,14 @@ class UpdatesViewModel(
          *  offers the "Back up first" toggle. Derived from the
          *  supported_features bitmask (bit 3 / value 8). */
         val supportsBackup: Boolean,
+        /** Whether HA can drive the install from here: update available AND the
+         *  INSTALL supported_feature is set. Read-only firmware entities report
+         *  a newer version without INSTALL, so we offer NOTES but no INSTALL. */
+        val canInstall: Boolean,
+        /** True when HA reports a determinate install percentage (the PROGRESS
+         *  feature is set and update_percentage is non-null). Drives a
+         *  determinate vs indeterminate progress bar. */
+        val determinateProgress: Boolean,
         /** True while the install is running. Disables the install button
          *  and renders a progress chip on the row. */
         val inProgress: Boolean,
@@ -106,13 +113,23 @@ class UpdatesViewModel(
          *  the same slot. */
         val ordered: List<Entry> get() = all.sortedWith(
             compareBy<Entry> { !it.inProgress }
+                .thenBy { !(it.updateAvailable && !it.skipped) }
                 .thenBy { !it.updateAvailable }
                 .thenBy { it.bucket.ordinal }
                 .thenBy { it.title.lowercase() },
         )
 
-        val availableCount: Int get() = all.count { it.updateAvailable && !it.inProgress }
+        /** Count for the summary band: genuinely actionable updates only.
+         *  Skipped updates are excluded (HA hides them from its default view
+         *  until a newer version lands) so the band matches what the user can
+         *  act on without first restoring a skip. */
+        val availableCount: Int get() =
+            all.count { it.updateAvailable && !it.inProgress && !it.skipped }
         val inProgressCount: Int get() = all.count { it.inProgress }
+        /** Skipped-but-still-offered updates, surfaced as a secondary count so
+         *  the user knows there's something parked behind a skip. */
+        val skippedCount: Int get() =
+            all.count { it.updateAvailable && !it.inProgress && it.skipped }
     }
 
     private val _ui = MutableStateFlow(UiState())
@@ -128,6 +145,8 @@ class UpdatesViewModel(
                         val installed = UpdatesLogic.stringAttr(attrs, "installed_version")
                         val latest = UpdatesLogic.stringAttr(attrs, "latest_version")
                         val features = UpdatesLogic.supportedFeatures(attrs)
+                        val available = UpdatesLogic.updateAvailable(row.state, installed, latest)
+                        val percent = UpdatesLogic.progressPercent(attrs)
                         Entry(
                             id = EntityId(row.entityId),
                             title = UpdatesLogic.titleFor(
@@ -136,16 +155,18 @@ class UpdatesViewModel(
                                 entityId = row.entityId,
                             ),
                             bucket = UpdatesLogic.bucketFor(row.entityId),
-                            updateAvailable = UpdatesLogic.updateAvailable(row.state, installed, latest),
+                            updateAvailable = available,
                             installedVersion = installed,
                             latestVersion = latest,
                             releaseSummary = UpdatesLogic.stringAttr(attrs, "release_summary"),
                             releaseUrl = UpdatesLogic.stringAttr(attrs, "release_url"),
                             entityPicture = UpdatesLogic.stringAttr(attrs, "entity_picture"),
                             supportsBackup = UpdatesLogic.supportsBackup(features),
+                            canInstall = UpdatesLogic.canInstall(available, features),
                             inProgress = UpdatesLogic.inProgress(attrs["in_progress"]),
-                            progressPercent = UpdatesLogic.progressPercent(attrs),
-                            autoUpdate = (attrs["auto_update"] as? JsonPrimitive)?.content == "true",
+                            progressPercent = percent,
+                            determinateProgress = UpdatesLogic.usesProgress(features, percent),
+                            autoUpdate = UpdatesLogic.autoUpdate(attrs),
                             skipped = UpdatesLogic.isSkipped(
                                 skippedVersion = UpdatesLogic.stringAttr(attrs, "skipped_version"),
                                 latestVersion = latest,

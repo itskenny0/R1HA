@@ -67,6 +67,12 @@ data class HealthValue(
     val display: String,
     val status: HealthStatus = HealthStatus.NEUTRAL,
     val error: String? = null,
+    /**
+     * Optional documentation link HA attaches to a failed reachability check
+     * (`more_info`). Surfaced as a "more info" affordance next to the failure
+     * so a user can jump straight to the relevant troubleshooting page.
+     */
+    val moreInfoUrl: String? = null,
 )
 
 /** One key/value detail row within a domain section. */
@@ -81,6 +87,12 @@ data class HealthSection(
     val domain: String,
     val title: String,
     val rows: List<HealthRow>,
+    /**
+     * Optional "manage this integration" deep link HA attaches at the domain
+     * level (`manage_url`). The Lovelace dialog renders it as a MANAGE button;
+     * we keep it so the UI can surface it the same way.
+     */
+    val manageUrl: String? = null,
 ) {
     /** True when any row in the section reports a failed reachability check. */
     val hasFailure: Boolean get() = rows.any { it.value.status == HealthStatus.FAILED }
@@ -106,16 +118,48 @@ object SystemHealthInfo {
             // HA nests the detail map under "info"; older/odd payloads may put
             // the map directly under the domain key, so fall back to that.
             val info = (entryObj["info"] as? JsonObject) ?: entryObj
+            // `manage_url` sits alongside `info` at the domain level, so read it
+            // from the entry object rather than the detail map. Skip it as a
+            // detail row when info wasn't nested (the fallback path) so it never
+            // shows up as a "Manage Url" key/value pair.
+            val manageUrl = (entryObj["manage_url"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
             val rows = info.entries
+                .filterNot { (key, _) -> info === entryObj && key == "manage_url" }
                 .map { (key, value) -> HealthRow(key, humanizeKey(key), normalizeValue(value)) }
                 .sortedBy { it.label.lowercase(Locale.US) }
             if (rows.isEmpty()) return@mapNotNull null
-            HealthSection(domain = domain, title = humanizeDomain(domain), rows = rows)
+            HealthSection(
+                domain = domain,
+                title = humanizeDomain(domain),
+                rows = rows,
+                manageUrl = manageUrl,
+            )
         }
         return sections.sortedWith(
             compareByDescending<HealthSection> { it.domain == "homeassistant" }
                 .thenBy { it.title.lowercase(Locale.US) },
         )
+    }
+
+    /**
+     * Render already-parsed [sections] as the same GitHub-flavoured Markdown
+     * block HA's "Copy" button produces, so the output pastes cleanly into a
+     * bug report or forum post. Each domain becomes a `key | value` table; the
+     * core `Home Assistant` section leads, the rest follow in the order given.
+     * Pure (no clipboard / Compose dependency) so it unit-tests directly.
+     */
+    fun toMarkdown(sections: List<HealthSection>): String {
+        if (sections.isEmpty()) return ""
+        val sb = StringBuilder("## System Information\n")
+        sections.forEachIndexed { index, section ->
+            if (index > 0) sb.append('\n')
+            sb.append("### ").append(section.title).append('\n')
+            sb.append("key | value\n-- | --\n")
+            section.rows.forEach { row ->
+                sb.append(row.label).append(" | ").append(row.value.display).append('\n')
+            }
+        }
+        return sb.toString().trimEnd('\n')
     }
 
     /**
@@ -139,15 +183,36 @@ object SystemHealthInfo {
         val type = (obj["type"] as? JsonPrimitive)?.content?.lowercase(Locale.US)
         if (type != null) {
             val error = (obj["error"] as? JsonPrimitive)?.content
+            val moreInfo = (obj["more_info"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
             return when (type) {
                 "failed" -> HealthValue(
                     display = error?.let { "failed: $it" } ?: "failed",
                     status = HealthStatus.FAILED,
                     error = error,
+                    moreInfoUrl = moreInfo,
                 )
                 "pending" -> HealthValue("checking…", HealthStatus.PENDING)
+                // HA tags timestamp checks (e.g. recorder run times) as a date
+                // object carrying the ISO value under `value`. Show the raw value
+                // rather than the literal "date" tag; we keep it neutral since a
+                // timestamp isn't a pass/fail signal.
+                "date" -> HealthValue(
+                    (obj["value"] as? JsonPrimitive)?.content ?: "unknown",
+                    HealthStatus.NEUTRAL,
+                )
                 else -> HealthValue("ok", HealthStatus.OK)
             }
+        }
+        // The frontend rewrites an async update-error into `{error:true, value:msg}`.
+        // Mirror that into a FAILED value so a check that fails after the initial
+        // snapshot still shows red instead of an opaque "error=yes, value=…" dump.
+        if ((obj["error"] as? JsonPrimitive)?.booleanOrNull == true) {
+            val msg = (obj["value"] as? JsonPrimitive)?.content
+            return HealthValue(
+                display = msg?.let { "failed: $it" } ?: "failed",
+                status = HealthStatus.FAILED,
+                error = msg,
+            )
         }
         // Untagged object: present its keys compactly rather than dumping JSON.
         val rendered = obj.entries.joinToString(", ") { (k, v) ->
@@ -243,5 +308,15 @@ object SystemHealthInfo {
         "estimated_db_size" to "Estimated DB size",
         "database_engine" to "Database engine",
         "database_version" to "Database version",
+        "host_os" to "Host OS",
+        "supervisor_version" to "Supervisor version",
+        "agent_version" to "Agent version",
+        "docker_version" to "Docker version",
+        "disk_total" to "Disk total",
+        "disk_used" to "Disk used",
+        "healthy" to "Healthy",
+        "supported" to "Supported",
+        "board" to "Board",
+        "broker" to "Broker",
     )
 }

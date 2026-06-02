@@ -197,6 +197,34 @@ class SystemHealthInfoTest {
         assertThat(healthy[0].hasPending).isFalse()
     }
 
+    // --- markdown export ---
+
+    @Test
+    fun toMarkdown_renders_core_first_with_tables() {
+        val sections = parse(
+            """
+            {
+              "homeassistant": { "info": { "version": "2024.6.0" } },
+              "cloud": { "info": { "logged_in": true } }
+            }
+            """.trimIndent(),
+        )
+        val md = SystemHealthInfo.toMarkdown(sections)
+        assertThat(md).startsWith("## System Information")
+        assertThat(md).contains("### Home Assistant")
+        assertThat(md).contains("Version | 2024.6.0")
+        assertThat(md).contains("### Home Assistant Cloud")
+        assertThat(md).contains("Logged in | yes")
+        // Core section must precede the cloud section.
+        assertThat(md.indexOf("### Home Assistant\n"))
+            .isLessThan(md.indexOf("### Home Assistant Cloud"))
+    }
+
+    @Test
+    fun toMarkdown_empty_for_no_sections() {
+        assertThat(SystemHealthInfo.toMarkdown(emptyList())).isEmpty()
+    }
+
     // --- humanizers ---
 
     @Test

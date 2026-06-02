@@ -171,11 +171,19 @@ class IntegrationsViewModel(
 
     companion object {
         /** Classify a HA state string into a UI bucket. Used both for
-         *  the FAILED filter and for chip coloring. */
+         *  the FAILED filter and for chip coloring.
+         *
+         *  FAILED mirrors HA frontend's `ERROR_STATES`
+         *  (`config_entries.ts`): migration_error, setup_error AND
+         *  setup_retry. A retrying entry is a failed entry that HA will
+         *  keep re-attempting on a timer, so it belongs in the FAILED
+         *  bucket (red, surfaced by the FAILED filter), not in PENDING.
+         *  `failed_unload` is also a hard error. setup_in_progress and
+         *  not_loaded are transient / inert, so they stay PENDING. */
         fun stateRank(state: String): StateBucket = when (state.lowercase(Locale.US)) {
             "loaded" -> StateBucket.LOADED
-            "setup_error", "migration_error", "failed_unload" -> StateBucket.FAILED
-            "setup_retry", "setup_in_progress", "not_loaded" -> StateBucket.PENDING
+            "setup_error", "migration_error", "setup_retry", "failed_unload" -> StateBucket.FAILED
+            "setup_in_progress", "not_loaded" -> StateBucket.PENDING
             else -> StateBucket.OTHER
         }
 
@@ -192,6 +200,16 @@ class IntegrationsViewModel(
             "migration_error" -> "MIGRATION ERROR"
             "failed_unload" -> "UNLOAD FAILED"
             else -> state.replace('_', ' ').uppercase(Locale.US)
+        }
+
+        /** Chip label for a disabled entry's cause. HA reports
+         *  `disabled_by` as "user", "integration", or "device"; the chip
+         *  shows a compact "BY {cause}" alongside the DISABLED state chip
+         *  so the reason is legible without repeating the word. Returns
+         *  null when the entry is enabled. */
+        fun disabledLabel(disabledBy: String?): String? {
+            val cause = disabledBy?.takeIf { it.isNotBlank() } ?: return null
+            return "BY ${cause.uppercase(Locale.US)}"
         }
 
         /** True when [entry] belongs in [filter]. */

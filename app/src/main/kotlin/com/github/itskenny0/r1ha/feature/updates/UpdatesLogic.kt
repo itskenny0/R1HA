@@ -47,6 +47,33 @@ object UpdatesLogic {
     fun supportsProgress(features: Int): Boolean = hasFeature(features, FEATURE_PROGRESS)
 
     /**
+     * Parse HA's `auto_update` flag. It arrives as a JSON bool we read as a
+     * string, and can be the literal `null` on integrations that don't model
+     * it; both non-"true" and null mean "not auto-updating".
+     */
+    fun autoUpdate(attrs: JsonObject): Boolean =
+        (attrs["auto_update"] as? JsonPrimitive)?.content.equals("true", ignoreCase = true)
+
+    /**
+     * Whether HA can actually drive the install from the device: it must report
+     * an update available AND advertise the INSTALL supported_feature. Mirrors
+     * the frontend's `updateCanInstall`. Entities that surface a newer version
+     * but lack INSTALL (some read-only firmware sensors) get NOTES but no
+     * INSTALL button so we don't fire a service HA will reject.
+     */
+    fun canInstall(updateAvailable: Boolean, features: Int): Boolean =
+        updateAvailable && supportsInstall(features)
+
+    /**
+     * Show a determinate progress bar only when HA both advertises PROGRESS and
+     * has a concrete percentage; otherwise the install is indeterminate and we
+     * render a spinning bar instead of a misleading 0 %. Mirrors the frontend's
+     * `updateUsesProgress`.
+     */
+    fun usesProgress(features: Int, progressPercent: Int?): Boolean =
+        supportsProgress(features) && progressPercent != null
+
+    /**
      * `in_progress` is wildly inconsistent across integrations: a bool on some,
      * an int percentage on others, the literal `null` mid-install on a few.
      * Treat `true` or any positive number as "installing".

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -96,11 +99,16 @@ fun UpdatesScreen(
             action = {
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
                         .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs)
+                        .semantics {
+                            contentDescription = "Check for updates"
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (ui.loading) "…" else "REFRESH",
@@ -203,20 +211,22 @@ private fun SummaryBand(ui: UpdatesViewModel.UiState) {
         ui.availableCount > 0 -> R1.AccentCool
         else -> R1.AccentGreen
     }
+    val skippedTail = if (ui.skippedCount > 0) " · ${ui.skippedCount} SKIPPED" else ""
     val text = when {
         ui.inProgressCount > 0 ->
-            "${ui.inProgressCount} INSTALLING · ${ui.availableCount} AVAILABLE"
-        ui.availableCount > 0 -> "${ui.availableCount} UPDATES AVAILABLE"
+            "${ui.inProgressCount} INSTALLING · ${ui.availableCount} AVAILABLE$skippedTail"
+        ui.availableCount > 0 -> "${ui.availableCount} UPDATES AVAILABLE$skippedTail"
+        ui.skippedCount > 0 -> "UP TO DATE$skippedTail"
         else -> "EVERYTHING UP TO DATE"
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs)
             .clip(R1.ShapeS)
             .background(color.copy(alpha = 0.12f))
             .border(1.dp, color.copy(alpha = 0.5f), R1.ShapeS)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(text = text, style = R1.labelMicro, color = color)
@@ -326,10 +336,40 @@ private fun UpdateRow(
             else -> "UP TO DATE"
         }
         Text(text = versionLine, style = R1.labelMicro, color = statusColor)
+        // Live install progress bar. Determinate when HA reports both the
+        // PROGRESS feature and a concrete percentage, indeterminate otherwise
+        // so a long install still reads as "moving" rather than stuck at 0 %.
+        if (entry.inProgress) {
+            Spacer(Modifier.height(R1.space.xs))
+            val progressDesc = entry.progressPercent
+                ?.let { "Installing, $it percent" } ?: "Installing"
+            if (entry.determinateProgress && entry.progressPercent != null) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { entry.progressPercent / 100f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(R1.space.xs)
+                        .clip(R1.ShapeS)
+                        .semantics { contentDescription = progressDesc },
+                    color = R1.AccentWarm,
+                    trackColor = R1.SurfaceMuted,
+                )
+            } else {
+                androidx.compose.material3.LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(R1.space.xs)
+                        .clip(R1.ShapeS)
+                        .semantics { contentDescription = progressDesc },
+                    color = R1.AccentWarm,
+                    trackColor = R1.SurfaceMuted,
+                )
+            }
+        }
         // Release-summary peek — truncated to a single line; tapping the row
         // opens the dialog with the full text.
         if (!entry.releaseSummary.isNullOrBlank()) {
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = entry.releaseSummary,
                 style = R1.labelMicro,
@@ -338,13 +378,36 @@ private fun UpdateRow(
             )
         }
         if (entry.updateAvailable && !entry.inProgress) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(R1.space.s))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                R1Button(
-                    text = "INSTALL",
-                    onClick = onInstall,
-                    accent = R1.AccentCool,
-                )
+                // INSTALL only when HA can actually drive it (INSTALL feature)
+                // and the user hasn't skipped this version; a skipped update is
+                // parked, so the row offers RESTORE instead via the dialog.
+                if (entry.canInstall && !entry.skipped) {
+                    R1Button(
+                        text = "INSTALL",
+                        onClick = onInstall,
+                        accent = R1.AccentCool,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Install update for ${entry.title}"
+                        },
+                    )
+                } else if (entry.skipped) {
+                    // Skipped: dim status label, full controls live in the dialog.
+                    Text(
+                        text = "SKIPPED · TAP FOR OPTIONS",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                } else {
+                    // Available but no INSTALL feature: HA can't install from
+                    // here (read-only firmware sensor), so we only point at notes.
+                    Text(
+                        text = "MANUAL UPDATE",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
                 Spacer(Modifier.weight(1f))
                 if (entry.hasReleaseNotes) {
                     Box(
@@ -352,7 +415,10 @@ private fun UpdateRow(
                             .clip(R1.ShapeS)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
                             .r1Pressable(onClick = onOpen)
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs)
+                            .semantics {
+                                contentDescription = "Release notes for ${entry.title}"
+                            },
                     ) {
                         Text(text = "NOTES", style = R1.labelMicro, color = R1.InkSoft)
                     }
@@ -410,9 +476,9 @@ private fun UpdateDetailDialog(
                 }
                 Text(text = versionLine, style = R1.body, color = R1.Ink)
                 if (!entry.releaseSummary.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     Text(text = "RELEASE NOTES", style = R1.labelMicro, color = R1.InkSoft)
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(R1.space.xs))
                     Text(
                         text = entry.releaseSummary,
                         style = R1.body,
@@ -420,9 +486,10 @@ private fun UpdateDetailDialog(
                     )
                 }
                 if (!entry.releaseUrl.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(R1.space.s))
                     Box(
                         modifier = Modifier
+                            .heightIn(min = R1.MinTarget)
                             .clip(R1.ShapeS)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
                             .r1Pressable(onClick = {
@@ -439,7 +506,11 @@ private fun UpdateDetailDialog(
                                     )
                                 }
                             })
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs)
+                            .semantics {
+                                contentDescription = "Open full changelog for ${entry.title}"
+                            },
+                        contentAlignment = Alignment.CenterStart,
                     ) {
                         Text(
                             text = "OPEN FULL CHANGELOG ↗",
@@ -449,8 +520,17 @@ private fun UpdateDetailDialog(
                     }
                 }
                 if (entry.supportsBackup) {
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.height(R1.space.m))
+                    val backupState = if (backup) "on" else "off"
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .heightIn(min = R1.MinTarget)
+                            .r1Pressable(onClick = { backup = !backup })
+                            .semantics {
+                                contentDescription = "Back up before installing, $backupState"
+                            },
+                    ) {
                         Box(
                             modifier = Modifier
                                 .size(width = 36.dp, height = 18.dp)
@@ -462,8 +542,7 @@ private fun UpdateDetailDialog(
                                     1.dp,
                                     if (backup) R1.AccentWarm else R1.Hairline,
                                     R1.ShapeS,
-                                )
-                                .r1Pressable(onClick = { backup = !backup }),
+                                ),
                             contentAlignment = if (backup) Alignment.CenterEnd else Alignment.CenterStart,
                         ) {
                             Box(
@@ -492,11 +571,17 @@ private fun UpdateDetailDialog(
             }
         },
         confirmButton = {
-            if (entry.updateAvailable && !entry.inProgress) {
+            // INSTALL only when HA can drive it (INSTALL feature) and nothing is
+            // already running. A skipped-but-available update still installs (the
+            // user explicitly opened the dialog and tapped install).
+            if (entry.canInstall && !entry.inProgress) {
                 R1Button(
                     text = "INSTALL",
                     onClick = { onInstall(backup) },
                     accent = R1.AccentCool,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Install update for ${entry.title}"
+                    },
                 )
             } else {
                 R1Button(text = "CLOSE", onClick = onDismiss)
@@ -513,12 +598,18 @@ private fun UpdateDetailDialog(
                     text = "RESTORE",
                     onClick = onClearSkipped,
                     variant = R1ButtonVariant.Outlined,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Restore skipped update for ${entry.title}"
+                    },
                 )
             } else if (entry.updateAvailable && !entry.inProgress) {
                 R1Button(
                     text = "SKIP",
                     onClick = onSkip,
                     variant = R1ButtonVariant.Outlined,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Skip this version for ${entry.title}"
+                    },
                 )
             } else {
                 R1Button(

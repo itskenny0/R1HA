@@ -36,15 +36,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.DeviceInfo
-import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
-import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -169,17 +166,17 @@ fun DevicesScreen(
                                 state = listState,
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
-                                    horizontal = 12.dp, vertical = 8.dp,
+                                    horizontal = R1.space.m, vertical = R1.space.s,
                                 ),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                             ) {
-                                item {
+                                item(key = "count-header") {
                                     Text(
                                         text = "$filteredCount DEVICE" +
                                             if (filteredCount == 1) "" else "S",
                                         style = R1.labelMicro,
                                         color = R1.AccentCool,
-                                        modifier = Modifier.padding(vertical = 4.dp),
+                                        modifier = Modifier.padding(vertical = R1.space.xs),
                                     )
                                 }
                                 for ((label, devices) in sections) {
@@ -217,14 +214,14 @@ private fun SearchAndGroupBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "FIND",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = R1.space.s),
             )
             Box(modifier = Modifier.weight(1f)) {
                 R1TextField(
@@ -235,7 +232,7 @@ private fun SearchAndGroupBar(
                 )
             }
             if (query.isNotEmpty()) {
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.xs))
                 Box(
                     modifier = Modifier
                         .size(R1.MinTarget)
@@ -246,13 +243,13 @@ private fun SearchAndGroupBar(
                 }
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "GROUP",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(end = 8.dp),
+                modifier = Modifier.padding(end = R1.space.s),
             )
             R1Chip(
                 text = "AREA",
@@ -335,7 +332,7 @@ private fun DeviceRow(
             // mergeDescendants keeps the row's click action for TalkBack's
             // double-tap while replacing the child text with one spoken phrase.
             .semantics(mergeDescendants = true) { contentDescription = rowDescription }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -345,20 +342,20 @@ private fun DeviceRow(
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "$entityCount",
                 style = R1.labelMicro,
                 color = R1.AccentCool,
             )
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = ">",
                 style = R1.labelMicro,
                 color = R1.InkSoft,
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = R1.space.xxs)) {
             val meta = buildList {
                 if (!device.manufacturer.isNullOrBlank()) add(device.manufacturer)
                 if (!device.model.isNullOrBlank()) add(device.model)
@@ -390,7 +387,7 @@ private fun DeviceRow(
 @Composable
 private fun EmptyState(message: String) {
     Box(
-        modifier = Modifier.fillMaxSize().padding(22.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = message, style = R1.body, color = R1.InkMuted)
@@ -400,14 +397,14 @@ private fun EmptyState(message: String) {
 @Composable
 private fun ErrorState(message: String) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = "COULDN'T LOAD DEVICES", style = R1.labelMicro, color = R1.StatusAmber)
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(R1.space.xs))
         Text(text = message, style = R1.body, color = R1.InkSoft)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(R1.space.m))
         Text(
             text = "Device registry only flows over the live WebSocket. Retry once it reconnects.",
             style = R1.labelMicro,

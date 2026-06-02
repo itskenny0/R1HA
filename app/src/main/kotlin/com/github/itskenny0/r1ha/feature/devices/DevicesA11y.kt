@@ -53,6 +53,32 @@ object DevicesA11y {
     }
 
     /**
+     * Spoken description for the device-detail status row, e.g.
+     * "battery 84 percent, charging, 2 of 5 entities unavailable". Spells out
+     * the glyph-y chip text ("84%+", "2 UNAVAILABLE") so a screen reader user
+     * gets the meaning, not the abbreviation. Returns null when there's nothing
+     * to announce (no battery, nothing offline, not disabled).
+     */
+    fun deviceHealthDescription(
+        disabled: Boolean,
+        batteryPercent: Int?,
+        charging: Boolean,
+        unavailableCount: Int,
+        liveCount: Int,
+    ): String? {
+        val parts = mutableListOf<String>()
+        if (disabled) parts += "disabled"
+        batteryPercent?.let {
+            parts += "battery $it percent"
+            if (charging) parts += "charging"
+        }
+        if (unavailableCount > 0) {
+            parts += "$unavailableCount of $liveCount entities unavailable"
+        }
+        return if (parts.isEmpty()) null else parts.joinToString(", ")
+    }
+
+    /**
      * Merged content description for an entity row on the drill-in, e.g.
      * "Ceiling light, on" or "Outdoor temperature, 21.4 degrees, disabled".
      * [stateSpoken] is the already-resolved live-state phrase ("no live state"

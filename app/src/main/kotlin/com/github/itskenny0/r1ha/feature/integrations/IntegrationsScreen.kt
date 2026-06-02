@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -28,6 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.ConfigEntry
@@ -114,7 +118,9 @@ fun IntegrationsScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier
+                                .size(22.dp)
+                                .semantics { contentDescription = "Loading integrations" },
                             strokeWidth = 2.dp,
                             color = R1.AccentWarm,
                         )
@@ -235,10 +241,19 @@ private fun DomainHeader(
     // count rendered as an R1Chip Pill at the right edge. When the registries have
     // resolved counts for this domain, a compact "Nd / Ne" tally precedes the entry
     // count so the user can gauge how much the integration brings in.
+    val countSuffix = if (counts != null && (counts.devices > 0 || counts.entities > 0)) {
+        ", ${counts.devices} devices, ${counts.entities} entities"
+    } else {
+        ""
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
+            .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs)
+            .semantics(mergeDescendants = true) {
+                heading()
+                contentDescription = "$domain, $count entr${if (count == 1) "y" else "ies"}$countSuffix"
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -272,21 +287,45 @@ private fun EntryRow(
     reloading: Boolean,
     onReload: () -> Unit,
 ) {
-    val bucket = IntegrationsViewModel.stateRank(entry.state)
-    val stateTone = when (bucket) {
-        IntegrationsViewModel.StateBucket.LOADED -> R1.AccentGreen
-        IntegrationsViewModel.StateBucket.FAILED -> R1.StatusRed
-        IntegrationsViewModel.StateBucket.PENDING -> R1.StatusAmber
-        IntegrationsViewModel.StateBucket.OTHER -> R1.InkMuted
-    }
     val disabled = entry.disabledBy != null
+    // When an entry is disabled HA stops loading it, so its raw state is
+    // typically "not_loaded". Surfacing that as an amber NOT LOADED chip
+    // reads as a fault; HA instead frames a disabled entry by its disabled
+    // cause and suppresses the not-loaded text. Mirror that: the state chip
+    // on a disabled entry shows DISABLED in the neutral disabled tone, and
+    // the per-state coloring only applies to enabled entries.
+    val bucket = IntegrationsViewModel.stateRank(entry.state)
+    val stateTone = when {
+        disabled -> R1.InkMuted
+        bucket == IntegrationsViewModel.StateBucket.LOADED -> R1.AccentGreen
+        bucket == IntegrationsViewModel.StateBucket.FAILED -> R1.StatusRed
+        bucket == IntegrationsViewModel.StateBucket.PENDING -> R1.StatusAmber
+        else -> R1.InkMuted
+    }
+    val stateChipText = if (disabled) "DISABLED" else IntegrationsViewModel.stateLabel(entry.state)
+    val disabledLabel = IntegrationsViewModel.disabledLabel(entry.disabledBy)
+    val rowDescription = buildString {
+        append(entry.title)
+        append(", ")
+        append(
+            if (disabled) "disabled${entry.disabledBy?.let { " by $it" } ?: ""}"
+            else IntegrationsViewModel.stateLabel(entry.state),
+        )
+        append(", via ")
+        append(entry.source)
+        if (!entry.reason.isNullOrBlank()) {
+            append(". ")
+            append(entry.reason)
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(if (disabled) R1.Bg else R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+            .padding(horizontal = R1.space.m, vertical = R1.space.m)
+            .semantics(mergeDescendants = true) { contentDescription = rowDescription },
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -299,7 +338,7 @@ private fun EntryRow(
             )
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
-                text = IntegrationsViewModel.stateLabel(entry.state),
+                text = stateChipText,
                 variant = R1ChipVariant.Pill,
                 tone = stateTone,
             )
@@ -311,17 +350,25 @@ private fun EntryRow(
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
             )
-            if (disabled) {
-                R1Chip(text = "DISABLED", variant = R1ChipVariant.Pill, tone = R1.StatusAmber)
+            if (disabled && disabledLabel != null) {
+                R1Chip(text = disabledLabel, variant = R1ChipVariant.Pill, tone = R1.StatusAmber)
                 Spacer(Modifier.width(R1.space.s))
             }
             if (entry.prefDisablePolling) {
                 R1Chip(text = "NO POLL", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
                 Spacer(Modifier.width(R1.space.s))
             }
+            if (entry.prefDisableNewEntities) {
+                R1Chip(text = "MANUAL ENTITIES", variant = R1ChipVariant.Pill, tone = R1.AccentNeutral)
+                Spacer(Modifier.width(R1.space.s))
+            }
             ReloadChip(
-                supportsUnload = entry.supportsUnload,
+                // A disabled entry isn't loaded, so reload can't act on it
+                // (HA would reject the call). Present the chip inert in that
+                // case the same as an entry that doesn't support unload.
+                supportsUnload = entry.supportsUnload && !disabled,
                 reloading = reloading,
+                title = entry.title,
                 onClick = onReload,
             )
         }
@@ -337,7 +384,12 @@ private fun EntryRow(
 }
 
 @Composable
-private fun ReloadChip(supportsUnload: Boolean, reloading: Boolean, onClick: () -> Unit) {
+private fun ReloadChip(
+    supportsUnload: Boolean,
+    reloading: Boolean,
+    title: String,
+    onClick: () -> Unit,
+) {
     // RELOAD is the one mutating action on the surface, so it stays bespoke: it folds a
     // spinner into the chip footprint while in flight and goes inert (no tap target, muted
     // tone) when the integration can't be unloaded.
@@ -348,7 +400,15 @@ private fun ReloadChip(supportsUnload: Boolean, reloading: Boolean, onClick: () 
             .clip(R1.ShapeS)
             .background(if (enabled) tone.copy(alpha = 0.18f) else R1.SurfaceMuted)
             .border(1.dp, if (enabled) tone.copy(alpha = 0.5f) else R1.Hairline, R1.ShapeS)
-            .let { if (enabled) it.r1Pressable(onClick = onClick) else it }
+            .let {
+                if (enabled) {
+                    it
+                        .heightIn(min = R1.MinTarget)
+                        .r1Pressable(onClick = onClick, contentDescription = "Reload $title")
+                } else {
+                    it
+                }
+            }
             .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         contentAlignment = Alignment.Center,
     ) {

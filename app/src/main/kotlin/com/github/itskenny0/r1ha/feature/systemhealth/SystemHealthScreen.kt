@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -26,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -78,20 +81,11 @@ fun SystemHealthScreen(
                 // to update the diagnostic, which on a fast-moving HA
                 // install (say, while debugging an integration loop) made
                 // the panel less useful than it could be.
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.refresh() })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = if (ui.loading) "…" else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                ChipButton(
+                    label = if (ui.loading) "…" else "REFRESH",
+                    onClick = { vm.refresh() },
+                    contentDescription = "Refresh system health",
+                )
             },
         )
         if (ui.loading && ui.config == null) {
@@ -114,29 +108,48 @@ fun SystemHealthScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
                     .verticalScroll(scrollState),
             ) {
                 Text(text = "SERVER", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.size(4.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 val cfg = ui.config
                 if (cfg != null) {
                     ConfigPanel(cfg)
                 } else if (ui.configError != null) {
                     ErrorPanel(ui.configError!!)
                 }
-                Spacer(Modifier.size(16.dp))
+                Spacer(Modifier.size(R1.space.l))
                 // System Health: HA's `system_health/info` report grouped by
                 // integration domain. Each section lists the key/value detail
                 // rows that integration registered, with a clear OK / checking /
                 // failed indicator wherever HA marks a reachability check.
-                Text(text = "INTEGRATIONS", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.size(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "INTEGRATIONS", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.weight(1f))
+                    // COPY mirrors HA's "Copy" primary action: dumps the whole
+                    // system-health report as a Markdown table so it pastes
+                    // straight into a bug report or forum post. Only shown when
+                    // there's something to copy.
+                    if (ui.healthSections.isNotEmpty()) {
+                        ChipButton(
+                            label = "COPY",
+                            onClick = {
+                                clipboard.setText(
+                                    AnnotatedString(SystemHealthInfo.toMarkdown(ui.healthSections)),
+                                )
+                                Toaster.show("Copied")
+                            },
+                            contentDescription = "Copy system health report to clipboard",
+                        )
+                    }
+                }
+                Spacer(Modifier.size(R1.space.xs))
                 when {
                     ui.healthSections.isNotEmpty() ->
                         ui.healthSections.forEach { section ->
                             HealthSectionPanel(section)
-                            Spacer(Modifier.size(8.dp))
+                            Spacer(Modifier.size(R1.space.s))
                         }
                     ui.healthError != null -> ErrorPanel(ui.healthError!!)
                     ui.loading -> Text(
@@ -150,19 +163,19 @@ fun SystemHealthScreen(
                         color = R1.InkMuted,
                     )
                 }
-                Spacer(Modifier.size(12.dp))
+                Spacer(Modifier.size(R1.space.m))
                 // Inline ping chip: measures round-trip time to /api/config so users
                 // can diagnose slow links without leaving the screen. The result
                 // sticks until the next press; multiple consecutive presses show how
                 // variable the link is.
                 PingRow(haRepository)
-                Spacer(Modifier.size(12.dp))
+                Spacer(Modifier.size(R1.space.m))
                 Text(text = "NETWORK SECURITY", style = R1.labelMicro, color = R1.InkSoft)
-                Spacer(Modifier.size(4.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 NetworkSecurityPanel()
-                Spacer(Modifier.size(12.dp))
+                Spacer(Modifier.size(R1.space.m))
                 ShareDebugBundleRow()
-                Spacer(Modifier.size(16.dp))
+                Spacer(Modifier.size(R1.space.l))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(text = "ERROR LOG (tail)", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
@@ -172,34 +185,25 @@ fun SystemHealthScreen(
                     // substring search + auto-refresh. The COPY chip still
                     // copies whatever's visible on this screen so the bug-
                     // report flow doesn't lose its one-tap path.
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(R1.SurfaceMuted)
-                            .border(1.dp, R1.Hairline, R1.ShapeS)
-                            .r1Pressable(onClick = onOpenFullLog)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(text = "OPEN FULL", style = R1.labelMicro, color = R1.AccentWarm)
-                    }
+                    ChipButton(
+                        label = "OPEN FULL",
+                        onClick = onOpenFullLog,
+                        labelColor = R1.AccentWarm,
+                        contentDescription = "Open full log viewer",
+                    )
                     if (ui.errorLog.isNotBlank()) {
-                        Spacer(Modifier.size(6.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .background(R1.SurfaceMuted)
-                                .border(1.dp, R1.Hairline, R1.ShapeS)
-                                .r1Pressable(onClick = {
-                                    clipboard.setText(AnnotatedString(ui.errorLog))
-                                    Toaster.show("Copied")
-                                })
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                        ) {
-                            Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
-                        }
+                        Spacer(Modifier.size(R1.space.xs))
+                        ChipButton(
+                            label = "COPY",
+                            onClick = {
+                                clipboard.setText(AnnotatedString(ui.errorLog))
+                                Toaster.show("Copied")
+                            },
+                            contentDescription = "Copy error log to clipboard",
+                        )
                     }
                 }
-                Spacer(Modifier.size(4.dp))
+                Spacer(Modifier.size(R1.space.xs))
                 when {
                     ui.errorLog.isNotBlank() -> ErrorLogPanel(ui.errorLog)
                     ui.errorLogError != null -> ErrorPanel(ui.errorLogError!!)
@@ -209,7 +213,7 @@ fun SystemHealthScreen(
                         color = R1.InkMuted,
                     )
                 }
-                Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.size(R1.space.xl))
             }
         } // AdaptiveContent
     }
@@ -223,8 +227,8 @@ private fun ConfigPanel(cfg: com.github.itskenny0.r1ha.core.ha.HaConfig) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Pair("Version", cfg.version).render()
         Pair("Location", cfg.locationName).render()
@@ -255,28 +259,58 @@ private fun ConfigPanel(cfg: com.github.itskenny0.r1ha.core.ha.HaConfig) {
  */
 @Composable
 private fun HealthSectionPanel(section: HealthSection) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val headerStatus = when {
         section.hasFailure -> HealthStatus.FAILED
         section.hasPending -> HealthStatus.PENDING
         else -> HealthStatus.OK
+    }
+    // Border tints with the rollup status so a failed integration is scannable
+    // at a glance without reading the rows. HA highlights failures the same way.
+    val borderColor = if (headerStatus == HealthStatus.FAILED) {
+        R1.StatusRed.copy(alpha = 0.6f)
+    } else {
+        R1.Hairline
     }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .border(1.dp, borderColor, R1.ShapeS)
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // The dot encodes status by colour alone; fold a spoken status label into
+        // the header so a TalkBack user hears "DOMAIN, failed" rather than just the
+        // domain name. Merge the children so the row reads as a single node.
+        val statusLabel = when (headerStatus) {
+            HealthStatus.FAILED -> "failed"
+            HealthStatus.PENDING -> "checking"
+            else -> "healthy"
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.semantics(mergeDescendants = true) {
+                contentDescription = "${section.title}, $statusLabel"
+            },
+        ) {
             StatusDot(headerStatus)
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = section.title.uppercase(),
                 style = R1.labelMicro,
                 color = R1.Ink,
             )
+            val manageUrl = section.manageUrl
+            if (manageUrl != null) {
+                Spacer(Modifier.weight(1f))
+                ChipButton(
+                    label = "MANAGE",
+                    onClick = { openUrl(context, manageUrl) },
+                    contentDescription = "Manage ${section.title} integration",
+                )
+            }
         }
         section.rows.forEach { HealthRowView(it) }
     }
@@ -284,12 +318,13 @@ private fun HealthSectionPanel(section: HealthSection) {
 
 @Composable
 private fun HealthRowView(row: HealthRow) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(text = row.label.uppercase(), style = R1.labelMicro, color = R1.InkMuted)
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (row.value.status != HealthStatus.NEUTRAL) {
                 StatusDot(row.value.status)
-                Spacer(Modifier.size(6.dp))
+                Spacer(Modifier.size(R1.space.xs))
             }
             Text(
                 text = row.value.display,
@@ -298,6 +333,57 @@ private fun HealthRowView(row: HealthRow) {
                 maxLines = Int.MAX_VALUE,
             )
         }
+        // HA attaches a troubleshooting link to a failed reachability check; mirror
+        // it as a tappable MORE INFO chip so the user can jump straight to the docs.
+        val moreInfo = row.value.moreInfoUrl
+        if (moreInfo != null) {
+            ChipButton(
+                label = "MORE INFO",
+                onClick = { openUrl(context, moreInfo) },
+                contentDescription = "Open troubleshooting docs for ${row.label}",
+                labelColor = R1.AccentWarm,
+            )
+        }
+    }
+}
+
+/** Fire an ACTION_VIEW for an http(s) link, swallowing the no-browser case. */
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+}
+
+/**
+ * The shared chip affordance used across this screen (REFRESH, OPEN FULL, COPY,
+ * TEST, SHARE, MANAGE). A hairline-bordered pill that reads as a single Button
+ * node to TalkBack via [r1Pressable]. Sized to the [R1.MinTarget] minimum tap
+ * height so every control on the screen meets the 48dp accessibility floor while
+ * the visible padding stays tight to the Mission Control rhythm.
+ */
+@Composable
+private fun ChipButton(
+    label: String,
+    onClick: () -> Unit,
+    contentDescription: String,
+    labelColor: androidx.compose.ui.graphics.Color = R1.InkSoft,
+) {
+    Box(
+        modifier = Modifier
+            .heightIn(min = R1.MinTarget)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription)
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = label, style = R1.labelMicro, color = labelColor)
     }
 }
 
@@ -341,7 +427,7 @@ private fun ErrorLogPanel(body: String) {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
     ) {
         Text(
             text = body,
@@ -361,7 +447,7 @@ private fun ErrorPanel(msg: String) {
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.StatusRed.copy(alpha = 0.18f))
-            .padding(horizontal = 10.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
     ) {
         Text(text = msg, style = R1.body, color = R1.StatusRed)
     }
@@ -381,15 +467,12 @@ private fun PingRow(haRepository: HaRepository) {
                 style = R1.body,
                 color = R1.AccentWarm,
             )
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.size(R1.space.s))
         }
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.SurfaceMuted)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onClick = {
-                    if (inFlight.value) return@r1Pressable
+        ChipButton(
+            label = if (inFlight.value) "…" else "TEST",
+            onClick = {
+                if (!inFlight.value) {
                     inFlight.value = true
                     scope.launch {
                         val start = System.currentTimeMillis()
@@ -401,15 +484,10 @@ private fun PingRow(haRepository: HaRepository) {
                         )
                         inFlight.value = false
                     }
-                })
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        ) {
-            Text(
-                text = if (inFlight.value) "…" else "TEST",
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-            )
-        }
+                }
+            },
+            contentDescription = "Measure round-trip time to Home Assistant",
+        )
     }
 }
 
@@ -442,8 +520,8 @@ private fun NetworkSecurityPanel() {
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Pair("TLS pinning", pinningStatus).render()
         Pair("mTLS", mtlsStatus).render()
@@ -460,12 +538,10 @@ private fun ShareDebugBundleRow() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(text = "SHARE DEBUG BUNDLE", style = R1.labelMicro, color = R1.InkSoft)
         Spacer(Modifier.weight(1f))
-        Box(
-            modifier = Modifier
-                .clip(R1.ShapeS)
-                .background(R1.SurfaceMuted)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onClick = {
+        ChipButton(
+            label = "SHARE",
+            contentDescription = "Share debug bundle",
+            onClick = {
                     // Assemble a plaintext bundle from the in-memory log buffer + the
                     // last crash file. Sharing via ACTION_SEND lets the user route to
                     // any installed text-receiving app (email, GitHub Mobile, Slack,
@@ -485,24 +561,21 @@ private fun ShareDebugBundleRow() {
                     val logs = com.github.itskenny0.r1ha.core.util.R1LogBuffer.snapshot().reversed()
                     for (e in logs.take(200)) {
                         val ts = java.time.Instant.ofEpochMilli(e.timestampMillis).toString()
-                        sb.append("[$ts] ").append(e.level).append(' ').append(e.tag)
-                            .append(" — ").append(e.message).append('\n')
-                    }
-                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_SUBJECT, "R1HA debug bundle")
-                        putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
-                    }
-                    runCatching {
-                        context.startActivity(
-                            android.content.Intent.createChooser(send, "Share debug bundle")
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }
-                })
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        ) {
-            Text(text = "SHARE", style = R1.labelMicro, color = R1.InkSoft)
-        }
+                    sb.append("[$ts] ").append(e.level).append(' ').append(e.tag)
+                        .append(": ").append(e.message).append('\n')
+                }
+                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "R1HA debug bundle")
+                    putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
+                }
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent.createChooser(send, "Share debug bundle")
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+        )
     }
 }

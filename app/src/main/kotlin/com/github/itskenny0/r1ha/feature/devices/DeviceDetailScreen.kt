@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,13 +67,13 @@ fun DeviceDetailScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            contentPadding = PaddingValues(horizontal = R1.space.m, vertical = R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
         ) {
             item(key = "meta") { DeviceMetadata(detail) }
             if (detail.groups.isEmpty()) {
                 item(key = "empty") {
-                    Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = R1.space.xl)) {
                         Text(
                             text = "No entities registered for this device.",
                             style = R1.body,
@@ -111,9 +112,58 @@ fun DeviceDetailScreen(
 private fun DeviceMetadata(detail: DevicesViewModel.DetailState) {
     val device = detail.device
     Column(modifier = Modifier.fillMaxWidth().padding(top = R1.space.s)) {
-        if (device.disabledBy != null) {
-            R1Chip(text = "DISABLED", variant = R1ChipVariant.Pill, tone = R1.StatusAmber)
-            Spacer(Modifier.height(R1.space.s))
+        // Status chips: battery / charging / connectivity, mirroring HA's own
+        // device page which surfaces a battery icon and dims unavailable
+        // entities. Derived from the live-state map for the device's entities.
+        val health = remember(detail.groups, detail.liveStates) {
+            deviceHealth(detail.groups.flatMap { it.entities }, detail.liveStates)
+        }
+        val statusChips = buildList {
+            if (device.disabledBy != null) add("DISABLED" to R1.StatusAmber)
+            health.batteryPercent?.let { pct ->
+                val tone = when {
+                    pct < 15 -> R1.StatusRed
+                    pct < 40 -> R1.StatusAmber
+                    else -> R1.AccentGreen
+                }
+                val bolt = if (health.charging) "+" else ""
+                add("BATTERY $pct%$bolt" to tone)
+            }
+            // Surface availability only when something is actually offline, so a
+            // healthy device stays uncluttered.
+            if (health.unavailableCount > 0) {
+                val tone = if (health.allUnavailable) R1.StatusRed else R1.StatusAmber
+                add("${health.unavailableCount} UNAVAILABLE" to tone)
+            }
+        }
+        if (statusChips.isNotEmpty()) {
+            val healthSpoken = DevicesA11y.deviceHealthDescription(
+                disabled = device.disabledBy != null,
+                batteryPercent = health.batteryPercent,
+                charging = health.charging,
+                unavailableCount = health.unavailableCount,
+                liveCount = health.liveCount,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = R1.space.s)
+                    .then(
+                        if (healthSpoken != null) {
+                            Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = healthSpoken
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                statusChips.forEach { (text, tone) ->
+                    R1Chip(text = text, variant = R1ChipVariant.Pill, tone = tone)
+                }
+            }
         }
         MetaRow(label = "AREA", value = detail.areaName)
         MetaRow(label = "MAKER", value = device.manufacturer)
@@ -139,7 +189,7 @@ private fun DeviceMetadata(detail: DevicesViewModel.DetailState) {
 private fun MetaRow(label: String, value: String?) {
     if (value.isNullOrBlank()) return
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xxs),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
@@ -218,7 +268,7 @@ private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .clearAndSetSemantics { contentDescription = rowDescription }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -236,7 +286,7 @@ private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
             style = R1.labelMicro,
             color = R1.InkSoft,
             maxLines = 1,
-            modifier = Modifier.padding(top = 2.dp),
+            modifier = Modifier.padding(top = R1.space.xxs),
         )
         val tags = buildList {
             entity.platform?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
@@ -248,7 +298,7 @@ private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
                 text = tags.joinToString(" : "),
                 style = R1.labelMicro,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
     }
