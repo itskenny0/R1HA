@@ -84,8 +84,10 @@ private fun GlanceTile(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val eid = safeEntityId(row.entityId)
-    val state = eid?.let { stateMap[it] }
+    // Resolve by raw id, the domain-agnostic path used by EntitiesCard /
+    // TileCard (no need to round-trip through a typed EntityId just to read a
+    // state slice).
+    val state = stateMap.byRaw(row.entityId)
     val name = resolveName(row.name, state, row.entityId)
     val accent = stateAccentFor(row.entityId, state)
     Column(
@@ -118,9 +120,13 @@ private fun GlanceTile(
             )
         }
         if (showState) {
+            // A genuinely-absent state shows a single dash rather than a ". " stub
+            // (which reads as a rendering glitch); a blank readout from
+            // compactStateText collapses to the same dash.
+            val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-"
             Spacer(Modifier.height(3.dp))
             Text(
-                text = state?.let(::compactStateText) ?: ". ",
+                text = stateText,
                 style = R1.labelMicro,
                 color = accent,
                 maxLines = 1,

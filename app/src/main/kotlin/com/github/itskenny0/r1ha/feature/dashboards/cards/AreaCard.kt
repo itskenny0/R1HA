@@ -89,8 +89,11 @@ fun AreaCard(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(10.dp))
-                    StateChip(text = state?.let(::compactStateText) ?: ". ", accent = accent)
+                    val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() }
+                    if (stateText != null) {
+                        Spacer(Modifier.width(10.dp))
+                        StateChip(text = stateText, accent = accent)
+                    }
                 }
             }
         } else {

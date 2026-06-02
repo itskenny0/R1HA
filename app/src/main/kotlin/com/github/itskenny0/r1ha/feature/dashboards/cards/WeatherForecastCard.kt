@@ -41,7 +41,7 @@ fun WeatherForecastCard(
     val eid = safeEntityId(card.entityId)
     val state = eid?.let { stateMap[it] }
     val name = resolveName(card.name, state, card.entityId)
-    val condition = state?.rawState ?: ". "
+    val condition = state?.rawState?.takeUnless { it.isBlank() } ?: "-"
     val tempC = state?.attributesJson?.get("temperature").asNumber()
     val unit = state?.attributesJson?.get("temperature_unit").asText() ?: "°"
     val accent = conditionAccent(condition)
@@ -65,7 +65,7 @@ fun WeatherForecastCard(
         if (card.showCurrent) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = tempC?.let { "%.0f".format(it) } ?: ". ",
+                    text = tempC?.let { "%.0f".format(it) } ?: "-",
                     style = R1.numeralXl.copy(fontSize = androidx.compose.ui.unit.TextUnit.Unspecified),
                     color = R1.Ink,
                 )
@@ -118,7 +118,7 @@ private fun ForecastStrip(forecast: JsonArray, slots: Int) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = temp?.let { "%.0f°".format(it) } ?: ". ",
+                    text = temp?.let { "%.0f°".format(it) } ?: "-",
                     style = R1.bodyEmph,
                     color = R1.Ink,
                 )

@@ -80,7 +80,7 @@ fun ThermostatCard(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
-            StateChip(text = (mode ?: ". ").replace('_', ' '), accent = accent)
+            StateChip(text = (mode?.takeUnless { it.isBlank() } ?: "-").replace('_', ' '), accent = accent)
         }
         Spacer(Modifier.height(12.dp))
         // Setpoint stepper: current reading on the left, target +/- on the right.
@@ -89,7 +89,7 @@ fun ThermostatCard(
                 Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = current?.let { "${fmtTemp(it)}$unit" } ?: ". ",
+                    text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
                     style = R1.numeralM,
                     color = R1.Ink,
                 )

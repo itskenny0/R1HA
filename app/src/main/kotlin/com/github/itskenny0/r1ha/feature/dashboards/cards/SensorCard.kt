@@ -52,7 +52,7 @@ fun SensorCard(
     val valueText = state?.let { s ->
         val raw = s.rawState.orEmpty()
         if (unit != null && raw.toDoubleOrNull() != null) "$raw $unit" else compactStateText(s)
-    } ?: ". "
+    }?.takeUnless { it.isBlank() } ?: "-"
 
     Column(
         modifier = modifier

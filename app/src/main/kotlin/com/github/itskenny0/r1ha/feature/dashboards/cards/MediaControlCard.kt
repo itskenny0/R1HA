@@ -58,7 +58,7 @@ fun MediaControlCard(
     val nowPlaying = listOfNotNull(
         state?.mediaTitle?.takeUnless { it.isBlank() },
         state?.mediaArtist?.takeUnless { it.isBlank() },
-    ).joinToString(" - ").ifBlank { raw.replace('_', ' ').ifBlank { ". " } }
+    ).joinToString(" - ").ifBlank { raw.replace('_', ' ').ifBlank { "Idle" } }
 
     val hasPrev = state?.hasMediaFeature(EntityState.MediaPlayerFeature.PREVIOUS_TRACK) == true
     val hasNext = state?.hasMediaFeature(EntityState.MediaPlayerFeature.NEXT_TRACK) == true
@@ -83,7 +83,7 @@ fun MediaControlCard(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
-            StateChip(text = if (raw.isBlank()) ". " else raw.replace('_', ' '), accent = accent)
+            StateChip(text = if (raw.isBlank()) "-" else raw.replace('_', ' '), accent = accent)
         }
         Spacer(Modifier.height(6.dp))
         Text(
@@ -132,7 +132,7 @@ fun MediaControlCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "VOLUME", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.height(2.dp))
-                    Text(text = volPct?.let { "$it%" } ?: ". ", style = R1.numeralM, color = accent)
+                    Text(text = volPct?.let { "$it%" } ?: "-", style = R1.numeralM, color = accent)
                 }
                 StepperButton(label = "−", accent = accent, enabled = volPct != null) {
                     val next = ((volPct ?: 0) - 5).coerceIn(0, 100)

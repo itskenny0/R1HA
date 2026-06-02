@@ -101,17 +101,37 @@ fun TileCard(
                     Text(
                         text = stateText,
                         style = R1.body,
-                        color = R1.InkSoft,
+                        color = accent,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            StateChip(text = if (state?.isOn == true) "on" else "off", accent = accent)
+            // HA's tile shows a trailing on/off pill only for entities that
+            // genuinely toggle (lights, switches, fans, ...). A sensor / numeric
+            // tile gets its colour from the icon disc + the inline state line, so
+            // a misleading "OFF" pill on a temperature tile is dropped.
+            if (isToggleableDomain(card.entityId) && state?.isAvailable == true) {
+                Spacer(Modifier.width(8.dp))
+                StateChip(text = if (state.isOn) "on" else "off", accent = accent)
+            }
         }
     }
 }
+
+/**
+ * Domains whose tile shows a trailing on/off pill. Mirrors HA's tile, which
+ * renders a toggle affordance only for domains with a binary on/off notion
+ * (lights, switches, fans, locks, covers, ...) and shows just the state line
+ * for read-only sensors / numeric entities.
+ */
+private fun isToggleableDomain(entityId: String): Boolean =
+    when (entityId.substringBefore('.', missingDelimiterValue = "")) {
+        "light", "switch", "input_boolean", "fan", "automation", "lock",
+        "cover", "media_player", "humidifier", "climate", "siren", "valve",
+        "remote", "group" -> true
+        else -> false
+    }
 
 @Composable
 private fun IconDisc(accent: androidx.compose.ui.graphics.Color, size: androidx.compose.ui.unit.Dp) {

@@ -130,7 +130,7 @@ fun PictureEntityCard(
             }
             if (card.showState) {
                 Text(
-                    text = state?.let(::compactStateText) ?: ". ",
+                    text = state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-",
                     style = R1.labelMicro,
                     color = accent,
                 )

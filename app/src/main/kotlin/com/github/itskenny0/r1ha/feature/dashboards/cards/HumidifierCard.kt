@@ -88,7 +88,7 @@ fun HumidifierCard(
                 Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    text = currentHumidity?.let { "${fmtTemp(it)}%" } ?: ". ",
+                    text = currentHumidity?.let { "${fmtTemp(it)}%" } ?: "-",
                     style = R1.numeralM,
                     color = R1.Ink,
                 )

@@ -89,7 +89,7 @@ fun AlarmPanelCard(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
-            StateChip(text = if (raw.isBlank()) ". " else raw.replace('_', ' '), accent = accent)
+            StateChip(text = if (raw.isBlank()) "-" else raw.replace('_', ' '), accent = accent)
         }
         Spacer(Modifier.height(10.dp))
         FlowRow(

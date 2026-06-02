@@ -42,8 +42,8 @@ fun GaugeCard(
     stateMap: EntityStates,
     modifier: Modifier = Modifier,
 ) {
-    val eid = safeEntityId(card.entityId)
-    val state = eid?.let { stateMap[it] }
+    // Resolve by raw id (the domain-agnostic state-slice path).
+    val state = stateMap.byRaw(card.entityId)
     // EntityState.raw is Number? (HA reports brightness as Int, volume as Double, etc.).
     // Coerce to Double for the gauge math; fall back to parsing rawState for sensors
     // whose raw payload didn't decode to a number (string-typed numeric sensors).
@@ -75,7 +75,9 @@ fun GaugeCard(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(28.dp))
                 Text(
-                    text = rawValue?.let { formatGaugeNumber(it) } ?: ". ",
+                    // A genuinely-absent / non-numeric value shows a single dash
+                    // rather than a ". " stub that reads as a render glitch.
+                    text = rawValue?.let { formatGaugeNumber(it) } ?: "-",
                     style = R1.numeralXl.copy(fontSize = androidx.compose.ui.unit.TextUnit.Unspecified),
                     color = R1.Ink,
                     fontWeight = FontWeight.Medium,

@@ -64,7 +64,7 @@ private fun FilterRow(
     val eid = safeEntityId(row.entityId)
     val state = eid?.let { stateMap[it] }
     val name = resolveName(row.name, state, row.entityId)
-    val stateText = state?.let { compactStateText(it) } ?: ". "
+    val stateText = state?.let { compactStateText(it) }?.takeUnless { it.isBlank() } ?: "-"
     val accent = stateAccentFor(row.entityId, state)
     Row(
         modifier = Modifier
