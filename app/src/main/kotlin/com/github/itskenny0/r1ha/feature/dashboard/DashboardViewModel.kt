@@ -39,6 +39,11 @@ class DashboardViewModel(
         val condition: String,
         val temperature: Double?,
         val temperatureUnit: String?,
+        /** "Feels like" reading (HA `apparent_temperature`). Same unit as
+         *  [temperature]; null when the integration doesn't report it. */
+        val apparentTemperature: Double? = null,
+        /** Relative humidity percentage (HA `humidity`); null when absent. */
+        val humidity: Int? = null,
     )
 
     @androidx.compose.runtime.Stable
@@ -81,7 +86,28 @@ class DashboardViewModel(
         val state: String,
         val title: String?,
         val artist: String?,
+        /** Whether the player advertises previous-track support
+         *  (HA `supported_features` PREVIOUS_TRACK bit). The transport
+         *  row hides the ◄◄ control when false so the dashboard never
+         *  offers a control the player can't honour. */
+        val canPrev: Boolean = true,
+        /** Next-track support (NEXT_TRACK bit). */
+        val canNext: Boolean = true,
+        /** Play-or-pause support (PLAY or PAUSE bit). When false the
+         *  play-pause control is hidden, leaving just the now-playing
+         *  readout. */
+        val canPlayPause: Boolean = true,
     )
+
+    /** [MediaPlayerEntityFeature] bits we gate the transport row on.
+     *  Mirrors HA's `MediaPlayerEntityFeature` enum so we only render a
+     *  control when the player advertises support for it. */
+    private object MediaFeature {
+        const val PAUSE = 1
+        const val PREVIOUS_TRACK = 16
+        const val NEXT_TRACK = 32
+        const val PLAY = 16384
+    }
 
     @androidx.compose.runtime.Stable
     data class TimerSummary(
@@ -185,19 +211,37 @@ class DashboardViewModel(
                     )
                 }
                 awaitAll(weatherJob, personJob, calendarJob, cameraJob, notifJob, sunJob, mediaJob, timerJob, lightsJob, powerJob, batteryJob)
-                val weather = weatherJob.await().getOrNull()?.firstOrNull()?.let { row ->
-                    WeatherSummary(
-                        name = row.friendlyName,
-                        condition = row.state,
-                        temperature = (row.attributes["temperature"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                        temperatureUnit = (row.attributes["temperature_unit"] as? JsonPrimitive)?.content,
-                    )
-                }
+                val weather = weatherJob.await().getOrNull()
+                    // Prefer the first weather entity that is actually reporting a
+                    // condition over a leading 'unavailable' / 'unknown' row, so a
+                    // flaky secondary integration can't blank the tile.
+                    ?.let { rows ->
+                        rows.firstOrNull { it.state !in setOf("unavailable", "unknown") }
+                            ?: rows.firstOrNull()
+                    }
+                    ?.let { row ->
+                        WeatherSummary(
+                            name = row.friendlyName,
+                            condition = row.state,
+                            temperature = (row.attributes["temperature"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
+                            temperatureUnit = (row.attributes["temperature_unit"] as? JsonPrimitive)?.content,
+                            apparentTemperature = (row.attributes["apparent_temperature"] as? JsonPrimitive)
+                                ?.content?.toDoubleOrNull(),
+                            humidity = (row.attributes["humidity"] as? JsonPrimitive)
+                                ?.content?.toDoubleOrNull()?.let { Math.round(it).toInt() },
+                        )
+                    }
                 val persons = personJob.await().getOrNull()
                     ?.takeIf { it.isNotEmpty() }
                     ?.let { rows ->
                         val homeCount = rows.count { it.state == "home" }
-                        val awayCount = rows.count { it.state == "not_home" || it.state == "away" }
+                        // Anyone reporting a non-home zone (HA shows the zone name,
+                        // e.g. "Work") is away from home, not just literal not_home /
+                        // away. Exclude unavailable / unknown so a dropped tracker
+                        // doesn't inflate the away tally.
+                        val awayCount = rows.count {
+                            it.state != "home" && it.state != "unavailable" && it.state != "unknown"
+                        }
                         PersonsSummary(
                             homeCount = homeCount,
                             awayCount = awayCount,
@@ -228,7 +272,15 @@ class DashboardViewModel(
                             allDay = allDay,
                         )
                     }
+                    // A happening-now event always wins. Otherwise pick the soonest
+                    // event whose start is still in the future, so a stale past-start
+                    // row (HA occasionally lags clearing state=off) can't masquerade
+                    // as "NEXT". Falls back to the soonest of whatever's left when no
+                    // future event exists, rather than showing nothing.
+                    val now = Instant.now()
                     parsed.firstOrNull { it.happeningNow }
+                        ?: parsed.filter { (it.eventStart ?: Instant.MIN) >= now }
+                            .minByOrNull { it.eventStart ?: Instant.MAX }
                         ?: parsed.minByOrNull { it.eventStart ?: Instant.MAX }
                 }
                 val cameras = cameraJob.await().getOrNull().orEmpty()
@@ -236,12 +288,22 @@ class DashboardViewModel(
                 val media = mediaJob.await().getOrNull()
                     ?.filter { it.state in setOf("playing", "paused", "buffering") }
                     ?.map { row ->
+                        // supported_features is an int bitmask; tolerate a stray
+                        // "59.0"-style float string by falling back through Double.
+                        val features = (row.attributes["supported_features"] as? JsonPrimitive)
+                            ?.content?.let { it.toIntOrNull() ?: it.toDoubleOrNull()?.toInt() } ?: 0
                         MediaSummary(
                             entityId = row.entityId,
                             name = row.friendlyName,
                             state = row.state,
                             title = (row.attributes["media_title"] as? JsonPrimitive)?.content,
                             artist = (row.attributes["media_artist"] as? JsonPrimitive)?.content,
+                            // supported_features may be absent (0) on minimal players; treat 0
+                            // as "advertises nothing" and hide all transport rather than offer
+                            // controls that will no-op. The bits mirror HA's enum.
+                            canPrev = (features and MediaFeature.PREVIOUS_TRACK) != 0,
+                            canNext = (features and MediaFeature.NEXT_TRACK) != 0,
+                            canPlayPause = (features and (MediaFeature.PLAY or MediaFeature.PAUSE)) != 0,
                         )
                     }
                     ?.sortedByDescending { it.state == "playing" }

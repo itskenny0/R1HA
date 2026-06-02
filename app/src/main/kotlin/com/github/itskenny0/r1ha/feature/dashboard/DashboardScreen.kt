@@ -454,6 +454,7 @@ private fun WeatherCard(
     w: DashboardViewModel.WeatherSummary,
     onClick: () -> Unit,
 ) {
+    val unit = w.temperatureUnit ?: "°"
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -477,10 +478,24 @@ private fun WeatherCard(
                 style = R1.body.copy(fontWeight = FontWeight.SemiBold),
                 color = R1.Ink,
             )
+            // Secondary line: feels-like + humidity when the integration
+            // reports them. HA surfaces these in the more-info weather view;
+            // they're the next most-glanceable facts after the headline temp.
+            val extras = buildList {
+                w.apparentTemperature?.let { add("FEELS ${"%.0f".format(it)}$unit") }
+                w.humidity?.let { add("$it% RH") }
+            }
+            if (extras.isNotEmpty()) {
+                Text(
+                    text = extras.joinToString("  ·  "),
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+            }
         }
         if (w.temperature != null) {
             Text(
-                text = "${"%.0f".format(w.temperature)}${w.temperatureUnit ?: "°"}",
+                text = "${"%.0f".format(w.temperature)}$unit",
                 style = R1.numeralXl,
                 color = R1.Ink,
             )
@@ -627,7 +642,7 @@ private fun DashboardTopBar(
                 modifier = Modifier
                     .size(R1.MinTarget)
                     .clip(R1.ShapeS)
-                    .r1Pressable(onClick = onOpenAssist),
+                    .r1Pressable(onClick = onOpenAssist, contentDescription = "Open Assist"),
                 contentAlignment = Alignment.Center,
             ) {
                 com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 16.dp)
@@ -648,7 +663,7 @@ private fun DashboardTopBar(
                 modifier = Modifier
                     .size(R1.MinTarget)
                     .clip(R1.ShapeS)
-                    .r1Pressable(onClick = onOpenSettings),
+                    .r1Pressable(onClick = onOpenSettings, contentDescription = "Open settings"),
                 contentAlignment = Alignment.Center,
             ) {
                 com.github.itskenny0.r1ha.ui.components.SettingsCogGlyph(size = 18.dp)
@@ -758,8 +773,11 @@ private fun TimerCard(
             // RelativeTimeLabel would tick into the past and show
             // 'finished 5 min ago' even though the timer hasn't fired.
             // Instead surface HA's `remaining` attribute (HH:MM:SS) as
-            // a static label so the user sees the actual time left.
-            if (t.state == "paused" && !t.remaining.isNullOrBlank()) {
+            // a static label so the user sees the actual time left. The
+            // same static fallback covers an active timer whose
+            // finishes_at failed to parse, so a control without a
+            // readable countdown still shows *something*.
+            if ((t.state == "paused" || t.finishesAt == null) && !t.remaining.isNullOrBlank()) {
                 Text(text = t.remaining, style = R1.labelMicro, color = color)
             } else {
                 RelativeTimeLabel(at = t.finishesAt, color = color, style = R1.labelMicro)
@@ -896,19 +914,41 @@ private fun MediaCard(
         if (titleLine.isNotBlank()) {
             Text(text = titleLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 2)
         }
-        // Transport row — prev / play-pause / next.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
-        ) {
-            TransportButton(label = "◄◄", onClick = onPrev, modifier = Modifier.weight(1f))
-            TransportButton(
-                label = if (playing) "❚❚" else "▶",
-                onClick = onPlayPause,
-                modifier = Modifier.weight(1f),
-                accent = R1.AccentWarm,
-            )
-            TransportButton(label = "►►", onClick = onNext, modifier = Modifier.weight(1f))
+        // Transport row: prev / play-pause / next, each gated on the
+        // player's supported_features so we never offer a control the
+        // player will silently no-op. When the player advertises none of
+        // them (e.g. a cast group reporting bare state) the row collapses.
+        if (media.canPrev || media.canPlayPause || media.canNext) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            ) {
+                if (media.canPrev) {
+                    TransportButton(
+                        label = "◄◄",
+                        onClick = onPrev,
+                        modifier = Modifier.weight(1f),
+                        contentDescription = "Previous track",
+                    )
+                }
+                if (media.canPlayPause) {
+                    TransportButton(
+                        label = if (playing) "❚❚" else "▶",
+                        onClick = onPlayPause,
+                        modifier = Modifier.weight(1f),
+                        accent = R1.AccentWarm,
+                        contentDescription = if (playing) "Pause" else "Play",
+                    )
+                }
+                if (media.canNext) {
+                    TransportButton(
+                        label = "►►",
+                        onClick = onNext,
+                        modifier = Modifier.weight(1f),
+                        contentDescription = "Next track",
+                    )
+                }
+            }
         }
     }
 }
@@ -919,13 +959,14 @@ private fun TransportButton(
     onClick: () -> Unit,
     modifier: Modifier,
     accent: androidx.compose.ui.graphics.Color = R1.InkSoft,
+    contentDescription: String? = null,
 ) {
     Box(
         modifier = modifier
             .clip(R1.ShapeS)
             .background(R1.Bg)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(onClick = onClick)
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription)
             .heightIn(min = R1.MinTarget)
             .padding(vertical = R1.space.s),
         contentAlignment = Alignment.Center,
@@ -966,7 +1007,14 @@ private fun PersonsCard(
                     "unknown", "unavailable" -> R1.StatusRed
                     else -> R1.AccentCool
                 }
-                Text(text = state.uppercase(), style = R1.labelMicro, color = color)
+                // HA reports "not_home" as the literal state for "away from any
+                // known zone"; render it as the friendlier "AWAY" the rest of
+                // HA uses rather than the raw enum value.
+                val label = when (state.lowercase()) {
+                    "not_home" -> "AWAY"
+                    else -> state.uppercase()
+                }
+                Text(text = label, style = R1.labelMicro, color = color)
             }
         }
         if (p.total > p.rows.size) {
@@ -1183,7 +1231,7 @@ private fun NotificationPreview(
             modifier = Modifier
                 .size(R1.MinTarget)
                 .clip(R1.ShapeS)
-                .r1Pressable(onClick = onDismiss),
+                .r1Pressable(onClick = onDismiss, contentDescription = "Dismiss notification"),
             contentAlignment = Alignment.Center,
         ) {
             Text(text = "✕", style = R1.body, color = R1.InkSoft)
