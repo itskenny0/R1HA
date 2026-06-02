@@ -59,7 +59,7 @@ fun decodeRawRow(row: JsonObject): RawEntityRow? {
     val attrs = row["attributes"] as? JsonObject ?: JsonObject(emptyMap())
     val friendly = (attrs["friendly_name"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: eid
     val lastChanged = (row["last_changed"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.let {
-        runCatching { Instant.parse(it) }.getOrNull()
+        parseHaInstant(it)
     }
     return RawEntityRow(
         entityId = eid,
