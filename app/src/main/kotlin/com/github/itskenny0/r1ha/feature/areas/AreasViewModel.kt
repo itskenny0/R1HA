@@ -24,7 +24,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Drives the HA Areas browser. HA's area_registry isn't reachable from
- * a public REST endpoint — it lives behind the WebSocket
+ * a public REST endpoint; it lives behind the WebSocket
  * `config/area_registry/list` command. Rather than extending
  * HaWebSocketClient to support arbitrary command/result calls (which
  * would touch correlation IDs + result futures), we fetch the area
@@ -260,7 +260,7 @@ class AreasViewModel(
                                 entities = list.sortedBy { it.friendlyName.lowercase() },
                             )
                         }
-                        // Controls first, then sensors, then everything else —
+                        // Controls first, then sensors, then everything else;
                         // the same altitude Search's CONTROLS / SENSORS buckets use.
                         .sortedWith(
                             compareBy(
@@ -401,7 +401,7 @@ class AreasViewModel(
                 }
             }
             // Toggles change state; re-resolve so the row's ON/OFF flips.
-            // Fire/press are stateless, info is read-only — no reload needed.
+            // Fire/press are stateless, info is read-only; no reload needed.
             if (changed) _drill.value?.area?.let { openArea(it) }
         }
     }

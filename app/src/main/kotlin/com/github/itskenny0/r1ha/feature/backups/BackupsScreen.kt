@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -254,21 +255,23 @@ private fun sortLabel(sort: BackupsLogic.Sort): String = when (sort) {
 
 @Composable
 private fun BackupRow(b: BackupInfo) {
-    val created = BackupsLogic.formatCreatedAt(b.createdAt)
-    val relative = BackupsLogic.relativeCreatedAt(b.createdAt)
-    val size = BackupsLogic.formatSize(b.sizeBytes)
-    val type = BackupsLogic.typeLabel(b.type)
-    val meta = buildString {
-        append(created)
-        if (relative != null) {
-            append(" (")
-            append(relative)
-            append(")")
+    val meta = remember(b.backupId) {
+        val created = BackupsLogic.formatCreatedAt(b.createdAt)
+        val relative = BackupsLogic.relativeCreatedAt(b.createdAt)
+        val size = BackupsLogic.formatSize(b.sizeBytes)
+        val type = BackupsLogic.typeLabel(b.type)
+        buildString {
+            append(created)
+            if (relative != null) {
+                append(" (")
+                append(relative)
+                append(")")
+            }
+            append(" · ")
+            append(size)
+            append(" · ")
+            append(type)
         }
-        append(" · ")
-        append(size)
-        append(" · ")
-        append(type)
     }
     Column(
         modifier = Modifier

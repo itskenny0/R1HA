@@ -16,18 +16,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Drives the History drill-in surface — a full-screen view of one
+ * Drives the History drill-in surface: a full-screen view of one
  * entity's recent state-change history, fetched from HA's
  * `/api/history/period/...` REST endpoint.
  *
  * The card stack's per-entity sparkline gives a 72-dp glimpse at 24 h
  * of history; this VM backs the much larger view a user gets when
- * they explicitly drill into an entity to investigate it — bigger
+ * they explicitly drill into an entity to investigate it: bigger
  * chart, configurable time window (1 h / 6 h / 24 h / 7 d), and
  * numerical readouts of min/max/avg/current.
  *
  * Multi-entity overlay: the screen opens on a single "primary" entity
- * (series[0]) — the existing drill-in path. The user can ADD up to
+ * (series[0]): the existing drill-in path. The user can ADD up to
  * [MAX_SERIES] - 1 further numeric entities, each fetched over the
  * same window and overlaid on the same chart with its own accent.
  * Single-entity entry stays unchanged: with one series the chart, the
@@ -38,7 +38,7 @@ class HistoryViewModel(
     private val primaryEntityId: EntityId,
 ) : ViewModel() {
 
-    /** Time-window selector — the chips at the top of the screen flip
+    /** Time-window selector: the chips at the top of the screen flip
      *  between these. Each value is the number of hours to pull from
      *  HA's history endpoint. */
     enum class Window(val hours: Int, val label: String) {
@@ -74,11 +74,11 @@ class HistoryViewModel(
         /** Ordered series; [0] is always the primary drill-in entity. */
         val series: List<Series> = emptyList(),
         val error: String? = null,
-        /** entity_id of the primary series — used as the title fallback
+        /** entity_id of the primary series: used as the title fallback
          *  before the first fetch resolves a friendly name. */
         val primaryEntityIdValue: String = "",
     ) {
-        /** True once the overlay cap is reached — the ADD affordance
+        /** True once the overlay cap is reached: the ADD affordance
          *  surfaces this so the user knows why it's disabled. */
         val atCap: Boolean get() = series.size >= MAX_SERIES
 
@@ -133,7 +133,7 @@ class HistoryViewModel(
     }
 
     /** Remove an overlaid entity. The primary (index 0) can't be
-     *  removed — the screen always shows at least its origin entity. */
+     *  removed; the screen always shows at least its origin entity. */
     fun removeEntity(entityId: EntityId) {
         val current = _ui.value
         if (entityId == primaryEntityId) return

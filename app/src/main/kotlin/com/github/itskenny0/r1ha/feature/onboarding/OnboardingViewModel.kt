@@ -34,8 +34,8 @@ class OnboardingViewModel(
         /**
          * Server responded with an authorize URL ready to open in the WebView. Carries
          * [baseUrl] alongside [authorizeUrl] so the token exchange POSTs to the same path-
-         * prefixed HA installation the user signed into (e.g. `https://example.com/ha`) —
-         * deriving the base from `authorizeUrl`'s host alone would strip the `/ha` prefix
+         * prefixed HA installation the user signed into (e.g. `https://example.com/ha`).
+         * Deriving the base from `authorizeUrl`'s host alone would strip the `/ha` prefix
          * and POST to the wrong path.
          */
         data class ReadyToAuth(val authorizeUrl: String, val baseUrl: String) : State
@@ -86,7 +86,7 @@ class OnboardingViewModel(
                 }
                 // NB: we deliberately do NOT write settings.server here. Doing so triggered
                 // the URL-change observer in HaRepository which tried to connectFromSettings
-                // immediately — but tokens haven't been exchanged yet, so it toasted
+                // immediately. But tokens haven't been exchanged yet, so it toasted
                 // "Authentication tokens missing" before the user even saw the WebView. The
                 // URL gets written by exchangeCode() right after a successful token POST.
                 val authorizeUrl = "$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FR1HA%2F&redirect_uri=r1ha%3A%2F%2Fauth-callback"

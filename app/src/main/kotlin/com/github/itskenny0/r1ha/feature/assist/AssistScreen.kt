@@ -63,14 +63,14 @@ import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.launch
 
 /**
- * Text-mode HA Assist surface — pipes a typed prompt into
+ * Text-mode HA Assist surface: pipes a typed prompt into
  * `/api/conversation/process` and renders the response as a chat-style
  * transcript. Multi-turn context is threaded via the conversation_id HA
  * returns, so the user can chain prompts ("turn off the light" → "and
  * the kitchen one too") and HA's intent engine keeps the device-class
  * carry-forward.
  *
- * Audio (STT/TTS via the Assist pipeline WS) is a later iteration — the
+ * Audio (STT/TTS via the Assist pipeline WS) is a later iteration: the
  * R1 has a mic + speaker, so we can layer it on without re-architecting
  * the transcript model. The text path is the foundation.
  */
@@ -86,7 +86,7 @@ fun AssistScreen(
     val vm: AssistViewModel = viewModel(factory = AssistViewModel.factory(haRepository, settings))
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
-    // Wheel scroll for the transcript — long conversations span more
+    // Wheel scroll for the transcript: long conversations span more
     // than one screen + the user wants to scroll back without
     // touching.
     com.github.itskenny0.r1ha.ui.components.WheelScrollFor(
@@ -102,7 +102,7 @@ fun AssistScreen(
     // imePadding produced.
     val focus = remember { FocusRequester() }
     // Honour the user's auto-open preference. Default OFF: opening
-    // Assist no longer pops the keyboard automatically — the user
+    // Assist no longer pops the keyboard automatically: the user
     // reported the empty-state recentering jarringly when the IME
     // shrinks the transcript area on a phone. Tapping the input
     // field on entry is one extra tap but keeps the layout stable.
@@ -140,7 +140,7 @@ fun AssistScreen(
             .systemBarsPadding()
             .imePadding(),
     ) {
-        // Agent picker dialog state — local to the screen because it's a
+        // Agent picker dialog state: local to the screen because it's a
         // pure UI toggle. The agent id itself lives in settings so it
         // persists across navigations / restarts.
         val agentDialogOpen = remember { mutableStateOf(false) }
@@ -214,7 +214,7 @@ fun AssistScreen(
         // conversation doesn't stretch bubbles across a 1280 dp panel.
         AdaptiveContent(modifier = Modifier.weight(1f)) {
         Column(modifier = Modifier.fillMaxSize()) {
-        // Transcript — fills the remainder. Empty state shows a "How can I
+        // Transcript: fills the remainder. Empty state shows a "How can I
         // help?" prompt mirroring HA's own Assist greeting so the screen
         // doesn't look broken before the first send.
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -234,7 +234,7 @@ fun AssistScreen(
             )
             if (ui.messages.isEmpty()) {
                 // Empty-state anchors near the top of the transcript area (not
-                // vertically centred) — when the IME opens and shrinks the
+                // vertically centred): when the IME opens and shrinks the
                 // parent Box, a Center arrangement re-runs and the content
                 // visibly jumps upward, which the user reported as 'viewport
                 // scrolls up way too high'. Top-anchored content stays put
@@ -335,7 +335,7 @@ fun AssistScreen(
                 // above it, and so on upward. We feed it messages.reversed() so the
                 // newest message is index 0 (bottom-most). When the IME opens and
                 // imePadding shrinks the parent, the bottom edge stays fixed against
-                // the IME — the newest bubble remains visible without any
+                // the IME: the newest bubble remains visible without any
                 // animateScrollToItem on top, which was the source of the second
                 // visible 'keyboard-length' shift. Older messages spill upward and
                 // can be reached by scrolling.
@@ -397,7 +397,7 @@ fun AssistScreen(
                 }
             }
         }
-        // Macro chip row — saved user prompts that fire on a single tap. Hidden
+        // Macro chip row: saved user prompts that fire on a single tap. Hidden
         // when empty so the input area doesn't reserve space until the user
         // actually saves one. Long-press a chip to delete it (with toast
         // confirmation so an accidental long-press is recoverable). Horizontal
@@ -442,10 +442,10 @@ fun AssistScreen(
                 }
             }
         }
-        // Input row — text field + SEND button. Plus a small RESET chip on
+        // Input row: text field + SEND button. Plus a small RESET chip on
         // the left so the user can drop the conversation_id and start fresh
         // without backing out.
-        // Voice-input launcher — fires the system RecognizerIntent which
+        // Voice-input launcher: fires the system RecognizerIntent which
         // shows the standard Android mic dialog. Returns the recognised
         // text via the activity result; we drop it into the draft field
         // and immediately send. No RECORD_AUDIO permission needed by the
@@ -495,7 +495,7 @@ fun AssistScreen(
                 )
             }
             Spacer(Modifier.width(R1.space.xs))
-            // Save-as-macro chip — turns the current draft into a saved macro
+            // Save-as-macro chip: turns the current draft into a saved macro
             // chip rendered above the input row. Disabled when the draft is
             // blank so an empty tap doesn't save an unusable empty macro.
             // Filled accent when active so the affordance reads as "this will
@@ -528,7 +528,7 @@ fun AssistScreen(
                 )
             }
             Spacer(Modifier.width(R1.space.xs))
-            // Voice button — fires the system speech recognizer. Disabled
+            // Voice button: fires the system speech recognizer. Disabled
             // while a send is in flight so a quick voice tap doesn't queue a
             // second prompt over the first. Same hand-drawn AssistMicGlyph as
             // the chrome-row mic so the two surfaces agree on the iconography.
@@ -553,7 +553,7 @@ fun AssistScreen(
                             putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                         }
                         // Some R1 ROMs (CipherOS especially) might not have a
-                        // speech-recognition service installed — surface a toast
+                        // speech-recognition service installed: surface a toast
                         // rather than crashing on ActivityNotFoundException.
                         runCatching { voiceLauncher.launch(intent) }
                             .onFailure {
@@ -658,7 +658,7 @@ private fun AssistBubble(msg: AssistMessage) {
 /**
  * Conversation-agent picker. Free-form text input rather than a fetched list
  * because HA's WS API for enumerating agents/pipelines isn't wired through
- * this client yet — manual entry is the pragmatic MVP. Common values:
+ * this client yet: manual entry is the pragmatic MVP. Common values:
  * `homeassistant` (HA's built-in intent agent), `conversation.openai_conversation`
  * (the OpenAI integration), or a pipeline UUID for the assist_pipeline path.
  * Empty / blank input clears the override and routes back to HA's default.

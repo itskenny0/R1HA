@@ -14,8 +14,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * Drives the HA Updates surface — lists every `update.*` entity (HA Core,
- * Supervisor, OS, add-ons, integration firmware) with installed → latest
+ * Drives the HA Updates surface: lists every `update.*` entity (HA Core,
+ * Supervisor, OS, add-ons, integration firmware) with installed/latest
  * version, release notes link, and an install dispatcher.
  *
  * HA exposes the following attributes on update entities:
@@ -24,14 +24,14 @@ import kotlinx.coroutines.launch
  *  - `title` (friendly, often more descriptive than `friendly_name`)
  *  - `release_summary` (markdown blurb, usually a few sentences)
  *  - `release_url` (link to the full changelog / release notes)
- *  - `auto_update` (bool — whether HA will install automatically)
- *  - `in_progress` (bool — true while an install is running)
+ *  - `auto_update` (bool: whether HA will install automatically)
+ *  - `in_progress` (bool: true while an install is running)
  *  - `update_percentage` (0..100, sparsely populated; null mid-install on
  *    integrations that don't expose granular progress)
  *  - `supported_features` (bitmask: 1 = install, 2 = specific_version,
  *    4 = progress, 8 = backup, 16 = release_notes)
  *
- * No state subscription — we pull on every refresh (mirrors HelpersScreen /
+ * No state subscription: we pull on every refresh (mirrors HelpersScreen /
  * AutomationsScreen which use the same REST-fetch pattern). Manual refresh
  * after every install dispatch picks up the new in_progress + version
  * fields without waiting for HA's natural state broadcast.
@@ -54,7 +54,7 @@ class UpdatesViewModel(
     @androidx.compose.runtime.Stable
     data class Entry(
         val id: EntityId,
-        /** Best human-readable title — falls back to friendly_name, then
+        /** Best human-readable title: falls back to friendly_name, then
          *  the prettified entity_id. */
         val title: String,
         val bucket: Bucket,
@@ -69,7 +69,7 @@ class UpdatesViewModel(
          *  the row thumbnail via the shared AsyncBitmap loader; null falls back
          *  to the bucket badge alone. */
         val entityPicture: String?,
-        /** Pre-install backup support — drives whether the install dialog
+        /** Pre-install backup support: drives whether the install dialog
          *  offers the "Back up first" toggle. Derived from the
          *  supported_features bitmask (bit 3 / value 8). */
         val supportsBackup: Boolean,
@@ -86,7 +86,7 @@ class UpdatesViewModel(
         val inProgress: Boolean,
         /** 0..100, or null when HA doesn't report granular progress. */
         val progressPercent: Int?,
-        /** Whether HA's `auto_update` flag is set — purely informational
+        /** Whether HA's `auto_update` flag is set: purely informational
          *  badge ("AUTO") so the user understands no manual install is
          *  required for this entity. */
         val autoUpdate: Boolean,
@@ -205,7 +205,7 @@ class UpdatesViewModel(
                     Toaster.error("Install failed: ${t.message ?: "unknown"}")
                 },
             )
-            // Settle delay before refresh — HA flips `in_progress` to true
+            // Settle delay before refresh: HA flips `in_progress` to true
             // asynchronously on its side once the integration starts the
             // install. Without the delay we'd often miss the flip and the
             // row would briefly look unchanged.

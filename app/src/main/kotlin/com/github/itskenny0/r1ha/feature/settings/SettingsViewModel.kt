@@ -153,7 +153,7 @@ class SettingsViewModel(
             it.copy(behavior = it.behavior.copy(quickTileEntityId = cleaned))
         }
 
-    /** Slot B/C/D quick-tile bindings — each tile in the Android shade reads
+    /** Slot B/C/D quick-tile bindings: each tile in the Android shade reads
      *  from its own slot, so updates here only affect that tile's next refresh. */
     fun setQuickTileEntityIdB(entityId: String?) =
         update {
@@ -193,7 +193,7 @@ class SettingsViewModel(
     /**
      * Generic mutator for the [AdvancedSettings] sub-struct. The dev-menu screen
      * uses this to update fields one at a time without each field needing its own
-     * VM method — there are roughly two dozen advanced toggles and writing a setter
+     * VM method; there are roughly two dozen advanced toggles and writing a setter
      * per knob would dwarf the rest of the VM.
      */
     fun updateAdvanced(transform: (com.github.itskenny0.r1ha.core.prefs.AdvancedSettings) -> com.github.itskenny0.r1ha.core.prefs.AdvancedSettings) =
@@ -277,7 +277,7 @@ class SettingsViewModel(
      * Reset every user-tunable setting to its default. Preserves the user's
      * account (server URL + tokens), favourites lists, and pages so they don't
      * have to re-onboard. Surfaced as a two-stage confirm action in the
-     * Settings screen — first tap arms, second tap commits.
+     * Settings screen: first tap arms, second tap commits.
      *
      * Implemented as a single [SettingsRepository.update] so the reset is
      * atomic; intermediate observers don't see half-reset state.
@@ -302,12 +302,12 @@ class SettingsViewModel(
 
     /**
      * Reset only one category's slice of settings to defaults. Bounded blast
-     * radius — useful when a user accidentally messed up their wheel curve
+     * radius: useful when a user accidentally messed up their wheel curve
      * and doesn't want to lose the rest of their tuning. Server, favourites
      * and pages are never touched regardless of which category resets.
      *
-     * Categories that don't map to a discrete AppSettings sub-object (SERVER —
-     * has its own sign-out path; DASHBOARD — lives partially in pages which we
+     * Categories that don't map to a discrete AppSettings sub-object (SERVER:
+     * has its own sign-out path; DASHBOARD: lives partially in pages which we
      * preserve) are no-ops.
      */
     fun resetCategory(category: com.github.itskenny0.r1ha.core.prefs.SettingCategory) {
@@ -339,8 +339,8 @@ class SettingsViewModel(
 
     /**
      * Capture the current settings as an [com.github.itskenny0.r1ha.core.prefs.AppBackup]
-     * JSON blob and hand it to [onReady] on the main thread. The caller — the
-     * Settings screen with a SAF CreateDocument launcher in hand — writes the
+     * JSON blob and hand it to [onReady] on the main thread. The caller: the
+     * Settings screen with a SAF CreateDocument launcher in hand; writes the
      * blob to the user-picked file.
      *
      * We read the latest settings synchronously from the flow's current value

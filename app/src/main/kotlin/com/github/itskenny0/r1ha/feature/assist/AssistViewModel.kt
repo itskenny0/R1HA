@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
  * user can say "turn off the light" then "the kitchen one" and HA's
  * intent engine carries the device-class state forward).
  *
- * Text-only for now — no STT / TTS. The R1 has a microphone and the HA
+ * Text-only for now: no STT / TTS. The R1 has a microphone and the HA
  * Assist pipeline can do server-side STT, so adding voice is a follow-
  * up rather than a refactor: the audio frames pump into the same
  * /api/conversation/process endpoint or the dedicated Assist pipeline
@@ -149,7 +149,7 @@ class AssistViewModel(
     }
 
     /**
-     * Send a macro directly — bypasses the draft field so a tap on a macro chip
+     * Send a macro directly: bypasses the draft field so a tap on a macro chip
      * fires immediately without first populating the input. Multi-tapping the
      * same macro fires it each time (HA's conversation engine handles dedupe at
      * its end; we don't second-guess intent). No-ops while a request is in
@@ -186,7 +186,7 @@ class AssistViewModel(
         }
     }
 
-    /** Start a fresh conversation — drops the threaded id so the next
+    /** Start a fresh conversation: drops the threaded id so the next
      *  send re-anchors HA's context. The transcript is also cleared so
      *  the UI doesn't pretend the previous turn is still live. */
     fun reset() {

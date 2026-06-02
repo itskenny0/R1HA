@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.service
 
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -10,6 +11,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Drives the Service Caller power-user surface. Lets the user type
@@ -33,14 +38,14 @@ class ServiceCallerViewModel(
     @Volatile
     private var historyDepth: Int = 5
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class RecentCall(
         val domain: String,
         val service: String,
         val data: String,
     )
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class UiState(
         val domain: String = "homeassistant",
         val service: String = "check_config",
@@ -49,10 +54,10 @@ class ServiceCallerViewModel(
         val result: String = "",
         val error: String? = null,
         /** Last 5 successfully-fired calls, newest first. Lives in
-         *  ViewModel state only — not persisted across app restarts.
+         *  ViewModel state only; not persisted across app restarts.
          *  That's intentional: this is "what did I just try?", not
-         *  "what did I do last week" — the latter would want a real
-         *  history surface. */
+         *  "what did I do last week" (the latter would want a real
+         *  history surface). */
         val recent: List<RecentCall> = emptyList(),
     ) {
         /** True when [domain] is empty or a legal HA domain token. The repo
@@ -70,7 +75,7 @@ class ServiceCallerViewModel(
          *  an inline hint so malformed JSON is caught while typing rather
          *  than only on FIRE. */
         val dataValid: Boolean get() = data.isBlank() || runCatching {
-            kotlinx.serialization.json.Json.parseToJsonElement(data.trim()) is kotlinx.serialization.json.JsonObject
+            Json.parseToJsonElement(data.trim()) is JsonObject
         }.getOrDefault(false)
 
         /** All fields present and well-formed, ready to dispatch. */
@@ -92,7 +97,7 @@ class ServiceCallerViewModel(
      * sit on a long-running automation script for many seconds and there was no
      * way to back out until now.
      */
-    private var fireJob: kotlinx.coroutines.Job? = null
+    private var fireJob: Job? = null
 
     fun cancel() {
         fireJob?.cancel()
@@ -119,11 +124,11 @@ class ServiceCallerViewModel(
         }
         // Parse the data field as a JsonObject if non-blank; empty = {}.
         val payload = if (s.data.isBlank()) {
-            kotlinx.serialization.json.JsonObject(emptyMap())
+            JsonObject(emptyMap())
         } else {
             runCatching {
-                kotlinx.serialization.json.Json.parseToJsonElement(s.data.trim())
-                    as? kotlinx.serialization.json.JsonObject
+                Json.parseToJsonElement(s.data.trim())
+                    as? JsonObject
                     ?: error("Data must be a JSON object")
             }.getOrElse { t ->
                 _ui.value = s.copy(error = "Bad JSON data: ${t.message}")
@@ -148,17 +153,16 @@ class ServiceCallerViewModel(
                         result = if (result.isBlank()) {
                             "[] (no state changes)"
                         } else {
-                            // Pretty-print the JSON response for readability —
+                            // Pretty-print the JSON response for readability;
                             // HA's /api/services returns an array of state
                             // dicts that's hard to scan single-line. Falls
                             // back to the raw response if parsing fails (HA
                             // could return non-JSON for some service edge
                             // cases).
                             runCatching {
-                                val parsed = kotlinx.serialization.json.Json
-                                    .parseToJsonElement(result)
+                                val parsed = Json.parseToJsonElement(result)
                                 prettyJson.encodeToString(
-                                    kotlinx.serialization.json.JsonElement.serializer(),
+                                    JsonElement.serializer(),
                                     parsed,
                                 )
                             }.getOrDefault(result)
@@ -179,7 +183,7 @@ class ServiceCallerViewModel(
         }
     }
 
-    /** Seed the editor with a [domain]/[service]/[data] preset — used by
+    /** Seed the editor with a [domain]/[service]/[data] preset: used by
      *  the example chips on the screen so the user can try common calls
      *  with one tap. */
     fun load(domain: String, service: String, data: String) {
@@ -201,9 +205,9 @@ class ServiceCallerViewModel(
         /** Shared Json instance for pretty-printing service-call results.
          *  prettyPrint = true is enough; default 4-space indent reads
          *  fine on the R1's tiny screen. Lives in the companion so the
-         *  formatter isn't rebuilt on every fire — also shared with
+         *  formatter isn't rebuilt on every fire, also shared with
          *  the screen-side PASTE chip for the same reason. */
-        internal val prettyJson = kotlinx.serialization.json.Json { prettyPrint = true }
+        internal val prettyJson = Json { prettyPrint = true }
 
         fun factory(
             haRepository: HaRepository,

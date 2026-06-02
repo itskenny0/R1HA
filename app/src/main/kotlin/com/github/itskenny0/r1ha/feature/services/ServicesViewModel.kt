@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 /**
  * Drives the Services Browser. Lists every HA service via /api/services
  * with substring search and per-domain expansion. Tap a service to copy
- * "<domain>.<service>" to the clipboard — paste into the Service
+ * "<domain>.<service>" to the clipboard, then paste into the Service
  * Caller to dispatch it.
  */
 class ServicesViewModel(

@@ -61,13 +61,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Universal Search surface — search every HA entity by name / id /
+ * Universal Search surface: search every HA entity by name / id /
  * area; tap to fire (scenes / scripts / buttons) or toggle (lights /
  * switches / etc.). Read-only sensors and other non-toggle entities
  * surface a detail toast on tap rather than dispatching anything.
  *
  * Empty query renders an instructional placeholder rather than
- * dumping the entire entity registry — on a big install that's
+ * dumping the entire entity registry. On a big install that's
  * thousands of rows which would be slow to scroll and not what the
  * user wants anyway.
  */
@@ -94,7 +94,7 @@ fun SearchScreen(
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    // Active-page favourites set — used to swap the star glyph for
+    // Active-page favourites set: used to swap the star glyph for
     // entities that are already favourited so the user doesn't try to
     // add them a second time (no-op anyway, but the visual feedback
     // closes the loop). Recomputed live as pages/favourites change.
@@ -106,7 +106,7 @@ fun SearchScreen(
             ?.favorites?.toSet() ?: emptySet()
     }
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
-    // History-peek state — entity currently being previewed via long-press.
+    // History-peek state: entity currently being previewed via long-press.
     // Holds an EntityState so the dialog can show the right name/unit even
     // when results re-shuffle underneath. Null = no peek active.
     var historyPeek by remember {
@@ -117,7 +117,7 @@ fun SearchScreen(
         kotlinx.coroutines.delay(80)
         runCatching { focus.requestFocus() }
     }
-    // Long-press handler — open the entity in HA's web UI (the
+    // Long-press handler: open the entity in HA's web UI (the
     // /lovelace?edit=1&entity_id=… form HA uses internally to focus a
     // specific entity). Falls back to plain /lovelace when server isn't
     // configured.
@@ -226,7 +226,7 @@ fun SearchScreen(
                     color = R1.AccentWarm,
                 )
             }
-            // Failure path — listAllEntities errored. Show the error +
+            // Failure path: listAllEntities errored. Show the error +
             // hint at recovery (pull-to-refresh or reconnect via
             // Settings).
             ui.error != null && ui.all.isEmpty() -> Box(
@@ -398,7 +398,7 @@ fun SearchScreen(
                             // an OPEN IN HA button inside for users who still want the
                             // browser fallback). Replaces the previous "long-press =
                             // open in HA" gesture because the inline peek is a more
-                            // useful default — most queries are "what is this sensor
+                            // useful default. Most queries are "what is this sensor
                             // doing?" rather than "let me jump to the web UI."
                             onLongPress = { historyPeek = entity },
                             onFavorite = { vm.addToFavorites(entity.id) },
@@ -433,7 +433,7 @@ fun SearchScreen(
  * last 24 hours of history via the repository, renders it through the same
  * [com.github.itskenny0.r1ha.ui.components.SensorHistoryChart] component the
  * card stack uses, and offers shortcuts to the full History screen or to
- * HA's web UI. Bypassed when the entity is non-numeric — the chart component
+ * HA's web UI. Bypassed when the entity is non-numeric: the chart component
  * itself surfaces a "HISTORY ISN'T NUMERIC" hint in that case.
  */
 @Composable
@@ -619,13 +619,13 @@ private fun SearchResultRow(
             Text(text = stateLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         }
         Spacer(Modifier.width(R1.space.s))
-        // History drill-in glyph — opens the full-screen history view
+        // History drill-in glyph: opens the full-screen history view
         // for this entity. Separate tap target from the action/toggle
         // path so the user can investigate a sensor's recent state
         // without tripping the toggle action on adjacent rows. Hand-
         // drawn HistoryChartGlyph (was 📈 emoji) so the icon stays
         // monochrome and reads at the same hairline weight as the
-        // surrounding chrome — the colour-emoji font was painting a
+        // surrounding chrome. The colour-emoji font was painting a
         // green/red chart icon that visibly broke the row's tone.
         Box(
             modifier = Modifier
@@ -641,7 +641,7 @@ private fun SearchResultRow(
                 tint = R1.InkSoft,
             )
         }
-        // Star tap target — adds the entity to the active page's
+        // Star tap target: adds the entity to the active page's
         // favourites. Separate from the row's main r1RowPressable so a
         // tap on the star doesn't fire the entity's action. Filled glyph
         // + accent tint when the entity is already on the active page,

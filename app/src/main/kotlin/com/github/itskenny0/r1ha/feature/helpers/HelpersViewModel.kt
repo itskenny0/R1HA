@@ -20,13 +20,13 @@ import kotlinx.serialization.json.buildJsonObject
 import java.time.Instant
 
 /**
- * Drives the Helpers surface — Home Assistant's catch-all for
+ * Drives the Helpers surface: Home Assistant's catch-all for
  * user-defined state holders: `input_boolean`, `input_number`,
  * `input_select`, `input_text`, `input_datetime`, `input_button`,
  * `counter`, `timer`.
  *
  * Most of these are scalar / on-off and would naturally fit the card
- * stack, but the discoverability story is different — users typically
+ * stack, but the discoverability story is different; users typically
  * want to *find* and *manipulate* a helper once in a while (kitchen
  * timer, away mode toggle, holiday-mode select) rather than have it
  * pinned to a card. This surface gives them a single list view to
@@ -40,7 +40,7 @@ class HelpersViewModel(
     /** One bucket per supported HA helper domain. Filter chips at the
      *  top of the screen flip between these; ALL is the union. */
     enum class Bucket(val label: String, val domains: Set<String>) {
-        ALL("ALL", emptySet()), // sentinel — UI shows the union
+        ALL("ALL", emptySet()), // sentinel: UI shows the union
         TOGGLES("TOGGLES", setOf("input_boolean")),
         NUMBERS("NUMBERS", setOf("input_number", "counter")),
         SELECTS("SELECTS", setOf("input_select")),
@@ -59,7 +59,7 @@ class HelpersViewModel(
         val name: String,
         val state: String,
         val kind: Kind,
-        /** Numeric value for input_number / counter — already parsed
+        /** Numeric value for input_number / counter: already parsed
          *  from the state string. Null when not numeric or out of range. */
         val numericValue: Double? = null,
         val min: Double? = null,
@@ -68,20 +68,20 @@ class HelpersViewModel(
         val unit: String? = null,
         /** Options for input_select. Empty for everything else. */
         val options: List<String> = emptyList(),
-        /** Timer's finishes_at — null for paused / idle timers. */
+        /** Timer's finishes_at: null for paused / idle timers. */
         val finishesAt: Instant? = null,
         /** input_button's state is the ISO timestamp of its last press (or
          *  `unknown` if never pressed). Parsed so the row can show a relative
          *  "pressed N ago" the way HA's button row surfaces last-changed. */
         val pressedAt: Instant? = null,
         /** Timer's `remaining` attribute (HH:MM:SS). Useful when
-         *  paused — `finishes_at` is stale at that point. */
+         *  paused: `finishes_at` is stale at that point. */
         val remaining: String? = null,
         /** input_text length window (HA defaults 0..100). Used to clamp /
          *  validate the inline editor before dispatching set_value. */
         val textMin: Int? = null,
         val textMax: Int? = null,
-        /** input_datetime shape — which of date / time the helper carries.
+        /** input_datetime shape: which of date / time the helper carries.
          *  Drives which editor fields the row shows and which keys land in
          *  the set_datetime payload. */
         val hasDate: Boolean = false,
@@ -113,7 +113,7 @@ class HelpersViewModel(
                 }
             }
 
-        /** Per-bucket counts driven from `all` — chip labels show the
+        /** Per-bucket counts driven from `all`: chip labels show the
          *  count so the user can see which buckets are populated. */
         val counts: Map<Bucket, Int>
             get() = buildMap {
@@ -209,7 +209,7 @@ class HelpersViewModel(
                 ServiceCall(target = entry.id, service = "toggle", data = JsonObject(emptyMap())),
             ).onFailure { Toaster.error("Toggle failed: ${it.message ?: "unknown"}") }
             // Settle delay so the freshly-toggled state lands before
-            // refresh re-queries — matches the pattern used by the
+            // refresh re-queries: matches the pattern used by the
             // dashboard timer transport and the automations panel.
             kotlinx.coroutines.delay(400L)
             refresh()
@@ -317,7 +317,7 @@ class HelpersViewModel(
         }
     }
 
-    /** Press an `input_button` — fires the press service, no payload. */
+    /** Press an `input_button`: fires the press service, no payload. */
     fun pressButton(entry: Entry) {
         viewModelScope.launch {
             haRepository.call(

@@ -15,7 +15,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Drives the Weather surface. Pulls `weather.*` entities via
  * [HaRepository.listRawEntitiesByDomain] and decodes the attributes
- * HA's weather domain reports — condition (raw state, e.g.
+ * HA's weather domain reports: condition (raw state, e.g.
  * "partlycloudy"), temperature, humidity, wind speed, pressure.
  *
  * Forecast handling prefers the modern `weather.get_forecasts`

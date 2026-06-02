@@ -34,7 +34,7 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 fun OAuthWebView(
     authorizeUrl: String,
     onCodeCaptured: (code: String) -> Unit,
-    /** Called when the redirect arrives without a `code` query parameter — passes through
+    /** Called when the redirect arrives without a `code` query parameter. Passes through
      *  the `error` param from HA (e.g. "access_denied" when the user tapped Deny) so the
      *  caller can surface it in the UI instead of just resetting silently. */
     onMissingCode: (errorMessage: String?) -> Unit = {},
@@ -49,7 +49,7 @@ fun OAuthWebView(
     // Tracks whether the WebView is still loading its main frame. Drives
     // a small spinner overlay so the user sees something during the
     // initial /auth/authorize round-trip rather than a blank black
-    // screen — common on cold HA installs where the first request can
+    // screen. Common on cold HA installs where the first request can
     // take a couple of seconds.
     var loading by remember { mutableStateOf(true) }
 
@@ -94,10 +94,10 @@ fun OAuthWebView(
                     error: WebResourceError,
                 ) {
                     // Only surface errors for the top-level (main-frame) navigation. Sub-resource
-                    // failures (favicon, analytics, etc.) are noise — HA's login page still works
+                    // failures (favicon, analytics, etc.) are noise. HA's login page still works
                     // even when those 404. We also tolerate the error firing for the very last
                     // hop into r1ha://auth-callback, which the WebView reports as "scheme not
-                    // supported" — that's expected and is handled by shouldOverrideUrlLoading.
+                    // supported". That's expected and is handled by shouldOverrideUrlLoading.
                     if (!request.isForMainFrame) return
                     val url = request.url
                     if (url.scheme == "r1ha") return
@@ -124,7 +124,7 @@ fun OAuthWebView(
             modifier = Modifier.fillMaxSize(),
         )
         if (loading) {
-            // Spinner overlay during main-frame loads — sits on a
+            // Spinner overlay during main-frame loads. Sits on a
             // semi-transparent backdrop so the user knows the WebView
             // is working even before the first paint lands.
             Box(

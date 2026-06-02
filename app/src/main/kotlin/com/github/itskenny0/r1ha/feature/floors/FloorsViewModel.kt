@@ -16,7 +16,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Floors registry surface. HA's floor primitive groups areas — a "main
+ * Floors registry surface. HA's floor primitive groups areas: a "main
  * floor" might contain Kitchen / Living Room / Office; "basement" might
  * contain Garage / Laundry. Each floor lists its constituent areas with
  * the entity count rolled up per area so the user can see "which floor
@@ -25,11 +25,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * Driven by the `/api/template` endpoint:
  *
  *     {% for floor in floors() %}
- *       floor_name(floor) → human label
- *       floor_attr(floor, "level") → building level (number, may be null)
- *       floor_attr(floor, "icon") → user-set mdi icon (may be null)
- *       floor_areas(floor) → list of area_ids
- *       area_entities(area_id) → entities in each constituent area
+ *       floor_name(floor) = human label
+ *       floor_attr(floor, "level") = building level (number, may be null)
+ *       floor_attr(floor, "icon") = user-set mdi icon (may be null)
+ *       floor_areas(floor) = list of area_ids
+ *       area_entities(area_id) = entities in each constituent area
  *
  * HA orders floors by building [Floor.level] (basement below ground floor
  * below upper storeys), matching the canonical frontend, so we sort on

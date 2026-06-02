@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -98,7 +99,7 @@ fun EnergyScreen(
             onBack = onBack,
             action = {
                 Row(
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
                     R1Chip(
@@ -176,8 +177,8 @@ fun EnergyScreen(
                 )
                 // ── TOP CONSUMERS ──────────────────────────────────────
                 if (ui.topConsumers.isNotEmpty()) {
-                    var consumersExpanded by androidx.compose.runtime.remember {
-                        androidx.compose.runtime.mutableStateOf(false)
+                    var consumersExpanded by remember {
+                        mutableStateOf(false)
                     }
                     R1Section(
                         title = "TOP CONSUMERS",
@@ -262,7 +263,7 @@ private fun BigStatTile(
     modifier: Modifier,
     label: String,
     value: String,
-    accent: androidx.compose.ui.graphics.Color,
+    accent: Color,
 ) {
     // Merge the label and value into one spoken node so TalkBack announces
     // "DRAW, 1.2 kW" rather than two disconnected fragments.
@@ -598,7 +599,7 @@ private fun formatWatts(w: Double): String =
  *  household), amber up to 1500 W (typical mid-load), red beyond
  *  (heavy load like an electric kettle or EV charging). The
  *  thresholds are deliberate guesses and could become settings. */
-private fun drawAccent(w: Double?): androidx.compose.ui.graphics.Color = when {
+private fun drawAccent(w: Double?): Color = when {
     w == null -> R1.InkMuted
     w < 200 -> R1.AccentGreen
     w < 1500 -> R1.StatusAmber

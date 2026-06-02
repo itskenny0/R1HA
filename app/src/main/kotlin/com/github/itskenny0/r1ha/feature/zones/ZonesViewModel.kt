@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Drives the Zones surface — HA's zone registry presented as a list
+ * Drives the Zones surface: HA's zone registry presented as a list
  * of "where is everyone right now". Each row:
  *   - zone name + icon + a count of persons currently inside
  *   - the list of persons/devices in that zone
@@ -39,7 +39,7 @@ class ZonesViewModel(
         /** Trackers reporting GPS, for the abstract map. */
         val trackers: List<MappableTracker> = emptyList(),
         /** Persons whose state is "not_home" (or any other away/unknown
-         *  bucket) — surfaced under an OUTSIDE bucket so they're not
+         *  bucket): surfaced under an OUTSIDE bucket so they're not
          *  invisible just because no zone matches. */
         val outside: List<String> = emptyList(),
         val error: String? = null,
@@ -51,7 +51,7 @@ class ZonesViewModel(
     fun refresh() {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(loading = true, error = null)
-            // Three parallel fetches — zones AND person/device_tracker.
+            // Three parallel fetches: zones AND person/device_tracker.
             // /api/states returns the full registry per domain.
             val zoneJob = async { haRepository.listRawEntitiesByDomain("zone") }
             val personJob = async { haRepository.listRawEntitiesByDomain("person") }

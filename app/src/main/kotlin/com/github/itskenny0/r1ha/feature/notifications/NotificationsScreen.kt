@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -18,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,16 +38,19 @@ import com.github.itskenny0.r1ha.core.ha.PersistentNotification
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
+import com.github.itskenny0.r1ha.ui.components.SkeletonRow
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
- * Notifications viewer — lists HA persistent_notification.* entries
+ * Notifications viewer: lists HA persistent_notification.* entries
  * with title, message and a DISMISS chip per row. Same conceptual
  * surface as HA's frontend bell icon: integration failures, firmware
  * updates available, "you should restart HA" prompts, automation-side
@@ -66,16 +72,16 @@ fun NotificationsScreen(
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
-    // Auto-refresh — cadence comes from Settings → Integrations →
+    // Auto-refresh: cadence comes from Settings. Integrations.
     // 'Notifications refresh'. 0 disables auto-refresh (pull-down only).
     val appSettings by settings.settings.collectAsState(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
     )
     val refreshSec = appSettings.integrations.notificationsRefreshSec
     if (refreshSec > 0) {
-        com.github.itskenny0.r1ha.ui.components.AutoRefresh(refreshSec * 1000L) { vm.refresh() }
+        AutoRefresh(refreshSec * 1000L) { vm.refresh() }
     } else {
-        androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
+        LaunchedEffect(Unit) { vm.refresh() }
     }
     Column(
         modifier = Modifier
@@ -84,8 +90,8 @@ fun NotificationsScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "NOTIFICATIONS", onBack = onBack)
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-        // Create affordance — a small inline form (title + message) that
+        AdaptiveContent(modifier = Modifier.weight(1f)) {
+        // Create affordance: a small inline form (title + message) that
         // fires persistent_notification.create. Always available, even on the
         // empty/all-clear state, so it doubles as a way to verify the dismiss
         // path end to end without waiting for a real integration to raise one.
@@ -93,7 +99,7 @@ fun NotificationsScreen(
             creating = ui.creating,
             onCreate = { title, message -> vm.create(title, message) },
         )
-        // Bulk DISMISS ALL — only rendered when there's at least one
+        // Bulk DISMISS ALL: only rendered when there's at least one
         // notification to dismiss. Two-stage confirm via the armed/commit
         // pattern (single tap arms, second tap within 3 s fires) so a
         // muscle-memory tap doesn't accidentally clear everything.
@@ -101,7 +107,7 @@ fun NotificationsScreen(
             val armed = remember { mutableStateOf(false) }
             LaunchedEffect(armed.value) {
                 if (armed.value) {
-                    kotlinx.coroutines.delay(3_000L)
+                    delay(3_000L)
                     armed.value = false
                 }
             }
@@ -155,7 +161,7 @@ fun NotificationsScreen(
             // DISMISS ALL row visible and rely on the pull-to-refresh spinner instead,
             // so the user doesn't lose scroll position or bulk-action access during a
             // routine 30-second auto-refresh.
-            ui.loading && ui.notifications.isEmpty() && ui.error == null -> androidx.compose.foundation.layout.Column(
+            ui.loading && ui.notifications.isEmpty() && ui.error == null -> Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = R1.space.m, vertical = R1.space.s),
@@ -165,14 +171,14 @@ fun NotificationsScreen(
                 // instead of leaving a void with a tiny centred spinner.
                 // Three rows roughly cover the R1's portrait viewport.
                 repeat(3) {
-                    com.github.itskenny0.r1ha.ui.components.SkeletonRow()
+                    SkeletonRow()
                 }
             }
             ui.error != null && ui.notifications.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                // Distinct from "all clear" — the request itself failed.
+                // Distinct from "all clear": the request itself failed.
                 Text(
                     text = "Notifications load failed: ${ui.error}",
                     style = R1.body,
@@ -189,7 +195,7 @@ fun NotificationsScreen(
                     color = R1.InkMuted,
                 )
             }
-            else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            else -> PullToRefreshBox(
                 isRefreshing = ui.loading,
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
@@ -197,7 +203,7 @@ fun NotificationsScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    contentPadding = PaddingValues(
                         horizontal = R1.space.m, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
@@ -217,8 +223,8 @@ fun NotificationsScreen(
 }
 
 /**
- * Collapsible compose affordance for `persistent_notification.create`.
- * Renders a single NEW chip by default; tapping it expands an inline form
+ * Collapsible compose affordance for `persistent_notification.create`:
+ * renders a single NEW chip by default; tapping it expands an inline form
  * with an optional title field, a required message field, and a CREATE
  * button. Kept compact (no modal) so it sits naturally above the list on the
  * R1's portrait viewport. The form clears + collapses on a successful submit.
@@ -269,7 +275,7 @@ private fun CreateNotificationForm(
             R1TextField(
                 value = title,
                 onValueChange = { title = it },
-                placeholder = "Title (optional)",
+                placeholder = "Title: optional",
                 monospace = false,
                 enabled = !creating,
             )
@@ -324,7 +330,7 @@ private fun NotificationRow(
                 maxLines = 2,
             )
             Spacer(Modifier.width(R1.space.s))
-            // Relative timestamp — same ticker as the rest of the app so
+            // Relative timestamp: same ticker as the rest of the app so
             // "2 m ago" updates without us having to invalidate manually.
             // HA's notification drawer always renders a time element; when
             // created_at is missing (some auto-generated notifications omit
@@ -348,14 +354,14 @@ private fun NotificationRow(
         Spacer(Modifier.size(R1.space.xs))
         // HACS update lists and other "here are 14 components needing review" payloads
         // routinely exceed 6 lines. Collapse by default; tap to expand the full body.
-        val expanded = androidx.compose.runtime.remember(notification.notificationId) {
-            androidx.compose.runtime.mutableStateOf(false)
+        val expanded = remember(notification.notificationId) {
+            mutableStateOf(false)
         }
         // HA renders the message as markdown (with line breaks). We have no
         // markdown renderer on this surface, so reduce the common inline
-        // markdown to readable plain text (strip emphasis fences, render
+        // markdown to readable plain text: strip emphasis fences, render
         // [text](url) as "text", drop heading hashes / list bullets to a
-        // dash) rather than showing literal `**`, `#` and link syntax.
+        // dash; rather than showing literal `**`, `#` and link syntax.
         val plainMessage = remember(notification.message) {
             markdownToPlain(notification.message)
         }
@@ -440,8 +446,8 @@ private fun NotificationRow(
  * readable plain text. This is deliberately small and conservative, not a real
  * markdown parser: this surface has no rich-text renderer, so the goal is only
  * to stop literal `**`, `#`, backticks and `[text](url)` link syntax from
- * showing through as noise. Anything it doesn't recognise passes through
- * unchanged. Pure + side-effect free so it can be memoised per message.
+ * showing through as noise. Anything it doesn't recognize passes through
+ * unchanged. Pure + side-effect free so it can be memoized per message.
  */
 internal fun markdownToPlain(raw: String): String {
     if (raw.isBlank()) return raw

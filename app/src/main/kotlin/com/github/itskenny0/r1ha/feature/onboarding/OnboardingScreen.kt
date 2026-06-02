@@ -453,7 +453,7 @@ private fun UrlEntryForm(
                         CircularProgressIndicator(
                             modifier = Modifier
                                 .size(14.dp)
-                                .padding(end = 8.dp),
+                                .padding(end = R1.space.s),
                             strokeWidth = 2.dp,
                             color = R1.Bg,
                         )

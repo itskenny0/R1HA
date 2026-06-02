@@ -412,30 +412,35 @@ private fun ItemRow(
         }
         Spacer(Modifier.width(R1.space.xs))
         // Edit (rename): a glyph in a 48dp tap target.
-        Box(
-            modifier = Modifier
-                .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
-                .clip(R1.ShapeS)
-                .r1Pressable(onClick = { onEdit(item) }, contentDescription = "Edit ${item.summary}"),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text = "✎", style = R1.label, color = R1.InkMuted)
-        }
+        IconGlyph(
+            glyph = "✎",
+            contentDescription = "Edit ${item.summary}",
+            onClick = { onEdit(item) },
+        )
         // Remove "✕": a glyph in a 48dp tap target; shows "…" while a remove
         // (or any other mutation on this row) is in flight.
-        Box(
-            modifier = Modifier
-                .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
-                .clip(R1.ShapeS)
-                .r1Pressable(onClick = { onRemove(item) }, contentDescription = "Remove ${item.summary}"),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = if (pending) "…" else "✕",
-                style = R1.label,
-                color = R1.InkMuted,
-            )
-        }
+        IconGlyph(
+            glyph = if (pending) "…" else "✕",
+            contentDescription = "Remove ${item.summary}",
+            onClick = { onRemove(item) },
+        )
+    }
+}
+
+@Composable
+private fun IconGlyph(
+    glyph: String,
+    contentDescription: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
+            .clip(R1.ShapeS)
+            .r1Pressable(onClick = onClick, contentDescription = contentDescription),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = glyph, style = R1.label, color = R1.InkMuted)
     }
 }
 

@@ -45,12 +45,12 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * Services Browser — every service HA exposes via /api/services, with
+ * Services Browser: every service HA exposes via /api/services, with
  * substring search and per-domain expansion. Tap a service to copy
  * "<domain>.<service>" to the clipboard so the user can paste it
  * straight into the Service Caller.
  *
- * Read-only — no dispatch from this surface. The Service Caller is
+ * Read-only; no dispatch from this surface. The Service Caller is
  * the right place to actually fire; this is the discovery + reference
  * companion.
  */
@@ -104,7 +104,7 @@ fun ServicesScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                // Service registry fetch failed — surface the real error
+                // Service registry fetch failed: surface the real error
                 // rather than the "no services" fallback so the user
                 // doesn't think their HA install is empty.
                 Text(

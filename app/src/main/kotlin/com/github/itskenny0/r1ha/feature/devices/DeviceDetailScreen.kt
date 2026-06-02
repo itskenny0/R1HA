@@ -250,10 +250,12 @@ private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
     // one, or "no live state" when it doesn't. Tags (platform, disabled, hidden)
     // are folded into the merged label so they are announced, not just shown.
     val stateSpoken = if (live == null) "no live state" else liveStateLabel(live)
-    val rowTags = buildList {
-        entity.platform?.takeIf { it.isNotBlank() }?.let { add(it) }
-        if (entity.disabledBy != null) add("disabled")
-        if (entity.hiddenBy != null) add("hidden")
+    val rowTags = remember(entity.platform, entity.disabledBy, entity.hiddenBy) {
+        buildList {
+            entity.platform?.takeIf { it.isNotBlank() }?.let { add(it) }
+            if (entity.disabledBy != null) add("disabled")
+            if (entity.hiddenBy != null) add("hidden")
+        }
     }
     val rowDescription = DevicesA11y.entityRowDescription(
         name = entity.displayName,
@@ -288,10 +290,12 @@ private fun EntityDetailRow(entity: EntityRegistryEntry, live: EntityState?) {
             maxLines = 1,
             modifier = Modifier.padding(top = R1.space.xxs),
         )
-        val tags = buildList {
-            entity.platform?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
-            if (entity.disabledBy != null) add("DISABLED")
-            if (entity.hiddenBy != null) add("HIDDEN")
+        val tags = remember(entity.platform, entity.disabledBy, entity.hiddenBy) {
+            buildList {
+                entity.platform?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.US)) }
+                if (entity.disabledBy != null) add("DISABLED")
+                if (entity.hiddenBy != null) add("HIDDEN")
+            }
         }
         if (tags.isNotEmpty()) {
             Text(

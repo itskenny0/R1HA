@@ -13,7 +13,7 @@ import kotlin.math.roundToInt
  *
  * Semantics, by [mode]:
  *
- *  - [CardPeekMode.AUTO]   — peek only on a phone-width tier in portrait whose panel is
+ *  - [CardPeekMode.AUTO]: peek only on a phone-width tier in portrait whose panel is
  *    also physically large enough: at least [PEEK_MIN_SHORTEST_SIDE_PX] raw pixels on its
  *    shortest side. The phone tiers are [WindowTier.COMPACT] and [WindowTier.MEDIUM]; the
  *    R1 / sub-compact tier ([WindowTier.R1]) and the tablet / desktop tiers
@@ -21,9 +21,9 @@ import kotlin.math.roundToInt
  *    landscape orientation. The raw-pixel floor is what actually keeps the R1 out: its
  *    240 px panel can report a COMPACT-range width in dp on some ROMs (its density is low
  *    and ROM-dependent), but its pixel count is fixed and far below any real phone's.
- *  - [CardPeekMode.ALWAYS] — peek on every device and orientation (the opt-in path
+ *  - [CardPeekMode.ALWAYS]: peek on every device and orientation (the opt-in path
  *    for R1 / small-phone users); ignores the raw-pixel floor.
- *  - [CardPeekMode.NEVER]  — full-viewport everywhere.
+ *  - [CardPeekMode.NEVER]: full-viewport everywhere.
  *
  * Kept pure (no Compose, no Android) so it can be unit-tested directly and so the caller
  * reads it once per composition from the resolved tier + orientation + window pixel size.

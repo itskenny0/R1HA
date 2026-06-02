@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.scenes
 
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import java.time.Instant
 
 /**
@@ -23,7 +25,7 @@ import java.time.Instant
  * (the same REST call the favourites picker uses) and surfaces every
  * `scene.*` / `script.*` as a tappable row.
  *
- * Fire dispatch is the same `ServiceCall` shape the card stack uses —
+ * Fire dispatch is the same `ServiceCall` shape the card stack uses:
  * scene activation is `scene.turn_on`, script execution is
  * `script.turn_on` (HA accepts that as an alias for the per-script
  * `script.<id>` service, with the bonus that we don't have to derive a
@@ -40,7 +42,7 @@ class ScenesViewModel(
     /** Filter chip selection. */
     enum class Filter { ALL, SCENES, SCRIPTS }
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class Entry(
         val id: EntityId,
         val name: String,
@@ -79,13 +81,13 @@ class ScenesViewModel(
         val available: Boolean = true,
     )
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class UiState(
         val loading: Boolean = true,
         /** All loaded entries (full set); [entries] applies kind + query filters. */
         val all: List<Entry> = emptyList(),
         val filter: Filter = Filter.ALL,
-        /** Free-text search query — substring-matched against the entry name
+        /** Free-text search query; substring-matched against the entry name
          *  and entity_id, case-insensitive. Empty = no text filter. */
         val query: String = "",
         /** Per-filter counts for the chip labels. ALL is the full size. */
@@ -224,13 +226,13 @@ class ScenesViewModel(
     }
 
     /**
-     * Master "all lights off" — dispatches `light.turn_off` with
+     * Master "all lights off": dispatches `light.turn_off` with
      * `entity_id: "all"`, which HA treats as "every entity in the
      * light domain". Same trick HA's own frontend dashboards use for
      * the "All Lights Off" tile.
      *
      * Why these master actions live on the Scenes screen: same
-     * conceptual surface as scene activation — fire-and-forget mass
+     * conceptual surface as scene activation: fire-and-forget mass
      * actions. Saves a navigation hop when the user just wants
      * "everything off" or "stop the music".
      */
@@ -242,7 +244,7 @@ class ScenesViewModel(
         failurePrefix = "All-lights-off",
     )
 
-    /** Master "all lights on" — opposite end of allLightsOff. Useful
+    /** Master "all lights on": opposite end of allLightsOff. Useful
      *  for kiosk-mode wake-up sequences. Single tap, no brightness
      *  ramp (HA's turn_on with no payload restores last-known state). */
     fun allLightsOn() = fireMasterOff(
@@ -253,7 +255,7 @@ class ScenesViewModel(
         failurePrefix = "All-lights-on",
     )
 
-    /** Master "all media pause" — fires `media_player.media_pause` for
+    /** Master "all media pause": fires `media_player.media_pause` for
      *  every media_player entity. Some integrations honour pause as
      *  stop; that's HA's responsibility, not ours. */
     fun allMediaPause() = fireMasterOff(
@@ -264,7 +266,7 @@ class ScenesViewModel(
         failurePrefix = "All-media-pause",
     )
 
-    /** Master "all switches off" — fires `switch.turn_off` across the
+    /** Master "all switches off": fires `switch.turn_off` across the
      *  switch domain. Useful for "kill the plugs" before bed. */
     fun allSwitchesOff() = fireMasterOff(
         domain = Domain.SWITCH,
@@ -276,7 +278,7 @@ class ScenesViewModel(
 
     /** Common dispatcher for the "all X off" master buttons. Picks any
      *  entity in [domain] from the cached states so the [ServiceCall]
-     *  constructor can carry a target — the actual scope is set via
+     *  constructor can carry a target: the actual scope is set via
      *  the `entity_id: "all"` data field which HA recognises as
      *  "every entity in this domain". */
     private fun fireMasterOff(
@@ -300,8 +302,8 @@ class ScenesViewModel(
             val call = ServiceCall(
                 target = anyEntity,
                 service = service,
-                data = kotlinx.serialization.json.buildJsonObject {
-                    put("entity_id", kotlinx.serialization.json.JsonPrimitive("all"))
+                data = buildJsonObject {
+                    put("entity_id", JsonPrimitive("all"))
                 },
             )
             haRepository.call(call).fold(
@@ -319,7 +321,7 @@ class ScenesViewModel(
     }
 
     /**
-     * Fire a scene or script. Both use `turn_on` with no payload — HA
+     * Fire a scene or script. Both use `turn_on` with no payload: HA
      * treats `scene.turn_on` / `script.turn_on` as the activation
      * service for these action-only domains.
      */
@@ -359,11 +361,11 @@ class ScenesViewModel(
          * Derive the last-activated [Instant] for a scene / script from its HA
          * state. Two sources, because HA models them differently:
          *
-         *  * SCENE  — the entity `state` itself is the last-activated ISO-8601
+         *  * SCENE: the entity `state` itself is the last-activated ISO-8601
          *    timestamp (e.g. `2026-05-29T08:13:04.123456+00:00`). Before a scene
          *    has ever run HA reports `unknown` / `unavailable`, which won't parse
          *    and so yields null.
-         *  * SCRIPT — `state` is on/off; the time lives in the `last_triggered`
+         *  * SCRIPT: `state` is on/off; the time lives in the `last_triggered`
          *    attribute (same field automations use), null until first run.
          *
          * Pure + side-effect free so it's unit-testable without a repository.

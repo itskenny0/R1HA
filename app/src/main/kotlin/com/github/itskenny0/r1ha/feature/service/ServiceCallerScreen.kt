@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,10 +26,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -36,11 +45,12 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * Service Caller power-user surface — fire any `domain.service` pair
+ * Service Caller power-user surface: fire any `domain.service` pair
  * with an optional JSON `data` body. The natural complement to
  * [com.github.itskenny0.r1ha.feature.template.TemplateScreen]: one
  * surface evaluates Jinja against live state, the other dispatches
@@ -75,7 +85,7 @@ fun ServiceCallerScreen(
         R1TopBar(title = "SERVICE CALLER", onBack = onBack)
         AdaptiveContent(modifier = Modifier.weight(1f)) {
         val scrollState = rememberScrollState()
-        com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState(
+        WheelScrollForScrollState(
             wheelInput = wheelInput,
             scrollState = scrollState,
             settings = settings,
@@ -96,8 +106,8 @@ fun ServiceCallerScreen(
                 monospace = true,
                 isError = !ui.domainValid,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
                 ),
             )
             Spacer(Modifier.padding(top = R1.space.xs))
@@ -109,8 +119,8 @@ fun ServiceCallerScreen(
                 monospace = true,
                 isError = !ui.serviceValid,
                 modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next,
                 ),
             )
             if (!ui.domainValid || !ui.serviceValid) {
@@ -125,7 +135,7 @@ fun ServiceCallerScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "DATA (JSON, optional)", style = R1.labelMicro, color = R1.InkSoft)
                 Spacer(Modifier.weight(1f))
-                // PASTE chip — pulls the clipboard contents into the DATA
+                // PASTE chip: pulls the clipboard contents into the DATA
                 // field. Common workflow: copy a service_data JSON snippet
                 // from HA's developer-tools page on a tablet, paste it
                 // here on the R1.
@@ -142,14 +152,13 @@ fun ServiceCallerScreen(
                                 } else {
                                     // Try pretty-printing JSON for readability.
                                     // Anything that doesn't parse drops through as
-                                    // raw text — paste-as-is for non-JSON snippets.
+                                    // raw text (paste-as-is for non-JSON snippets).
                                     // Reuses ServiceCallerViewModel.prettyJson so
                                     // the formatter is not rebuilt per paste.
                                     val pretty = runCatching {
-                                        val parsed = kotlinx.serialization.json.Json
-                                            .parseToJsonElement(text)
+                                        val parsed = Json.parseToJsonElement(text)
                                         ServiceCallerViewModel.prettyJson.encodeToString(
-                                            kotlinx.serialization.json.JsonElement.serializer(),
+                                            JsonElement.serializer(),
                                             parsed,
                                         )
                                     }.getOrNull()
@@ -234,7 +243,7 @@ fun ServiceCallerScreen(
                     color = R1.InkMuted,
                 )
             }
-            // Recent fires — newest first; tap to recall into the editor.
+            // Recent fires: newest first; tap to recall into the editor.
             // Useful for re-firing the same service while iterating data.
             if (ui.recent.isNotEmpty()) {
                 Spacer(Modifier.padding(top = R1.space.l))
@@ -308,7 +317,7 @@ private fun FieldLabel(label: String) {
     Spacer(Modifier.padding(top = R1.space.xs))
 }
 
-private fun copy(clipboard: androidx.compose.ui.platform.ClipboardManager, text: String) {
+private fun copy(clipboard: ClipboardManager, text: String) {
     clipboard.setText(AnnotatedString(text))
     Toaster.show("Copied")
 }
@@ -328,7 +337,7 @@ private data class ServiceExample(
 
 @Composable
 private fun ExampleChips(onPick: (String, String, String) -> Unit) {
-    // Common diagnostic dispatches — each one a real "I wish I could
+    // Common diagnostic dispatches: each one a real "I wish I could
     // do this without a laptop" intent.
     val examples = listOf(
         ServiceExample("Check config", "homeassistant", "check_config"),
@@ -354,28 +363,28 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
             .drawWithContent {
                 drawContent()
                 if (fadeStart) {
                     drawRect(
-                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            colors = listOf(R1.Bg, androidx.compose.ui.graphics.Color.Transparent),
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(R1.Bg, Color.Transparent),
                             startX = 0f,
                             endX = R1.space.l.toPx(),
                         ),
-                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                        blendMode = BlendMode.DstIn,
                         size = size,
                     )
                 }
                 if (fadeEnd) {
                     drawRect(
-                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            colors = listOf(androidx.compose.ui.graphics.Color.Transparent, R1.Bg),
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, R1.Bg),
                             startX = size.width - R1.space.l.toPx(),
                             endX = size.width,
                         ),
-                        blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                        blendMode = BlendMode.DstIn,
                         size = size,
                     )
                 }
@@ -413,7 +422,7 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
 private fun ResultPanel(
     heading: String,
     body: String,
-    accent: androidx.compose.ui.graphics.Color,
+    accent: Color,
     onCopy: () -> Unit,
 ) {
     Column {

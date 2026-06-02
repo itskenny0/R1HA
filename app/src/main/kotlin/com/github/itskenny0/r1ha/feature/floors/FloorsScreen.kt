@@ -45,7 +45,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
- * Floors registry browser — lists HA's floor primitives (groupings of
+ * Floors registry browser: lists HA's floor primitives (groupings of
  * areas) ordered by building level, with the constituent areas and their
  * entity counts rolled up. A useful at-a-glance overview of "what's
  * installed where" on a multi-storey install. Floors are an optional HA

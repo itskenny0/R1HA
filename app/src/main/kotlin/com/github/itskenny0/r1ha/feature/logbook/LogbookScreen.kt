@@ -61,7 +61,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Recent Activity surface — mirrors HA's Logbook panel. Reverse-
+ * Recent Activity surface: mirrors HA's Logbook panel. Reverse-
  * chronological list of state changes, automation triggers, scene
  * activations, and script invocations. The wheel scrolls the list;
  * pull-to-refresh on the LazyColumn isn't wired (the WINDOW chips
@@ -70,8 +70,8 @@ import kotlinx.coroutines.launch
  *
  * The row carries: [domain] chip on the left (accent-coloured), event
  * name + message, and a soft relative timestamp. Tap currently
- * doesn't navigate anywhere — drilling into a specific entity's
- * history is a follow-up; the immediate value is "what just
+ * doesn't navigate anywhere; drilling into a specific entity's
+ * history is a follow-up. The immediate value is "what just
  * happened?" at a glance.
  */
 @Composable
@@ -81,7 +81,7 @@ fun LogbookScreen(
     wheelInput: WheelInput,
     onBack: () -> Unit,
     /** Optional callback to drill into the entity's full History
-     *  surface — wired from AppNavGraph. The row's tap action becomes
+     *  surface: wired from AppNavGraph. The row's tap action becomes
      *  "drill into history" instead of just showing a detail toast,
      *  closing the loop between "what just changed" and "what was it
      *  doing earlier today". */
@@ -159,7 +159,7 @@ fun LogbookScreen(
             title = "RECENT ACTIVITY",
             onBack = onBack,
             action = {
-                // TAIL chip — subscribes to HA's logbook_entry event stream and
+                // TAIL chip: subscribes to HA's logbook_entry event stream and
                 // prepends events in real-time. The window picker is still
                 // honoured for the initial REST fetch; TAIL just adds the
                 // live additions. Action variant with an on-state tone so the
@@ -243,7 +243,7 @@ fun LogbookScreen(
                 }
                 Text(text = msg, style = R1.body, color = R1.InkMuted)
             }
-            // Pull-to-refresh wrap — the logbook is naturally append-only
+            // Pull-to-refresh wrap: the logbook is naturally append-only
             // so a refresh just re-issues the same window query and picks
             // up anything that landed in the seconds since the last fetch.
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
@@ -287,7 +287,7 @@ fun LogbookScreen(
                         ) { entry ->
                             LogbookRow(
                                 entry,
-                                // Tap drills into the entity's history — feels
+                                // Tap drills into the entity's history: feels
                                 // like a natural follow-on from 'I just saw
                                 // this state-change'. Falls back to the
                                 // detail toast for entries without an
@@ -307,7 +307,7 @@ fun LogbookScreen(
         }
         } // AdaptiveContent
     }
-        // Entity-picker overlay — reuses the shared EntityPickerSheet idiom from
+        // Entity-picker overlay: reuses the shared EntityPickerSheet idiom from
         // Settings. Picking an entity scopes the feed to that entity_id; the
         // sheet dismisses on pick / backdrop tap / back.
         if (pickerOpen) {
@@ -381,7 +381,7 @@ private fun FilterControls(
             horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // ENTITY chip — shows the active entity_id (or a "+" affordance).
+            // ENTITY chip: shows the active entity_id (or a "+" affordance).
             // When set, tapping clears it; when clear, tapping opens the picker.
             R1Chip(
                 text = entityFilter?.let { "● " + it } ?: "ENTITY +",
@@ -448,11 +448,9 @@ private fun LogbookRow(
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            // Tap = expand detail toast. Long-press = open the entity's
-            // /history view in HA's web UI via the system browser.
-            // Tap = drill into the entity's native History view (or fall back
+            // Tap: drill into the entity's native History view (or fall back
             // to a detail toast when the row has no entity_id, typical for
-            // system events). Long-press = open the entity's /history view in
+            // system events). Long-press: open the entity's /history view in
             // HA's web UI via the system browser, for users who want the full
             // HA-native graph view alongside this app.
             .r1RowPressable(
@@ -469,9 +467,9 @@ private fun LogbookRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Per-domain glyph in a fixed-width column so the name text aligns
-        // across rows regardless of which glyph renders. Coloured by HA-side
-        // domain so a glance separates lights from automations from scenes;
-        // domains we don't recognise get the neutral ink colour.
+        // across rows regardless of which glyph renders. Colored by HA-side
+        // domain so a glance separates lights from automations from scenes:
+        // domains we don't recognize get the neutral ink color.
         Column(
             modifier = Modifier.width(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -501,7 +499,7 @@ private fun LogbookRow(
                 color = R1.InkSoft,
                 maxLines = 2,
             )
-            // "Triggered by" attribution — HA tells us what caused the event via
+            // "Triggered by" attribution: HA tells us what caused the event via
             // its context block. Prefer the human label ("by Front Door Motion"),
             // fall back to the raw triggering entity_id ("via binary_sensor.x"),
             // then the opaque user id. Suppressed when the context just points
@@ -516,7 +514,7 @@ private fun LogbookRow(
             }
         }
         Spacer(Modifier.width(R1.space.s))
-        // Relative timestamp — "2m", "47s", "1h" — produced by the same
+        // Relative timestamp: "2m", "47s", "1h", produced by the same
         // ticker as elsewhere in the app so all surfaces tick together.
         RelativeTimeLabel(
             at = entry.timestamp,
@@ -592,8 +590,8 @@ private val LOGBOOK_FILTER_DOMAINS = setOf(
 )
 
 /** Map HA's domain prefix string to one of the design-token accent
- *  colours. Kept deliberately small — anything not enumerated falls
- *  back to AccentNeutral so a row never goes uncoloured. */
+ *  colors. Kept deliberately small: anything not enumerated falls
+ *  back to AccentNeutral so a row never goes uncolored. */
 private fun accentFor(domain: String?) = when (domain) {
     "light", "fan", "media_player", "switch", "input_boolean" -> R1.AccentWarm
     "sensor", "binary_sensor", "cover", "valve", "number", "input_number" -> R1.AccentCool

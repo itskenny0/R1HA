@@ -612,7 +612,7 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
                         }
                     },
                 )
-                .heightIn(min = 32.dp)
+                .heightIn(min = R1.space.xxl)
                 .padding(horizontal = R1.space.m, vertical = R1.space.s),
             contentAlignment = Alignment.Center,
         ) {

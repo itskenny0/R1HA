@@ -241,10 +241,12 @@ private fun DomainHeader(
     // count rendered as an R1Chip Pill at the right edge. When the registries have
     // resolved counts for this domain, a compact "Nd / Ne" tally precedes the entry
     // count so the user can gauge how much the integration brings in.
-    val countSuffix = if (counts != null && (counts.devices > 0 || counts.entities > 0)) {
-        ", ${counts.devices} devices, ${counts.entities} entities"
-    } else {
-        ""
+    val countSuffix = remember(counts) {
+        if (counts != null && (counts.devices > 0 || counts.entities > 0)) {
+            ", ${counts.devices} devices, ${counts.entities} entities"
+        } else {
+            ""
+        }
     }
     Row(
         modifier = Modifier
@@ -294,28 +296,36 @@ private fun EntryRow(
     // cause and suppresses the not-loaded text. Mirror that: the state chip
     // on a disabled entry shows DISABLED in the neutral disabled tone, and
     // the per-state coloring only applies to enabled entries.
-    val bucket = IntegrationsViewModel.stateRank(entry.state)
-    val stateTone = when {
-        disabled -> R1.InkMuted
-        bucket == IntegrationsViewModel.StateBucket.LOADED -> R1.AccentGreen
-        bucket == IntegrationsViewModel.StateBucket.FAILED -> R1.StatusRed
-        bucket == IntegrationsViewModel.StateBucket.PENDING -> R1.StatusAmber
-        else -> R1.InkMuted
+    val bucket = remember(entry.state) { IntegrationsViewModel.stateRank(entry.state) }
+    val stateTone = remember(disabled, bucket) {
+        when {
+            disabled -> R1.InkMuted
+            bucket == IntegrationsViewModel.StateBucket.LOADED -> R1.AccentGreen
+            bucket == IntegrationsViewModel.StateBucket.FAILED -> R1.StatusRed
+            bucket == IntegrationsViewModel.StateBucket.PENDING -> R1.StatusAmber
+            else -> R1.InkMuted
+        }
     }
-    val stateChipText = if (disabled) "DISABLED" else IntegrationsViewModel.stateLabel(entry.state)
-    val disabledLabel = IntegrationsViewModel.disabledLabel(entry.disabledBy)
-    val rowDescription = buildString {
-        append(entry.title)
-        append(", ")
-        append(
-            if (disabled) "disabled${entry.disabledBy?.let { " by $it" } ?: ""}"
-            else IntegrationsViewModel.stateLabel(entry.state),
-        )
-        append(", via ")
-        append(entry.source)
-        if (!entry.reason.isNullOrBlank()) {
-            append(". ")
-            append(entry.reason)
+    val stateChipText = remember(entry.state, disabled) {
+        if (disabled) "DISABLED" else IntegrationsViewModel.stateLabel(entry.state)
+    }
+    val disabledLabel = remember(entry.disabledBy) {
+        IntegrationsViewModel.disabledLabel(entry.disabledBy)
+    }
+    val rowDescription = remember(entry, disabled) {
+        buildString {
+            append(entry.title)
+            append(", ")
+            append(
+                if (disabled) "disabled${entry.disabledBy?.let { " by $it" } ?: ""}"
+                else IntegrationsViewModel.stateLabel(entry.state),
+            )
+            append(", via ")
+            append(entry.source)
+            if (!entry.reason.isNullOrBlank()) {
+                append(". ")
+                append(entry.reason)
+            }
         }
     }
     Column(

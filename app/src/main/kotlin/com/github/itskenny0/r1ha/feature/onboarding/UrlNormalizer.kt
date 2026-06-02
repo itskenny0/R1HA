@@ -14,7 +14,7 @@ import java.util.Locale
  *   1. Trim surrounding whitespace and strip a single trailing slash.
  *   2. If the input is empty after trimming, return empty (caller surfaces an error).
  *   3. If the input already starts with `http://` or `https://`, the user chose the
- *      protocol on purpose. Return it verbatim — no inference, no port addition. The
+ *      protocol on purpose. Return it verbatim: no inference, no port addition. The
  *      user with a reverse-proxy at `http://example.com/ha` does not want the port
  *      magicked into the middle of their URL.
  *   4. Otherwise (no scheme), the user typed something shaped like a host. We pick
@@ -53,7 +53,7 @@ internal fun normalizeServerUrl(raw: String): String {
     //   - there's no path component (a path implies the user is targeting a reverse
     //     proxy that already routes by URL; injecting :8123 between host and path
     //     would break it).
-    // For https:// we always leave the port alone — public deployments universally
+    // For https:// we always leave the port alone: public deployments universally
     // serve on implicit :443.
     return autoAddDefaultPort(withProtocol)
 }

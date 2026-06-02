@@ -92,7 +92,7 @@ fun SensorCard(
                     modifier = Modifier.fillMaxWidth().height(64.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "—", style = R1.labelMicro, color = R1.InkMuted)
+                    Text(text = "-", style = R1.labelMicro, color = R1.InkMuted)
                 }
             } else {
                 SensorHistoryChart(points = points, accent = accent, unit = unit)

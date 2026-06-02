@@ -56,12 +56,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Areas browser — lists HA's area registry, with entity count per
+ * Areas browser: lists HA's area registry, with entity count per
  * area and a tappable expansion showing the full entity list.
  *
  * Powered by a server-side Jinja template through HA's
  * `/api/template` endpoint rather than the WebSocket
- * `config/area_registry/list` command — keeps the WS protocol
+ * `config/area_registry/list` command; keeps the WS protocol
  * surface small and reuses the existing template REST plumbing.
  */
 @Composable
@@ -78,7 +78,7 @@ fun AreasScreen(
     val drillListState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    // Wheel scrolls whichever list is in front — the drill-in when open,
+    // Wheel scrolls whichever list is in front: the drill-in when open,
     // the area list otherwise.
     WheelScrollFor(
         wheelInput = wheelInput,
@@ -143,7 +143,7 @@ fun AreasScreen(
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
                         .r1Pressable(onClick = { vm.setSort(nextSort) })
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
                     Text(
                         text = if (ui.sort == AreasViewModel.Sort.ALPHA) "A→Z" else "BY COUNT",
@@ -191,9 +191,9 @@ fun AreasScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp, vertical = 8.dp,
+                        horizontal = R1.space.m, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = sortedAreas, key = { it.key }) { area ->
                         AreaRow(
@@ -231,11 +231,11 @@ private fun AreaRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                // Tapping the row body opens the controls drill-in — the
+                // Tapping the row body opens the controls drill-in: the
                 // primary action. The abstract in-place entity list stays
                 // available via the count/▸ region at the trailing edge.
                 .r1Pressable(onClick = onOpen)
-                .heightIn(min = 48.dp)
+                .heightIn(min = R1.MinTarget)
                 .semantics {
                     contentDescription = buildString {
                         append(area.name)
@@ -245,7 +245,7 @@ private fun AreaRow(
                         append(". Opens controls.")
                     }
                 }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -256,7 +256,7 @@ private fun AreaRow(
                     Text(text = s, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             // Active-alert pip: an amber dot + count, mirroring HA's alert badges
             // (motion / moisture / smoke firing in this area). Hidden when quiet.
             if (area.activeAlerts > 0) {
@@ -264,7 +264,7 @@ private fun AreaRow(
                     modifier = Modifier
                         .clip(R1.ShapeRound)
                         .background(R1.StatusAmber.copy(alpha = 0.18f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(horizontal = R1.space.xs, vertical = R1.space.xxs),
                 ) {
                     Text(
                         text = "! ${area.activeAlerts}",
@@ -272,14 +272,14 @@ private fun AreaRow(
                         color = R1.StatusAmber,
                     )
                 }
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.xs))
             }
             // Count + expand chevron: a separate tap target that toggles
             // the quick abstract peek without leaving the list. 48 dp so
             // it's a comfortable wheel-tap.
             Row(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = R1.MinTarget)
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = onToggle)
                     .semantics {
@@ -287,7 +287,7 @@ private fun AreaRow(
                             if (expanded) "Hide ${area.name} entity list"
                             else "Show ${area.name} entity list, ${area.entityIds.size} entities"
                     }
-                    .padding(horizontal = 6.dp),
+                    .padding(horizontal = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -295,21 +295,21 @@ private fun AreaRow(
                     style = R1.labelMicro,
                     color = R1.AccentWarm,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = if (expanded) "▾" else "▸",
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                 )
             }
-            Spacer(Modifier.width(2.dp))
+            Spacer(Modifier.width(R1.space.xxs))
             // Chevron hinting the drill-in opens on a row-body tap.
             Text(text = "›", style = R1.body, color = R1.InkSoft)
         }
         if (expanded && area.entityIds.isNotEmpty()) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
+                modifier = Modifier.padding(start = R1.space.m, end = R1.space.m, bottom = R1.space.s),
             ) {
                 for (eid in area.entityIds) {
                     Text(
@@ -320,7 +320,7 @@ private fun AreaRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .r1Pressable(onClick = { onTapEntity(eid) })
-                            .padding(vertical = 2.dp),
+                            .padding(vertical = R1.space.xxs),
                     )
                 }
             }
@@ -330,7 +330,7 @@ private fun AreaRow(
                 text = "No entities assigned to this area.",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                modifier = Modifier.padding(start = R1.space.m, end = R1.space.m, bottom = R1.space.s),
             )
         }
     }
@@ -375,11 +375,11 @@ private fun AreaDrillScreen(
                                 .background(R1.SurfaceMuted)
                                 .border(1.dp, R1.Hairline, R1.ShapeS)
                                 .r1Pressable(onClick = { renaming = true })
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                                .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                         ) {
                             Text(text = "RENAME", style = R1.labelMicro, color = R1.InkSoft)
                         }
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(R1.space.xs))
                     }
                     Box(
                         modifier = Modifier
@@ -387,7 +387,7 @@ private fun AreaDrillScreen(
                             .background(R1.SurfaceMuted)
                             .border(1.dp, R1.Hairline, R1.ShapeS)
                             .r1Pressable(onClick = onRefresh)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
                         Text(text = "REFRESH", style = R1.labelMicro, color = R1.InkSoft)
                     }
@@ -448,12 +448,12 @@ private fun AreaDrillScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                            horizontal = R1.space.m, vertical = R1.space.s,
                         ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         item("__drill_summary") {
-                            Column(modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)) {
+                            Column(modifier = Modifier.padding(start = R1.space.xxs, bottom = R1.space.xxs)) {
                                 Text(
                                     text = buildString {
                                         append("$matchedCount controllable")
@@ -549,7 +549,7 @@ private fun AreaEntityRow(
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onTap)
-            .heightIn(min = 48.dp)
+            .heightIn(min = R1.MinTarget)
             .then(if (unavailable) Modifier.alpha(0.55f) else Modifier)
             .semantics {
                 contentDescription = buildString {
@@ -558,7 +558,7 @@ private fun AreaEntityRow(
                     if (!unavailable) append(", tap to ${actionLabel.lowercase()}")
                 }
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {

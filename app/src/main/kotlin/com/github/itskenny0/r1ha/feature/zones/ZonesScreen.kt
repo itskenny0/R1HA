@@ -27,6 +27,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,12 +47,12 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * Zones surface — a list-by-zone view of who's currently where,
+ * Zones surface: a list-by-zone view of who's currently where,
  * plus a small abstract map at the top showing the relative
  * geographic layout of every zone (and the tracked people / devices
  * inside or around them).
  *
- * The map is a Compose Canvas — no tiles, no actual map data; it
+ * The map is a Compose Canvas: no tiles, no actual map data; it
  * draws each zone as a circle sized by its radius attribute and
  * positioned by its lat/lon, normalised to fit inside the canvas
  * with a 10 % margin. Tracked entities reporting GPS are plotted as
@@ -74,7 +75,7 @@ fun ZonesScreen(
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
-    // 60s auto-refresh — persons move slowly; tighter would waste API.
+    // 60s auto-refresh: persons move slowly; tighter would waste API.
     AutoRefresh(everyMillis = 60_000L) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -155,7 +156,7 @@ fun ZonesScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
-                    // Map preview — only when at least two points (zones
+                    // Map preview: only when at least two points (zones
                     // and/or trackers) carry lat/lon so there's something
                     // meaningful to draw.
                     val mappableZones = ui.zones.filter {
@@ -183,7 +184,7 @@ fun ZonesScreen(
 }
 
 /**
- * Abstract map of every zone + tracked entity — Compose Canvas; not a
+ * Abstract map of every zone + tracked entity: Compose Canvas, not a
  * real geo map. Each zone is a circle sized by its `radius` attribute,
  * positioned in [0..1] coordinate space using the bounding box of every
  * plotted point's lat/lon, then projected onto the canvas with a 10%
@@ -199,15 +200,17 @@ private fun ZoneMap(
     zones: List<ResolvedZone>,
     trackers: List<MappableTracker>,
 ) {
-    // Bounding box across every plotted point — zone centres and tracker
-    // positions both — so the frame contains everyone.
-    val points = buildList {
-        zones.forEach { z ->
-            val lat = z.latitude
-            val lon = z.longitude
-            if (lat != null && lon != null) add(lat to lon)
+    // Bounding box across every plotted point: zone centres and tracker
+    // positions both, so the frame contains everyone.
+    val points = remember(zones, trackers) {
+        buildList {
+            zones.forEach { z ->
+                val lat = z.latitude
+                val lon = z.longitude
+                if (lat != null && lon != null) add(lat to lon)
+            }
+            trackers.forEach { add(it.latitude to it.longitude) }
         }
-        trackers.forEach { add(it.latitude to it.longitude) }
     }
     val bounds = geoBounds(points) ?: return
     val metersPerLonDeg = metersPerLonDegree(bounds.midLat)
@@ -288,14 +291,14 @@ private fun ZoneMap(
                     center = centre,
                     style = Stroke(width = 1.5f),
                 )
-                // Centre dot — the zone's exact position.
+                // Centre dot: the zone's exact position.
                 drawCircle(
                     color = if (occupied) R1.AccentWarm else R1.InkSoft,
                     radius = 2.5f,
                     center = centre,
                 )
             }
-            // Tracked entities on top of the zones — a small filled dot with
+            // Tracked entities on top of the zones: a small filled dot with
             // a thin halo so it reads against a zone circle of either colour.
             trackers.forEach { t ->
                 val (xFrac, yFrac) = projectToCanvasFraction(t.latitude, t.longitude, bounds)
@@ -360,7 +363,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.xs))
-            // Occupancy badge — filled accent when one or more, muted when 0.
+            // Occupancy badge: filled accent when one or more, muted when 0.
             Text(
                 text = "${zone.occupants.size}",
                 style = R1.labelMicro,
@@ -453,7 +456,7 @@ private fun OutsideRow(names: List<String>) {
     }
 }
 
-/** "152m" / "1.2km" — match the rest of the app's compact metric
+/** "152m" / "1.2km": match the rest of the app's compact metric
  *  language. */
 private fun formatRadius(meters: Double): String =
     if (meters >= 1000) "${"%.1f".format(java.util.Locale.US, meters / 1000.0)}km"

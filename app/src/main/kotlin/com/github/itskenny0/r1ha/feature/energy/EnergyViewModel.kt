@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.energy
 
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -50,7 +51,7 @@ class EnergyViewModel(
     private val haRepository: HaRepository,
 ) : ViewModel() {
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class Consumer(
         val entityId: String,
         val name: String,
@@ -74,7 +75,7 @@ class EnergyViewModel(
      *  during that bucket (summed across every energy meter). */
     data class HistoryBar(val timestamp: Instant, val kwh: Double)
 
-    @androidx.compose.runtime.Stable
+    @Stable
     data class UiState(
         val loading: Boolean = true,
         /** Sum of every `device_class=power` sensor's positive state in

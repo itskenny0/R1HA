@@ -46,8 +46,8 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * Lists every `update.*` entity HA exposes — HA Core, Supervisor, OS,
- * add-ons, integration firmware — with installed/latest version, a
+ * Lists every `update.*` entity HA exposes: HA Core, Supervisor, OS,
+ * add-ons, integration firmware; with installed/latest version, a
  * release-notes peek, and an INSTALL action. Mirrors HA's frontend
  * "Settings → System → Updates" pane.
  *
@@ -62,7 +62,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * No long-press affordance: the install confirmation is intentionally an
  * explicit tap so a stray brush can't kick off a 20-minute HA Core
  * upgrade. Long-press is reserved for the future per-card "ignore from
- * this list" behaviour — once we have a setting for it.
+ * this list" behavior: once we have a setting for it.
  */
 @Composable
 fun UpdatesScreen(
@@ -119,7 +119,7 @@ fun UpdatesScreen(
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-            // Summary band — gives an at-a-glance answer to "is there anything
+            // Summary band: gives an at-a-glance answer to "is there anything
             // I need to install right now?" before the user even scrolls. Hidden
             // during the initial load so the band doesn't briefly read "0
             // updates" before the fetch returns.
@@ -168,7 +168,7 @@ fun UpdatesScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 12.dp, vertical = 8.dp,
+                            horizontal = R1.space.m, vertical = R1.space.xs,
                         ),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
@@ -254,7 +254,7 @@ private fun UpdateRow(
             .background(R1.SurfaceMuted)
             .border(1.dp, statusColor.copy(alpha = 0.4f), R1.ShapeS)
             .r1Pressable(onClick = onOpen)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = R1.space.m, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Brand / integration icon from HA's entity_picture when present.
@@ -270,9 +270,9 @@ private fun UpdateRow(
                         .clip(R1.ShapeS),
                     contentDescription = "${entry.title} icon",
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(R1.space.s))
             }
-            // Bucket badge — at-a-glance category. CORE entries are coloured
+            // Bucket badge: at-a-glance category. CORE entries are coloured
             // to read as "system-level" (warm); ADD-ON is cool-blue to read
             // as third-party but managed; INTEGRATION is muted because it's
             // the noisiest category and a dim chip keeps the row legible.
@@ -290,7 +290,7 @@ private fun UpdateRow(
             ) {
                 Text(text = entry.bucket.label, style = R1.labelMicro, color = badgeColor)
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = entry.title,
                 style = R1.body,
@@ -308,7 +308,7 @@ private fun UpdateRow(
                 ) {
                     Text(text = "SKIPPED", style = R1.labelMicro, color = R1.InkMuted)
                 }
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(R1.space.xs))
             }
             if (entry.autoUpdate) {
                 Box(
@@ -322,7 +322,7 @@ private fun UpdateRow(
                 }
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(R1.space.xs))
         // Version diff line. When latest matches installed we say UP TO DATE
         // explicitly rather than rendering "1.2.3 → 1.2.3" which is noisy.
         val versionLine = when {
@@ -366,7 +366,7 @@ private fun UpdateRow(
                 )
             }
         }
-        // Release-summary peek — truncated to a single line; tapping the row
+        // Release-summary peek: truncated to a single line; tapping the row
         // opens the dialog with the full text.
         if (!entry.releaseSummary.isNullOrBlank()) {
             Spacer(Modifier.height(R1.space.xxs))
@@ -462,7 +462,7 @@ private fun UpdateDetailDialog(
         },
         text = {
             Column {
-                // Version line — same priority as the row, with the in-progress
+                // Version line: same priority as the row, with the in-progress
                 // tease swapped for the actual percentage when known.
                 val versionLine = when {
                     entry.inProgress -> entry.progressPercent?.let { "Installing · $it %" }

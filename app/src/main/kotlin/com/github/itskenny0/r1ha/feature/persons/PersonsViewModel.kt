@@ -31,20 +31,20 @@ class PersonsViewModel(
         val name: String,
         val state: String,
         val kind: Kind,
-        /** HA `source` attribute on device_tracker — "router" / "gps" /
+        /** HA `source` attribute on device_tracker: "router" / "gps" /
          *  "bluetooth_le". Surfaced as a small chip so the user can tell
          *  a phone tracker from a router-based one. Null for person.*. */
         val source: String?,
-        /** GPS accuracy in metres — null when not GPS-based. */
+        /** GPS accuracy in metres; null when not GPS-based. */
         val gpsAccuracy: Int?,
         /** When HA last reported this person/device's state. Used for
          *  the "since X" relative timestamp on each row. */
         val since: java.time.Instant?,
-        /** Battery percent from HA's `battery_level` attribute — common
+        /** Battery percent from HA's `battery_level` attribute: common
          *  on device_trackers backed by a phone integration. Null when
          *  not reported. */
         val batteryLevel: Int?,
-        /** HA `entity_picture` attribute — a relative `/api/...` path or an
+        /** HA `entity_picture` attribute: a relative `/api/...` path or an
          *  absolute URL pointing at the person's avatar. Rendered via
          *  AsyncBitmap with an initials fallback. Null when not set. */
         val entityPicture: String?,
@@ -66,7 +66,7 @@ class PersonsViewModel(
             _ui.value = _ui.value.copy(loading = true, error = null)
             // Two parallel fetches would be nice but listRawEntitiesByDomain
             // hits the same /api/states; one batched request would be ideal
-            // long-term. For now sequential is fine — the response is
+            // long-term. For now sequential is fine: the response is
             // already cached in HA's RAM.
             val personResult = haRepository.listRawEntitiesByDomain("person")
             val deviceResult = haRepository.listRawEntitiesByDomain("device_tracker")

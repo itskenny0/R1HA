@@ -19,13 +19,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
 
 /**
- * Drives the Today dashboard — a single at-a-glance home screen
- * composed of: outdoor weather, persons home/away, the next calendar
+ * Drives the Today dashboard: a single at-a-glance home screen
+ * composed of outdoor weather, persons home/away, the next calendar
  * event, camera count, and HA notification count.
  *
  * All five sections come from `/api/states` (filtered by domain prefix)
  * via [HaRepository.listRawEntitiesByDomain] in parallel. The user
- * sees partial data as soon as the first section lands — sections
+ * sees partial data as soon as the first section lands. Sections
  * that fail their fetch surface as "—" rather than blowing up the
  * whole dashboard.
  */
@@ -53,7 +53,7 @@ class DashboardViewModel(
         val awayCount: Int,
         /** Each entry is "name → state". Limited to 6 for layout. */
         val rows: List<Pair<String, String>>,
-        /** Total person count — when > rows.size, the dashboard
+        /** Total person count; when > rows.size, the dashboard
          *  appends an 'and N more' affordance instead of silently
          *  truncating. */
         val total: Int,
@@ -116,8 +116,8 @@ class DashboardViewModel(
         val name: String,
         val state: String, // active / paused / idle
         val finishesAt: Instant?,
-        /** HH:MM:SS string from HA's `remaining` attribute — only
-         *  meaningful when paused; for active timers HA exposes
+        /** HH:MM:SS string from HA's `remaining` attribute; only
+         *  meaningful when paused. For active timers HA exposes
          *  finishes_at and the UI ticks down off that instead. */
         val remaining: String? = null,
     )
@@ -138,7 +138,7 @@ class DashboardViewModel(
          *  no timers running. */
         val timers: List<TimerSummary> = emptyList(),
         /** Count of light.* entities currently in state='on'. -1 sentinel
-         *  for "not loaded yet" so the UI can render '—' rather than 0. */
+         *  for "not loaded yet" so the UI can render '—' rather than zero. */
         val lightsOnCount: Int = -1,
         /** Total real-time power consumption from every sensor.* with
          *  device_class='power', in Watts. -1 sentinel for "not loaded
@@ -373,15 +373,10 @@ class DashboardViewModel(
         }
     }
 
-    /** Master 'all lights off' — fired from the LIGHTS ON tile's
+    /** Master 'all lights off': fired from the LIGHTS ON tile's
      *  long-press affordance. Reuses the all-domain HA trick (target
-     *  any light entity + entity_id='all' in data) so it scales to
-     *  installs of any size in a single call.  */
-    /** Fire a HA timer service against the given entity. Used by the
-     *  TimerCard's pause / resume / cancel controls on the dashboard.
-     *  Refreshes the dashboard 600 ms later so the visible state
-     *  flips immediately rather than waiting for the auto-refresh
-     *  tick. */
+     *  any light entity with entity_id='all' in data) so it scales to
+     *  installs of any size in a single call. */
     fun timerService(entityId: String, service: String) {
         viewModelScope.launch {
             val target = runCatching {
@@ -444,12 +439,17 @@ class DashboardViewModel(
     }
 
     /** Transport dispatch for the on-dashboard media card. Uses the
-     *  existing ServiceCall.mediaTransport helper + haRepository.call
-     *  WS path so the dispatch is debounced + coalesced like every
+     *  existing ServiceCall.mediaTransport helper and haRepository.call
+     *  WS path so the dispatch is debounced and coalesced like every
      *  other service call in the app. Triggers an immediate dashboard
      *  refresh after a short settle delay so the play/pause state
-     *  reflects the new reality without waiting for the next 60 s
-     *  auto-refresh tick — makes the buttons feel responsive. */
+     *  reflects the new reality without waiting for the next 60s
+     *  auto-refresh tick. Makes the buttons feel responsive. */
+    /** Fire a HA timer service against the given entity. Used by the
+     *  TimerCard's pause/resume/cancel controls on the dashboard.
+     *  Refreshes the dashboard 600 ms later so the visible state
+     *  flips immediately rather than waiting for the auto-refresh
+     *  tick. */
     fun mediaTransport(
         entityId: String,
         action: com.github.itskenny0.r1ha.core.ha.MediaTransport,
@@ -461,7 +461,7 @@ class DashboardViewModel(
             haRepository.call(
                 com.github.itskenny0.r1ha.core.ha.ServiceCall.mediaTransport(target, action),
             )
-            // 800 ms settle delay — HA needs a moment for the media
+            // 800 ms settle delay: HA needs a moment for the media
             // entity to report its new state after a play/pause. Faster
             // and we'd refresh on the pre-action state and have to
             // refresh again on the next tick.

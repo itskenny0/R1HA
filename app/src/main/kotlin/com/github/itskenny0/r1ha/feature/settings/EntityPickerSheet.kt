@@ -52,7 +52,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  *
  * Filter: defaults to toggleable + action domains (the meaningful set
  * for a Quick Settings tile target). Sensors / numbers / selects are
- * excluded — a tile that 'toggles' a sensor would do nothing useful.
+ * excluded; a tile that 'toggles' a sensor would do nothing useful.
  */
 @Composable
 fun EntityPickerSheet(
@@ -79,7 +79,7 @@ fun EntityPickerSheet(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         // Focus the search field on open so the user can immediately
-        // type — matches the QuickSearch UX.
+        // type; matches the QuickSearch UX.
         kotlinx.coroutines.delay(80)
         runCatching { focus.requestFocus() }
     }
@@ -209,7 +209,7 @@ fun EntityPickerSheet(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            // Single CANCEL row at the bottom — keeps the dismiss
+            // Single CANCEL row at the bottom; keeps the dismiss
             // affordance discoverable without depending on the
             // backdrop tap (which a confused user might not realise
             // works).
@@ -259,7 +259,7 @@ private fun EntityPickRow(entity: EntityState, onPick: () -> Unit) {
 }
 
 /** Set of domains worth binding to a Quick Settings tile. Toggleable
- *  + action entities only — sensors / numbers / selects would render
+ *  + action entities only; sensors / numbers / selects would render
  *  meaningless tile state. The Quick Settings UX is fundamentally
  *  one-tap-fires-action; matching against this set hides irrelevant
  *  entities from the picker. */

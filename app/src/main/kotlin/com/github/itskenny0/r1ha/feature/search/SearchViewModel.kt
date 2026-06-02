@@ -34,14 +34,14 @@ import kotlinx.serialization.json.JsonObject
  * entity_id, and returns the matches grouped by domain.
  *
  * Tap action depends on the entity's domain:
- *  - Scenes / scripts / buttons → fire via the appropriate service
- *  - On/off entities (light / switch / fan / cover / lock) → toggle
- *  - Everything else → surface a detail toast with state + area
+ *  - Scenes / scripts / buttons: fire via the appropriate service
+ *  - On/off entities (light / switch / fan / cover / lock): toggle
+ *  - Everything else: surface a detail toast with state + area
  *
  * Acts as a complement to the Favourites Picker (which is for
  * managing the card stack) and the Scenes screen (which is scene/
  * script-only). This surface is for "I know I have an entity called
- * 'Bedroom Light' — find it and fire it" without configuring it as
+ * 'Bedroom Light': find it and fire it" without configuring it as
  * a favourite first.
  */
 class SearchViewModel(
@@ -78,7 +78,7 @@ class SearchViewModel(
         // perspective; group them under SENSORS so they match the
         // 'just a value to display' user mental model.
         Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
-        // Person presence + weather are read-only info entities — group
+        // Person presence + weather are read-only info entities: group
         // them under SENSORS alongside the other display-only readouts.
         Domain.PERSON, Domain.WEATHER -> Bucket.SENSORS
         Domain.SCENE, Domain.SCRIPT, Domain.BUTTON, Domain.INPUT_BUTTON,
@@ -88,7 +88,7 @@ class SearchViewModel(
         // with them, but they remain findable via the ALL chip + free-text
         // search for users who know the entity_id.
         Domain.UPDATE -> Bucket.OTHER
-        // Remote/IR blasters control devices via send_command — sit them
+        // Remote/IR blasters control devices via send_command: sit them
         // under CONTROLS alongside switches and the like.
         Domain.REMOTE -> Bucket.CONTROLS
         // Catch-all domains with no archetype (device_tracker, zone, calendar, ...) are
@@ -239,7 +239,7 @@ class SearchViewModel(
     }
 
     /**
-     * Tap action — dispatches the appropriate service for the entity's
+     * Tap action: dispatches the appropriate service for the entity's
      * domain. Action-only entities (scene / script / button) fire;
      * controllable entities (light / switch / fan / etc.) toggle;
      * everything else surfaces a detail toast.
@@ -276,7 +276,7 @@ class SearchViewModel(
                     Toaster.show("${if (entity.isOn) "Off" else "On"}: ${entity.friendlyName}")
                 }
                 else -> {
-                    // Sensors / numbers / selects — read-only or not
+                    // Sensors / numbers / selects: read-only or not
                     // tap-toggle-friendly. Surface a detail toast instead.
                     val parts = buildString {
                         append(entity.friendlyName).append('\n')
@@ -291,7 +291,7 @@ class SearchViewModel(
     }
 
     /** Add an entity to the active page's favourites set. Used by the
-     *  Search screen's star affordance — turns "I just found this
+     *  Search screen's star affordance: turns "I just found this
      *  entity by name" into "now it's a card on my home stack" in one
      *  tap. Idempotent (re-adding does nothing). */
     fun addToFavorites(entityId: EntityId) {

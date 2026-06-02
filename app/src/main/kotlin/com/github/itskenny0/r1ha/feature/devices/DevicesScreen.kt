@@ -356,11 +356,13 @@ private fun DeviceRow(
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = R1.space.xxs)) {
-            val meta = buildList {
-                if (!device.manufacturer.isNullOrBlank()) add(device.manufacturer)
-                if (!device.model.isNullOrBlank()) add(device.model)
-                if (!areaName.isNullOrBlank()) add(areaName)
-            }.joinToString(" : ")
+            val meta = remember(device.manufacturer, device.model, areaName) {
+                buildList {
+                    if (!device.manufacturer.isNullOrBlank()) add(device.manufacturer)
+                    if (!device.model.isNullOrBlank()) add(device.model)
+                    if (!areaName.isNullOrBlank()) add(areaName)
+                }.joinToString(" : ")
+            }
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,

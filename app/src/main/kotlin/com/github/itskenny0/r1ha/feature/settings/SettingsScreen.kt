@@ -1874,8 +1874,8 @@ private fun CategorySubRow(node: SettingsNode, summary: String, badge: Int, onCl
  * Map a registry [SettingCategory] to the parent SettingsScreen's section-header
  * string. Both surfaces (the section grid above and the search-result drilldown)
  * route through this so the strings live in exactly one place. Section labels
- * are the SettingsScreen's contract — not part of the registry's public API —
- * so the mapping is kept in this file rather than next to the enum.
+ * are the SettingsScreen's contract: not part of the registry's public API.
+ * So the mapping is kept in this file rather than next to the enum.
  */
 internal fun sectionNameForCategory(
     category: com.github.itskenny0.r1ha.core.prefs.SettingCategory,
@@ -2122,7 +2122,7 @@ private fun ChromeButtonRow(
             .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Position number — disambiguates "slot 1" (leftmost in the cluster) from
+        // Position number; disambiguates "slot 1" (leftmost in the cluster) from
         // "slot N" (closest to GEAR) when the user is scanning the rows. Fixed-
         // width so the labels below line up.
         Text(
@@ -2156,7 +2156,7 @@ private fun ChromeButtonRow(
  * on the card stack. Hidden buttons are dimmed and struck through so the user
  * sees the position survives a visibility toggle (the disabled slot just won't
  * render at runtime). Keeps the preview decoupled from the heavy actual glyphs
- * (BatteryIndicator polls BatteryManager, AssistMicGlyph draws a path) — those
+ * (BatteryIndicator polls BatteryManager, AssistMicGlyph draws a path); those
  * would be wasteful inside a settings row that just needs to communicate order.
  */
 @Composable
@@ -2257,7 +2257,7 @@ private fun SwitchRow(
 }
 
 /**
- * NumberStepperRow — label + subtitle + −/+ pills around the current
+ * NumberStepperRow: label + subtitle + −/+ pills around the current
  * value. Used for the new dashboard / integrations settings where
  * thresholds (battery low %, power amber/red watts) and intervals
  * (refresh cadence, polling intervals) need granular tuning without
@@ -2293,7 +2293,7 @@ private fun NumberStepperRow(
             }
         }
         // −/value/+ cluster. Each pill is 28 dp tall, the value cell
-        // sits between them as plain text — feels less busy than three
+        // sits between them as plain text; feels less busy than three
         // border-bordered pills in a row.
         Row(verticalAlignment = Alignment.CenterVertically) {
             val canDec = value > min
@@ -2345,7 +2345,7 @@ private fun NumberStepperRow(
 }
 
 /**
- * SliderRow — label + current-value pill on one line, a Material3 slider beneath,
+ * SliderRow: label + current-value pill on one line, a Material3 slider beneath,
  * then an optional subtitle. Used for the continuous 0..100 settings (card-stack
  * scroll sensitivity) where a stepper would be too coarse and a segmented picker
  * has too many stops. The slider quantises to whole integers via toInt().
@@ -2416,7 +2416,7 @@ private fun NavRow(
     ) {
         // Label gets a fixed maxLines = 1 so a long supplementary
         // value can't squeeze it down to one-character-per-line.
-        // Without this, e.g. 'Device' next to 'Local — brightness,
+        // Without this, e.g. 'Device' next to 'Local: brightness,
         // volume, flashlight' wrapped vertically D / e / v / i / c /
         // e because the value claimed all remaining width and the
         // label's weight(1f) collapsed to whatever was left. The
@@ -2492,7 +2492,7 @@ private fun DangerButton(text: String, onClick: () -> Unit) {
             .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            // Hairline border in StatusRed so the destructive intent reads at a glance — the
+            // Hairline border in StatusRed so the destructive intent reads at a glance; the
             // earlier flat `SurfaceMuted` fill didn't signal "danger" from across the screen.
             .r1Pressable(onClick)
             .padding(vertical = R1.space.m),
@@ -2503,7 +2503,7 @@ private fun DangerButton(text: String, onClick: () -> Unit) {
 }
 
 /**
- * Bespoke segmented picker — rectangular cells, hairline borders, selected = orange fill on
+ * Bespoke segmented picker: rectangular cells, hairline borders, selected = orange fill on
  * black text. Reads like a hardware mode selector instead of Material's pill chips.
  */
 @Composable
@@ -2587,23 +2587,25 @@ private fun PositionDotLocationPicker(
     // RIGHT because the centre-middle is conceptually "no anchor" and HIDDEN
     // gets the slot that would otherwise overlap with TOP_CENTER's mental
     // model. Top / bottom centres get their own explicit cells.
-    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.PositionDotLocation>>> = listOf(
+    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.PositionDotLocation>>> = remember {
         listOf(
-            "↖" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_LEFT,
-            "↑" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
-            "↗" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_RIGHT,
-        ),
-        listOf(
-            "←" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.LEFT_CENTER,
-            "·" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.HIDDEN,
-            "→" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.RIGHT_CENTER,
-        ),
-        listOf(
-            "↙" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_LEFT,
-            "↓" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_CENTER,
-            "↘" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_RIGHT,
-        ),
-    )
+            listOf(
+                "↖" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_LEFT,
+                "↑" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
+                "↗" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_RIGHT,
+            ),
+            listOf(
+                "←" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.LEFT_CENTER,
+                "·" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.HIDDEN,
+                "→" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.RIGHT_CENTER,
+            ),
+            listOf(
+                "↙" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_LEFT,
+                "↓" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_CENTER,
+                "↘" to com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.BOTTOM_RIGHT,
+            ),
+        )
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         rows.forEachIndexed { rowIdx, row ->
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -2658,21 +2660,23 @@ private fun ValueBarLocationPicker(
     selected: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation,
     onSelect: (com.github.itskenny0.r1ha.core.prefs.ValueBarLocation) -> Unit,
 ) {
-    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.ValueBarLocation>?>> = listOf(
-        listOf(null, "↑" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP, null),
+    val rows: List<List<Pair<String, com.github.itskenny0.r1ha.core.prefs.ValueBarLocation>?>> = remember {
         listOf(
-            "←" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT,
-            "·" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN,
-            "→" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT,
-        ),
-        listOf(null, "↓" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM, null),
-    )
+            listOf(null, "↑" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP, null),
+            listOf(
+                "←" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT,
+                "·" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN,
+                "→" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT,
+            ),
+            listOf(null, "↓" to com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM, null),
+        )
+    }
     Column(modifier = Modifier.fillMaxWidth()) {
         rows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth()) {
                 row.forEach { cell ->
                     if (cell == null) {
-                        // Empty corner cell — keeps the cross shape aligned.
+                        // Empty corner cell: keeps the cross shape aligned.
                         Spacer(Modifier.weight(1f).height(44.dp).padding(2.dp))
                     } else {
                         val (glyph, loc) = cell
@@ -2715,7 +2719,7 @@ private fun ValueBarLocationPicker(
 /**
  * Picker for the night-mode theme. Same three options as the main theme picker
  * but rendered inline as a dialog (no full-screen route) because picking a
- * night theme is a smaller, more transactional choice — the user already
+ * night theme is a smaller, more transactional choice; the user already
  * decided to enable auto-mode and is just confirming which theme to swap to.
  */
 @Composable
@@ -2852,7 +2856,7 @@ private fun HourStepper(label: String, value: Int, onChange: (Int) -> Unit) {
  * State is held in [SecurityPolicyStore], which is SharedPreferences-backed and
  * outside the DataStore-flow path used by the rest of Settings. The OkHttpClient
  * builds from the policy at process start and never rebuilds, so every mutation
- * here surfaces a small "restart required" badge — the user gets immediate
+ * here surfaces a small "restart required" badge: the user gets immediate
  * feedback in the UI (pin appears in the list) but the actual handshake
  * enforcement waits until the next launch.
  */
@@ -2865,7 +2869,7 @@ private fun SecuritySection() {
     val pendingPin = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     val pendingPinError = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     // Snapshot the persisted state at first composition. Changes go through
-    // [store.update] which we mirror back into the local state — saves a flow
+    // [store.update] which we mirror back into the local state; saves a flow
     // collector for what is, in practice, a one-screen-at-a-time surface.
     val policy = policyState.value
 
@@ -2885,7 +2889,7 @@ private fun SecuritySection() {
 
         // Live status banner: green when active, amber when armed but with no
         // pins (which means OkHttp won't apply any pinner, so the toggle is
-        // a no-op — surface that so the user doesn't think they're protected).
+        // a no-op; surface that so the user doesn't think they're protected).
         val active = policy.tlsPinningEnabled && policy.sha256Pins.isNotEmpty()
         val armedNoPins = policy.tlsPinningEnabled && policy.sha256Pins.isEmpty()
         val statusText = when {
@@ -2956,7 +2960,7 @@ private fun SecuritySection() {
 
         // Add-pin form. The user pastes a base64 SHA-256 hash (with or
         // without the `sha256/` prefix). [SecurityPolicyStore.normalisePin]
-        // rejects anything that doesn't decode to a 32-byte digest — the
+        // rejects anything that doesn't decode to a 32-byte digest; the
         // typical shape of a copy-paste from a `openssl s_client … |
         // openssl dgst -sha256 -binary | openssl enc -base64` pipeline,
         // which is the standard way to derive a pin from the server cert.
@@ -3015,7 +3019,7 @@ private fun SecuritySection() {
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.s))
-            // FETCH-FROM-SERVER chip — runs a one-shot HEAD against the user's
+            // FETCH-FROM-SERVER chip: runs a one-shot HEAD against the user's
             // server URL (using an unpinned ephemeral client), pulls the leaf
             // cert's SPKI hash, and offers ADD chips per certificate in the
             // chain. Much friendlier than the openssl pipeline above for users
@@ -3271,7 +3275,7 @@ private fun MtlsClientCertEditor(
             }
         }
     }
-    // Password field — stored as plain text alongside the keystore path.
+    // Password field: stored as plain text alongside the keystore path.
     // Documented as such in the threat-model comment on the data class.
     LabeledControl(label = "Keystore password") {
         Row(verticalAlignment = Alignment.CenterVertically) {

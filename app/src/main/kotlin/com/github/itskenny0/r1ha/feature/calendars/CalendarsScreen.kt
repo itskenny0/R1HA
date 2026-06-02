@@ -44,12 +44,12 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import java.time.Instant
 
 /**
- * Calendars surface — shows each `calendar.*` entity HA exposes with
+ * Calendars surface: shows each `calendar.*` entity HA exposes with
  * its currently-on / next-up event preview. NOW pill prefixes events
  * that are happening right now (HA state == "on"); the rest show a
  * relative "in 2 h" timestamp.
  *
- * Doesn't drill into the full event list — that's a follow-up using
+ * Doesn't drill into the full event list; that's a follow-up using
  * the dedicated `/api/calendars/<id>?start=...&end=...` endpoint.
  * This surface is the at-a-glance "what's next?" view that fits the
  * R1's small display.
@@ -131,7 +131,7 @@ fun CalendarsScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                // Calendar registry fetch failed — distinct from "no
+                // Calendar registry fetch failed; distinct from "no
                 // calendar integrations configured" empty state.
                 Text(
                     text = "Calendars load failed: ${ui.error}",
@@ -206,7 +206,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (c.state == "on") {
-                // NOW pill — pulled to the front of the line so the user
+                // NOW pill: pulled to the front of the line so the user
                 // sees "this is happening right now" at a glance.
                 R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
                 Spacer(Modifier.width(R1.space.s))

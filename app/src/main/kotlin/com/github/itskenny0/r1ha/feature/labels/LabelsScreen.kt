@@ -218,9 +218,13 @@ private fun LabelRow(
     // The raw label color drives the small swatch (HA shows the true color
     // there); the accent used for text/count is lifted to a legible tone so a
     // near-black label color is not invisible on the dark surface.
-    val swatchColor: Color = LabelLogic.parseLabelColor(label.color, R1.AccentWarm)
-    val accent: Color = LabelLogic.accentOnDark(swatchColor, R1.AccentWarm)
-    val iconSlug = LabelLogic.normalizeIcon(label.icon)
+    val swatchColor: Color = remember(label) {
+        LabelLogic.parseLabelColor(label.color, R1.AccentWarm)
+    }
+    val accent: Color = remember(swatchColor) {
+        LabelLogic.accentOnDark(swatchColor, R1.AccentWarm)
+    }
+    val iconSlug = remember(label) { LabelLogic.normalizeIcon(label.icon) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -233,6 +237,24 @@ private fun LabelRow(
         // count / chevron into one spoken phrase (count in words, expand state
         // announced) on the Row itself, so the expanded member rows below stay
         // individually focusable as the accessible path into the label.
+        val rowDescription = remember(label, expanded) {
+            buildString {
+                append(
+                    LabelLogic.labelRowLabel(
+                        name = label.name,
+                        memberCount = label.memberCount,
+                        expanded = expanded,
+                    ),
+                )
+                // Speak the description too; r1Pressable's explicit
+                // contentDescription replaces descendant text, so the
+                // visible description line is otherwise silent.
+                if (!label.description.isNullOrBlank()) {
+                    append(" ")
+                    append(label.description.trim())
+                }
+            }
+        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -240,22 +262,7 @@ private fun LabelRow(
                 .heightIn(min = R1.MinTarget)
                 .r1Pressable(
                     onClick = onToggle,
-                    contentDescription = buildString {
-                        append(
-                            LabelLogic.labelRowLabel(
-                                name = label.name,
-                                memberCount = label.memberCount,
-                                expanded = expanded,
-                            ),
-                        )
-                        // Speak the description too; r1Pressable's explicit
-                        // contentDescription replaces descendant text, so the
-                        // visible description line is otherwise silent.
-                        if (!label.description.isNullOrBlank()) {
-                            append(" ")
-                            append(label.description.trim())
-                        }
-                    },
+                    contentDescription = rowDescription,
                 ),
         ) {
             // Swatch shows the label's true HA color; the hairline keeps it

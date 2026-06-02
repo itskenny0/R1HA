@@ -57,7 +57,7 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * Cameras surface — lists every `camera.*` entity HA reports and lets
+ * Cameras surface: lists every `camera.*` entity HA reports and lets
  * the user tap one to see a live polling snapshot. The list view
  * shows just text rows + state chip (idle / recording / streaming /
  * unavailable). Tapping a row pushes a fullscreen overlay with the
@@ -80,7 +80,7 @@ fun CamerasScreen(
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
-    // View-mode preference — rememberSaveable so it survives orientation
+    // View-mode preference: rememberSaveable so it survives orientation
     // changes and back-then-forward nav. Defaults to LIST (cheap; no
     // background polling) so big installs don't accidentally fire a
     // thumbnail-fetch stampede on first entry.
@@ -97,7 +97,7 @@ fun CamerasScreen(
     var viewModeOverride by rememberSaveable { mutableStateOf<String?>(null) }
     val viewMode = viewModeOverride
         ?: if (appSettings.integrations.camerasDefaultGrid) "GRID" else "LIST"
-    // Wheel scroll wired to whichever state is currently visible —
+    // Wheel scroll wired to whichever state is currently visible:
     // LIST drives listState, GRID drives gridState. Both go through
     // the WheelScrollFor* family which shares the accel + cancellation
     // profile. Switching mode swaps which composable is in
@@ -180,7 +180,7 @@ fun CamerasScreen(
                 LazyVerticalGrid(
                     state = gridState,
                     // Column count adapts to the host width so tablets
-                    // actually use the extra horizontal space — R1 stays
+                    // actually use the extra horizontal space: R1 stays
                     // at 2 columns (today's layout), phones stay at 2,
                     // tablets jump to 3 inside the responsive column.
                     columns = GridCells.Fixed(
@@ -226,7 +226,7 @@ fun CamerasScreen(
             }
         }
     }
-    // Detail overlay — fullscreen snapshot polling. Back-press dismisses.
+    // Detail overlay: fullscreen snapshot polling. Back-press dismisses.
     val viewing = viewingEntityId
     if (viewing != null) {
         CameraDetailOverlay(
@@ -419,7 +419,7 @@ private fun CameraDetailOverlay(
     val token by produceState<String?>(null, tokens) {
         value = tokens.load()?.accessToken
     }
-    // Per-overlay live controls — refresh cadence + display rotation.
+    // Per-overlay live controls: refresh cadence + display rotation.
     // Seeded from the global Integrations setting but mutable here so the
     // user can crank pseudo-realtime (~200 ms) when they're actively
     // watching the feed, and rotate via the on-overlay button for cameras
@@ -437,7 +437,7 @@ private fun CameraDetailOverlay(
             .systemBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Custom top bar — title + close X. R1TopBar uses NavController
+            // Custom top bar: title + close X. R1TopBar uses NavController
             // patterns; an inline one fits the overlay model better.
             Row(
                 modifier = Modifier
@@ -592,7 +592,7 @@ private fun CameraDetailOverlay(
     }
 }
 
-/** Non-linear step ladder for the refresh-rate picker — denser near the
+/** Non-linear step ladder for the refresh-rate picker: denser near the
  *  realtime end where small changes matter, coarser at the slow end where
  *  they don't. 200 ms is the practical floor: HA camera_proxy round-trips
  *  on LAN cluster ~80-150 ms, so polling faster than that just stacks

@@ -58,13 +58,13 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 
 /**
- * Calendar drill-down — fetches the next ~2 weeks of events for a
+ * Calendar drill-down: fetches the next ~2 weeks of events for a
  * single calendar entity via HA's `/api/calendars/<id>?start=&end=`
  * endpoint and renders them as a chronological list.
  *
  * Unlike the parent CalendarsScreen which only shows the next event
  * from each calendar's attributes, this drill-down lists every event
- * in the window — useful for "what's on my agenda this week".
+ * in the window; useful for "what's on my agenda this week".
  */
 class CalendarEventsViewModel(
     private val haRepository: HaRepository,

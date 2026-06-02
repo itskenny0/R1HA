@@ -389,7 +389,7 @@ private fun AutomationRow(
                     // Long-press a mode badge surfaces a one-line explainer; HA's
                     // automation-mode jargon (queued/restart/parallel) isn't obvious
                     // even to fairly experienced users.
-                    val modeExplain = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                    val modeExplain = androidx.compose.runtime.remember(entry.id) { androidx.compose.runtime.mutableStateOf(false) }
                     androidx.compose.runtime.LaunchedEffect(modeExplain.value) {
                         if (modeExplain.value) {
                             kotlinx.coroutines.delay(2_500L)

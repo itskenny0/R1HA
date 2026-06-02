@@ -22,7 +22,7 @@ import kotlinx.serialization.json.put
  * and dispatches dismiss actions via
  * [HaRepository.dismissPersistentNotification]. After a successful
  * dismiss we optimistically remove the row from the in-memory list so
- * the UI updates without waiting for the next refresh — HA's own
+ * the UI updates without waiting for the next refresh; HA's own
  * persistent_notification.dismiss is essentially synchronous so we
  * shouldn't see ghost entries.
  */
@@ -35,10 +35,10 @@ class NotificationsViewModel(
         val loading: Boolean = true,
         val notifications: List<PersistentNotification> = emptyList(),
         val error: String? = null,
-        /** Set of notification IDs whose dismiss is in flight — drives
+        /** Set of notification IDs whose dismiss is in flight; drives
          *  per-row 'DISMISSING…' affordance and prevents double-tap. */
         val pendingDismiss: Set<String> = emptySet(),
-        /** True while a persistent_notification.create call is in flight,
+        /** True while a persistent_notification.create call is in flight;
          *  so the create affordance can disable its button + show progress. */
         val creating: Boolean = false,
     )
@@ -116,7 +116,7 @@ class NotificationsViewModel(
             haRepository.dismissPersistentNotification(notification.notificationId).fold(
                 onSuccess = {
                     R1Log.i("Notifications", "dismissed ${notification.notificationId}")
-                    // Optimistic remove — HA's dismiss is synchronous so the row
+                    // Optimistic remove: HA's dismiss is synchronous so the row
                     // really is gone by now.
                     _ui.value = _ui.value.copy(
                         notifications = _ui.value.notifications.filterNot {

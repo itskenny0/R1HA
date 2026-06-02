@@ -323,13 +323,13 @@ class LogbookViewModel(
     }
 
     /**
-     * Surface the full event detail as a long-form toast — entity_id,
+     * Surface the full event detail as a long-form toast: entity_id,
      * state and message, plus the absolute timestamp. The relative
      * timestamp on the row is fine for "how recent" but a user trying
      * to correlate with an HA automation needs the absolute time.
      *
      * Tap is the natural drilldown affordance even though the row
-     * itself doesn't navigate anywhere — putting the toast on the
+     * itself doesn't navigate anywhere; putting the toast on the
      * ToastHost's expand-on-tap path means the user can read a long
      * automation trigger message without it being clipped.
      */

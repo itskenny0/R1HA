@@ -24,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -74,7 +77,7 @@ fun ScenesScreen(
     // it's read both for the empty-state check and the items() call, and recompose
     // fires per search keystroke. Memoise against its inputs so the filter runs
     // once per state change instead of twice per frame.
-    val entries = androidx.compose.runtime.remember(ui.all, ui.filter, ui.query) { ui.entries }
+    val entries = remember(ui.all, ui.filter, ui.query) { ui.entries }
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
@@ -330,10 +333,10 @@ private fun MasterActionsRow(
     // arms on first tap and fires on second-within-3s so a fat-fingered tap
     // doesn't cascade through every light in the house. Long-press LIGHTS
     // (turn-all-on) is non-destructive and stays one-tap.
-    val armedKey = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
-    androidx.compose.runtime.LaunchedEffect(armedKey.value) {
+    val armedKey = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(armedKey.value) {
         if (armedKey.value != null) {
-            kotlinx.coroutines.delay(3_000L)
+            delay(3_000L)
             armedKey.value = null
         }
     }

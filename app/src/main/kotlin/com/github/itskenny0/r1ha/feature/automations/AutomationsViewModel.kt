@@ -22,14 +22,14 @@ import java.time.Instant
  * Drives the Automations surface. Lists every `automation.*` entity HA
  * exposes with its current enabled state, mode, last-triggered timestamp,
  * and any running instance count. Mirrors the parity HA's own frontend
- * Automations panel offers — list + RUN + enable/disable + reload.
+ * Automations panel offers: list + RUN + enable/disable + reload.
  *
  * Three service dispatches per row:
- *  - `automation.trigger` — manually fire the automation's actions,
+ *  - `automation.trigger`: manually fire the automation's actions,
  *    bypassing its triggers; same as the ▶ button in HA's UI.
- *  - `automation.turn_on` / `automation.turn_off` — toggle whether the
+ *  - `automation.turn_on` / `automation.turn_off`: toggle whether the
  *    triggers fire automatically (enabled/disabled in HA's terminology).
- *  - `automation.reload` — re-read every automation from automations.yaml
+ *  - `automation.reload`: re-read every automation from automations.yaml
  *    (and the UI editor's storage), useful after editing in the HA web UI.
  */
 class AutomationsViewModel(
@@ -69,7 +69,7 @@ class AutomationsViewModel(
         val currentRunning: Int,
         /** When the automation last fired. Drives the relative-time
          *  label on the right of each row; null means "never since
-         *  HA started" — typically a freshly created automation. */
+         *  HA started" (typically a freshly created automation). */
         val lastTriggered: Instant?,
     )
 
@@ -143,7 +143,7 @@ class AutomationsViewModel(
      * Manually fire the automation's actions, bypassing its triggers.
      * Same as the ▶ button in HA's frontend Automations panel. We post
      * `skip_condition: true` so the conditions block (often: only at
-     * night, only when away, etc.) doesn't block the manual trigger —
+     * night, only when away, etc.) doesn't block the manual trigger:
      * which is what the user typically wants when they're testing.
      */
     fun trigger(entry: Entry) {
@@ -182,8 +182,7 @@ class AutomationsViewModel(
     /** Enable / disable the automation (whether its triggers fire
      *  automatically). HA uses `automation.turn_on` / `turn_off` which
      *  feels backwards in a UI sense, but it matches the underlying
-     *  service contract — and the state attribute reflects this
-     *  exactly. */
+     *  service contract: the state attribute reflects this exactly. */
     fun setEnabled(entry: Entry, enabled: Boolean) {
         // An unavailable automation has no meaningful on/off to flip; skip the
         // optimistic update and the doomed dispatch, and surface why.
@@ -226,7 +225,7 @@ class AutomationsViewModel(
         }
     }
 
-    /** `automation.reload` — re-read every automation from
+    /** `automation.reload`: re-read every automation from
      *  automations.yaml (and the UI editor's storage). Useful after
      *  editing in HA's web UI to pick up changes without restarting
      *  HA. Dispatches with no target since reload is global. */
@@ -265,7 +264,7 @@ class AutomationsViewModel(
     }
 
     /** Pin this automation to the active page's favourites. Same
-     *  shape as SearchViewModel.addToFavorites — adds the entity_id
+     *  shape as SearchViewModel.addToFavorites: adds the entity_id
      *  to settings.activePage.favorites if it isn't there already.
      *  Reads as 'star this automation onto my home stack'. */
     fun addToFavorites(entry: Entry) {

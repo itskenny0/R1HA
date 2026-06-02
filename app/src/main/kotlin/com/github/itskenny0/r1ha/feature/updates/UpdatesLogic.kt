@@ -193,7 +193,7 @@ object UpdatesLogic {
     private fun comparePart(a: Part, b: Part): Int = when {
         a.numeric != null && b.numeric != null -> a.numeric.compareTo(b.numeric)
         // A numeric segment outranks a textual pre-release tag at the same
-        // position ("2.0" release > "2.0rc1" — but those split differently;
+        // position ("2.0" release > "2.0rc1"; but those split differently,
         // here e.g. "1" vs "rc"): the number is the real release.
         a.numeric != null -> 1
         b.numeric != null -> -1

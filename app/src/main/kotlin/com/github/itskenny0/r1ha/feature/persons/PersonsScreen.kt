@@ -42,7 +42,7 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
- * "Who's home" surface — combines `person.*` (high-level humans the
+ * "Who's home" surface: combines `person.*` (high-level humans the
  * user has configured in HA) with `device_tracker.*` (per-phone /
  * per-router pings that power the person entities) into one screen.
  *
@@ -99,7 +99,7 @@ fun PersonsScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                // Distinct from "no person integrations" — the request
+                // Distinct from "no person integrations": the request
                 // itself failed (auth, network, server down).
                 Text(
                     text = "Persons load failed: ${ui.error}",
@@ -186,7 +186,7 @@ fun PersonsScreen(
 
 /**
  * Round avatar for a person/device row. Renders the HA entity_picture via the
- * shared AsyncBitmap loader when one is set, otherwise a tinted initials chip
+ * shared AsyncBitmap loader when one is set; otherwise a tinted initials chip
  * derived from the display name. The initials also stand in while a picture
  * has yet to decode or fails to load, so the slot is never an empty circle.
  */
@@ -249,7 +249,7 @@ private fun rowPresence(state: String): RowPresence {
  * Home-vs-away count for a section header ("3 HOME / 2 AWAY"), so the user
  * sees who's in without scanning every row. Home is tinted with the same
  * green the row chips use and away with the amber, keeping the accent system
- * consistent; UNKNOWN rows are excluded from both counts (see presenceTally).
+ * consistent. UNKNOWN rows are excluded from both counts (see presenceTally).
  * The split is rendered as plain text rather than colour alone, and the whole
  * header carries one merged spoken summary for TalkBack.
  */
@@ -318,13 +318,13 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar — the person's entity_picture when HA provides one, with a
+        // Avatar: the person's entity_picture when HA provides one, with a
         // tinted initials chip as the fallback (and for device_trackers, which
         // rarely carry a picture). The presence colour tints the fallback so a
         // pictureless row still reads home/away at a glance.
         PersonAvatar(entry = entry, presenceColor = presence.color)
         Spacer(Modifier.width(R1.space.m))
-        // Zone-presence chip — HOME (green), AWAY (amber), unknown (red), or
+        // Zone-presence chip: HOME (green), AWAY (amber), unknown (red), or
         // the named HA zone (cool accent). Derivation lives in the pure
         // presenceLabel() helper so it's unit-tested and Compose-free.
         Text(text = presence.label, style = R1.labelMicro, color = presence.color)
@@ -339,7 +339,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                // Relative timestamp on the right of the name — 'since
+                // Relative timestamp on the right of the name: 'since
                 // 2h' so the user can see how long the person/device has
                 // been in their current state. Same ticker as the rest
                 // of the app, so live-updates without us touching it.
@@ -371,7 +371,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                     Spacer(Modifier.width(R1.space.s))
                     // Colour the battery digit by threshold so a low
                     // phone battery on a person tracker stands out at
-                    // a glance — same red/amber/muted ramp the other
+                    // a glance: same red/amber/muted ramp the other
                     // battery surfaces use.
                     val batteryColor = when {
                         entry.batteryLevel < 10 -> R1.StatusRed
@@ -394,7 +394,7 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                 }
             }
         }
-        // Trailing chevron — the only visual cue that the row drills into the
+        // Trailing chevron: the only visual cue that the row drills into the
         // entity's location history. The parent row owns the tap + merged
         // semantics, so this glyph is decorative (no contentDescription, no
         // separate tap target) and the action is announced via rowDescription.

@@ -231,7 +231,7 @@ internal fun dayHeader(day: LocalDate, today: LocalDate, yesterday: LocalDate): 
         today -> "TODAY"
         yesterday -> "YESTERDAY"
         else -> {
-            // e.g. "MON, MAY 26" — short weekday + month + day-of-month.
+            // e.g. "MON, MAY 26": short weekday + month + day-of-month.
             val dow = day.dayOfWeek.getDisplayName(
                 java.time.format.TextStyle.SHORT,
                 Locale.US,

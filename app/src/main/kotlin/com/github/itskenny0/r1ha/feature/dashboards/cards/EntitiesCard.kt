@@ -240,7 +240,7 @@ internal fun compactStateText(state: EntityState): String {
         raw.equals("not_home", ignoreCase = true) -> "away"
         raw.equals("unknown", ignoreCase = true) -> "unknown"
         state.unit != null && raw.toDoubleOrNull() != null -> "$raw ${state.unit}"
-        // No raw state to show — render an empty string; callers that can hide
+        // No raw state to show: render an empty string; callers that can hide
         // the chip do, and an inline readout collapses to nothing rather than a dot.
         raw.isBlank() -> ""
         else -> raw

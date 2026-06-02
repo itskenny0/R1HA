@@ -39,7 +39,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
 /**
- * Today dashboard — single at-a-glance home screen composed from
+ * Today dashboard: single at-a-glance home screen composed from
  * outdoor weather, persons home/away, next calendar event, camera
  * count, and notification count. Each section is its own tappable
  * card that drills into the corresponding full-list screen.
@@ -68,16 +68,16 @@ fun DashboardScreen(
      *  (brightness, volume, flashlight). Only fires when the
      *  indicator is visible (hideStatusBar + opt-in). */
     onOpenDevice: () -> Unit = {},
-    /** Cards icon — opens the card stack from anywhere on the
+    /** Cards icon: opens the card stack from anywhere on the
      *  dashboard. Critical for the kiosk-mode 'Start on Dashboard'
      *  path where the back button has no card stack on the back
      *  stack to pop to. */
     onOpenCardStack: () -> Unit = {},
-    /** Settings icon — same rationale: when Dashboard is the start
+    /** Settings icon: same rationale; when Dashboard is the start
      *  destination, the only way to reach Settings is via this
      *  explicit affordance. */
     onOpenSettings: () -> Unit = {},
-    /** Mic glyph — opens HA Assist directly. Same affordance as the
+    /** Mic glyph: opens HA Assist directly. Same affordance as the
      *  card stack chrome so the action is consistent across surfaces. */
     onOpenAssist: () -> Unit = {},
     /**
@@ -87,7 +87,7 @@ fun DashboardScreen(
      * history view rather than leaving the user to search for it.
      */
     onOpenHistory: (entityId: String) -> Unit = {},
-    /** True when the back stack has at least one previous entry —
+    /** True when the back stack has at least one previous entry;
      *  the chevron-back tile renders only when this is true so the
      *  inert chevron isn't visible on the kiosk start path. */
     canGoBack: Boolean = true,
@@ -101,7 +101,7 @@ fun DashboardScreen(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
     )
     val ds = appSettings.dashboard
-    // Auto-refresh — interval comes from the dashboard prefs; 0 disables
+    // Auto-refresh: interval comes from the dashboard prefs; 0 disables
     // auto-refresh entirely (pull-down only).
     val refreshSec = ds.refreshIntervalSec
     if (refreshSec > 0) {
@@ -116,7 +116,7 @@ fun DashboardScreen(
             .background(R1.Bg)
             .systemBarsPadding(),
     ) {
-        // Custom top bar — instead of R1TopBar's bare back+title, this
+        // Custom top bar: instead of R1TopBar's bare back+title, this
         // dashboard surface needs explicit CARDS + SETTINGS entries so a
         // kiosk-mode 'Start on Dashboard' user isn't trapped. The
         // chevron-back hides entirely when canGoBack is false (the
@@ -127,7 +127,7 @@ fun DashboardScreen(
             onOpenCardStack = onOpenCardStack,
             onOpenSettings = onOpenSettings,
             onOpenAssist = onOpenAssist,
-            // Mirror the card-stack chrome — when the user has hidden
+            // Mirror the card-stack chrome: when the user has hidden
             // the system status bar AND opted into the app-side battery
             // indicator, surface it here so they don't lose visibility
             // of charge level just by sitting on the dashboard.
@@ -171,7 +171,7 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             // Detect 'all sections hidden' so we can render a friendly
-            // empty state instead of a near-blank dashboard — happens
+            // empty state instead of a near-blank dashboard. Happens
             // when a user turns every toggle in Settings → DASHBOARD off.
             val anyVisible = ds.showGreeting || ds.showWeather || ds.showSun ||
                 ds.showTimers || ds.showMedia || ds.showPersons ||
@@ -185,7 +185,7 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
                 if (ds.showGreeting) Greeting()
-                // Error banner — surfaces a failed refresh in StatusRed so
+                // Error banner: surfaces a failed refresh in StatusRed so
                 // the user knows why the dashboard is sparse, rather than
                 // being left wondering whether HA actually has no data or
                 // the app just failed to fetch. Sits below the greeting so
@@ -221,7 +221,7 @@ fun DashboardScreen(
                 // column flow below, which arranges whole tiles into N columns.)
                 val pairWithinTile = window.isAtLeastMedium
 
-                // Tile rendering — order is driven by ds.tileOrder so the user can reorder
+                // Tile rendering: order is driven by ds.tileOrder so the user can reorder
                 // under Settings → DASHBOARD → TILE ORDER without us hardcoding the sequence.
                 // Unknown ids are skipped (forward-compat for future tile additions). Each
                 // visible tile is captured as a composable lambda so the multi-column flow
@@ -402,7 +402,7 @@ fun DashboardScreen(
 
 /**
  * Renders [tiles] either as a single vertical stack ([columns] == 1, the R1 / compact path,
- * byte-for-byte the old behaviour) or distributed across [columns] balanced columns for the
+ * byte-for-byte the old behavior) or distributed across [columns] balanced columns for the
  * multi-column tablet dashboard. Distribution preserves source order top-to-bottom within
  * each column via [distributeIntoColumns]; columns share width equally and each tile keeps
  * its own internal `fillMaxWidth`, so nothing stretches awkwardly.
@@ -437,8 +437,8 @@ private fun DashboardColumns(
 /**
  * Splits [count] indices (0 until count) into [columns] buckets, dealing round-robin so the
  * source order reads naturally top-to-bottom within each column and the columns stay balanced
- * in length (the first columns get the extra tile when it doesn't divide evenly). Pure +
- * unit-tested — no Compose, no view state — so the tile-to-column maths is locked down.
+ * in length (the first columns get the extra tile when it doesn't divide evenly). Pure and
+ * unit-tested (no Compose, no view state) so the tile-to-column maths is locked down.
  *
  * Example: count = 5, columns = 2 -> [[0, 2, 4], [1, 3]].
  */
@@ -478,7 +478,7 @@ private fun WeatherCard(
                 style = R1.body.copy(fontWeight = FontWeight.SemiBold),
                 color = R1.Ink,
             )
-            // Secondary line: feels-like + humidity when the integration
+            // Secondary line: feels-like and humidity when the integration
             // reports them. HA surfaces these in the more-info weather view;
             // they're the next most-glanceable facts after the headline temp.
             val extras = buildList {
@@ -518,7 +518,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Sun glyph state — above_horizon = ☀, below_horizon = ☾ +
+            // Sun glyph state: above_horizon = ☀, below_horizon = ☾, plus
             // muted tint so the night state reads as quiet.
             val isUp = s.state == "above_horizon"
             Text(
@@ -537,7 +537,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                 )
             }
         }
-        // Next rise / set — relative time + HH:mm absolute. The
+        // Next rise/set: relative time and HH:mm absolute. The
         // relative is the at-a-glance answer ('in 4h'); the absolute
         // helps with concrete planning ('alarm before sunrise').
         val locale = java.util.Locale.getDefault()
@@ -597,10 +597,10 @@ private fun DashboardTopBar(
                 .heightIn(min = R1.MinTarget)
                 .padding(start = R1.space.xs, end = R1.space.l, top = R1.space.xs, bottom = R1.space.xs),
         ) {
-            // Chevron-back tile — only rendered when canGoBack is true.
+            // Chevron-back tile: only rendered when canGoBack is true.
             // On the kiosk 'Start on Dashboard' path the back stack is
             // empty, so the chevron would be inert; hiding it removes
-            // the dead affordance + makes the CARDS / SETTINGS shortcuts
+            // the dead affordance and makes the CARDS / SETTINGS shortcuts
             // the obvious escape paths.
             if (canGoBack) {
                 com.github.itskenny0.r1ha.ui.components.ChevronBack(onClick = onBack)
@@ -608,7 +608,7 @@ private fun DashboardTopBar(
             } else {
                 Spacer(Modifier.width(R1.space.l))
             }
-            // 'TODAY · MON' — abbreviated day-of-week alongside the
+            // 'TODAY · MON': abbreviated day-of-week alongside the
             // title so the screen identifies which day's snapshot the
             // user is looking at, particularly handy past midnight when
             // a glance might otherwise still 'feel like yesterday'.
@@ -624,7 +624,7 @@ private fun DashboardTopBar(
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
             )
-            // Battery indicator — only when both 'hide statusbar' and
+            // Battery indicator: only when both 'hide statusbar' and
             // 'show battery when statusbar hidden' are on. Sits before
             // the action chips so charge level reads naturally
             // left-to-right past the title.
@@ -632,12 +632,12 @@ private fun DashboardTopBar(
                 com.github.itskenny0.r1ha.ui.components.BatteryIndicator(onClick = onOpenDevice)
                 Spacer(Modifier.width(R1.space.s))
             }
-            // Assist — same affordance as on the card stack chrome, so the
+            // Assist: same affordance as on the card stack chrome, so the
             // action is consistent across surfaces. Sits before CARDS so it's
-            // the closer-to-centre 'talk to HA' tap target for thumb reach on
+            // the closer-to-center 'talk to HA' tap target for thumb reach on
             // a wall-mounted R1. Uses the hand-drawn AssistMicGlyph (same
             // as the chrome) rather than the 🎤 emoji so the dashboard
-            // doesn't switch to colour-emoji rendering mid-row.
+            // doesn't switch to color-emoji rendering mid-row.
             Box(
                 modifier = Modifier
                     .size(R1.MinTarget)
@@ -648,7 +648,7 @@ private fun DashboardTopBar(
                 com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 16.dp)
             }
             Spacer(Modifier.width(R1.space.xs))
-            // CARDS — opens the card stack. Most-frequent action from the
+            // CARDS: opens the card stack. Most-frequent action from the
             // dashboard for kiosk users who occasionally want to control
             // something rather than just glance.
             R1Chip(
@@ -657,7 +657,7 @@ private fun DashboardTopBar(
                 onClick = onOpenCardStack,
             )
             Spacer(Modifier.width(R1.space.s))
-            // SETTINGS gear — wireframe drawn glyph (same as the
+            // SETTINGS gear: wireframe drawn glyph (same as the
             // card-stack chrome) for consistency. Tap opens Settings.
             Box(
                 modifier = Modifier
@@ -669,7 +669,7 @@ private fun DashboardTopBar(
                 com.github.itskenny0.r1ha.ui.components.SettingsCogGlyph(size = 18.dp)
             }
         }
-        // Hairline divider — matches R1TopBar's exact metric.
+        // Hairline divider: matches R1TopBar's exact metric.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -748,7 +748,7 @@ private fun TimerCard(
 ) {
     // Active-or-paused timer with three transport pills. CANCEL is on
     // the right with the StatusRed accent to flag the destructive
-    // action; the PAUSE/RESUME pill swaps semantically based on the
+    // action. The PAUSE/RESUME pill swaps semantically based on the
     // current state so the user always sees the OTHER option.
     Column(
         modifier = Modifier
@@ -772,7 +772,7 @@ private fun TimerCard(
             // Paused timers freeze finishes_at at the pause moment, so a
             // RelativeTimeLabel would tick into the past and show
             // 'finished 5 min ago' even though the timer hasn't fired.
-            // Instead surface HA's `remaining` attribute (HH:MM:SS) as
+            // Instead, surface HA's `remaining` attribute (HH:MM:SS) as
             // a static label so the user sees the actual time left. The
             // same static fallback covers an active timer whose
             // finishes_at failed to parse, so a control without a
@@ -827,9 +827,9 @@ private fun TimerPill(
 
 @Composable
 private fun Greeting() {
-    // Time-of-day greeting + a date/time line. Drives its own 60-second
+    // Time-of-day greeting and a date/time line. Drives its own 60-second
     // ticker so the time stays current even when the dashboard
-    // auto-refresh is disabled (refreshIntervalSec == 0) — otherwise
+    // auto-refresh is disabled (refreshIntervalSec == 0). Otherwise
     // the HH:mm reading froze whenever auto-refresh was off, and the
     // user had to pull-to-refresh just to see the clock advance.
     val tick = androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -914,7 +914,7 @@ private fun MediaCard(
         if (titleLine.isNotBlank()) {
             Text(text = titleLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 2)
         }
-        // Transport row: prev / play-pause / next, each gated on the
+        // Transport row: prev/play-pause/next, each gated on the
         // player's supported_features so we never offer a control the
         // player will silently no-op. When the player advertises none of
         // them (e.g. a cast group reporting bare state) the row collapses.
@@ -1083,8 +1083,8 @@ private fun MetricsRow(
 ) {
     // Power tile sits on its own row when present (wider value display).
     // Hidden entirely when the install has no power-class sensors. Tap
-    // routes to the Energy summary — same data but with production +
-    // top consumers + today's kWh.
+    // routes to the Energy summary: same data but with production,
+    // top consumers, and today's kWh.
     if (totalPowerW >= 0) {
         Box(
             modifier = Modifier
@@ -1120,13 +1120,13 @@ private fun MetricsRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
-        // Lights-on count from a server-side Jinja count() — much
+        // Lights-on count from a server-side Jinja count(): much
         // lighter than fetching every light entity. -1 sentinel
         // renders as '—' so the tile doesn't claim "0 on" while the
         // template is still rendering. Tap routes to the Scenes
         // screen for the master-action trio; long-press fires
         // ALL LIGHTS OFF directly from the dashboard without an
-        // extra navigation hop — ideal kiosk affordance for "you
+        // extra navigation hop. Ideal kiosk affordance for "you
         // can see they're on, deal with it now".
         Metric(
             modifier = Modifier.weight(1f),
@@ -1207,8 +1207,8 @@ private fun NotificationPreview(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(R1.space.s))
-                // 'Created at' relative timestamp — surfaces 'just now'
-                // / '2 m' so the user can tell a fresh alert from a
+                // 'Created at' relative timestamp: surfaces 'just now'
+                // or '2 m' so the user can tell a fresh alert from a
                 // long-standing one without leaving the dashboard.
                 RelativeTimeLabel(
                     at = n.createdAt,
@@ -1224,7 +1224,7 @@ private fun NotificationPreview(
             )
         }
         Spacer(Modifier.width(R1.space.s))
-        // ✕ dismiss tile — separate tap target from the row's onClick
+        // ✕ dismiss tile: separate tap target from the row's onClick
         // so a dismiss doesn't accidentally navigate to the
         // Notifications surface (and vice versa).
         Box(
@@ -1268,7 +1268,7 @@ private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Col
  *
  * On tablets (isTablet == true) and when BOTH tiles are visible, renders them
  * side-by-side at equal width. On phones / R1, or when only one tile is visible,
- * renders them in a plain vertical stack — the visible one fills full width.
+ * renders them in a plain vertical stack. The visible one fills full width.
  * Tiles themselves use fillMaxWidth internally so they naturally stretch to
  * their container's width without any modification.
  */

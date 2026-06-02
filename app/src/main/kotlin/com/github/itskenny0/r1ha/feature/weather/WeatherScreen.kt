@@ -35,11 +35,15 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
- * Weather surface — lists every `weather.*` entity HA reports with
+ * Weather surface: lists every `weather.*` entity HA reports with
  * its current condition glyph + temperature + secondary readings
  * (humidity, wind, pressure). Read-only display; no controls.
  *
@@ -65,7 +69,7 @@ fun WeatherScreen(
     )
     val refreshSec = appSettings.integrations.weatherRefreshSec
     if (refreshSec > 0) {
-        com.github.itskenny0.r1ha.ui.components.AutoRefresh(refreshSec * 1000L) { vm.refresh() }
+        AutoRefresh(refreshSec * 1000L) { vm.refresh() }
     } else {
         androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
     }
@@ -76,7 +80,7 @@ fun WeatherScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "WEATHER", onBack = onBack)
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
+        AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -92,7 +96,7 @@ fun WeatherScreen(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                // Distinct from "empty integration" — surface the actual
+                // Distinct from "empty integration": surface the actual
                 // error so the user knows it's a transport problem (auth,
                 // DNS, server down) rather than a config gap.
                 Text(
@@ -198,7 +202,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 )
             }
         }
-        // Secondary readings — only render when present. Avoids blank
+        // Secondary readings: only render when present. Avoids blank
         // columns when HA's integration omits an attribute (e.g. some
         // sensors only report temperature + condition).
         val parts = buildList {
@@ -239,16 +243,16 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             Spacer(Modifier.size(R1.space.s))
             if (w.hasBothForecasts) {
                 Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-                    com.github.itskenny0.r1ha.ui.components.R1Chip(
+                    R1Chip(
                         text = "HOURLY",
-                        variant = com.github.itskenny0.r1ha.ui.components.R1ChipVariant.Filter,
+                        variant = R1ChipVariant.Filter,
                         selected = mode == ForecastKind.Hourly,
                         onClick = { mode = ForecastKind.Hourly },
                         contentDescription = "Show hourly forecast",
                     )
-                    com.github.itskenny0.r1ha.ui.components.R1Chip(
+                    R1Chip(
                         text = "DAILY",
-                        variant = com.github.itskenny0.r1ha.ui.components.R1ChipVariant.Filter,
+                        variant = R1ChipVariant.Filter,
                         selected = mode == ForecastKind.Daily,
                         onClick = { mode = ForecastKind.Daily },
                         contentDescription = "Show daily forecast",
