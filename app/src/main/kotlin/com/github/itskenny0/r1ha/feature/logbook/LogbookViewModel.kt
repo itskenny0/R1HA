@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.LogbookEntry
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.CoroutineScope
@@ -210,9 +211,9 @@ class LogbookViewModel(
         viewModelScope.launch {
             haRepository.subscribeEvents("logbook_entry") { eventObj ->
                 // logbook_entry events look like {data: {name, message, entity_id,
-                // domain, state}, time_fired: ISO, ...}. We don't have an Instant
-                // parser handy in this scope so we use Instant.parse + fall back
-                // to "now" if HA omits time_fired.
+                // domain, state}, time_fired: ISO, ...}. parseHaInstant tolerates
+                // HA's numeric-offset timestamps (the desugared Instant.parse does
+                // not); fall back to "now" if HA omits time_fired.
                 val data = (eventObj["data"] as? kotlinx.serialization.json.JsonObject)
                     ?: return@subscribeEvents
                 fun str(key: String): String? =
@@ -225,7 +226,7 @@ class LogbookViewModel(
                 }
                 val timeFired = (eventObj["time_fired"] as? kotlinx.serialization.json.JsonPrimitive)
                     ?.content
-                val ts = timeFired?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+                val ts = timeFired?.let { parseHaInstant(it) }
                     ?: java.time.Instant.now()
                 val entry = LogbookEntry(
                     timestamp = ts,

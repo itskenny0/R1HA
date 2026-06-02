@@ -8,6 +8,7 @@ import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -330,7 +331,7 @@ class ScenesViewModel(
             ) {
                 return null
             }
-            return runCatching { Instant.parse(candidate) }.getOrNull()
+            return parseHaInstant(candidate)
         }
 
         fun factory(haRepository: HaRepository) = viewModelFactory {

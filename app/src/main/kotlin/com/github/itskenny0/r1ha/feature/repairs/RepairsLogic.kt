@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.repairs
 
 import com.github.itskenny0.r1ha.core.ha.RepairIssue
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import java.time.Instant
 import java.util.Locale
 
@@ -89,7 +90,7 @@ object RepairsLogic {
     /** Parse HA's ISO-8601 `created` string into an Instant, null when absent or malformed. */
     fun parseCreatedAt(raw: String?): Instant? {
         if (raw.isNullOrBlank()) return null
-        return runCatching { Instant.parse(raw) }.getOrNull()
+        return parseHaInstant(raw)
     }
 
     /**

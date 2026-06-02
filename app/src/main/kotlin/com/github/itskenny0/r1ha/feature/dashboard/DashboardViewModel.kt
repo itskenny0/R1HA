@@ -6,6 +6,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.PersistentNotification
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import com.github.itskenny0.r1ha.feature.calendars.parseCalendarInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.async
@@ -329,7 +330,7 @@ class DashboardViewModel(
                             name = row.friendlyName,
                             state = row.state,
                             finishesAt = (row.attributes["finishes_at"] as? JsonPrimitive)?.content
-                                ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+                                ?.let { parseHaInstant(it) },
                             remaining = (row.attributes["remaining"] as? JsonPrimitive)?.content,
                         )
                     }
@@ -340,9 +341,9 @@ class DashboardViewModel(
                         state = row.state,
                         elevation = (row.attributes["elevation"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
                         nextRising = (row.attributes["next_rising"] as? JsonPrimitive)?.content
-                            ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+                            ?.let { parseHaInstant(it) },
                         nextSetting = (row.attributes["next_setting"] as? JsonPrimitive)?.content
-                            ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+                            ?.let { parseHaInstant(it) },
                     )
                 }
                 R1Log.i(

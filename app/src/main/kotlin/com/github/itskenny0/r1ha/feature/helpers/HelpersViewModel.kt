@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -161,7 +162,7 @@ class HelpersViewModel(
                     options = (attrs["options"] as? JsonArray)
                         ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
                     finishesAt = (attrs["finishes_at"] as? JsonPrimitive)?.content
-                        ?.let { runCatching { Instant.parse(it) }.getOrNull() },
+                        ?.let { parseHaInstant(it) },
                     remaining = (attrs["remaining"] as? JsonPrimitive)?.content,
                     textMin = (attrs["min"] as? JsonPrimitive)?.content?.toIntOrNull(),
                     textMax = (attrs["max"] as? JsonPrimitive)?.content?.toIntOrNull(),

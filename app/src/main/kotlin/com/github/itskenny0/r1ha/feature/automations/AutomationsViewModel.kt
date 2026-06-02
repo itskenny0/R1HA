@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
+import com.github.itskenny0.r1ha.core.ha.parseHaInstant
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -284,7 +285,7 @@ class AutomationsViewModel(
         internal fun lastTriggeredOf(raw: String?): Instant? {
             val trimmed = raw?.trim().orEmpty()
             if (trimmed.isEmpty()) return null
-            return runCatching { Instant.parse(trimmed) }.getOrNull()
+            return parseHaInstant(trimmed)
         }
 
         /** Return a copy of [all] with the entry matching [id] flipped to
