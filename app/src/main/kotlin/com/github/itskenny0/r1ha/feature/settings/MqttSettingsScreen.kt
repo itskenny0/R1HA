@@ -485,17 +485,13 @@ private fun FeatureRow(title: String, on: Boolean, detail: String) {
 }
 
 /**
- * Password / secret input that defaults to a masked rendering. R1TextField
- * (in ui/components, off-limits) has no visual-transformation parameter, so
- * masking is done at the value level here rather than in the shared field:
- *  - hidden (default): a non-editable surface showing one dot per character so
- *    the secret can't be shoulder-surfed, plus a SHOW toggle;
- *  - revealed: the real editable [R1TextField], plus a HIDE toggle.
- *
- * Feeding the dot string back through onValueChange would corrupt the stored
- * secret, which is exactly why the masked state is a separate read-only
- * surface rather than a transformed text field. Edits only happen while
- * revealed, so the stored value is always the genuine secret.
+ * Password / secret input that defaults to a masked rendering. The field always
+ * holds the real secret; masking is purely visual via a
+ * [androidx.compose.ui.text.input.PasswordVisualTransformation], so the secret
+ * stays editable (backspace, paste, mid-string edits) while hidden and the stored
+ * value is never reconstructed from the dot string. A SHOW / HIDE toggle flips the
+ * transformation off and on. [androidx.compose.ui.text.input.KeyboardType.Password]
+ * with autocorrect off keeps the IME from rewriting the secret as it's typed.
  *
  * Lives in this file but `internal` so the mTLS keystore-password field in
  * SettingsScreen reuses the same treatment.
@@ -512,38 +508,21 @@ internal fun MaskedSecretField(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(modifier = Modifier.weight(1f)) {
-            if (revealed) {
-                R1TextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    placeholder = placeholder,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+        R1TextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            visualTransformation = if (revealed) {
+                androidx.compose.ui.text.input.VisualTransformation.None
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(R1.ShapeS)
-                        .background(R1.Bg)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .padding(horizontal = R1.space.m, vertical = R1.space.m),
-                ) {
-                    val shown = if (value.isEmpty()) {
-                        placeholder ?: ""
-                    } else {
-                        "•".repeat(value.length.coerceAtMost(24))
-                    }
-                    Text(
-                        text = shown,
-                        style = R1.body.copy(fontFamily = FontFamily.Monospace),
-                        color = if (value.isEmpty()) R1.InkMuted else R1.Ink,
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
+                androidx.compose.ui.text.input.PasswordVisualTransformation('•')
+            },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                autoCorrect = false,
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+            ),
+            modifier = Modifier.weight(1f),
+        )
         Spacer(Modifier.size(R1.space.s))
         Box(
             modifier = Modifier
