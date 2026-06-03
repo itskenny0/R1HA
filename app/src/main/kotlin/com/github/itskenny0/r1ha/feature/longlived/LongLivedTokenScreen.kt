@@ -189,23 +189,27 @@ fun LongLivedTokenScreen(
                 }
             }
             Spacer(Modifier.height(R1.space.xs))
-            // Keep the field enabled even while masked so the user can still backspace /
-            // append to fix a typo without REVEAL-ing the token first; just show the dot
-            // mask in the display value. Only suppress the mask when the user explicitly
-            // wants to read what they pasted.
+            // The field always holds the real token; masking is purely visual via a
+            // PasswordVisualTransformation so backspace, paste and mid-string edits stay
+            // correct no matter how long the token is. (An earlier hand-rolled dot mask
+            // capped the display at 48 glyphs and reconstructed the value from the masked
+            // string, which wiped or truncated real ~180-char HA tokens on the first edit.)
+            // KeyboardType.Password with autocorrect off keeps the IME from suggesting or
+            // "correcting" the base64url token while it's being typed.
             R1TextField(
-                value = if (revealed || token.isEmpty()) token
-                else "•".repeat(token.length.coerceAtMost(48)),
-                onValueChange = { typed ->
-                    // If the field is masked, treat every input as a fresh value (paste
-                    // overwrites). Without this the user typing a single char while masked
-                    // would land beside the mask glyphs and corrupt the real token.
-                    token = if (revealed) typed
-                    else if (typed.length < token.length) typed.dropLast(token.length - typed.length).let { token.take(it.length) }
-                    else token + typed.drop(token.length).filterNot { it == '•' }
-                },
+                value = token,
+                onValueChange = { token = it },
                 placeholder = "eyJhbGciOiJIUzI1NiIs…",
                 monospace = true,
+                visualTransformation = if (revealed) {
+                    androidx.compose.ui.text.input.VisualTransformation.None
+                } else {
+                    androidx.compose.ui.text.input.PasswordVisualTransformation('•')
+                },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    autoCorrect = false,
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 80.dp),

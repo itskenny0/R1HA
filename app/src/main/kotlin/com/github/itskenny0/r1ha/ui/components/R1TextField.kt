@@ -26,6 +26,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -71,6 +72,14 @@ fun R1TextField(
     singleLine: Boolean = true,
     /** Optional minimum height for multi-line fields; ignored when [singleLine] is true. */
     minLines: Int = 1,
+    /**
+     * Visual-only transformation of the rendered text. The field's [value] always
+     * holds the real, untransformed string; this only changes how it's drawn. Used
+     * for secret fields (a [androidx.compose.ui.text.input.PasswordVisualTransformation]
+     * masks the long-lived token) so the underlying value stays editable and correct
+     * regardless of how many glyphs are shown. Defaults to no transformation.
+     */
+    visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -153,6 +162,7 @@ fun R1TextField(
             cursorBrush = SolidColor(R1.AccentWarm),
             keyboardOptions = keyboardOptions,
             keyboardActions = keyboardActions,
+            visualTransformation = visualTransformation,
             interactionSource = interactionSource,
             modifier = Modifier
                 .fillMaxWidth()
