@@ -728,6 +728,36 @@ class SettingsRepository private constructor(
     }
 
     /**
+     * Pin a surface ([Routes] route-id string) to the side navigation rail / drawer.
+     * Appends to the end of [NavPanelSettings.pinnedSurfaces] so newly-pinned surfaces
+     * land at the bottom of the user's pinned list. No-op when already pinned (keeps
+     * its position rather than bouncing to the end on a redundant tap).
+     */
+    suspend fun pinSurface(routeId: String) {
+        update { s ->
+            val current = s.navPanel.pinnedSurfaces
+            if (routeId in current) s
+            else s.copy(navPanel = s.navPanel.copy(pinnedSurfaces = current + routeId))
+        }
+    }
+
+    /** Remove a surface from the pinned side-panel list. No-op when not pinned. */
+    suspend fun unpinSurface(routeId: String) {
+        update { s ->
+            val current = s.navPanel.pinnedSurfaces
+            if (routeId !in current) s
+            else s.copy(navPanel = s.navPanel.copy(pinnedSurfaces = current.filterNot { it == routeId }))
+        }
+    }
+
+    /** Replace the whole pinned-surface list (used by a reorder / bulk-edit UI).
+     *  De-duplicates while preserving first-seen order so a drag-reorder that
+     *  momentarily double-lists an item can't persist a dupe. */
+    suspend fun setPinnedSurfaces(routeIds: List<String>) {
+        update { s -> s.copy(navPanel = s.navPanel.copy(pinnedSurfaces = routeIds.distinct())) }
+    }
+
+    /**
      * Atomically restore an [AppBackup] on top of the current settings. Wraps
      * [AppBackup.applyOnto] in a single [update] call so the favourites union
      * + activePageId clamp logic runs once on the merged result; no half-

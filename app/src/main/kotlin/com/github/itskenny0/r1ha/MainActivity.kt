@@ -295,14 +295,36 @@ class MainActivity : ComponentActivity() {
                                 .map { it.navPanel }
                                 .distinctUntilChanged()
                                 .collectAsStateWithLifecycle(initialValue = settings.navPanel)
-                            val navDestinations = androidx.compose.runtime.remember(navPanel.hiddenNavItems) {
-                                com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
+                            val navDestinations = androidx.compose.runtime.remember(
+                                navPanel.hiddenNavItems,
+                                navPanel.pinnedSurfaces,
+                            ) {
+                                val core = com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
                                     homeRoute = Routes.CARD_STACK,
                                     dashboardRoute = Routes.DASHBOARD,
                                     searchRoute = Routes.SEARCH,
                                     assistRoute = Routes.ASSIST,
                                     settingsRoute = Routes.SETTINGS,
                                 ).filter { it.id !in navPanel.hiddenNavItems }
+                                // User-pinned surfaces, mapped via the shared registry,
+                                // appended after the core destinations. Drop any pin that
+                                // duplicates a core route (e.g. Today, which is both a core
+                                // item and pinnable) so the rail / drawer never double-lists
+                                // it. Settings sits last among the core items; pins land
+                                // between the core group and (nothing) — visually a second
+                                // tier of one-tap shortcuts.
+                                val coreRoutes = core.flatMap { it.matchRoutes }.toSet()
+                                val pins = com.github.itskenny0.r1ha.nav.PinnableSurfaces
+                                    .resolve(navPanel.pinnedSurfaces)
+                                    .filter { it.route !in coreRoutes }
+                                    .map { surface ->
+                                        com.github.itskenny0.r1ha.ui.components.NavDestination(
+                                            route = surface.route,
+                                            label = surface.label,
+                                            glyph = surface.glyph,
+                                        )
+                                    }
+                                core + pins
                             }
                             // Suppress the rail / drawer on full-bleed flows where there's
                             // no app to navigate yet (onboarding, the long-lived-token
@@ -312,6 +334,37 @@ class MainActivity : ComponentActivity() {
                                 Routes.ONBOARDING, Routes.LONG_LIVED_TOKEN -> false
                                 else -> navPanel.sidePanelEnabled
                             }
+                            // Ambient pin controller — built from the current route + the
+                            // persisted pin list so EVERY screen's R1TopBar can show a
+                            // pin / unpin toggle without being individually wired. The
+                            // toggle routes through the SettingsRepository pin/unpin
+                            // mutators on a remembered scope.
+                            val pinScope = androidx.compose.runtime.rememberCoroutineScope()
+                            val surfacePinner = androidx.compose.runtime.remember(
+                                currentRoute,
+                                navPanel.pinnedSurfaces,
+                            ) {
+                                val pinnable = com.github.itskenny0.r1ha.nav.PinnableSurfaces
+                                    .isPinnable(currentRoute)
+                                val pinned = currentRoute != null &&
+                                    currentRoute in navPanel.pinnedSurfaces
+                                com.github.itskenny0.r1ha.ui.components.SurfacePinController(
+                                    currentRoute = currentRoute,
+                                    pinnable = pinnable,
+                                    isPinned = pinned,
+                                    toggle = toggle@{
+                                        val route = currentRoute ?: return@toggle
+                                        if (!pinnable) return@toggle
+                                        pinScope.launch {
+                                            if (pinned) graph.settings.unpinSurface(route)
+                                            else graph.settings.pinSurface(route)
+                                        }
+                                    },
+                                )
+                            }
+                            CompositionLocalProvider(
+                                com.github.itskenny0.r1ha.ui.components.LocalSurfacePinner provides surfacePinner,
+                            ) {
                             com.github.itskenny0.r1ha.ui.components.AdaptiveNavShell(
                                 destinations = navDestinations,
                                 currentRoute = currentRoute,
@@ -337,6 +390,7 @@ class MainActivity : ComponentActivity() {
                                 wheelInput = graph.wheelInput,
                                 overrideStore = graph.lovelaceOverrideStore,
                             )
+                            }
                             }
                         }
                         // Route non-wheel key actions (OPEN_SETTINGS, OPEN_ASSIST,

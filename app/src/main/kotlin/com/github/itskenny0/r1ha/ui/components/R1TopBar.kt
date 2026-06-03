@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,16 @@ fun R1TopBar(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            // Generic pin / unpin affordance — lit by the ambient [LocalSurfacePinner]
+            // whenever the current surface is pinnable. Drawn leading-of the screen's
+            // own action so a screen that already passes an `action` keeps it flush at
+            // the right gutter and the pin star sits just to its left. Screens that
+            // pass no action get the pin star alone, still right-aligned.
+            val pinner by rememberUpdatedState(LocalSurfacePinner.current)
+            pinner?.takeIf { it.pinnable }?.let { ctl ->
+                Spacer(Modifier.width(R1.space.s))
+                PinToggle(pinned = ctl.isPinned, onClick = ctl.toggle)
+            }
             if (action != null) {
                 Spacer(Modifier.width(R1.space.s))
                 action()

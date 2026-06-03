@@ -460,7 +460,31 @@ object NavItemId {
 data class NavPanelSettings(
     val sidePanelEnabled: Boolean = true,
     val hiddenNavItems: Set<String> = emptySet(),
-)
+    /**
+     * User-pinned surfaces shown in the side navigation rail / drawer, in display
+     * order, BELOW the always-present core destinations (Home, Today, Search, Assist,
+     * Settings). Each entry is a [com.github.itskenny0.r1ha.nav.Routes] string constant
+     * resolved to a label + glyph via [com.github.itskenny0.r1ha.nav.PinnableSurfaces].
+     * The user adds an entry by tapping the pin affordance in any pinnable surface's
+     * top bar and removes it by tapping again (or via the side panel itself).
+     *
+     * Stored as a list (not a set) so the order the user pins surfaces in is the order
+     * they appear. Unknown / future route ids decode cleanly (the registry lookup
+     * simply skips them) so a settings blob from a newer build never crashes an older
+     * one. Default is a small sensible starter set covering the most-reached surfaces.
+     */
+    val pinnedSurfaces: List<String> = DEFAULT_PINNED_SURFACES,
+) {
+    companion object {
+        /** Sensible starter pins: the surfaces users reach most. Route-id strings
+         *  rather than [com.github.itskenny0.r1ha.nav.Routes] references to keep this
+         *  prefs module free of a nav dependency; they MUST match the Routes constants
+         *  ("automations", "energy", "cameras", "areas", "logbook"). */
+        val DEFAULT_PINNED_SURFACES: List<String> = listOf(
+            "automations", "energy", "cameras", "areas", "logbook",
+        )
+    }
+}
 
 /**
  * Connection-hardening preferences surfaced under Settings → Connection & server. These tune the

@@ -139,6 +139,17 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             if (hidden.isEmpty()) "none" else hidden.joinToString(", ")
         },
     ),
+    SettingEntry(
+        id = "navpanel.pinnedSurfaces",
+        category = SettingCategory.APPEARANCE,
+        label = "Pinned surfaces",
+        description = "Surfaces pinned to the side panel for one-tap access",
+        isDefault = { it.navPanel.pinnedSurfaces == defaults.navPanel.pinnedSurfaces },
+        currentDisplay = {
+            val pinned = it.navPanel.pinnedSurfaces
+            if (pinned.isEmpty()) "none" else "${pinned.size} pinned"
+        },
+    ),
 
     // ── Scroll wheel ────────────────────────────────────────────────────
     SettingEntry(
