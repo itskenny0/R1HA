@@ -350,6 +350,7 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             val abbreviations = mapOf(
                 ChromeButtonRef.BATTERY to "BAT",
                 ChromeButtonRef.ASSIST_MIC to "MIC",
+                ChromeButtonRef.DETAIL to "INFO",
                 ChromeButtonRef.EDIT to "EDIT",
                 ChromeButtonRef.GEAR to "GEAR",
             )

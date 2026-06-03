@@ -125,6 +125,11 @@ fun CardStackScreen(
      *  in the QuickActions drawer's DASHBOARDS section so phone users (no nav rail)
      *  can reach their pinned views. Default no-op keeps previews / tests cheap. */
     onOpenDashboardRoute: (String) -> Unit = {},
+    /** Navigate to a pinned nav SURFACE by its [com.github.itskenny0.r1ha.nav.Routes]
+     *  id (e.g. Routes.ENERGY). Surfaced in the QuickActions drawer's PINNED section so
+     *  phone users (no nav rail) reach the same pinned surfaces the tablet sidebar shows.
+     *  Mirrors [onOpenDashboardRoute]'s wiring. Default no-op keeps previews / tests cheap. */
+    onOpenRoute: (String) -> Unit = {},
 ) {
     val vm: CardStackViewModel = viewModel(
         factory = CardStackViewModel.factory(
@@ -1036,6 +1041,12 @@ fun CardStackScreen(
                     // is a no-op.
                     state.activeState?.let { customizingId.value = it.id.value }
                 },
+                onMoreInfoActive = {
+                    // Open the ultra-detail more-info sheet for the focused card. An
+                    // explicit user tap always opens it (the per-card moreInfoEnabled
+                    // flag governs only the implicit wheel-open path); empty deck no-ops.
+                    state.activeState?.id?.value?.let { moreInfoEntityId.value = it }
+                },
                 onTapCounter = { jumpPickerOpen.value = true },
                 onLongPressHamburger = { quickActionsOpen.value = true },
                 onLongPressGear = onOpenSearch,
@@ -1535,9 +1546,19 @@ fun CardStackScreen(
                 // Pinned Lovelace views — the phone's stand-in for the tablet nav rail's
                 // dashboard pins. Each closes the sheet then navigates to its route.
                 pinnedDashboards = appSettings.navPanel.pinnedDashboards,
+                // Pinned nav surfaces — the phone's stand-in for the tablet nav rail's
+                // pinned-surface tier. Resolve the persisted route-id list to renderable
+                // surfaces (dropping any unknown ids written by a newer build).
+                pinnedSurfaces = com.github.itskenny0.r1ha.nav.PinnableSurfaces.resolve(
+                    appSettings.navPanel.pinnedSurfaces,
+                ),
                 onOpenDashboardRoute = { route ->
                     quickActionsOpen.value = false
                     onOpenDashboardRoute(route)
+                },
+                onOpenRoute = { route ->
+                    quickActionsOpen.value = false
+                    onOpenRoute(route)
                 },
                 onOpenDashboard = {
                     quickActionsOpen.value = false
@@ -3028,9 +3049,17 @@ private fun QuickActionsSheet(
      *  (the phone surface for dashboard pins, since phones show no nav rail).
      *  Empty list hides the section entirely. */
     pinnedDashboards: List<com.github.itskenny0.r1ha.core.prefs.PinnedDashboard>,
+    /** User-pinned nav surfaces (resolved from
+     *  [com.github.itskenny0.r1ha.core.prefs.NavPanelSettings.pinnedSurfaces]). Rendered
+     *  as the PINNED section so the small-screen drawer mirrors the tablet nav rail's
+     *  pinned-surface tier. Empty list hides the section entirely. */
+    pinnedSurfaces: List<com.github.itskenny0.r1ha.nav.PinnableSurface>,
     /** Navigate to a pinned dashboard view by its full route. Already closes the
      *  sheet before navigating. */
     onOpenDashboardRoute: (String) -> Unit,
+    /** Navigate to a pinned nav surface by its Routes id. Already closes the
+     *  sheet before navigating. */
+    onOpenRoute: (String) -> Unit,
     onOpenDashboard: () -> Unit,
     onOpenAssist: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -3203,6 +3232,38 @@ private fun QuickActionsSheet(
                     Spacer(Modifier.height(6.dp))
                 }
             }
+
+            // ── PINNED row — user-pinned nav surfaces ──
+            // The phone surface for the tablet nav rail's pinned-surface tier
+            // (phones show no rail, so the rail's pins live here instead). A
+            // clearly-labelled group of glyph tiles, laid out in rows of four to
+            // line up with the BROWSE grid. Each tile navigates straight to its
+            // pinned Routes id. The surface's own monospace glyph (from
+            // PinnableSurfaces) is reused so the mark matches the rail.
+            if (pinnedSurfaces.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text(text = "PINNED", style = R1.labelMicro, color = R1.InkSoft)
+                Spacer(Modifier.height(6.dp))
+                pinnedSurfaces.chunked(4).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        rowItems.forEach { surface ->
+                            DrawerGlyph(
+                                modifier = Modifier.weight(1f),
+                                glyph = surface.glyph,
+                                label = surface.label.uppercase(),
+                                onClick = { onOpenRoute(surface.route) },
+                            )
+                        }
+                        // Pad the last (possibly short) row to four columns so the
+                        // tiles keep the BROWSE grid's width.
+                        repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
             Spacer(Modifier.height(14.dp))
             // 'Turn all on' — one-tap fire. Lights/switches/fans coming on
             // accidentally is recoverable (re-tap the card or the all-off
@@ -3277,6 +3338,11 @@ private fun ChromeRow(
     onOpenFavoritesPicker: () -> Unit,
     onOpenSettings: () -> Unit,
     onEditActive: () -> Unit = {},
+    /** Tap the DETAIL (...) button to open the ultra-detail more-info sheet for
+     *  the focused card. Visible affordance so detail is reachable on every card
+     *  (including controllable ones, where the wheel drives the value instead).
+     *  Defaulted to a no-op for previews. */
+    onMoreInfoActive: () -> Unit = {},
     /** Tap on the position pip / counter opens the jump-to-card picker. Null in
      *  previews; defaults to a no-op so the pip becomes inert when there's no
      *  picker to open. */
@@ -3320,6 +3386,9 @@ private fun ChromeRow(
             com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.ASSIST_MIC,
         ),
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonConfig(
+            com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL,
+        ),
+        com.github.itskenny0.r1ha.core.prefs.ChromeButtonConfig(
             com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.EDIT,
         ),
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonConfig(
@@ -3352,22 +3421,38 @@ private fun ChromeRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Top-left: favourites hamburger (custom 3-stroke glyph, not Material's filled icon).
-        // Tap: open the favourites picker. Long-press: open the quick-actions
-        // sheet (currently just 'all off' on the active page). r1RowPressable
-        // gives both gestures on the same tile.
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .r1RowPressable(
-                    onTap = onOpenFavoritesPicker,
-                    onLongPress = onLongPressHamburger,
-                    contentDescription = "Favourites and quick actions",
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            HamburgerGlyph(size = 18.dp)
+        // Top-left cluster: menu hamburger + favourites star, side by side. The
+        // hamburger now opens the navigation drawer / sidebar (the same surface the
+        // tablet nav rail provides); favourites gets its own dedicated star button
+        // immediately to its right. Both are compact 32-44 dp tap targets so the
+        // pair still fits the R1's 240 dp width alongside the right cluster.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            // Hamburger — tap (and long-press, harmlessly) opens the menu / sidebar
+            // drawer. r1RowPressable keeps both gestures on the same tile.
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .r1RowPressable(
+                        onTap = onLongPressHamburger,
+                        onLongPress = onLongPressHamburger,
+                        contentDescription = "Open menu",
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                HamburgerGlyph(size = 18.dp)
+            }
+            // Favourites — opens the favourites picker (the action the hamburger tap
+            // used to do). Clear star mark so it reads as "favourites" at a glance.
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .r1Pressable(onOpenFavoritesPicker, contentDescription = "Open favourites"),
+                contentAlignment = Alignment.Center,
+            ) {
+                com.github.itskenny0.r1ha.ui.components.FavoritesGlyph(size = 16.dp)
+            }
         }
 
         // Centre: vertical position indicator. Hairline track + a 3dp filled segment at the
@@ -3431,6 +3516,30 @@ private fun ChromeRow(
                             contentAlignment = Alignment.Center,
                         ) {
                             com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 16.dp)
+                        }
+                    }
+                    com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL -> {
+                        // Detail "..." — opens the ultra-detail more-info sheet for the
+                        // focused card. A visible affordance so detail is reachable on
+                        // every card; on controllable cards the wheel drives the value,
+                        // so without this button detail had no entry point there.
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .r1Pressable(onMoreInfoActive, contentDescription = "Card details"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                repeat(3) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(4.dp)
+                                            .clip(CircleShape)
+                                            .background(R1.Ink.copy(alpha = 0.85f)),
+                                    )
+                                }
+                            }
                         }
                     }
                     com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.EDIT -> {

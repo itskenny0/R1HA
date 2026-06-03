@@ -157,6 +157,9 @@ fun AppNavGraph(
                 onOpenDashboardRoute = { route ->
                     navController.navigate(route) { launchSingleTop = true }
                 },
+                onOpenRoute = { route ->
+                    navController.navigate(route) { launchSingleTop = true }
+                },
             )
         }
         composable(Routes.FAVORITES_PICKER) {

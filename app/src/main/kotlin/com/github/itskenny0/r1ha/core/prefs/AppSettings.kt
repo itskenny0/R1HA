@@ -64,7 +64,7 @@ enum class ToastLogLevel { OFF, ERROR, WARN, INFO, DEBUG }
  * — but it IS part of this list so it can be reordered; the toggle just stays
  * forced-true.
  */
-enum class ChromeButtonRef { BATTERY, ASSIST_MIC, EDIT, GEAR }
+enum class ChromeButtonRef { BATTERY, ASSIST_MIC, DETAIL, EDIT, GEAR }
 
 /**
  * Per-button configuration for the chrome row's right cluster. The list order
@@ -151,6 +151,7 @@ data class UiOptions(
     val chromeButtons: List<ChromeButtonConfig> = listOf(
         ChromeButtonConfig(ChromeButtonRef.BATTERY, enabled = true),
         ChromeButtonConfig(ChromeButtonRef.ASSIST_MIC, enabled = true),
+        ChromeButtonConfig(ChromeButtonRef.DETAIL, enabled = true),
         ChromeButtonConfig(ChromeButtonRef.EDIT, enabled = true),
         ChromeButtonConfig(ChromeButtonRef.GEAR, enabled = true),
     ),

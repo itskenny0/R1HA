@@ -2266,6 +2266,7 @@ private fun ChromeButtonRow(
     val label = when (config.ref) {
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.BATTERY -> "Battery indicator"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.ASSIST_MIC -> "Assist mic"
+        com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL -> "Detail (...)"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.EDIT -> "Edit pencil"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.GEAR -> "Settings gear"
     }
@@ -2274,6 +2275,8 @@ private fun ChromeButtonRow(
             "Also requires the system status bar hidden + battery-on-chrome opt-in"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.ASSIST_MIC ->
             "Opens HA Assist from anywhere on the card stack"
+        com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL ->
+            "Opens the ultra-detail more-info sheet for the active card"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.EDIT ->
             "Opens the customize dialog for the active card"
         com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.GEAR ->
@@ -2349,6 +2352,7 @@ private fun ChromeButtonsPreview(
             val shortLabel = when (cfg.ref) {
                 com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.BATTERY -> "BAT"
                 com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.ASSIST_MIC -> "MIC"
+                com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL -> "INFO"
                 com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.EDIT -> "EDIT"
                 com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.GEAR -> "GEAR"
             }
