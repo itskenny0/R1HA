@@ -385,6 +385,7 @@ class MainActivity : ComponentActivity() {
                                 destinations = navDestinations,
                                 currentRoute = currentRoute,
                                 showChrome = showShellChrome,
+                                phoneNavStyle = navPanel.phoneNavStyle,
                                 onConfigure = {
                                     navController.navigate(Routes.SIDEBAR_CONFIG) {
                                         launchSingleTop = true

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.prefs.NavItemId
+import com.github.itskenny0.r1ha.core.prefs.PhoneNavStyle
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -98,14 +99,38 @@ fun SidebarConfigScreen(
                 item {
                     Text(
                         text = "Choose what shows in the navigation sidebar. " +
-                            "On tablet tiers this is the rail / drawer; on the phone it is " +
-                            "the QuickActions drawer's PINNED and DASHBOARDS sections.",
+                            "On tablet tiers this is the rail / drawer; on the phone it is the " +
+                            "hamburger slide-out (and the QuickActions sheet's PINNED and " +
+                            "DASHBOARDS sections).",
                         style = R1.body,
                         color = R1.InkMuted,
                         modifier = Modifier.padding(
                             horizontal = R1.space.xl,
                             vertical = R1.space.l,
                         ),
+                    )
+                }
+
+                // ── PHONE HAMBURGER ──
+                item { SectionHeader("PHONE HAMBURGER") }
+                item {
+                    val slideout = navPanel.phoneNavStyle == PhoneNavStyle.SLIDEOUT
+                    GlyphSwitchRow(
+                        glyph = "≡",
+                        label = "Slide-out menu",
+                        subtitle = if (slideout) {
+                            "Tap opens the sidebar; long-press opens quick actions"
+                        } else {
+                            "Tap opens quick actions (long-press too)"
+                        },
+                        checked = slideout,
+                        onCheckedChange = { on ->
+                            vm.updateNavPanel { panel ->
+                                panel.copy(
+                                    phoneNavStyle = if (on) PhoneNavStyle.SLIDEOUT else PhoneNavStyle.MODAL,
+                                )
+                            }
+                        },
                     )
                 }
 

@@ -255,6 +255,11 @@ fun CardStackScreen(
     val quickActionsOpen = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // Ambient slide-out controller provided by the shell on portrait tiers. When it reports
+    // available (PhoneNavStyle.SLIDEOUT + side panel enabled) the hamburger tap opens the
+    // shell-hosted navigation slide-out instead of the QuickActions modal; otherwise it's
+    // null / inert and the modal is used. Long-press always opens the modal regardless.
+    val navDrawer = com.github.itskenny0.r1ha.ui.components.LocalNavDrawerController.current
     // Jump-to-card overlay visibility — tapped open from the chrome counter to let
     // the user pick a target card by name rather than scrolling through the deck.
     // Declared here (rather than at the chrome-render site) so the wheel-events
@@ -337,6 +342,7 @@ fun CardStackScreen(
             // wheel input as scroll), so it stays out of this gate.
             if (tabManagementForId.value != null ||
                 quickActionsOpen.value ||
+                navDrawer?.isOpen == true ||
                 customizingId.value != null ||
                 effectPickerFor.value != null ||
                 selectPickerFor.value != null ||
@@ -1048,6 +1054,11 @@ fun CardStackScreen(
                     state.activeState?.id?.value?.let { moreInfoEntityId.value = it }
                 },
                 onTapCounter = { jumpPickerOpen.value = true },
+                onTapHamburger = {
+                    // Slide-out when the shell offers it (SLIDEOUT style on a portrait tier);
+                    // otherwise the QuickActions modal, which is also what long-press always does.
+                    if (navDrawer?.available == true) navDrawer.open() else quickActionsOpen.value = true
+                },
                 onLongPressHamburger = { quickActionsOpen.value = true },
                 onLongPressGear = onOpenSearch,
                 onOpenAssist = onOpenAssist,
@@ -3356,10 +3367,14 @@ private fun ChromeRow(
      *  previews; defaults to a no-op so the pip becomes inert when there's no
      *  picker to open. */
     onTapCounter: () -> Unit = {},
-    /** Long-press on the hamburger opens the quick-actions sheet (currently
-     *  just 'all off'). Defaulted to a no-op so existing previews that
-     *  don't care about the gesture don't need to thread it through. */
+    /** Long-press on the hamburger always opens the quick-actions sheet, so the rich modal
+     *  stays reachable even when tap is bound to the slide-out. Defaulted to a no-op so
+     *  existing previews that don't care about the gesture don't need to thread it through. */
     onLongPressHamburger: () -> Unit = {},
+    /** Tap on the hamburger opens the navigation slide-out (or the QuickActions sheet when
+     *  the slide-out isn't available). Defaults to [onLongPressHamburger] so previews and
+     *  callers that don't distinguish the gestures keep the single-action behaviour. */
+    onTapHamburger: () -> Unit = onLongPressHamburger,
     /** Long-press on the settings gear opens the Quick Search dialog —
      *  the natural "I'm looking for X" affordance from anywhere on
      *  the card stack. Defaults to a no-op for preview compatibility. */
@@ -3436,14 +3451,15 @@ private fun ChromeRow(
         // immediately to its right. Both are compact 32-44 dp tap targets so the
         // pair still fits the R1's 240 dp width alongside the right cluster.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Hamburger — tap (and long-press, harmlessly) opens the menu / sidebar
-            // drawer. r1RowPressable keeps both gestures on the same tile.
+            // Hamburger — tap opens the navigation slide-out (or the QuickActions sheet when
+            // the slide-out isn't available); long-press always opens the QuickActions sheet.
+            // r1RowPressable keeps both gestures on the same tile.
             Box(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
                     .r1RowPressable(
-                        onTap = onLongPressHamburger,
+                        onTap = onTapHamburger,
                         onLongPress = onLongPressHamburger,
                         contentDescription = "Open menu",
                     ),

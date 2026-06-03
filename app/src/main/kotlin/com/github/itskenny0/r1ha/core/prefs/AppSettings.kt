@@ -447,19 +447,39 @@ object NavItemId {
 }
 
 /**
- * Controls the large-screen side navigation panel (the rail / drawer rendered by
- * AdaptiveNavShell on MEDIUM+ window tiers). Has no effect on the R1 / compact
- * card-stack experience, which never shows the panel.
+ * How the card-stack hamburger behaves on portrait phone tiers (R1 / COMPACT), where
+ * there is no permanent side panel.
+ *
+ * [SLIDEOUT] (default) slides the same navigation panel the tablet rail / drawer shows
+ * in from the leading edge, over the card stack. [MODAL] opens the full-screen
+ * QuickActions sheet instead (the original phone behaviour). Both remain available: a
+ * long-press on the hamburger always opens the QuickActions sheet regardless of this
+ * setting, so the rich sheet is never out of reach.
+ */
+@kotlinx.serialization.Serializable
+enum class PhoneNavStyle {
+    SLIDEOUT,
+    MODAL,
+}
+
+/**
+ * Controls the side navigation panel. On MEDIUM+ window tiers AdaptiveNavShell renders
+ * it as a permanent rail / drawer; on portrait phone tiers (R1 / COMPACT) the same panel
+ * is available as a hamburger-triggered slide-out when [phoneNavStyle] is
+ * [PhoneNavStyle.SLIDEOUT].
  *
  * [sidePanelEnabled] = false forces the no-panel passthrough layout on every tier,
  * reverting tablets to the card-stack experience (Settings stays reachable via the
- * card-stack chrome's gear). [hiddenNavItems] holds [NavItemId] values that should
+ * card-stack chrome's gear) and disabling the phone slide-out (the hamburger then always
+ * opens the QuickActions sheet). [hiddenNavItems] holds [NavItemId] values that should
  * be omitted from the panel when it is shown.
  */
 @Immutable
 @kotlinx.serialization.Serializable
 data class NavPanelSettings(
     val sidePanelEnabled: Boolean = true,
+    /** Phone-tier hamburger behaviour: slide-out panel (default) vs the QuickActions modal. */
+    val phoneNavStyle: PhoneNavStyle = PhoneNavStyle.SLIDEOUT,
     val hiddenNavItems: Set<String> = emptySet(),
     /**
      * User-pinned surfaces shown in the side navigation rail / drawer, in display

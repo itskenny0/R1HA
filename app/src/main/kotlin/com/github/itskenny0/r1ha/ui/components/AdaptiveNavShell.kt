@@ -1,6 +1,15 @@
 package com.github.itskenny0.r1ha.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,18 +23,25 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.prefs.PhoneNavStyle
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -52,11 +68,12 @@ data class NavDestination(
  * The adaptive navigation shell that frames the whole app. It decides the navigation
  * *affordance* by [WindowTier] while leaving the actual screen content ([content]) untouched:
  *
- * - [WindowTier.R1] and [WindowTier.COMPACT]: PURE PASSTHROUGH. The shell renders nothing of
- *   its own; [content] fills the window exactly as it did before this system existed. This is
- *   the contract that keeps the Rabbit R1's card-stack / wheel experience bit-for-bit
- *   unchanged. The per-screen chrome (the card stack's hamburger, the dashboard's top bar)
- *   remains the navigation on these tiers.
+ * - [WindowTier.R1] and [WindowTier.COMPACT]: [content] fills the window exactly as before; the
+ *   per-screen chrome (the card stack's hamburger, the dashboard's top bar) remains the
+ *   navigation. When [phoneNavStyle] is [PhoneNavStyle.SLIDEOUT] (the default) the shell ALSO
+ *   hosts a hamburger-triggered slide-out of the same navigation panel over the content,
+ *   opened via [LocalNavDrawerController]; [PhoneNavStyle.MODAL] keeps the historical pure
+ *   passthrough so the card stack opens its QuickActions sheet instead.
  * - [WindowTier.MEDIUM]: a slim [NavigationRail] pinned to the leading edge with the
  *   top-level destinations; content fills the rest.
  * - [WindowTier.EXPANDED] / [WindowTier.EXTRA_LARGE]: a permanent labelled drawer on the
@@ -87,6 +104,12 @@ fun AdaptiveNavShell(
      *  user can change what the sidebar shows in one tap from the sidebar itself. Null hides
      *  the affordance (e.g. previews / tests that don't supply a target). */
     onConfigure: (() -> Unit)? = null,
+    /** How the hamburger behaves on portrait phone tiers (R1 / COMPACT). [PhoneNavStyle.SLIDEOUT]
+     *  (default) hosts the navigation panel as a hamburger-triggered slide-out over the card
+     *  stack; [PhoneNavStyle.MODAL] leaves those tiers a pure passthrough so the card stack's
+     *  hamburger opens its QuickActions sheet instead. Ignored on MEDIUM+ tiers, which always
+     *  render the permanent rail / drawer. */
+    phoneNavStyle: PhoneNavStyle = PhoneNavStyle.SLIDEOUT,
     content: @Composable () -> Unit,
 ) {
     val window by androidx.compose.runtime.rememberUpdatedState(LocalWindowTier.current)
@@ -97,9 +120,20 @@ fun AdaptiveNavShell(
         !showChrome -> {
             content()
         }
-        // Smallest two tiers: do not add any chrome. Preserve today's experience exactly.
+        // Smallest two tiers (portrait phone / R1): no permanent chrome. The card stack's own
+        // hamburger is the navigation. When the user keeps the SLIDEOUT style we host a
+        // hamburger-triggered slide-out of the same panel over the content; otherwise this is
+        // the historical pure passthrough and the hamburger opens the QuickActions modal.
         !tier.isAtLeast(WindowTier.MEDIUM) -> {
-            content()
+            PhoneNavSlideoutHost(
+                enabled = showChrome && phoneNavStyle == PhoneNavStyle.SLIDEOUT,
+                destinations = destinations,
+                currentRoute = currentRoute,
+                onNavigate = onNavigate,
+                onConfigure = onConfigure,
+                modifier = modifier,
+                content = content,
+            )
         }
         // Medium: compact icon rail.
         tier == WindowTier.MEDIUM -> {
@@ -213,7 +247,11 @@ private fun NavDrawer(
     onConfigure: (() -> Unit)?,
 ) {
     Row {
-        Column(
+        NavDrawerContent(
+            destinations = destinations,
+            currentRoute = currentRoute,
+            onNavigate = onNavigate,
+            onConfigure = onConfigure,
             modifier = Modifier
                 .width(232.dp)
                 .fillMaxHeight()
@@ -221,52 +259,7 @@ private fun NavDrawer(
                 .systemBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = R1.space.l, horizontal = R1.space.m),
-            verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
-        ) {
-            // Wordmark header — uses the accent so the drawer reads as branded chrome.
-            // A trailing edit glyph opens the sidebar-config surface in one tap.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = R1.space.m),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "R1·HA",
-                    style = R1.screenTitle,
-                    color = R1.AccentWarm,
-                    modifier = Modifier.padding(start = R1.space.s).weight(1f),
-                )
-                if (onConfigure != null) {
-                    Box(
-                        modifier = Modifier
-                            .clip(R1.ShapeM)
-                            .r1Pressable(onClick = onConfigure, contentDescription = "Manage sidebar")
-                            .heightIn(min = R1.MinTarget)
-                            .width(R1.MinTarget),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = "✎", style = R1.numeralM, color = R1.InkSoft, textAlign = TextAlign.Center)
-                    }
-                }
-            }
-            for (dest in destinations) {
-                DrawerItem(
-                    dest = dest,
-                    active = dest.isActive(currentRoute),
-                    onClick = { onNavigate(dest.route) },
-                )
-            }
-            // Always-present labelled edit row below the destinations — mirrors the rail's
-            // Manage affordance for users who don't spot the header glyph.
-            if (onConfigure != null) {
-                DrawerItem(
-                    dest = NavDestination(route = "__configure__", label = "Manage sidebar", glyph = "✎"),
-                    active = false,
-                    onClick = onConfigure,
-                )
-            }
-        }
+        )
         // Trailing hairline.
         Box(
             modifier = Modifier
@@ -274,6 +267,163 @@ private fun NavDrawer(
                 .fillMaxHeight()
                 .background(R1.Hairline),
         )
+    }
+}
+
+/** The drawer body shared by the permanent [NavDrawer] and the portrait slide-out: a product
+ *  wordmark header with a one-tap Manage glyph, the destination rows, and a labelled Manage
+ *  row. [modifier] supplies the surface chrome (width / background / scroll / padding) so the
+ *  permanent and slide-out hosts can size it differently while the content stays identical. */
+@Composable
+private fun NavDrawerContent(
+    destinations: List<NavDestination>,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    onConfigure: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
+    ) {
+        // Wordmark header — uses the accent so the drawer reads as branded chrome.
+        // A trailing edit glyph opens the sidebar-config surface in one tap.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = R1.space.m),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "R1·HA",
+                style = R1.screenTitle,
+                color = R1.AccentWarm,
+                modifier = Modifier.padding(start = R1.space.s).weight(1f),
+            )
+            if (onConfigure != null) {
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeM)
+                        .r1Pressable(onClick = onConfigure, contentDescription = "Manage sidebar")
+                        .heightIn(min = R1.MinTarget)
+                        .width(R1.MinTarget),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "✎", style = R1.numeralM, color = R1.InkSoft, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        for (dest in destinations) {
+            DrawerItem(
+                dest = dest,
+                active = dest.isActive(currentRoute),
+                onClick = { onNavigate(dest.route) },
+            )
+        }
+        // Always-present labelled edit row below the destinations — mirrors the rail's
+        // Manage affordance for users who don't spot the header glyph.
+        if (onConfigure != null) {
+            DrawerItem(
+                dest = NavDestination(route = "__configure__", label = "Manage sidebar", glyph = "✎"),
+                active = false,
+                onClick = onConfigure,
+            )
+        }
+    }
+}
+
+/**
+ * Portrait-phone host (R1 / COMPACT). Renders [content] full-bleed and, when [enabled],
+ * overlays a hamburger-triggered slide-out of the same navigation panel the tablet drawer
+ * shows. The open-state is owned here and exposed to descendants (the card-stack hamburger)
+ * via [LocalNavDrawerController], so the chrome can open the panel without owning its state.
+ *
+ * When [enabled] is false this is a pure passthrough and the provided controller is inert,
+ * so the card stack falls back to its QuickActions modal. The slide-out closes on scrim tap,
+ * system back, and after any navigation.
+ */
+@Composable
+private fun PhoneNavSlideoutHost(
+    enabled: Boolean,
+    destinations: List<NavDestination>,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    onConfigure: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val openState = remember { mutableStateOf(false) }
+    val controller = remember(enabled) { NavDrawerController(available = enabled, openState = openState) }
+    // If the panel becomes unavailable (style flip, panel disabled), force it shut so a stale
+    // open-state can't resurface the overlay if the panel is re-enabled later. Done in an
+    // effect rather than inline so we never write state during composition.
+    LaunchedEffect(enabled) { if (!enabled) openState.value = false }
+
+    CompositionLocalProvider(LocalNavDrawerController provides controller) {
+        Box(modifier = modifier.fillMaxSize()) {
+            content()
+            if (enabled) {
+                val open = openState.value
+                // Scrim: fades in behind the panel, tap anywhere to dismiss. No ripple.
+                AnimatedVisibility(
+                    visible = open,
+                    enter = fadeIn(tween(180)),
+                    exit = fadeOut(tween(180)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { openState.value = false },
+                            ),
+                    )
+                }
+                // Panel: slides in from the leading edge. Capped so it never fully covers a
+                // wider COMPACT phone, but takes most of the narrow R1 width.
+                AnimatedVisibility(
+                    visible = open,
+                    enter = slideInHorizontally(tween(220)) { -it },
+                    exit = slideOutHorizontally(tween(200)) { -it },
+                ) {
+                    Row {
+                        NavDrawerContent(
+                            destinations = destinations,
+                            currentRoute = currentRoute,
+                            onNavigate = { route ->
+                                openState.value = false
+                                onNavigate(route)
+                            },
+                            onConfigure = onConfigure?.let { cfg ->
+                                {
+                                    openState.value = false
+                                    cfg()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth(0.82f)
+                                .widthIn(max = 300.dp)
+                                .fillMaxHeight()
+                                .background(R1.Surface)
+                                .systemBarsPadding()
+                                .verticalScroll(rememberScrollState())
+                                .padding(vertical = R1.space.l, horizontal = R1.space.m),
+                        )
+                        // Trailing hairline, matching the permanent drawer's edge.
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .fillMaxHeight()
+                                .background(R1.Hairline),
+                        )
+                    }
+                }
+                // System back closes the panel before it pops the nav back-stack.
+                BackHandler(enabled = open) { openState.value = false }
+            }
+        }
     }
 }
 
