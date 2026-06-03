@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
@@ -79,17 +83,29 @@ fun AreasScreen(
     val vm: AreasViewModel = viewModel(factory = AreasViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     val drill by vm.drill.collectAsState()
-    val listState = rememberLazyListState()
+    // The area list flows into a responsive grid (one column on the R1 / compact
+    // panel, more on tablet+) so it needs a grid state; the drill stays a single
+    // controllable column.
+    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     val drillListState = rememberLazyListState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    // Wheel scrolls whichever list is in front: the drill-in when open,
-    // the area list otherwise.
-    WheelScrollFor(
-        wheelInput = wheelInput,
-        listState = if (drill != null) drillListState else listState,
-        settings = settings,
-    )
+    // Wheel scrolls whichever surface is in front: the drill-in when open, the
+    // area grid otherwise. Two ScrollableState recipients, so two collectors,
+    // each composed only while its surface is the front one.
+    if (drill != null) {
+        WheelScrollFor(
+            wheelInput = wheelInput,
+            listState = drillListState,
+            settings = settings,
+        )
+    } else {
+        com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid(
+            wheelInput = wheelInput,
+            gridState = gridState,
+            settings = settings,
+        )
+    }
     LaunchedEffect(Unit) { vm.refresh() }
     // Tracks the expanded row by its stable key (area_id when present), not the
     // display name: two areas can share a name and would otherwise expand together.
@@ -159,6 +175,7 @@ fun AreasScreen(
             },
         )
         val sortedAreas by vm.sortedAreas.collectAsState()
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
@@ -172,18 +189,22 @@ fun AreasScreen(
                 )
             }
             ui.error != null && ui.areas.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
+                Text(
+                    text = ui.error ?: "Error",
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                    color = R1.StatusRed,
+                )
             }
             ui.areas.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
+                modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = "No areas defined in HA. Settings → Areas in HA's web UI.",
-                    style = R1.body,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -192,15 +213,32 @@ fun AreasScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(
-                    state = listState,
+                // Multi-column flow on roomy tiers (gridColumns: 2/2/3/4/5) so a wide
+                // panel fills with area cards side by side instead of one tall ribbon;
+                // the R1 / compact panel stays single column where a row's name +
+                // summary + count chevrons need the full width to read.
+                val areaColumns = if (dimens.capsContentWidth) dimens.gridColumns else 1
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(areaColumns),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
-                    items(items = sortedAreas, key = { it.key }) { area ->
+                    items(
+                        items = sortedAreas,
+                        key = { it.key },
+                        // An expanded row reveals its full entity list; span every
+                        // column so that inline list keeps the whole content width
+                        // rather than being squeezed into one grid cell.
+                        span = {
+                            if (expandedAreaKey == it.key) GridItemSpan(maxLineSpan)
+                            else GridItemSpan(1)
+                        },
+                    ) { area ->
                         AreaRow(
                             area = area,
                             expanded = expandedAreaKey == area.key,
@@ -256,7 +294,7 @@ private fun AreaRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = area.name,
-                    style = R1.body,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -275,7 +313,7 @@ private fun AreaRow(
                         Spacer(Modifier.width(R1.space.xxs))
                         Text(
                             text = s,
-                            style = R1.labelMicro,
+                            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -296,7 +334,7 @@ private fun AreaRow(
                 ) {
                     Text(
                         text = "! ${area.activeAlerts}",
-                        style = R1.labelMicro,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                         color = R1.StatusAmber,
                     )
                 }
@@ -320,19 +358,23 @@ private fun AreaRow(
             ) {
                 Text(
                     text = "${area.entityIds.size}",
-                    style = R1.labelMicro,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                     color = R1.AccentWarm,
                 )
                 Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = if (expanded) "▾" else "▸",
-                    style = R1.labelMicro,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                 )
             }
             Spacer(Modifier.width(R1.space.xxs))
             // Chevron hinting the drill-in opens on a row-body tap.
-            Text(text = "›", style = R1.body, color = R1.InkSoft)
+            Text(
+                text = "›",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                color = R1.InkSoft,
+            )
         }
         if (expanded && area.entityIds.isNotEmpty()) {
             Column(
@@ -360,7 +402,7 @@ private fun AreaRow(
                         Spacer(Modifier.width(R1.space.xs))
                         Text(
                             text = display,
-                            style = R1.labelMicro,
+                            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -373,7 +415,7 @@ private fun AreaRow(
         if (expanded && area.entityIds.isEmpty()) {
             Text(
                 text = "No entities assigned to this area.",
-                style = R1.labelMicro,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.padding(start = R1.space.m, end = R1.space.m, bottom = R1.space.s),
             )
@@ -398,6 +440,7 @@ private fun AreaDrillScreen(
     onRename: (String) -> Unit,
 ) {
     val matchedCount = drill.groups.sumOf { it.entities.size }
+    val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
     // The rename affordance only makes sense when HA gave us a stable area_id
     // to key the update on; areas surfaced without one stay refresh-only.
     val canRename = !drill.area.areaId.isNullOrBlank()
@@ -422,7 +465,11 @@ private fun AreaDrillScreen(
                                 .r1Pressable(onClick = { renaming = true })
                                 .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                         ) {
-                            Text(text = "RENAME", style = R1.labelMicro, color = R1.InkSoft)
+                            Text(
+                                text = "RENAME",
+                                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
+                                color = R1.InkSoft,
+                            )
                         }
                         Spacer(Modifier.width(R1.space.xs))
                     }
@@ -434,7 +481,11 @@ private fun AreaDrillScreen(
                             .r1Pressable(onClick = onRefresh)
                             .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
-                        Text(text = "REFRESH", style = R1.labelMicro, color = R1.InkSoft)
+                        Text(
+                            text = "REFRESH",
+                            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
+                            color = R1.InkSoft,
+                        )
                     }
                 }
             },
@@ -463,24 +514,24 @@ private fun AreaDrillScreen(
                     )
                 }
                 drill.error != null && drill.groups.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "Couldn't load this area: ${drill.error}",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.StatusRed,
                     )
                 }
                 drill.groups.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
+                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (drill.unmatchedCount > 0)
                             "No live entities to control here. ${drill.unmatchedCount} assigned entit${if (drill.unmatchedCount == 1) "y is" else "ies are"} not in the current state set."
                         else "No entities assigned to this area.",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -493,7 +544,7 @@ private fun AreaDrillScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = R1.space.m, vertical = R1.space.s,
+                            horizontal = dimens.screenGutter, vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
@@ -510,7 +561,7 @@ private fun AreaDrillScreen(
                                             if (drill.activeAlerts != 1) append("s")
                                         }
                                     },
-                                    style = R1.labelMicro,
+                                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                                     color = if (drill.activeAlerts > 0) R1.StatusAmber else R1.InkMuted,
                                 )
                                 // Temperature / humidity readout, matching the list row
@@ -518,7 +569,7 @@ private fun AreaDrillScreen(
                                 drill.summary?.takeIf { it.isNotBlank() }?.let { s ->
                                     Text(
                                         text = s,
-                                        style = R1.labelMicro,
+                                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                                         color = R1.InkSoft,
                                     )
                                 }
@@ -632,23 +683,23 @@ private fun AreaEntityRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = entity.friendlyName,
-                style = R1.bodyEmph,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = stateLine,
-                style = R1.labelMicro,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
                 color = stateColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = actionLabel,
-            style = R1.labelMicro,
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
             color = stateColor,
         )
     }
@@ -689,16 +740,25 @@ private fun RenameAreaSheet(
                 .r1Pressable(onClick = {}, hapticOnClick = false)
                 .padding(R1.space.l),
         ) {
-            Text(text = "RENAME AREA", style = R1.sectionHeader, color = R1.AccentWarm)
+            Text(
+                text = "RENAME AREA",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),
+                color = R1.AccentWarm,
+            )
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = areaId,
-                style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body)
+                    .copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkMuted,
                 maxLines = 1,
             )
             Spacer(Modifier.size(R1.space.m))
-            Text(text = "NAME", style = R1.labelMicro, color = R1.InkSoft)
+            Text(
+                text = "NAME",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
+                color = R1.InkSoft,
+            )
             Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = name,

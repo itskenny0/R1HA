@@ -53,6 +53,8 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -87,6 +89,7 @@ fun NfcScreen(
 ) {
     val vm: NfcViewModel = viewModel(factory = NfcViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    val dimens = rememberResponsiveDimens()
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
@@ -155,7 +158,7 @@ fun NfcScreen(
                 ) {
                     Text(
                         text = "Tag list failed: ${ui.error}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.StatusRed,
                     )
                 }
@@ -168,7 +171,7 @@ fun NfcScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
-                            horizontal = R1.space.m,
+                            horizontal = dimens.screenGutter,
                             vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
@@ -210,7 +213,7 @@ fun NfcScreen(
                                         text = "No tags registered yet. Scan an NFC / QR tag at HA " +
                                             "to register it, or fire an id above to test a " +
                                             "tag-trigger automation.",
-                                        style = R1.body,
+                                        style = responsiveType(R1.body),
                                         color = R1.InkMuted,
                                         modifier = Modifier.padding(
                                             horizontal = R1.space.l,
@@ -260,11 +263,11 @@ private fun SimulateScanCard(
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .padding(R1.space.m),
     ) {
-        Text(text = "SIMULATE SCAN", style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(text = "SIMULATE SCAN", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
         Spacer(Modifier.size(R1.space.xxs))
         Text(
             text = "Fire a tag_scanned event for any id without the physical tag.",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
         )
         Spacer(Modifier.size(R1.space.s))
@@ -305,28 +308,31 @@ private fun TagRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = NfcViewModel.displayName(tag),
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
+            Spacer(Modifier.width(R1.space.s))
             if (tag.lastScanned != null) {
                 RelativeTimeLabel(
                     at = tag.lastScanned,
                     color = R1.AccentCool,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                 )
             } else {
-                Text(text = "NEVER SCANNED", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "NEVER SCANNED", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             }
         }
         if (!tag.name.isNullOrBlank()) {
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
-                style = R1.labelMicro.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = TextUnit(10f, TextUnitType.Sp),
+                style = responsiveType(
+                    R1.labelMicro.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = TextUnit(10f, TextUnitType.Sp),
+                    ),
                 ),
                 color = R1.InkMuted,
                 maxLines = 1,
@@ -336,7 +342,7 @@ private fun TagRow(
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = tag.description,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 3,
             )
@@ -418,9 +424,9 @@ private fun ReaderStatusCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "FOREGROUND READER", style = R1.label, color = R1.InkSoft)
+                Text(text = "FOREGROUND READER", style = responsiveType(R1.label), color = R1.InkSoft)
                 Spacer(Modifier.size(R1.space.xxs))
-                Text(text = statusLabel, style = R1.bodyEmph, color = statusColor)
+                Text(text = statusLabel, style = responsiveType(R1.bodyEmph), color = statusColor)
             }
             if (!noHardware) {
                 Spacer(Modifier.width(R1.space.s))
@@ -434,7 +440,7 @@ private fun ReaderStatusCard(
             }
         }
         Spacer(Modifier.size(R1.space.xs))
-        Text(text = detail, style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = detail, style = responsiveType(R1.labelMicro), color = R1.InkMuted)
     }
 }
 

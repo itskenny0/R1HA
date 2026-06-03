@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -41,12 +43,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
@@ -74,8 +78,9 @@ fun UsersScreen(
 ) {
     val vm: UsersViewModel = viewModel(factory = UsersViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
-    val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val dimens = rememberResponsiveDimens()
+    val gridState = rememberLazyGridState()
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = gridState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -128,26 +133,36 @@ fun UsersScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        state = listState,
+                    // One column on mini / compact / phone; two on tablet / expanded,
+                    // three on extra-large (dashboardColumns gives the 1/1/2/2/3
+                    // progression). The summary line and every section header span the
+                    // full row so the grouping stays legible across the columns.
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
                             horizontal = R1.space.m,
                             vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        item(key = "__summary") {
+                        item(key = "__summary", span = { GridItemSpan(maxLineSpan) }) {
                             Text(
                                 text = "${ui.totalCount} user${if (ui.totalCount == 1) "" else "s"}" +
                                     "  ·  read-only",
-                                style = R1.labelMicro,
+                                style = responsiveType(R1.labelMicro),
                                 color = R1.InkSoft,
                                 modifier = Modifier.padding(vertical = R1.space.xs),
                             )
                         }
                         ui.sections.forEachIndexed { index, (section, rows) ->
-                            item(key = "__sec_${section.name}", contentType = "header") {
+                            item(
+                                key = "__sec_${section.name}",
+                                contentType = "header",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
                                 R1Section(
                                     title = sectionTitle(section),
                                     count = rows.size,
@@ -161,7 +176,9 @@ fun UsersScreen(
                                 contentType = { "userRow" },
                             ) { row -> UserRow(row) }
                         }
-                        item(key = "__tail") { Spacer(Modifier.size(R1.space.xl)) }
+                        item(key = "__tail", span = { GridItemSpan(maxLineSpan) }) {
+                            Spacer(Modifier.size(R1.space.xl))
+                        }
                     }
                 }
             }
@@ -197,7 +214,7 @@ private fun UserRow(row: UserRowModel) {
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = row.displayName,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = if (row.isActive) R1.Ink else R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -241,13 +258,13 @@ private fun UserRow(row: UserRowModel) {
                 val presence = rowPresence(row.linkedPersonState.orEmpty())
                 Text(
                     text = presence.label,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = presence.color,
                 )
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = row.linkedPersonName,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -258,7 +275,7 @@ private fun UserRow(row: UserRowModel) {
                     RelativeTimeLabel(
                         at = row.linkedPersonSince,
                         color = R1.InkMuted,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                     )
                 }
             }
@@ -266,9 +283,11 @@ private fun UserRow(row: UserRowModel) {
         Spacer(Modifier.size(R1.space.xxs))
         Text(
             text = row.id,
-            style = R1.labelMicro.copy(
-                fontFamily = FontFamily.Monospace,
-                fontSize = TextUnit(10f, TextUnitType.Sp),
+            style = responsiveType(
+                R1.labelMicro.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = TextUnit(10f, TextUnitType.Sp),
+                ),
             ),
             color = R1.InkMuted,
             maxLines = 1,
@@ -282,7 +301,7 @@ private fun UserRow(row: UserRowModel) {
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = "GROUPS · " + customGroups.joinToString(", ") { prettyGroupId(it) },
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -336,9 +355,9 @@ private fun EmptyState(title: String, body: String, accent: Color) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = title, style = R1.sectionHeader, color = accent)
+            Text(text = title, style = responsiveType(R1.sectionHeader), color = accent)
             Spacer(Modifier.size(R1.space.s))
-            Text(text = body, style = R1.body, color = R1.InkSoft)
+            Text(text = body, style = responsiveType(R1.body), color = R1.InkSoft)
         }
     }
 }

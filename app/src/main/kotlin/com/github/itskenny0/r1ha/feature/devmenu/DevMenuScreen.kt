@@ -36,12 +36,14 @@ import com.github.itskenny0.r1ha.core.prefs.AdvancedSettings
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.R1LogBuffer
 import com.github.itskenny0.r1ha.feature.settings.SettingsViewModel
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
  * Dev menu — a single scrollable surface with every advanced setting + the in-memory
@@ -73,6 +75,10 @@ fun DevMenuScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "DEV MENU", onBack = onBack)
+        // Centre + width-cap the whole list on tablet / xxl so the toggle rows
+        // and panels read as a column instead of one wall-wide line; full-bleed
+        // on R1 / compact (maxContentWidth is Unspecified there).
+        AdaptiveContent(modifier = Modifier.weight(1f)) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
 
             // ── Service-call timing ─────────────────────────────────────────────────
@@ -334,6 +340,7 @@ fun DevMenuScreen(
             item(key = "panel-log-viewer") { LogViewer() }
 
             item { Spacer(Modifier.height(R1.space.xxl)) }
+        }
         }
     }
 }
@@ -689,7 +696,7 @@ private fun Section(title: String) {
             .padding(start = R1.space.l, end = R1.space.l, top = R1.space.l, bottom = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(title, style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
         Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
@@ -751,8 +758,8 @@ private fun DevSwitchRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = R1.bodyEmph, color = R1.Ink)
-            Text(subtitle, style = R1.body, color = R1.InkMuted)
+            Text(label, style = responsiveType(R1.bodyEmph), color = R1.Ink)
+            Text(subtitle, style = responsiveType(R1.body), color = R1.InkMuted)
         }
         Spacer(Modifier.width(R1.space.m))
         Box(
@@ -788,8 +795,8 @@ private fun IntStepperRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = R1.bodyEmph, color = R1.Ink)
-            Text(subtitle, style = R1.body, color = R1.InkMuted)
+            Text(label, style = responsiveType(R1.bodyEmph), color = R1.Ink)
+            Text(subtitle, style = responsiveType(R1.body), color = R1.InkMuted)
         }
         Spacer(Modifier.width(R1.space.m))
         Row(verticalAlignment = Alignment.CenterVertically) {

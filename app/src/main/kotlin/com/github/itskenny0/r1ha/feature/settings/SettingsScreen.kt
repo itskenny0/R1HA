@@ -388,8 +388,23 @@ fun SettingsScreen(
         // [popOne]; at ROOT that means leaving Settings.
         R1TopBar(title = node.title, onBack = popOne)
 
+        // AdaptiveContent is a fill-size passthrough, so the centre + width cap is
+        // applied here on the inner list: on tablet / desktop tiers the category
+        // list, every drill-in body, the search results and the Featured grid stay
+        // in a centred island (the tier's maxContentWidth) instead of stretching a
+        // single setting row across a 1280 dp+ panel. On R1 / compact the cap is
+        // Unspecified, so the list fills full-bleed exactly as before.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            val listModifier = if (dimens.capsContentWidth) {
+                Modifier
+                    .fillMaxSize()
+                    .widthIn(max = dimens.maxContentWidth)
+                    .align(Alignment.CenterHorizontally)
+            } else {
+                Modifier.fillMaxSize()
+            }
+            LazyColumn(state = listState, modifier = listModifier) {
 
                 // Search bar sits at the top of every level so the user can jump
                 // to any leaf from wherever they are.

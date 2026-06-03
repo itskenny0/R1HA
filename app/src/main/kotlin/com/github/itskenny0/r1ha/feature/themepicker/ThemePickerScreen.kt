@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +39,9 @@ import com.github.itskenny0.r1ha.core.theme.PragmaticHybridTheme
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.R1Theme
 import com.github.itskenny0.r1ha.core.theme.R1ThemeHost
+import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
@@ -177,7 +181,7 @@ private fun ThemeRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = theme.displayName.uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (isSelected) R1.AccentWarm else R1.InkSoft,
             )
             Spacer(Modifier.height(R1.space.xxs))
@@ -194,17 +198,26 @@ private fun ThemeRow(
                     com.github.itskenny0.r1ha.core.prefs.ThemeId.COLORFUL_CARDS ->
                         "Per-entity gradient sky behind each card"
                 },
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
             )
         }
 
         Spacer(Modifier.width(R1.space.m))
 
-        // Miniature preview — render the actual theme.Card with a sample model.
+        // Miniature preview — render the actual theme.Card with a sample model. The
+        // tile keeps its hand-tuned size on the tightest tiers and steps up modestly
+        // on roomier panels so the preview reads at arm's length without ballooning
+        // into a wall-wide block; the aspect ratio stays constant.
+        val previewScale = when (LocalWindowTier.current.tier) {
+            WindowTier.R1, WindowTier.COMPACT -> 1.0f
+            WindowTier.MEDIUM -> 1.15f
+            WindowTier.EXPANDED -> 1.3f
+            WindowTier.EXTRA_LARGE -> 1.45f
+        }
         Box(
             modifier = Modifier
-                .size(width = 92.dp, height = 112.dp)
+                .size(width = 92.dp * previewScale, height = 112.dp * previewScale)
                 .clip(R1.ShapeS)
                 // Decorative preview: drop the sample card's text from the a11y
                 // tree so TalkBack reads only the row's name + selection state.
@@ -244,21 +257,28 @@ private fun AccentPickerSection(
     ) {
         Text(
             text = "ACCENT",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
         )
         Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = "Override every theme's accent colour. Reset = use the theme's own palette.",
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
         )
         Spacer(Modifier.height(R1.space.m))
         // Flow-style wrap with 6 columns, hand-rolled because androidx.compose.foundation.layout.FlowRow
-        // is still experimental and we avoid that elsewhere in the codebase.
+        // is still experimental and we avoid that elsewhere in the codebase. Six weighted
+        // cells are well-tuned for the R1's narrow panel; on roomier tiers we cap the grid's
+        // overall width so the swatches stay a tidy cluster instead of being flung apart into
+        // wall-wide cells with a lone 36dp circle marooned in each.
         val columns = 6
+        val gridModifier = when (LocalWindowTier.current.tier) {
+            WindowTier.R1, WindowTier.COMPACT -> Modifier.fillMaxWidth()
+            else -> Modifier.fillMaxWidth().widthIn(max = 420.dp)
+        }
         ACCENT_PALETTE.chunked(columns).forEach { row ->
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = gridModifier) {
                 row.forEach { (label, color) ->
                     val isSelected = color?.toArgb() == currentArgb
                     AccentSwatch(
@@ -327,7 +347,7 @@ private fun AccentSwatch(
         Spacer(Modifier.height(R1.space.xs))
         Text(
             text = label,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = if (isSelected) R1.Ink else R1.InkMuted,
         )
     }

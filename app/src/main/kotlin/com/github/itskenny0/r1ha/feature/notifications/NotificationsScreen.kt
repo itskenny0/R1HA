@@ -38,6 +38,8 @@ import com.github.itskenny0.r1ha.core.ha.PersistentNotification
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
@@ -70,6 +72,7 @@ fun NotificationsScreen(
 ) {
     val vm: NotificationsViewModel = viewModel(factory = NotificationsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    val dimens = rememberResponsiveDimens()
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     // Auto-refresh: cadence comes from Settings. Integrations.
@@ -97,6 +100,7 @@ fun NotificationsScreen(
         // path end to end without waiting for a real integration to raise one.
         CreateNotificationForm(
             creating = ui.creating,
+            gutter = dimens.screenGutter,
             onCreate = { title, message -> vm.create(title, message) },
         )
         // Bulk DISMISS ALL: only rendered when there's at least one
@@ -114,12 +118,12 @@ fun NotificationsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.xs),
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "${ui.notifications.size} active",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     modifier = Modifier.weight(1f),
                 )
@@ -149,7 +153,7 @@ fun NotificationsScreen(
                 ) {
                     Text(
                         text = if (armed.value) "TAP AGAIN" else "DISMISS ALL",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.StatusRed,
                     )
                 }
@@ -164,7 +168,7 @@ fun NotificationsScreen(
             ui.loading && ui.notifications.isEmpty() && ui.error == null -> Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s),
                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
                 // Skeleton rows teach the eye where notifications will land
@@ -181,7 +185,7 @@ fun NotificationsScreen(
                 // Distinct from "all clear": the request itself failed.
                 Text(
                     text = "Notifications load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -191,7 +195,7 @@ fun NotificationsScreen(
             ) {
                 Text(
                     text = "No persistent notifications in HA. All clear.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -204,7 +208,7 @@ fun NotificationsScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
@@ -232,6 +236,7 @@ fun NotificationsScreen(
 @Composable
 private fun CreateNotificationForm(
     creating: Boolean,
+    gutter: androidx.compose.ui.unit.Dp,
     onCreate: (title: String, message: String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -253,12 +258,12 @@ private fun CreateNotificationForm(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
+            .padding(horizontal = gutter, vertical = R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "PERSISTENT NOTIFICATIONS",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
             )
@@ -324,7 +329,7 @@ private fun NotificationRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = notification.title?.takeIf { it.isNotBlank() } ?: notification.notificationId,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
@@ -341,12 +346,12 @@ private fun NotificationRow(
                 RelativeTimeLabel(
                     at = notification.createdAt,
                     color = R1.InkMuted,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                 )
             } else {
                 Text(
                     text = "no date",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
@@ -370,7 +375,7 @@ private fun NotificationRow(
             plainMessage.length > 280
         Text(
             text = plainMessage,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkSoft,
             maxLines = if (expanded.value) Int.MAX_VALUE else collapsedLines,
             modifier = if (needsExpand) {
@@ -387,7 +392,7 @@ private fun NotificationRow(
         if (needsExpand) {
             Text(
                 text = if (expanded.value) "↑ COLLAPSE" else "↓ EXPAND",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier
                     .defaultMinSize(minHeight = R1.MinTarget)
@@ -406,7 +411,7 @@ private fun NotificationRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = notification.notificationId,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -433,7 +438,7 @@ private fun NotificationRow(
             ) {
                 Text(
                     text = if (pendingDismiss) "DISMISSING…" else "DISMISS",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = if (pendingDismiss) R1.InkMuted else R1.StatusRed,
                 )
             }

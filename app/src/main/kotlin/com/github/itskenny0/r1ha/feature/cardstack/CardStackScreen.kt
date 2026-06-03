@@ -62,6 +62,8 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.components.EntityCard
@@ -1694,6 +1696,13 @@ private fun PageDeck(
         val cardShape = androidx.compose.runtime.remember {
             androidx.compose.foundation.shape.RoundedCornerShape(14.dp)
         }
+        // On big tiers a full-bleed card stretches into one enormous panel that
+        // maroons its content across a 13" width. Cap each page's card to the
+        // tier's content width and let the centred page Box letterbox the slack,
+        // so the deck reads as a floating panel rather than a wall-to-wall slab.
+        // Dp.Unspecified on R1 / compact means "fill" — widthIn(max = Unspecified)
+        // is a no-op there, so the tiny panel keeps every pixel.
+        val deckMaxCardWidth = rememberResponsiveDimens().maxContentWidth
         // Scope for the peek-deck tap-to-navigate animation. Tapping a peeking
         // neighbour animates the pager to that page rather than actuating the
         // card's control.
@@ -1842,6 +1851,18 @@ private fun PageDeck(
                 // "the active one" once the deck has come to rest on it — this
                 // keeps a tap during a settle from being read as an actuation.
                 val isPeekNeighbour = peek && page != pagerState.settledPage
+                // Width-capped, full-height host so the card + its peek overlay
+                // share one centred panel on big tiers. widthIn(max = Unspecified)
+                // is a passthrough on R1 / compact, so the small panels stay
+                // edge-to-edge; medium+ centres the card at the tier's content
+                // width instead of stretching it wall-to-wall.
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .widthIn(max = deckMaxCardWidth)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
                 EntityCard(
                     state = card,
                     onTapToggle = { vm.tapToggle() },
@@ -1909,6 +1930,7 @@ private fun PageDeck(
                                 contentDescription = "Show ${card.friendlyName}",
                             ),
                     )
+                }
                 }
             }
         }
@@ -2013,10 +2035,21 @@ private fun EmptyState(
         ((it - nowMs.value) / 1000L).coerceAtLeast(0L)
     }
 
-    Column(
+    // Cap + centre the hero copy on big tiers so it stays a centred block rather
+    // than a marooned full-width run; step the type up via responsiveType so the
+    // body doesn't read tiny on a 13" panel. Dp.Unspecified on R1 / compact keeps
+    // the full-width hero the small panels want (widthIn(max = Unspecified) no-op).
+    val emptyMaxWidth = rememberResponsiveDimens().maxContentWidth
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
+            .systemBarsPadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+    Column(
+        modifier = Modifier
+            .widthIn(max = emptyMaxWidth)
+            .fillMaxWidth()
             .padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -2031,7 +2064,7 @@ private fun EmptyState(
         }
         Text(
             text = (if (loading) "Loading entities" else "No favourites yet").uppercase(),
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.InkSoft,
         )
         Spacer(Modifier.height(10.dp))
@@ -2041,8 +2074,9 @@ private fun EmptyState(
             } else {
                 "Pick the lights, fans, covers, and media players you want\non the wheel."
             },
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         // Countdown chip — only meaningful while we're loading AND there's a backoff
         // scheduled. (Without the loading gate, a transient reconnectAt during normal use
@@ -2105,6 +2139,7 @@ private fun EmptyState(
                 )
             }
         }
+    }
     }
 }
 
@@ -3397,14 +3432,20 @@ private fun JumpToCardSheet(
     onDismiss: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler(onBack = onDismiss)
+    // Cap + centre the list column on big tiers so the rows don't stretch into
+    // one wall-wide line on a 13" panel. Dp.Unspecified on R1 / compact keeps the
+    // full-bleed list the tiny panel wants (widthIn(max = Unspecified) is a no-op).
+    val jumpMaxWidth = rememberResponsiveDimens().maxContentWidth
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg.copy(alpha = 0.96f))
             .r1Pressable(onClick = onDismiss),
+        contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             modifier = Modifier
+                .widthIn(max = jumpMaxWidth)
                 .fillMaxSize()
                 .padding(horizontal = 18.dp, vertical = 14.dp),
         ) {

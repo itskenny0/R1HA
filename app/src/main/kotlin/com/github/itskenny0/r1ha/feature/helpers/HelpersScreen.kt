@@ -41,6 +41,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -216,7 +217,7 @@ fun HelpersScreen(
             ) {
                 Text(
                     text = "Helpers load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -227,7 +228,7 @@ fun HelpersScreen(
                 Text(
                     text = "No helpers defined. Add them under Settings, " +
                         "Devices & Services, Helpers in HA's web UI.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -238,7 +239,7 @@ fun HelpersScreen(
                 Text(
                     text = if (ui.query.isNotBlank()) "No matches for '${ui.query}'."
                     else "No helpers in '${ui.bucket.label}'.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -392,7 +393,7 @@ private fun HelperRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = entry.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -446,7 +447,7 @@ private fun HelperRow(
         }
         Text(
             text = entry.id.value,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -529,7 +530,7 @@ private fun NumberControl(
         val withUnit = if (entry.unit.isNullOrBlank()) formatted else "$formatted ${entry.unit}"
         Text(
             text = withUnit,
-            style = R1.bodyEmph,
+            style = responsiveType(R1.bodyEmph),
             color = if (isWheelActive) R1.AccentWarm else R1.Ink,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -568,7 +569,7 @@ private fun CounterControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) 
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = value?.toInt()?.toString() ?: entry.state,
-            style = R1.bodyEmph,
+            style = responsiveType(R1.bodyEmph),
             color = R1.Ink,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -643,7 +644,7 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
         ) {
             Text(
                 text = entry.state,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.AccentWarm,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -656,7 +657,7 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = "${currentIdx + 1} / ${options.size.coerceAtLeast(1)}",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
         )
         // Always offer the full-list picker, even for 2-3 option selects:
@@ -703,6 +704,7 @@ private fun SelectOptionPicker(
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
+                .fillMaxWidth()
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
@@ -710,13 +712,13 @@ private fun SelectOptionPicker(
         ) {
             Text(
                 text = label.uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 1,
             )
             Spacer(Modifier.height(R1.space.s))
             androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier.heightIn(max = 240.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
                 verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
             ) {
                 items(items = options, key = { it }) { opt ->
@@ -735,14 +737,14 @@ private fun SelectOptionPicker(
                     ) {
                         Text(
                             text = opt,
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = if (isCurrent) R1.AccentWarm else R1.Ink,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
                         if (isCurrent) {
-                            Text(text = "•", style = R1.body, color = R1.AccentWarm)
+                            Text(text = "•", style = responsiveType(R1.body), color = R1.AccentWarm)
                         }
                     }
                 }
@@ -791,7 +793,7 @@ private fun TextControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = display,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
             maxLines = 2,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -846,12 +848,18 @@ private fun TextEditDialog(
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
+                .fillMaxWidth()
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
                 .padding(horizontal = R1.space.l, vertical = R1.space.m),
         ) {
-            Text(text = label.uppercase(), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(
+                text = label.uppercase(),
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkSoft,
+                maxLines = 1,
+            )
             Spacer(Modifier.height(R1.space.s))
             R1TextField(
                 value = draft.value,
@@ -863,7 +871,7 @@ private fun TextEditDialog(
             Text(
                 text = "${draft.value.length} / ${max ?: 100}" +
                     if (min != null && min > 0) "  (min $min)" else "",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (meetsMin) R1.InkSoft else R1.StatusAmber,
             )
             Spacer(Modifier.height(R1.space.s))
@@ -895,7 +903,7 @@ private fun DateTimeControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = entry.state.ifBlank { "(unset)" },
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -958,15 +966,21 @@ private fun DateTimeEditDialog(
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
+                .fillMaxWidth()
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
                 .padding(horizontal = R1.space.l, vertical = R1.space.m),
         ) {
-            Text(text = label.uppercase(), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(
+                text = label.uppercase(),
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkSoft,
+                maxLines = 1,
+            )
             if (hasDate) {
                 Spacer(Modifier.height(R1.space.s))
-                Text(text = "DATE", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "DATE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
                 Spacer(Modifier.height(R1.space.xxs))
                 R1TextField(
                     value = date.value,
@@ -977,7 +991,7 @@ private fun DateTimeEditDialog(
             }
             if (hasTime) {
                 Spacer(Modifier.height(R1.space.s))
-                Text(text = "TIME", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "TIME", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
                 Spacer(Modifier.height(R1.space.xxs))
                 R1TextField(
                     value = time.value,
@@ -1068,7 +1082,7 @@ private fun StepPill(label: String, onClick: () -> Unit) {
 private fun ReadOnlyValue(value: String) {
     Text(
         text = value,
-        style = R1.body,
+        style = responsiveType(R1.body),
         color = R1.Ink,
         maxLines = 2,
     )

@@ -41,6 +41,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -64,6 +66,7 @@ fun FloorsScreen(
     val vm: FloorsViewModel = viewModel(factory = FloorsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     val listState = rememberLazyListState()
+    val dimens = rememberResponsiveDimens()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
     // Expansion is keyed on the stable floor_id, not the display name: two
@@ -92,7 +95,7 @@ fun FloorsScreen(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
+                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
                 }
                 ui.floors.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xxl),
@@ -101,7 +104,7 @@ fun FloorsScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = "NO FLOORS",
-                            style = R1.sectionHeader,
+                            style = responsiveType(R1.sectionHeader),
                             color = R1.InkSoft,
                         )
                         Spacer(Modifier.size(R1.space.s))
@@ -109,7 +112,7 @@ fun FloorsScreen(
                             text = "Floors are an optional HA concept that group areas " +
                                 "by building storey. Add them under Settings, Areas & Zones, " +
                                 "Floors to see them here.",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.InkMuted,
                         )
                     }
@@ -123,7 +126,7 @@ fun FloorsScreen(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
-                            horizontal = R1.space.m,
+                            horizontal = dimens.screenGutter,
                             vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
@@ -187,7 +190,7 @@ private fun FloorRow(
             floor.level?.let { lvl ->
                 Text(
                     text = levelLabel(lvl),
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.AccentNeutral,
                     modifier = Modifier
                         .clip(R1.ShapeS)
@@ -209,7 +212,7 @@ private fun FloorRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = floor.name,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -218,13 +221,15 @@ private fun FloorRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "${floor.areas.size} areas · $totalEntities entities",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentWarm,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = if (expanded) "▾" else "▸",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
             )
         }
@@ -244,7 +249,7 @@ private fun FloorRow(
                         Spacer(Modifier.width(R1.space.xs))
                         Text(
                             text = a.name,
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -253,7 +258,7 @@ private fun FloorRow(
                         Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = "${a.entityCount}",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkMuted,
                         )
                     }
@@ -264,7 +269,7 @@ private fun FloorRow(
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = "No areas assigned to this floor.",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
         }

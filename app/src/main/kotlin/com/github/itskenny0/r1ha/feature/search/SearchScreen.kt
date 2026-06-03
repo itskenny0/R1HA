@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.search
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -150,13 +152,20 @@ fun SearchScreen(
             .imePadding(),
     ) {
         R1TopBar(title = "QUICK SEARCH", onBack = onBack)
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
-        // Domain-bucket filter chips and search field are inside AdaptiveContent
-        // so they align with the results list at 800 dp on tablets. bucketCounts is
-        // computed off Main in the ViewModel and exposed as a StateFlow so this
-        // composable doesn't iterate the full entity registry on every recomp.
+        // Centre + width-cap the whole search body on medium-and-up tiers so chips,
+        // field and results read as one column rather than stretching full-bleed across
+        // a tablet / desktop panel. R1CenteredContent is a no-op passthrough on R1 /
+        // compact, so the tightest tiers render exactly as before.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+        com.github.itskenny0.r1ha.ui.components.R1CenteredContent(modifier = Modifier.weight(1f)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+        // Domain-bucket filter chips and search field share the same screenGutter as the
+        // results list so they stay aligned across every tier. bucketCounts is computed
+        // off Main in the ViewModel and exposed as a StateFlow so this composable doesn't
+        // iterate the full entity registry on every recomp.
         val bucketCounts by vm.bucketCounts.collectAsState()
         BucketChips(
+            gutter = dimens.screenGutter,
             current = ui.bucket,
             counts = bucketCounts,
             totalCount = ui.all.size,
@@ -165,7 +174,7 @@ fun SearchScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                .padding(horizontal = dimens.screenGutter, vertical = R1.space.s),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = R1.space.s))
@@ -243,7 +252,7 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = "Couldn't load entities.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.StatusRed,
                         modifier = Modifier.semantics { heading() },
                     )
@@ -271,7 +280,7 @@ fun SearchScreen(
                 ) {
                     Text(
                         text = "${ui.all.size} entities indexed.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                         modifier = Modifier.semantics { heading() },
                     )
@@ -299,7 +308,7 @@ fun SearchScreen(
                     Text(
                         text = if (ui.query.isNotBlank()) "No matches for '${ui.query}'."
                         else "No ${ui.bucket.name.lowercase(java.util.Locale.US)} entities.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                         modifier = Modifier.semantics { heading() },
                     )
@@ -336,7 +345,7 @@ fun SearchScreen(
                         ) {
                             Text(
                                 text = "Ask Assist about \"${ui.query}\"",
-                                style = R1.body,
+                                style = responsiveType(R1.body),
                                 color = R1.AccentWarm,
                             )
                         }
@@ -352,7 +361,7 @@ fun SearchScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
@@ -408,7 +417,8 @@ fun SearchScreen(
                 }
             }
         }
-        } // AdaptiveContent
+        } // Column
+        } // R1CenteredContent
     }
     historyPeek?.let { peeked ->
         HistoryPeekDialog(
@@ -504,6 +514,7 @@ private fun HistoryPeekDialog(
 
 @Composable
 private fun BucketChips(
+    gutter: androidx.compose.ui.unit.Dp,
     current: SearchViewModel.Bucket,
     counts: Map<SearchViewModel.Bucket, Int>,
     totalCount: Int,
@@ -515,10 +526,13 @@ private fun BucketChips(
         SearchViewModel.Bucket.SENSORS to "SENSORS",
         SearchViewModel.Bucket.ACTIONS to "ACTIONS",
     )
+    // Horizontal scroll so the four count-bearing chips ("CONTROLS  128", ...) never clip
+    // on the R1's ~240 dp panel; on wider tiers they all fit and the scroll is inert.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(horizontal = gutter, vertical = R1.space.s),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         for ((bucket, label) in items) {

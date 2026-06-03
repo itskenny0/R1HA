@@ -39,6 +39,7 @@ import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.CardPeekMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.feature.cardstack.PEEK_MIN_SHORTEST_SIDE_PX
 import com.github.itskenny0.r1ha.feature.cardstack.effectivePeek
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -197,7 +198,7 @@ fun AboutScreen(
                     Text(
                         text = "Released into the public domain via The Unlicense. " +
                             "Copy, modify, redistribute. Commercial or not, by any means.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkSoft,
                         modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                     )
@@ -219,10 +220,10 @@ fun AboutScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Dev menu", style = R1.bodyEmph, color = R1.Ink)
+                            Text("Dev menu", style = responsiveType(R1.bodyEmph), color = R1.Ink)
                             Text(
                                 text = "Advanced tunables, behaviour flags, in-app log viewer.",
-                                style = R1.body,
+                                style = responsiveType(R1.body),
                                 color = R1.InkMuted,
                             )
                         }
@@ -283,9 +284,9 @@ private fun LastEventRow(haRepository: HaRepository) {
             .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Last event", style = R1.bodyEmph, color = R1.Ink)
+        Text("Last event", style = responsiveType(R1.bodyEmph), color = R1.Ink)
         Spacer(Modifier.weight(1f))
-        Text(text = text, style = R1.body, color = tint)
+        Text(text = text, style = responsiveType(R1.body), color = tint)
     }
 }
 
@@ -529,7 +530,7 @@ private fun FdroidUpdateHint() {
         androidx.compose.foundation.layout.Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = "F-Droid distribution: install updates via your F-Droid client. GitHub Releases also publishes the same APK.",
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
         )
     }
@@ -684,7 +685,7 @@ private fun Section(title: String) {
             .padding(start = R1.space.xl, end = R1.space.xl, top = R1.space.xl, bottom = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(title, style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
         Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
@@ -708,11 +709,13 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
             .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, style = R1.bodyEmph, color = R1.Ink)
+        Text(label, style = responsiveType(R1.bodyEmph), color = R1.Ink)
         Spacer(Modifier.width(R1.space.l))
         Text(
             text = value,
-            style = if (mono) R1.body.copy(fontFamily = FontFamily.Monospace) else R1.body,
+            style = responsiveType(
+                if (mono) R1.body.copy(fontFamily = FontFamily.Monospace) else R1.body,
+            ),
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.End,
@@ -791,14 +794,16 @@ private fun LinkRow(
             .padding(horizontal = R1.space.xl, vertical = R1.space.s),
         horizontalAlignment = Alignment.Start,
     ) {
-        Text(label, style = R1.bodyEmph, color = R1.Ink)
+        Text(label, style = responsiveType(R1.bodyEmph), color = R1.Ink)
         Spacer(Modifier.height(R1.space.xxs))
         Text(
             text = displayUrl,
             // Underline so the URL reads as interactive even without a chevron.
-            style = R1.body.copy(
-                fontFamily = FontFamily.Monospace,
-                textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+            style = responsiveType(
+                R1.body.copy(
+                    fontFamily = FontFamily.Monospace,
+                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                ),
             ),
             color = R1.AccentWarm,
             maxLines = 1,

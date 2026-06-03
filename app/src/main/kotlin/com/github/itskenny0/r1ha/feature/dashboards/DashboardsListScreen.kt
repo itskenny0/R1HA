@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -89,10 +90,26 @@ fun DashboardsListScreen(
                 EmptyState(message = state.listError ?: "No dashboards published yet.")
             }
             else -> {
+                // Centre + width-cap the list column on roomy tiers so the
+                // rows read as a centred column instead of one wall-wide line
+                // on a 13in panel; horizontal gutter steps up per tier. On
+                // R1 / compact maxContentWidth is Unspecified (widthIn no-op)
+                // so the list fills the narrow panel exactly as before.
+                val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+                val capWidth = if (dimens.capsContentWidth) {
+                    Modifier.widthIn(max = dimens.maxContentWidth)
+                } else {
+                    Modifier
+                }
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .then(capWidth)
+                        .padding(horizontal = dimens.screenGutter, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     item { Hint() }
@@ -105,6 +122,7 @@ fun DashboardsListScreen(
                         )
                     }
                     item { Spacer(Modifier.height(20.dp)) }
+                }
                 }
             }
         }
@@ -123,7 +141,7 @@ private fun Hint() {
     ) {
         Text(
             text = "Imports HA's Lovelace configuration read-only. Local edits stay on this device; HA's setup is never modified.",
-            style = R1.body,
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
             color = R1.InkSoft,
         )
     }
@@ -263,7 +281,7 @@ private fun LoadingState() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = R1.AccentWarm, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(10.dp))
-            Text(text = "Loading dashboards…", style = R1.body, color = R1.InkSoft)
+            Text(text = "Loading dashboards…", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkSoft)
         }
     }
 }
@@ -276,12 +294,15 @@ private fun EmptyState(message: String) {
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "No dashboards", style = R1.screenTitle, color = R1.Ink, fontWeight = FontWeight.SemiBold)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 420.dp),
+        ) {
+            Text(text = "No dashboards", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.screenTitle), color = R1.Ink, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = message,
-                style = R1.body,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                 color = R1.InkSoft,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )

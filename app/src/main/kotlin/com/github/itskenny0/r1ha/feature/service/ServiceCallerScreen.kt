@@ -41,6 +41,7 @@ import kotlinx.serialization.json.JsonElement
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -127,13 +128,13 @@ fun ServiceCallerScreen(
                 Spacer(Modifier.padding(top = R1.space.xxs))
                 Text(
                     text = "Use lowercase letters, digits, underscores. No dot, no spaces.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.StatusRed,
                 )
             }
             Spacer(Modifier.padding(top = R1.space.xs))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "DATA (JSON, optional)", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "DATA (JSON, optional)", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Spacer(Modifier.weight(1f))
                 // PASTE chip: pulls the clipboard contents into the DATA
                 // field. Common workflow: copy a service_data JSON snippet
@@ -169,7 +170,7 @@ fun ServiceCallerScreen(
                         )
                         .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
-                    Text(text = "PASTE", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "PASTE", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 }
             }
             Spacer(Modifier.padding(top = R1.space.xs))
@@ -189,7 +190,7 @@ fun ServiceCallerScreen(
                 Spacer(Modifier.padding(top = R1.space.xxs))
                 Text(
                     text = "Data must be a JSON object, e.g. {\"entity_id\":\"light.kitchen\"}.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.StatusRed,
                 )
             }
@@ -213,14 +214,17 @@ fun ServiceCallerScreen(
                             )
                             .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
-                        Text(text = "CANCEL", style = R1.labelMicro, color = R1.StatusRed)
+                        Text(text = "CANCEL", style = responsiveType(R1.labelMicro), color = R1.StatusRed)
                     }
                 }
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "POST /api/services/${ui.domain}/${ui.service}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
             }
             Spacer(Modifier.padding(top = R1.space.m))
@@ -239,7 +243,7 @@ fun ServiceCallerScreen(
                 )
                 else -> Text(
                     text = "Tap FIRE to dispatch the service. State changes (if any) are listed here.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -248,7 +252,7 @@ fun ServiceCallerScreen(
             if (ui.recent.isNotEmpty()) {
                 Spacer(Modifier.padding(top = R1.space.l))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "RECENT", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "RECENT", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
                     Box(
                         modifier = Modifier
@@ -260,7 +264,7 @@ fun ServiceCallerScreen(
                             )
                             .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                     ) {
-                        Text(text = "CLEAR", style = R1.labelMicro, color = R1.InkSoft)
+                        Text(text = "CLEAR", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     }
                 }
                 Spacer(Modifier.padding(top = R1.space.xs))
@@ -295,14 +299,14 @@ private fun RecentRow(
         Column {
             Text(
                 text = "${call.domain}.${call.service}",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
             )
             if (call.data.isNotBlank()) {
                 Text(
                     text = call.data,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 2,
                 )
@@ -313,7 +317,7 @@ private fun RecentRow(
 
 @Composable
 private fun FieldLabel(label: String) {
-    Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+    Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
     Spacer(Modifier.padding(top = R1.space.xs))
 }
 
@@ -397,7 +401,7 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "TRY", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "TRY", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             Spacer(Modifier.width(R1.space.xs))
             for (ex in examples) {
                 Box(
@@ -411,7 +415,7 @@ private fun ExampleChips(onPick: (String, String, String) -> Unit) {
                         )
                         .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 ) {
-                    Text(text = ex.label, style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = ex.label, style = responsiveType(R1.labelMicro), color = R1.InkSoft, maxLines = 1)
                 }
             }
         }
@@ -427,7 +431,7 @@ private fun ResultPanel(
 ) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = heading, style = R1.labelMicro, color = accent)
+            Text(text = heading, style = responsiveType(R1.labelMicro), color = accent)
             Spacer(Modifier.width(R1.space.s))
             Box(
                 modifier = Modifier
@@ -437,7 +441,7 @@ private fun ResultPanel(
                     .r1Pressable(onClick = onCopy, contentDescription = "Copy $heading to clipboard")
                     .padding(horizontal = R1.space.s, vertical = R1.space.xs),
             ) {
-                Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "COPY", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
         }
         Spacer(Modifier.padding(top = R1.space.xs))
@@ -449,7 +453,16 @@ private fun ResultPanel(
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .padding(horizontal = R1.space.s, vertical = R1.space.s),
         ) {
-            Text(text = body, style = R1.body, color = R1.Ink)
+            // The result body is pretty-printed JSON / a state dump that can run
+            // wide. Let it scroll horizontally so a long unbroken value (a base64
+            // blob, a long entity list) does not push the panel past the panel's
+            // capped width on big tiers or clip off the right edge on the R1.
+            Text(
+                text = body,
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+            )
         }
     }
 }

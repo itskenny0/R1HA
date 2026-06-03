@@ -40,13 +40,14 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
-import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
@@ -103,7 +104,7 @@ fun AgendaScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "AGENDA", onBack = onBack)
-        AdaptiveContent(modifier = Modifier.weight(1f)) {
+        R1CenteredContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.entries.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize(),
@@ -121,13 +122,13 @@ fun AgendaScreen(
                 ) {
                     Text(
                         text = "Agenda load failed: ${ui.error}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.StatusRed,
                     )
                 }
                 else -> AgendaBody(ui = ui, listState = listState, onToggle = vm::toggleCalendar, onRefresh = vm::refresh)
             }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
 }
 
@@ -159,7 +160,7 @@ private fun AgendaBody(
                     } else {
                         "No upcoming events in the next ${ui.windowDays} days."
                     }
-                    Text(text = msg, style = R1.body, color = R1.InkMuted)
+                    Text(text = msg, style = responsiveType(R1.body), color = R1.InkMuted)
                 }
             } else {
                 LazyColumn(
@@ -247,7 +248,7 @@ private fun DayHeader(header: String, count: Int) {
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = header,
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.AccentWarm,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -298,7 +299,7 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
                 }
                 Text(
                     text = event.summary,
-                    style = R1.bodyEmph,
+                    style = responsiveType(R1.bodyEmph),
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,

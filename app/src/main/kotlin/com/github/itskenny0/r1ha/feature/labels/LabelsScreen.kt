@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -41,6 +43,8 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -48,7 +52,6 @@ import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.flow.first
@@ -71,10 +74,14 @@ fun LabelsScreen(
     val vm: LabelsViewModel = viewModel(factory = LabelsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     val visibleLabels by vm.visibleLabels.collectAsState()
-    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid(
+        wheelInput = wheelInput,
+        gridState = gridState,
+        settings = settings,
+    )
     LaunchedEffect(Unit) { vm.refresh() }
     var expandedLabelId by remember { mutableStateOf<String?>(null) }
 
@@ -127,6 +134,7 @@ fun LabelsScreen(
                 )
             },
         )
+        val dimens = rememberResponsiveDimens()
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.labels.isEmpty() -> Box(
@@ -143,7 +151,7 @@ fun LabelsScreen(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
+                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
                 }
                 ui.labels.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
@@ -154,7 +162,7 @@ fun LabelsScreen(
                             "(\"needs batteries\", \"rec room AV\") you add in Home " +
                             "Assistant under Settings, Labels. Once you tag entities, " +
                             "devices, or areas they show up here.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -163,15 +171,21 @@ fun LabelsScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        state = listState,
+                    // On roomy tiers fan the label cards into dashboardColumns so
+                    // the wide panel reads as a tidy multi-column grid rather than
+                    // one stretched column; mini / compact stay a single column.
+                    // The search field and any empty-state line span the full row.
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = R1.space.m, vertical = R1.space.s,
+                            horizontal = dimens.screenGutter, vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        item(key = "__search") {
+                        item(key = "__search", span = { GridItemSpan(maxLineSpan) }) {
                             R1TextField(
                                 value = ui.query,
                                 onValueChange = { vm.setQuery(it) },
@@ -180,14 +194,14 @@ fun LabelsScreen(
                             )
                         }
                         if (visibleLabels.isEmpty()) {
-                            item(key = "__noresults") {
+                            item(key = "__noresults", span = { GridItemSpan(maxLineSpan) }) {
                                 Box(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xl),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
                                         text = "No labels match \"${ui.query}\".",
-                                        style = R1.labelMicro,
+                                        style = responsiveType(R1.labelMicro),
                                         color = R1.InkMuted,
                                     )
                                 }
@@ -295,7 +309,7 @@ private fun LabelRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = label.name,
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -303,7 +317,7 @@ private fun LabelRow(
                 if (!label.description.isNullOrBlank()) {
                     Text(
                         text = label.description,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -313,13 +327,13 @@ private fun LabelRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "${label.memberCount}",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = accent,
             )
             Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = if (expanded) "v" else ">",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
             )
         }
@@ -335,7 +349,7 @@ private fun LabelRow(
             if (membership.isEmpty) {
                 Text(
                     text = "Nothing is tagged with this label yet.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             } else {
@@ -420,7 +434,7 @@ private fun MemberGroup(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = m.name,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -428,7 +442,7 @@ private fun MemberGroup(
                     if (m.name != m.id) {
                         Text(
                             text = m.id,
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

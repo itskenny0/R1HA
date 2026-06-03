@@ -2,6 +2,8 @@ package com.github.itskenny0.r1ha.feature.updates
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +44,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -160,7 +163,7 @@ fun UpdatesScreen(
                 ) {
                     Text(
                         text = "Updates load failed: ${ui.error}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.StatusRed,
                     )
                 }
@@ -172,7 +175,7 @@ fun UpdatesScreen(
                         text = "No update entities. HA exposes update.* entries " +
                             "once the Supervisor / add-ons / integrations are " +
                             "installed and configured to report versions.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -257,7 +260,7 @@ private fun SummaryBand(ui: UpdatesViewModel.UiState) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(text = text, style = R1.labelMicro, color = color)
+        Text(text = text, style = responsiveType(R1.labelMicro), color = color)
     }
 }
 
@@ -333,7 +336,7 @@ private fun UpdateRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = entry.title,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -378,7 +381,7 @@ private fun UpdateRow(
         }
         Text(
             text = versionLine,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = statusColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -419,7 +422,7 @@ private fun UpdateRow(
             Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = entry.releaseSummary,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -502,7 +505,7 @@ private fun UpdateDetailDialog(
             Column {
                 Text(
                     text = entry.title,
-                    style = R1.sectionHeader,
+                    style = responsiveType(R1.sectionHeader),
                     color = R1.Ink,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -517,7 +520,12 @@ private fun UpdateDetailDialog(
             }
         },
         text = {
-            Column {
+            // The release-notes body is unbounded; on the mini R1 panel the
+            // version line + notes + changelog link + backup toggle can exceed
+            // the dialog's height, so scroll the body rather than clip it.
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+            ) {
                 // Version line: same priority as the row, with the in-progress
                 // tease swapped for the actual percentage when known.
                 val versionLine = when {
@@ -530,14 +538,14 @@ private fun UpdateDetailDialog(
                     entry.installedVersion != null -> "Installed: ${entry.installedVersion}"
                     else -> "No version reported"
                 }
-                Text(text = versionLine, style = R1.body, color = R1.Ink)
+                Text(text = versionLine, style = responsiveType(R1.body), color = R1.Ink)
                 if (!entry.releaseSummary.isNullOrBlank()) {
                     Spacer(Modifier.height(R1.space.s))
                     Text(text = "RELEASE NOTES", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.height(R1.space.xs))
                     Text(
                         text = entry.releaseSummary,
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -613,7 +621,7 @@ private fun UpdateDetailDialog(
                         Column {
                             Text(
                                 text = "Back up before installing",
-                                style = R1.body,
+                                style = responsiveType(R1.body),
                                 color = R1.Ink,
                             )
                             Text(

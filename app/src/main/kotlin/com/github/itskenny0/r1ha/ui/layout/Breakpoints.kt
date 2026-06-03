@@ -1,7 +1,12 @@
 package com.github.itskenny0.r1ha.ui.layout
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
@@ -62,14 +67,14 @@ fun ResponsiveColumn(
 }
 
 /**
- * Wraps screen content in a [Column] that fills the available space on every width, with no
- * max-width cap. An earlier version capped tablet content at 800 dp, but that letterboxed
- * list / form screens on wide displays (roughly half the screen on a 1920 dp panel), and the
- * card-based UI already adapts naturally to any width via weight-based and fillMaxWidth
- * interior layouts. Now a pure passthrough so call sites stay unchanged and future
- * width-specific behaviour can re-land here without touching every screen.
+ * Wraps screen content in a [Column], centred and width-capped on roomy tiers and full-bleed on
+ * the small ones. On R1 / compact the responsive [maxContentWidth] is unspecified, so content
+ * fills the panel exactly as before (every pixel kept). On medium and larger tiers it is centred
+ * and capped at the tier's [ResponsiveDimens.maxContentWidth] (840 / 1100 / 1320 dp) so list and
+ * form screens read as a centred column instead of one wall-wide line on a 13in panel. The cap
+ * is tier-aware and generous, so it does not reproduce the old fixed-800dp letterboxing.
  *
- * The [maxWidth] parameter is retained for API compatibility but ignored.
+ * The [maxWidth] parameter is retained for API compatibility but the tier cap is used instead.
  */
 @Composable
 fun AdaptiveContent(
@@ -77,5 +82,17 @@ fun AdaptiveContent(
     @Suppress("UNUSED_PARAMETER") maxWidth: Dp = 800.dp,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-    Column(modifier = modifier.fillMaxSize()) { content() }
+    val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+    if (!dimens.capsContentWidth) {
+        Column(modifier = modifier.fillMaxSize()) { content() }
+        return
+    }
+    Row(modifier = modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = dimens.maxContentWidth)
+                .fillMaxWidth()
+                .fillMaxHeight(),
+        ) { content() }
+    }
 }

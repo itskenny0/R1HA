@@ -37,11 +37,13 @@ import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import java.util.Locale
 
@@ -74,6 +76,10 @@ fun DeviceDetailScreen(
         )
         val totalEntities = detail.totalEntities
         val reporting = detail.reportingEntities
+        // Centre + width-cap the detail column on roomy tiers (medium+) so the
+        // metadata and entity list read as a tidy centred block instead of one
+        // wall-wide line on a tablet / desktop panel; mini / compact fill.
+        AdaptiveContent(modifier = Modifier.weight(1f)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -86,7 +92,7 @@ fun DeviceDetailScreen(
                     Column(modifier = Modifier.fillMaxWidth().padding(top = R1.space.xl)) {
                         Text(
                             text = "No entities registered for this device.",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.InkMuted,
                         )
                     }
@@ -109,7 +115,7 @@ fun DeviceDetailScreen(
                             if (coverage != null) {
                                 Text(
                                     text = coverage.uppercase(Locale.US),
-                                    style = R1.labelMicro,
+                                    style = responsiveType(R1.labelMicro),
                                     color = R1.AccentCool,
                                     modifier = Modifier.padding(top = R1.space.xxs),
                                 )
@@ -132,6 +138,7 @@ fun DeviceDetailScreen(
                     }
                 }
             }
+        }
         }
     }
 }
@@ -222,14 +229,14 @@ private fun MetaRow(label: String, value: String?) {
     ) {
         Text(
             text = label,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
             modifier = Modifier.width(56.dp),
         )
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = value,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
             maxLines = 3,
@@ -264,7 +271,7 @@ private fun DomainHeader(group: DeviceEntityGroup) {
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = group.domain.replace('_', ' ').uppercase(Locale.US),
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = accent,
         )
         Spacer(Modifier.width(R1.space.m))
@@ -351,7 +358,7 @@ private fun EntityDetailRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = entity.displayName,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = if (muted) R1.InkMuted else R1.Ink,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -363,14 +370,14 @@ private fun EntityDetailRow(
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = if (expanded) "v" else ">",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                 )
             }
         }
         Text(
             text = entity.entityId,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -386,7 +393,7 @@ private fun EntityDetailRow(
         if (tags.isNotEmpty()) {
             Text(
                 text = tags.joinToString(" : "),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -421,7 +428,7 @@ private fun ExpandedEntityDetail(entity: EntityRegistryEntry, live: EntityState?
         if (lines.isEmpty()) {
             Text(
                 text = if (live == null) "No live attributes reported." else "No extra attributes.",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
         } else {
@@ -429,14 +436,14 @@ private fun ExpandedEntityDetail(entity: EntityRegistryEntry, live: EntityState?
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xxs)) {
                     Text(
                         text = label,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkMuted,
                         modifier = Modifier.width(56.dp),
                     )
                     Spacer(Modifier.width(R1.space.s))
                     Text(
                         text = value,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -453,7 +460,7 @@ private fun EntityStatePill(entity: EntityRegistryEntry, live: EntityState?) {
     if (live == null) {
         // The registry knows this entity but it isn't in the live state
         // set: disabled, or its integration isn't currently reporting.
-        Text(text = "no live state", style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = "no live state", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         return
     }
     val text = liveStateLabel(live)
@@ -462,7 +469,7 @@ private fun EntityStatePill(entity: EntityRegistryEntry, live: EntityState?) {
         live.isOn -> R1.AccentGreen
         else -> R1.InkSoft
     }
-    Text(text = text, style = R1.labelMicro, color = tone, maxLines = 1)
+    Text(text = text, style = responsiveType(R1.labelMicro), color = tone, maxLines = 1)
 }
 
 /**

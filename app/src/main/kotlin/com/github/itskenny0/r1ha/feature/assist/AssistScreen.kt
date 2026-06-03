@@ -210,10 +210,23 @@ fun AssistScreen(
                 },
             )
         }
-        // On tablets the chat + input stay within 800 dp centred so a long
-        // conversation doesn't stretch bubbles across a 1280 dp panel.
+        // On tablets the chat + input stay centred inside a width-capped island
+        // (the tier's maxContentWidth) so a long conversation doesn't stretch
+        // bubbles, macros, and the input row across a 1280 dp+ panel. On R1 /
+        // compact the cap is Unspecified, so the column fills full-bleed exactly
+        // as before. AdaptiveContent itself is a fill-size passthrough, so the
+        // cap is applied here on the inner column.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
         AdaptiveContent(modifier = Modifier.weight(1f)) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        val contentColumnModifier = if (dimens.capsContentWidth) {
+            Modifier
+                .align(Alignment.CenterHorizontally)
+                .widthIn(max = dimens.maxContentWidth)
+                .fillMaxSize()
+        } else {
+            Modifier.fillMaxSize()
+        }
+        Column(modifier = contentColumnModifier) {
         // Transcript: fills the remainder. Empty state shows a "How can I
         // help?" prompt mirroring HA's own Assist greeting so the screen
         // doesn't look broken before the first send.
@@ -262,7 +275,7 @@ fun AssistScreen(
                     Spacer(Modifier.height(R1.space.s))
                     Text(
                         text = "Type below or tap one of these prompts to start.",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                     Spacer(Modifier.height(R1.space.m))
@@ -297,7 +310,12 @@ fun AssistScreen(
                                             .padding(horizontal = R1.space.m, vertical = R1.space.s),
                                         contentAlignment = Alignment.CenterStart,
                                     ) {
-                                        Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
+                                        Text(
+                                            text = example,
+                                            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                                            color = R1.Ink,
+                                            maxLines = 2,
+                                        )
                                     }
                                 }
                                 // If row has only 1 item, fill the second slot with empty weight
@@ -324,7 +342,12 @@ fun AssistScreen(
                                     .padding(horizontal = R1.space.m, vertical = R1.space.s),
                                 contentAlignment = Alignment.CenterStart,
                             ) {
-                                Text(text = example, style = R1.body, color = R1.Ink, maxLines = 2)
+                                Text(
+                                    text = example,
+                                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                                    color = R1.Ink,
+                                    maxLines = 2,
+                                )
                             }
                         }
                     }
@@ -624,12 +647,19 @@ private fun AssistBubble(msg: AssistMessage) {
     // doesn't conflict with tap-to-do-nothing (the rest of the bubble currently
     // has no tap affordance).
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    // Bubble max-width scales with the available container: narrower on R1/phones
-    // so bubbles don't fill the whole width; wider on tablets (the chat is inside
-    // an 800 dp AdaptiveContent island) so longer responses don't word-wrap
-    // into single-word lines.
-    val bubbleMaxWidth =
-        if (com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.isAtLeastMedium) 540.dp else 240.dp
+    // Bubble max-width scales with the tier: narrow on R1/phones so a bubble
+    // doesn't fill the whole width, stepping up on each larger tier so longer
+    // replies don't word-wrap into single-word lines while still leaving room
+    // on the opposite side for the chat-style alternation to read. The bubble
+    // stays comfortably under the tier's capped content island, so it never
+    // stretches edge to edge on a big panel.
+    val bubbleMaxWidth = when (com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.tier) {
+        com.github.itskenny0.r1ha.ui.components.WindowTier.R1 -> 240.dp
+        com.github.itskenny0.r1ha.ui.components.WindowTier.COMPACT -> 300.dp
+        com.github.itskenny0.r1ha.ui.components.WindowTier.MEDIUM -> 480.dp
+        com.github.itskenny0.r1ha.ui.components.WindowTier.EXPANDED -> 600.dp
+        com.github.itskenny0.r1ha.ui.components.WindowTier.EXTRA_LARGE -> 680.dp
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
@@ -650,7 +680,11 @@ private fun AssistBubble(msg: AssistMessage) {
                 )
                 .padding(horizontal = R1.space.s, vertical = R1.space.xs),
         ) {
-            Text(text = msg.text, style = R1.body, color = textColor)
+            Text(
+                text = msg.text,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                color = textColor,
+            )
         }
     }
 }

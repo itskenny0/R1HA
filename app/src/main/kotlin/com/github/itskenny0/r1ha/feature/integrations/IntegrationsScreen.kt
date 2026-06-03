@@ -42,6 +42,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -289,7 +290,7 @@ private fun DomainHeader(
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = domain.uppercase(),
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.AccentWarm,
         )
         Spacer(Modifier.width(R1.space.m))
@@ -370,7 +371,7 @@ private fun EntryRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = entry.title,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = if (disabled) R1.InkMuted else R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
@@ -480,7 +481,7 @@ private fun EmptyState(message: String) {
         modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = message, style = R1.body, color = R1.InkMuted)
+        Text(text = message, style = responsiveType(R1.body), color = R1.InkMuted)
     }
 }
 
@@ -493,7 +494,7 @@ private fun ErrorState(message: String) {
     ) {
         Text(text = "COULDN'T LOAD INTEGRATIONS", style = R1.labelMicro, color = R1.StatusAmber)
         Spacer(Modifier.height(R1.space.s))
-        Text(text = message, style = R1.body, color = R1.InkSoft)
+        Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
         Spacer(Modifier.height(R1.space.m))
         Text(
             text = "config_entries only flows over the live WebSocket. Retry once it reconnects.",

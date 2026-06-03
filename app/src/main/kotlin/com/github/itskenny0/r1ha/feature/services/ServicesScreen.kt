@@ -38,6 +38,7 @@ import com.github.itskenny0.r1ha.core.ha.HaService
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -109,7 +110,7 @@ fun ServicesScreen(
                 // doesn't think their HA install is empty.
                 Text(
                     text = "Services load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -120,7 +121,7 @@ fun ServicesScreen(
                 Text(
                     text = if (ui.query.isNotBlank()) "No matches for '${ui.query}'."
                     else "No services reported by HA.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -179,7 +180,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
             .padding(horizontal = R1.space.m, vertical = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = "FIND", style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.padding(end = R1.space.s))
+        Text(text = "FIND", style = responsiveType(R1.labelMicro), color = R1.InkMuted, modifier = Modifier.padding(end = R1.space.s))
         Box(modifier = Modifier.weight(1f)) {
             R1TextField(
                 value = query,
@@ -196,7 +197,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
                     .r1Pressable(onClick = { onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "✕", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
         }
     }
@@ -218,11 +219,17 @@ private fun DomainRow(domain: String, count: Int, expanded: Boolean, onToggle: (
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = domain.uppercase(), style = R1.body, color = R1.AccentWarm, modifier = Modifier.weight(1f))
+        Text(
+            text = domain.uppercase(),
+            style = responsiveType(R1.body),
+            color = R1.AccentWarm,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+        )
         Spacer(Modifier.width(R1.space.s))
-        Text(text = "$count", style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = "$count", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         Spacer(Modifier.width(R1.space.xs))
-        Text(text = if (expanded) "▾" else "▸", style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = if (expanded) "▾" else "▸", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
     }
 }
 
@@ -243,17 +250,18 @@ private fun ServiceRow(domain: String, service: HaService, onCopy: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = fqn,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
             )
-            Text(text = "COPY", style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.width(R1.space.s))
+            Text(text = "COPY", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
         if (!service.description.isNullOrBlank()) {
             Text(
                 text = service.description,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 3,
             )
@@ -261,7 +269,7 @@ private fun ServiceRow(domain: String, service: HaService, onCopy: () -> Unit) {
         if (service.fieldNames.isNotEmpty()) {
             Text(
                 text = "fields: ${service.fieldNames.joinToString(", ")}",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 maxLines = 2,
             )

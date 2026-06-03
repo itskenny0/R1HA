@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -330,16 +331,35 @@ private fun ViewModeBody(
         com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(stateMap ?: emptyMap())
     }
     val tier = LocalWindowTier.current.tier
+    val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
     val columns = dashboardColumnCount(tier, requestedColumns)
     val scroll = rememberScrollState()
+    // The scroll viewport fills the window so the scrollbar tracks the full
+    // height; the inner content column carries the responsive gutter and, on
+    // roomy tiers, a centred max-width cap so the badge row and card grid read
+    // as a centred column instead of one wall-wide line on a 13in panel. On
+    // R1 / compact maxContentWidth is Unspecified, so widthIn is a no-op and the
+    // content fills the narrow panel exactly as before.
+    val contentWidth = if (dimens.capsContentWidth) {
+        Modifier.widthIn(max = dimens.maxContentWidth)
+    } else {
+        Modifier
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .verticalScroll(scroll),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(contentWidth)
+            .padding(horizontal = dimens.screenGutter, vertical = dimens.sectionGap),
     ) {
         // View badges ("chips on top"): a horizontal, scrollable row above the
-        // cards. Renders nothing (and adds no gap) when the view has none.
+        // cards. Renders nothing (and adds no gap) when the view has none. The
+        // row itself scrolls horizontally so a 10+ badge view never clips on R1.
         if (badges.isNotEmpty()) {
             LovelaceBadgeRow(
                 badges = badges,
@@ -409,6 +429,7 @@ private fun ViewModeBody(
             }
         }
         Spacer(Modifier.height(28.dp))
+    }
     }
 }
 
@@ -489,11 +510,25 @@ private fun EditModeBody(
             modifier = Modifier.fillMaxSize(),
         ) { item, handle, isDragging ->
             val idx = cards.indexOf(item)
+            // Centre + cap each edit card on roomy tiers so the reorder list
+            // doesn't stretch one card wall-wide on a 13in panel. The drag
+            // column itself stays full-width so the long-press hit area and
+            // drag math are untouched; only the visible card is capped. On
+            // R1 / compact maxContentWidth is Unspecified, so widthIn is a
+            // no-op and the card fills the narrow panel as before.
+            val editDimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+            val editCap = if (editDimens.capsContentWidth) {
+                Modifier.widthIn(max = editDimens.maxContentWidth)
+            } else {
+                Modifier
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+              Column(modifier = Modifier.fillMaxWidth().then(editCap)) {
                 EditCardWrapper(
                     rendered = item,
                     isDragging = isDragging,
@@ -501,6 +536,7 @@ private fun EditModeBody(
                     onEdit = { onEdit(idx) },
                     onDelete = { onDelete(idx) },
                 )
+              }
             }
         }
         // Floating add-card chip in the lower-right corner.
@@ -580,12 +616,15 @@ private fun ViewEmpty(editMode: Boolean, onAddCard: () -> Unit) {
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "Empty view", style = R1.screenTitle, color = R1.Ink)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 420.dp),
+        ) {
+            Text(text = "Empty view", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.screenTitle), color = R1.Ink)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = if (editMode) "Tap ADD CARD below to insert one." else "This view has no cards. Toggle EDIT to add one.",
-                style = R1.body,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                 color = R1.InkSoft,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -621,16 +660,17 @@ private fun StrategyFallback(onOpenLovelace: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
+                .widthIn(max = 520.dp)
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeM)
                 .padding(horizontal = 20.dp, vertical = 24.dp),
         ) {
-            Text(text = "Generated dashboard", style = R1.screenTitle, color = R1.Ink)
+            Text(text = "Generated dashboard", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.screenTitle), color = R1.Ink)
             Spacer(Modifier.height(10.dp))
             Text(
                 text = "This dashboard is built by a Home Assistant strategy, so its cards are assembled on the server. R1HA can't recreate that layout natively, but you can open it in the full Lovelace view.",
-                style = R1.body,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                 color = R1.InkSoft,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -662,10 +702,13 @@ private fun LoadingScrim(text: String) {
 @Composable
 private fun ErrorScrim(text: String) {
     Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "Couldn't load", style = R1.screenTitle, color = R1.StatusAmber)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.widthIn(max = 420.dp),
+        ) {
+            Text(text = "Couldn't load", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.screenTitle), color = R1.StatusAmber)
             Spacer(Modifier.height(8.dp))
-            Text(text, style = R1.body, color = R1.InkSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(text, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }

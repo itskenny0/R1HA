@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityState
@@ -48,6 +49,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides
 import com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AlarmPanel
 import com.github.itskenny0.r1ha.ui.components.ClimatePanel
 import com.github.itskenny0.r1ha.ui.components.CoverPanel
@@ -106,6 +109,18 @@ fun MoreInfoSheet(
     }
     val overrides = LocalEntityOverrides.current
 
+    // Width cap for the panel itself. On mini / compact (maxContentWidth == Unspecified) the
+    // sheet fills the panel edge-to-edge as a true bottom sheet. On medium+ tiers it stays a
+    // centred, width-capped card rather than stretching wall-wide: clamp the tier's content
+    // cap into a sheet-sensible 560..640 dp band so a 13" panel reads a focused dialog, not
+    // one giant line.
+    val dimens = rememberResponsiveDimens()
+    val panelMaxWidth: Dp = if (dimens.capsContentWidth) {
+        dimens.maxContentWidth.coerceIn(560.dp, 640.dp)
+    } else {
+        520.dp
+    }
+
     // Dim scrim. Tapping outside the panel dismisses, matching the platform bottom-sheet
     // idiom. The panel itself swallows taps so a stray tap on a control's gutter doesn't
     // close the sheet.
@@ -119,7 +134,7 @@ fun MoreInfoSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 520.dp)
+                .widthIn(max = panelMaxWidth)
                 .heightIn(max = 9_000.dp)
                 .clip(R1.ShapeM)
                 .background(R1.Bg)
@@ -208,7 +223,7 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
             Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = entity.friendlyName.ifBlank { entity.id.value },
-                style = R1.titleCard,
+                style = responsiveType(R1.titleCard),
                 color = R1.Ink,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -218,7 +233,7 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = value,
-                    style = R1.numeralM.copy(fontWeight = FontWeight.SemiBold),
+                    style = responsiveType(R1.numeralM).copy(fontWeight = FontWeight.SemiBold),
                     color = if (entity.isAvailable) accent else R1.InkMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -399,7 +414,7 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
         val maxK = entity.maxColorTempK
         if (supportsCt && minK != null && maxK != null && maxK > minK) {
             val current = entity.colorTempK?.coerceIn(minK, maxK) ?: ((minK + maxK) / 2)
-            Text(text = "WHITE TEMP", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "WHITE TEMP", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             var pos by remember(current) { mutableFloatStateOf(current.toFloat()) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
@@ -415,7 +430,7 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                         .semantics { contentDescription = "Colour temperature" },
                 )
                 Spacer(Modifier.width(R1.space.s))
-                Text(text = "${pos.toInt()}K", style = R1.labelMicro, color = accent)
+                Text(text = "${pos.toInt()}K", style = responsiveType(R1.labelMicro), color = accent)
             }
         }
         // Colour swatches — HA's more-info exposes an RGB/HS picker plus favorite
@@ -426,7 +441,7 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
         val colorModes = entity.supportedColorModes.map { it.lowercase() }
         val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
         if (supportsColor) {
-            Text(text = "COLOR", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "COLOR", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             val currentRgb = entity.attrIntList("rgb_color")
             ChipStrip {
                 COLOR_SWATCHES.forEach { (label, hue) ->
@@ -470,7 +485,7 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
         }
         // Effects — reuse the wire-level setter; chips so the user can pick by name.
         if (entity.effectList.isNotEmpty()) {
-            Text(text = "EFFECT", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "EFFECT", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             ChipStrip {
                 entity.effectList.forEach { fx ->
                     DetailChip(
@@ -491,10 +506,10 @@ private fun MediaControl(entity: EntityState, accent: Color, dispatch: (ServiceC
         if (!entity.mediaTitle.isNullOrBlank() || !entity.mediaArtist.isNullOrBlank()) {
             Column {
                 entity.mediaTitle?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = R1.bodyEmph, color = R1.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = responsiveType(R1.bodyEmph), color = R1.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 entity.mediaArtist?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = R1.body, color = R1.InkSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(it, style = responsiveType(R1.body), color = R1.InkSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -651,7 +666,7 @@ private fun ClimateStepper(entity: EntityState, accent: Color, dispatch: (Servic
             if (nowHum != null) add("RH ${formatNumber(nowHum)}%")
         }
         if (parts.isNotEmpty()) {
-            Text(text = parts.joinToString("  ·  "), style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = parts.joinToString("  ·  "), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
     }
 }
@@ -666,14 +681,16 @@ private fun TempStepperRow(
     onRaise: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-        Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Row(verticalAlignment = Alignment.CenterVertically) {
             StepperButton("−", "Lower $label", accent, enabled = value != null, onClick = onLower)
             Spacer(Modifier.width(R1.space.m))
             Text(
                 text = value?.let { formatNumber(it) + unit } ?: "—",
-                style = R1.numeralM,
+                style = responsiveType(R1.numeralM),
                 color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.m))
@@ -690,7 +707,7 @@ private fun NumberStepper(entity: EntityState, accent: Color, dispatch: (Service
     val maxV = entity.maxRaw
     val unit = entity.unit ?: ""
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-        Text(text = "VALUE", style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = "VALUE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Row(verticalAlignment = Alignment.CenterVertically) {
             StepperButton("−", "Decrease value", accent, enabled = value != null) {
                 if (value != null) {
@@ -701,8 +718,10 @@ private fun NumberStepper(entity: EntityState, accent: Color, dispatch: (Service
             Spacer(Modifier.width(R1.space.m))
             Text(
                 text = value?.let { formatNumber(it) + unit } ?: "—",
-                style = R1.numeralM,
+                style = responsiveType(R1.numeralM),
                 color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.m))
@@ -720,7 +739,7 @@ private fun NumberStepper(entity: EntityState, accent: Color, dispatch: (Service
 private fun SelectControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
     if (entity.selectOptions.isEmpty()) return
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-        Text(text = "OPTIONS", style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = "OPTIONS", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         ChipStrip(wrap = true) {
             entity.selectOptions.forEach { opt ->
                 DetailChip(
@@ -760,7 +779,7 @@ private fun AttributesSection(entity: EntityState) {
         .sortedBy { it.key }
     if (rows.isEmpty()) return
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
-        Text(text = "ATTRIBUTES", style = R1.sectionHeader, color = R1.InkSoft)
+        Text(text = "ATTRIBUTES", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -773,7 +792,7 @@ private fun AttributesSection(entity: EntityState) {
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
                         text = humanizeKey(key),
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -783,7 +802,7 @@ private fun AttributesSection(entity: EntityState) {
                     )
                     Text(
                         text = formatAttributeValue(value),
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.Ink,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -810,7 +829,7 @@ private fun HistorySection(haRepository: HaRepository, entity: EntityState, acce
     val history by rememberHistory(haRepository, entity.id.value, enabled = enabled)
     if (!enabled) return
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
-        Text(text = "HISTORY", style = R1.sectionHeader, color = R1.InkSoft)
+        Text(text = "HISTORY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
         when (val pts = history) {
             null -> Box(
                 modifier = Modifier
@@ -835,8 +854,15 @@ private fun PercentControl(label: String, pct: Int, accent: Color, onChange: (In
     var pos by remember(pct) { mutableFloatStateOf(pct.toFloat()) }
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = label, style = R1.labelMicro, color = R1.InkMuted, modifier = Modifier.weight(1f))
-            Text(text = "${pos.toInt()}%", style = R1.labelMicro, color = accent)
+            Text(
+                text = label,
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(text = "${pos.toInt()}%", style = responsiveType(R1.labelMicro), color = accent)
         }
         Slider(
             value = pos,
@@ -876,7 +902,7 @@ private fun ActionButton(label: String, accent: Color, onClick: () -> Unit) {
             .r1Pressable(onClick = onClick, contentDescription = label),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.label, color = R1.Bg)
+        Text(text = label, style = responsiveType(R1.label), color = R1.Bg, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -958,7 +984,7 @@ private fun DetailChip(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.labelMicro, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -994,22 +1020,22 @@ private fun SectionWrap(content: @Composable () -> Unit) {
 @Composable
 private fun LoadingBody(onDismiss: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = "LOADING", style = R1.sectionHeader, color = R1.InkSoft, modifier = Modifier.weight(1f))
+        Text(text = "LOADING", style = responsiveType(R1.sectionHeader), color = R1.InkSoft, modifier = Modifier.weight(1f))
         CloseButton(onDismiss)
     }
     Spacer(Modifier.height(R1.space.l))
-    Text(text = "Fetching live state…", style = R1.body, color = R1.InkMuted)
+    Text(text = "Fetching live state…", style = responsiveType(R1.body), color = R1.InkMuted)
     Spacer(Modifier.height(R1.space.l))
 }
 
 @Composable
 private fun ErrorBody(message: String, onDismiss: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = "UNAVAILABLE", style = R1.sectionHeader, color = R1.StatusAmber, modifier = Modifier.weight(1f))
+        Text(text = "UNAVAILABLE", style = responsiveType(R1.sectionHeader), color = R1.StatusAmber, modifier = Modifier.weight(1f))
         CloseButton(onDismiss)
     }
     Spacer(Modifier.height(R1.space.l))
-    Text(text = message, style = R1.body, color = R1.InkSoft)
+    Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
     Spacer(Modifier.height(R1.space.l))
 }
 

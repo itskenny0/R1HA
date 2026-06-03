@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.scenes
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -42,6 +44,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Row
@@ -144,7 +147,7 @@ fun ScenesScreen(
                     ) {
                         Text(
                             text = "Couldn't load scenes and scripts: ${ui.error}",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.StatusRed,
                         )
                         // Explicit retry: the empty / error Box isn't scrollable so
@@ -175,7 +178,7 @@ fun ScenesScreen(
                         ui.query.isNotBlank() -> "No matches for '${ui.query}'. Clear the search or try different terms."
                         else -> "Nothing under this filter. Switch to ALL to see everything."
                     }
-                    Text(text = msg, style = R1.body, color = R1.InkMuted)
+                    Text(text = msg, style = responsiveType(R1.body), color = R1.InkMuted)
                 }
                 // Pull-to-refresh wrap re-issues /api/states to pick up any
                 // new scenes / scripts the user added in HA without backing
@@ -432,7 +435,7 @@ private fun MasterActionsRow(
     // visual weight low while still surfacing the gesture.
     Text(
         text = "Tap to arm, tap again to confirm; long-press LIGHTS for ON",
-        style = R1.labelMicro,
+        style = responsiveType(R1.labelMicro),
         color = R1.InkMuted,
         modifier = Modifier
             .fillMaxWidth()
@@ -559,9 +562,14 @@ private fun FilterChips(
         ScenesViewModel.Filter.SCENES to "SCENES",
         ScenesViewModel.Filter.SCRIPTS to "SCRIPTS",
     )
+    // Scrolls horizontally so the three count chips never clip on the R1's ~240dp
+    // panel (three labels + counts at the small gap can exceed the width once the
+    // counts hit double digits). Roomier tiers just show them inline with slack.
+    val scroll = rememberScrollState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(scroll)
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         horizontalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {

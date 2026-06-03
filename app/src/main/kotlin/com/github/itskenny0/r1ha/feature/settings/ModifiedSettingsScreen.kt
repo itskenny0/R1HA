@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -59,7 +60,19 @@ fun ModifiedSettingsScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "MODIFIED SETTINGS", onBack = onBack)
+        // AdaptiveContent is a fill-size passthrough; centre + width-cap the audit
+        // list on tablet / desktop tiers so each modified row reads as a column.
+        // R1 / compact stay Unspecified = fill.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
         AdaptiveContent(modifier = Modifier.weight(1f)) {
+            val listModifier = if (dimens.capsContentWidth) {
+                Modifier
+                    .fillMaxSize()
+                    .widthIn(max = dimens.maxContentWidth)
+                    .align(Alignment.CenterHorizontally)
+            } else {
+                Modifier.fillMaxSize()
+            }
             if (modified.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
@@ -76,7 +89,7 @@ fun ModifiedSettingsScreen(
             }
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = listModifier,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
                     horizontal = R1.space.m,
                     vertical = R1.space.s,

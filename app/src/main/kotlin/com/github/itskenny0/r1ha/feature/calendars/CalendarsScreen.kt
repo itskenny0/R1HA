@@ -37,6 +37,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -117,7 +118,7 @@ fun CalendarsScreen(
                 )
             },
         )
-        com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
+        com.github.itskenny0.r1ha.ui.components.R1CenteredContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -137,7 +138,7 @@ fun CalendarsScreen(
                 // calendar integrations configured" empty state.
                 Text(
                     text = "Calendars load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -147,7 +148,7 @@ fun CalendarsScreen(
             ) {
                 Text(
                     text = "No calendar entities in HA. Add a calendar integration to see them here.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -171,7 +172,7 @@ fun CalendarsScreen(
                 }
             }
         }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
 }
 
@@ -224,7 +225,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
             }
             Text(
                 text = c.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -253,7 +254,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = c.eventMessage,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkSoft,
                 maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

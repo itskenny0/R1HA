@@ -18,6 +18,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -50,6 +53,8 @@ import com.github.itskenny0.r1ha.core.ha.MediaBrowseEntry
 import com.github.itskenny0.r1ha.core.ha.MediaBrowseResult
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
@@ -291,8 +296,9 @@ fun MediaBrowseScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "MEDIA BROWSE", onBack = onBack)
+        val dimens = rememberResponsiveDimens()
         AdaptiveContent(modifier = Modifier.weight(1f)) {
-            Column(modifier = Modifier.fillMaxSize().padding(R1.space.m)) {
+            Column(modifier = Modifier.fillMaxSize().padding(dimens.screenGutter)) {
                 // Entity binding row — sits at top so the user can swap the
                 // media_player target without losing browse state for the
                 // current one.
@@ -329,7 +335,7 @@ fun MediaBrowseScreen(
                             .padding(horizontal = R1.space.m, vertical = R1.space.s),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "BROWSE", style = R1.labelMicro, color = R1.AccentWarm)
+                        Text(text = "BROWSE", style = responsiveType(R1.labelMicro), color = R1.AccentWarm)
                     }
                 }
                 Spacer(Modifier.size(R1.space.s))
@@ -352,11 +358,12 @@ fun MediaBrowseScreen(
                             },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val crumbStyle = responsiveType(R1.labelMicro)
                         ui.crumbs.forEachIndexed { i, c ->
-                            if (i > 0) Text(text = " / ", style = R1.labelMicro, color = R1.InkMuted)
+                            if (i > 0) Text(text = " / ", style = crumbStyle, color = R1.InkMuted)
                             Text(
                                 text = c.title,
-                                style = R1.labelMicro,
+                                style = crumbStyle,
                                 color = if (i == ui.crumbs.lastIndex) R1.Ink else R1.InkMuted,
                             )
                         }
@@ -376,7 +383,7 @@ fun MediaBrowseScreen(
                                 .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(text = "↑ UP", style = R1.labelMicro, color = R1.InkSoft)
+                            Text(text = "↑ UP", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                         }
                         Spacer(Modifier.size(R1.space.s))
                     }
@@ -410,19 +417,19 @@ fun MediaBrowseScreen(
                         // and entity-prompt states below.
                         Text(
                             text = "Browse failed: ${ui.error}",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.StatusRed,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                         )
                         Text(
                             text = "Tap BROWSE to retry, or pick another media_player.",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkMuted,
                         )
                     }
                     ui.entityId == null -> Text(
                         text = "Pick a media_player entity above to browse its library.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                     )
@@ -437,7 +444,7 @@ fun MediaBrowseScreen(
                             item {
                                 Text(
                                     text = "This folder is empty.",
-                                    style = R1.body,
+                                    style = responsiveType(R1.body),
                                     color = R1.InkMuted,
                                     modifier = Modifier.semantics {
                                         liveRegion = LiveRegionMode.Polite
@@ -451,9 +458,17 @@ fun MediaBrowseScreen(
                         onRefresh = { vm.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        LazyColumn(
+                        // Single readable column on the narrow tiers (R1 / compact /
+                        // phone) where a full-width row reads best; media browsers are
+                        // grid-heavy, so the roomy tiers that already centre + cap the
+                        // content flow the entries into multiple columns to use the
+                        // extra width instead of stretching one tall list.
+                        val mediaColumns = if (dimens.capsContentWidth) dimens.gridColumns else 1
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(mediaColumns),
                             modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                         ) {
                             items(ui.children, key = { it.mediaContentId + "|" + it.mediaContentType }) { entry ->
                                 val playKey = entry.mediaContentId + "|" + entry.mediaContentType
@@ -552,17 +567,25 @@ private fun EntryRow(
                 else -> R1.InkMuted
             }
             Box(modifier = Modifier.size(R1.space.xxl), contentAlignment = Alignment.Center) {
-                Text(text = glyph, style = R1.bodyEmph, color = glyphColor)
+                Text(text = glyph, style = responsiveType(R1.bodyEmph), color = glyphColor)
             }
         }
         Spacer(Modifier.width(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = entry.title, style = R1.body, color = R1.Ink, maxLines = 1)
+            Text(
+                text = entry.title,
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             if (!entry.mediaClass.isNullOrBlank()) {
                 Text(
                     text = entry.mediaClass.uppercase(),
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
@@ -583,14 +606,14 @@ private fun EntryRow(
                     .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "PLAY", style = R1.labelMicro, color = R1.AccentCool)
+                Text(text = "PLAY", style = responsiveType(R1.labelMicro), color = R1.AccentCool)
             }
         }
         if (entry.canExpand) {
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "›",
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.InkMuted,
                 // Decorative: the merged row label already states "tap to open".
                 modifier = Modifier.semantics { contentDescription = "" },

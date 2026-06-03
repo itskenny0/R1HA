@@ -46,13 +46,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
-import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -147,7 +148,7 @@ fun CalendarEventsScreen(
         // append an ellipsis instead of a hard mid-word cut so the truncation
         // reads as intentional ("Work Calend…" not "Work Calend").
         R1TopBar(title = ellipsize(calendarName.uppercase(), 20), onBack = onBack)
-        AdaptiveContent(modifier = Modifier.weight(1f)) {
+        R1CenteredContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.events.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize(),
@@ -163,7 +164,7 @@ fun CalendarEventsScreen(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
+                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
                 }
                 ui.events.isEmpty() -> Box(
                     modifier = Modifier.fillMaxSize().padding(R1.space.xl),
@@ -171,7 +172,7 @@ fun CalendarEventsScreen(
                 ) {
                     Text(
                         text = "No events in the next ${ui.windowDays} days.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -212,7 +213,7 @@ fun CalendarEventsScreen(
                     }
                 }
             }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
 }
 
@@ -236,7 +237,7 @@ private fun DayHeader(header: String, count: Int) {
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = header,
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.AccentWarm,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -278,7 +279,7 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean, now: Instant) {
             }
             Text(
                 text = e.summary,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

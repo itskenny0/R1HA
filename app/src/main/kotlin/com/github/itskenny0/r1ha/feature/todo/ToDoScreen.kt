@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -45,6 +46,7 @@ import com.github.itskenny0.r1ha.core.ha.ToDoList
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -157,7 +159,7 @@ fun ToDoScreen(
                 if (ui.error != null && ui.items.isEmpty() && ui.lists.isNotEmpty()) {
                     Text(
                         text = "Error: ${ui.error}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.StatusRed,
                         modifier = Modifier.padding(horizontal = R1.space.m, vertical = R1.space.s),
                     )
@@ -280,7 +282,7 @@ private fun ItemList(
 private fun SectionHeader(text: String) {
     Text(
         text = text,
-        style = R1.sectionHeader,
+        style = responsiveType(R1.sectionHeader),
         color = R1.InkSoft,
         modifier = Modifier
             .fillMaxWidth()
@@ -310,7 +312,7 @@ private fun CompletedHeader(
     ) {
         Text(
             text = "COMPLETED ($count)",
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
         )
@@ -380,7 +382,7 @@ private fun ItemRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = item.summary,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = if (item.completed) R1.InkMuted else R1.Ink,
                 textDecoration = if (item.completed) TextDecoration.LineThrough else null,
             )
@@ -397,7 +399,7 @@ private fun ItemRow(
                 }
                 Text(
                     text = "DUE ${due.label}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = dueColor,
                 )
             }
@@ -405,7 +407,7 @@ private fun ItemRow(
             if (!description.isNullOrBlank()) {
                 Text(
                     text = description,
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -440,7 +442,7 @@ private fun IconGlyph(
             .r1Pressable(onClick = onClick, contentDescription = contentDescription),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = glyph, style = R1.label, color = R1.InkMuted)
+        Text(text = glyph, style = responsiveType(R1.label), color = R1.InkMuted)
     }
 }
 
@@ -479,7 +481,7 @@ private fun AddItemRow(
         ) {
             Text(
                 text = "ADD",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (canSubmit) R1.Bg else R1.InkMuted,
             )
         }
@@ -502,13 +504,17 @@ private fun EditItemDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // Cap so the rename sheet reads as a centred card on roomy tiers
+                // instead of stretching wall-wide; the platform Dialog already
+                // keeps it inset from the edges on the mini panel.
+                .widthIn(max = 480.dp)
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
                 .padding(R1.space.l),
             verticalArrangement = Arrangement.spacedBy(R1.space.m),
         ) {
-            Text(text = "EDIT ITEM", style = R1.sectionHeader, color = R1.InkSoft)
+            Text(text = "EDIT ITEM", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
             R1TextField(
                 value = text,
                 onValueChange = { text = it },
@@ -541,7 +547,7 @@ private fun EditItemDialog(
                 ) {
                     Text(
                         text = "SAVE",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = if (canSave) R1.Bg else R1.InkMuted,
                     )
                 }
@@ -574,7 +580,7 @@ private fun EmptyText(message: String) {
     ) {
         Text(
             text = message,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
         )
     }

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -104,8 +105,19 @@ fun KeyBindingsScreen(
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             R1TopBar(title = "KEY BINDINGS", onBack = onBack)
+            // Centre + width-cap the binding rows on tablet / desktop tiers so a
+            // key + chips row doesn't span a 1280 dp+ panel. R1 / compact fill.
+            val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+            val listModifier = if (dimens.capsContentWidth) {
+                Modifier
+                    .fillMaxSize()
+                    .widthIn(max = dimens.maxContentWidth)
+                    .align(Alignment.CenterHorizontally)
+            } else {
+                Modifier.fillMaxSize()
+            }
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = listModifier,
                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
                 item { HeaderBlock(customizedCount = customizedCount, conflictCount = conflictingCodes.size) }

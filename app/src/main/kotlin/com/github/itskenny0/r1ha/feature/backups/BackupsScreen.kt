@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -35,6 +37,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.BackupInfo
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
@@ -130,6 +134,7 @@ fun BackupsScreen(
 ) {
     val vm: BackupsViewModel = viewModel(factory = BackupsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
+    val dimens = rememberResponsiveDimens()
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -173,7 +178,7 @@ fun BackupsScreen(
                 Spacer(Modifier.size(R1.space.s))
                 Text(
                     text = "Fires backup.create on your HA server. The new backup appears in the list once HA has finished writing it (15-60 s on a typical install).",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
                 Spacer(Modifier.size(R1.space.xs))
@@ -186,13 +191,13 @@ fun BackupsScreen(
                     }
                     ui.error != null && ui.backups.isEmpty() -> Column {
                         Spacer(Modifier.size(R1.space.m))
-                        Text(text = "COULDN'T LOAD BACKUPS", style = R1.labelMicro, color = R1.StatusRed)
+                        Text(text = "COULDN'T LOAD BACKUPS", style = responsiveType(R1.labelMicro), color = R1.StatusRed)
                         Spacer(Modifier.size(R1.space.xs))
-                        Text(text = ui.error ?: "", style = R1.body, color = R1.InkSoft)
+                        Text(text = ui.error ?: "", style = responsiveType(R1.body), color = R1.InkSoft)
                         Spacer(Modifier.size(R1.space.s))
                         Text(
                             text = "backup/info is HA Core 2024.4+ only. Older releases or installs without the backup integration return empty.",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkMuted,
                         )
                     }
@@ -200,13 +205,13 @@ fun BackupsScreen(
                         Spacer(Modifier.size(R1.space.m))
                         Text(
                             text = "NO BACKUPS YET",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )
                         Spacer(Modifier.size(R1.space.xs))
                         Text(
                             text = "Tap CREATE BACKUP NOW above to take your first one, or schedule automatic backups from Home Assistant's Settings > System > Backups.",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.InkMuted,
                         )
                     }
@@ -229,12 +234,23 @@ fun BackupsScreen(
                             onRefresh = { vm.refresh() },
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            LazyColumn(
+                            // dashboardColumns is 1 on mini / compact / phone (the stacked
+                            // list, unchanged) and steps to 2 on tablet / expanded and 3 on
+                            // extra-large, so a wide panel flows the backup cards into a
+                            // multi-column grid instead of one stretched column. The grid is
+                            // already centred + width-capped by the enclosing AdaptiveContent.
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(dimens.dashboardColumns),
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(vertical = R1.space.xs),
                                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                                horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                             ) {
-                                items(ui.sorted, key = { it.backupId }) { b ->
+                                items(
+                                    items = ui.sorted,
+                                    key = { it.backupId },
+                                    span = { GridItemSpan(1) },
+                                ) { b ->
                                     BackupRow(b)
                                 }
                             }
@@ -283,16 +299,24 @@ private fun BackupRow(b: BackupInfo) {
         verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = b.name, style = R1.bodyEmph, color = R1.Ink, modifier = Modifier.weight(1f))
+            Text(
+                text = b.name,
+                style = responsiveType(R1.bodyEmph),
+                color = R1.Ink,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             if (b.protected) {
-                Text(text = "ENCRYPTED", style = R1.labelMicro, color = R1.AccentCool)
+                Spacer(Modifier.size(R1.space.xs))
+                Text(text = "ENCRYPTED", style = responsiveType(R1.labelMicro), color = R1.AccentCool)
             }
         }
         Text(
             text = meta,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
         )
-        Text(text = b.backupId, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+        Text(text = b.backupId, style = responsiveType(R1.labelMicro), color = R1.InkMuted, maxLines = 1)
     }
 }

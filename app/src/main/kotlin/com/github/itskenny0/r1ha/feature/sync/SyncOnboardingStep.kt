@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -29,6 +30,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
@@ -61,15 +64,23 @@ fun SyncOnboardingStep(
         mutableStateOf<Set<String>>(setOf(SyncCategory.WHEEL_INPUT.name))
     }
 
+    // Cap + centre the step card on roomy tiers so it reads as a centred panel
+    // rather than a wall-wide form on a tablet / xxl window. Unspecified on
+    // R1 / compact leaves widthIn a no-op, so the card fills the panel as before.
+    val dimens = rememberResponsiveDimens()
+    val cardWidthCap = if (dimens.capsContentWidth) 520.dp else androidx.compose.ui.unit.Dp.Unspecified
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding(),
+        contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .widthIn(max = cardWidthCap)
                 .systemBarsPadding()
                 .padding(horizontal = R1.space.l, vertical = R1.space.m)
                 // Cap to the available height so the R1's 320dp tall display
@@ -98,7 +109,7 @@ fun SyncOnboardingStep(
                 } else {
                     "Sync your settings via Home Assistant?"
                 },
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
             )
             if (!customising) {
@@ -107,21 +118,21 @@ fun SyncOnboardingStep(
                         "user will mirror your theme, pages, favourites, and " +
                         "overrides. Server URL, iBeacon, webhook, and MQTT " +
                         "stay device-local.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "Wheel and input mappings stay per-device on the " +
                         "default. PICK below to fine-tune.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
             Spacer(Modifier.height(R1.space.xs))
             if (customising) {
                 Spacer(Modifier.height(R1.space.l))
-                Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "INCLUDE", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Spacer(Modifier.height(R1.space.xs))
                 SyncCategory.entries.forEach { category ->
                     CategoryRow(
@@ -177,7 +188,7 @@ fun SyncOnboardingStep(
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "You can change this any time in Settings, Sync.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
@@ -211,12 +222,12 @@ private fun CategoryRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = label,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
             )
             Text(
                 text = description,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkMuted,
                 modifier = Modifier.padding(top = R1.space.xxs),
             )
@@ -246,7 +257,7 @@ private fun StepButton(
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = text, style = R1.labelMicro, color = tint)
+        Text(text = text, style = responsiveType(R1.labelMicro), color = tint)
     }
 }
 

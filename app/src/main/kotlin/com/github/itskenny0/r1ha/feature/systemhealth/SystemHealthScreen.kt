@@ -35,8 +35,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
@@ -105,14 +109,15 @@ fun SystemHealthScreen(
             scrollState = scrollState,
             settings = settings,
         )
+        val dimens = rememberResponsiveDimens()
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                     .verticalScroll(scrollState),
             ) {
-                Text(text = "SERVER", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "SERVER", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Spacer(Modifier.size(R1.space.xs))
                 val cfg = ui.config
                 if (cfg != null) {
@@ -126,7 +131,7 @@ fun SystemHealthScreen(
                 // rows that integration registered, with a clear OK / checking /
                 // failed indicator wherever HA marks a reachability check.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "INTEGRATIONS", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "INTEGRATIONS", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
                     // COPY mirrors HA's "Copy" primary action: dumps the whole
                     // system-health report as a Markdown table so it pastes
@@ -155,12 +160,12 @@ fun SystemHealthScreen(
                     ui.healthError != null -> ErrorPanel(ui.healthError!!)
                     ui.loading -> Text(
                         text = "Loading system health…",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                     else -> Text(
                         text = "No integration reported system-health details.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -171,14 +176,14 @@ fun SystemHealthScreen(
                 // variable the link is.
                 PingRow(haRepository)
                 Spacer(Modifier.size(R1.space.m))
-                Text(text = "NETWORK SECURITY", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "NETWORK SECURITY", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Spacer(Modifier.size(R1.space.xs))
                 NetworkSecurityPanel()
                 Spacer(Modifier.size(R1.space.m))
                 ShareDebugBundleRow()
                 Spacer(Modifier.size(R1.space.l))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = "ERROR LOG (tail)", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "ERROR LOG (tail)", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     Spacer(Modifier.weight(1f))
                     // OPEN FULL — drills into the dedicated Logs viewer
                     // which streams a larger tail (512 KB vs 32 KB here),
@@ -210,7 +215,7 @@ fun SystemHealthScreen(
                     ui.errorLogError != null -> ErrorPanel(ui.errorLogError!!)
                     else -> Text(
                         text = "No log output (HA returned an empty body).",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -309,7 +314,7 @@ private fun HealthSectionPanel(section: HealthSection) {
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = section.title.uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f, fill = false),
                 maxLines = 1,
@@ -333,7 +338,7 @@ private fun HealthSectionPanel(section: HealthSection) {
 private fun HealthRowView(row: HealthRow) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(text = row.label.uppercase(), style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = row.label.uppercase(), style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (row.value.status != HealthStatus.NEUTRAL) {
                 StatusDot(row.value.status)
@@ -341,7 +346,7 @@ private fun HealthRowView(row: HealthRow) {
             }
             Text(
                 text = row.value.display,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = statusColor(row.value.status),
                 maxLines = Int.MAX_VALUE,
             )
@@ -396,7 +401,7 @@ private fun ChipButton(
             .padding(horizontal = R1.space.s, vertical = R1.space.xs),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.labelMicro, color = labelColor)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = labelColor)
     }
 }
 
@@ -422,10 +427,10 @@ private fun Pair<String, String?>.render(multiline: Boolean = false) {
     val value = second
     if (value.isNullOrBlank()) return
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(text = first.uppercase(), style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = first.uppercase(), style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Text(
             text = value,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.Ink,
             maxLines = if (multiline) Int.MAX_VALUE else 1,
         )
@@ -450,10 +455,19 @@ private fun ErrorLogPanel(body: String) {
         }
     }
     val logScroll = rememberScrollState()
+    // The contained viewport cap scales with the tier: the R1 panel keeps the
+    // tight 220dp box so the log never eats the whole tiny screen, while roomy
+    // tiers let it breathe (more lines visible at once) without going full-bleed.
+    val tier = LocalWindowTier.current.tier
+    val logMaxHeight = when (tier) {
+        WindowTier.R1, WindowTier.COMPACT -> 220.dp
+        WindowTier.MEDIUM -> 300.dp
+        else -> 360.dp
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 220.dp)
+            .heightIn(max = logMaxHeight)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -462,9 +476,13 @@ private fun ErrorLogPanel(body: String) {
     ) {
         Text(
             text = tail,
-            style = R1.body.copy(
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
+            // 11sp monospace is hand-tuned for the R1; step it up gently on roomy
+            // tiers (via the shared type scale) so the log isn't tiny on a 13in panel.
+            style = responsiveType(
+                R1.body.copy(
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
+                ),
             ),
             color = R1.InkSoft,
         )
@@ -483,7 +501,7 @@ private fun ErrorPanel(msg: String) {
             .background(R1.StatusRed.copy(alpha = 0.18f))
             .padding(horizontal = R1.space.s, vertical = R1.space.s),
     ) {
-        Text(text = msg, style = R1.body, color = R1.StatusRed)
+        Text(text = msg, style = responsiveType(R1.body), color = R1.StatusRed)
     }
 }
 
@@ -493,12 +511,12 @@ private fun PingRow(haRepository: HaRepository) {
     val result = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
     val inFlight = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = "PING", style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = "PING", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         Spacer(Modifier.weight(1f))
         if (result.value != null) {
             Text(
                 text = result.value!!,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.AccentWarm,
             )
             Spacer(Modifier.size(R1.space.s))
@@ -570,7 +588,7 @@ private fun NetworkSecurityPanel() {
 private fun ShareDebugBundleRow() {
     val context = androidx.compose.ui.platform.LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = "SHARE DEBUG BUNDLE", style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = "SHARE DEBUG BUNDLE", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         Spacer(Modifier.weight(1f))
         ChipButton(
             label = "SHARE",

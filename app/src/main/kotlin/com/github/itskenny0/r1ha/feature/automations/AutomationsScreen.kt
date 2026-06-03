@@ -16,9 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,12 +42,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
@@ -101,8 +105,9 @@ fun AutomationsScreen(
     // fires per search keystroke. Memoise against its inputs so the filter runs
     // once per state change rather than twice per frame.
     val entries = androidx.compose.runtime.remember(ui.all, ui.query) { ui.entries }
-    val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val gridState = rememberLazyGridState()
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = gridState, settings = settings)
+    val dimens = rememberResponsiveDimens()
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -153,7 +158,7 @@ fun AutomationsScreen(
             ) {
                 Text(
                     text = "Automations load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -166,7 +171,7 @@ fun AutomationsScreen(
             ) {
                 Text(
                     text = "No automations defined. Settings, Automations in HA's web UI.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -179,7 +184,7 @@ fun AutomationsScreen(
             ) {
                 Text(
                     text = "No matches for '${ui.query}'. Clear the search or try different terms.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -188,15 +193,26 @@ fun AutomationsScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        state = listState,
+                    // dashboardColumns is 1 on mini / compact / phone (the stacked
+                    // list, unchanged) and steps to 2 on tablet / expanded and 3 on
+                    // extra-large, so a wide panel flows the automation rows into a
+                    // multi-column grid instead of one stretched column. The grid is
+                    // already centred + width-capped by the enclosing AdaptiveContent.
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
-                            horizontal = R1.space.m, vertical = R1.space.s,
+                            horizontal = dimens.screenGutter, vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
-                        items(items = entries, key = { it.id.value }) { entry ->
+                        items(
+                            items = entries,
+                            key = { it.id.value },
+                            span = { GridItemSpan(1) },
+                        ) { entry ->
                             AutomationRow(
                                 entry = entry,
                                 isFavorite = entry.id.value in activeFavourites,
@@ -236,7 +252,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     ) {
         Text(
             text = "FIND",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
             modifier = Modifier
                 .padding(end = R1.space.s)
@@ -261,7 +277,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
                     .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "✕", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "✕", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
         }
     }
@@ -371,7 +387,7 @@ private fun AutomationRow(
                 entry.enabled -> "ON"
                 else -> "OFF"
             },
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = stateTint,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -382,7 +398,7 @@ private fun AutomationRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = entry.name,
-                    style = R1.bodyEmph,
+                    style = responsiveType(R1.bodyEmph),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -398,7 +414,7 @@ private fun AutomationRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = entry.id.value,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -418,7 +434,7 @@ private fun AutomationRow(
                     }
                     Text(
                         text = if (modeExplain.value) modeExplainer(entry.mode) else entry.mode.label,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.AccentNeutral,
                         // The badge sits inside the row, so its own gesture
                         // detector swallows taps before they reach the row's
@@ -447,7 +463,7 @@ private fun AutomationRow(
                     // queued modes that allow concurrent runs).
                     Text(
                         text = "×${entry.currentRunning}",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.AccentWarm,
                     )
                 }
@@ -468,7 +484,7 @@ private fun AutomationRow(
         ) {
             Text(
                 text = if (isFavorite) "★" else "☆",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = if (isFavorite) R1.AccentWarm else R1.InkSoft,
             )
         }

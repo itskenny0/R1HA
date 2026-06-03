@@ -39,6 +39,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.prefs.Tokens
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
@@ -121,11 +122,11 @@ fun LongLivedTokenScreen(
                 text = "Skip OAuth: paste an HA long-lived access token. Generate one " +
                     "from HA Profile → Long-Lived Access Tokens. Stored encrypted at " +
                     "rest (AndroidKeystore-wrapped AES-256-GCM) just like the OAuth path.",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.l))
-            Text(text = "HA URL", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "HA URL", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Spacer(Modifier.height(R1.space.xs))
             R1TextField(
                 value = url,
@@ -147,7 +148,7 @@ fun LongLivedTokenScreen(
                 Spacer(Modifier.height(R1.space.xs))
                 Text(
                     text = "Will save: $normalisedUrlPreview",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                 )
             }
@@ -159,7 +160,7 @@ fun LongLivedTokenScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "ACCESS TOKEN",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     modifier = Modifier.weight(1f),
                 )
@@ -182,7 +183,7 @@ fun LongLivedTokenScreen(
                 ) {
                     Text(
                         text = if (revealed) "HIDE" else "REVEAL",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                     )
                 }
@@ -223,7 +224,7 @@ fun LongLivedTokenScreen(
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(
                     text = "Doesn't look like a HA token. Generate one via your HA profile → Long-lived access tokens.",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.StatusAmber,
                 )
             }
@@ -291,8 +292,9 @@ fun LongLivedTokenScreen(
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "no refresh; revoke from HA to invalidate",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
+                    modifier = Modifier.weight(1f),
                 )
             }
             val e = error
@@ -322,11 +324,11 @@ fun LongLivedTokenScreen(
                     Column {
                         Text(
                             text = "SAVE FAILED",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.StatusRed,
                         )
                         Spacer(Modifier.height(R1.space.xxs))
-                        Text(text = e, style = R1.body, color = R1.Ink)
+                        Text(text = e, style = responsiveType(R1.body), color = R1.Ink)
                     }
                 }
             }

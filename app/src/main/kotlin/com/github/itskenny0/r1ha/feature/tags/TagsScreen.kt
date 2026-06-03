@@ -17,9 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -47,6 +49,8 @@ import com.github.itskenny0.r1ha.core.ha.HaTag
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
@@ -55,7 +59,7 @@ import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
@@ -80,8 +84,8 @@ fun TagsScreen(
 ) {
     val vm: TagsViewModel = viewModel(factory = TagsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
-    val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val gridState = rememberLazyGridState()
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = gridState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
     // HA's tag panel live-updates last_scanned off a tag_scanned subscription; we can't
     // subscribe from here, so poll the registry periodically to keep the newest-scan-first
@@ -109,6 +113,7 @@ fun TagsScreen(
                 )
             },
         )
+        val dimens = rememberResponsiveDimens()
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.tags.isEmpty() -> Box(
@@ -124,50 +129,61 @@ fun TagsScreen(
                     )
                 }
                 ui.error != null && ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = ui.error ?: "Error", style = R1.body, color = R1.StatusRed)
+                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
                 }
                 ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "No tags registered. Scan an NFC / QR tag at HA to register it; " +
                             "it'll appear here automatically.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
-                else -> LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m,
-                        vertical = R1.space.s,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
-                ) {
-                    item(key = "tags-header") {
-                        Text(
-                            text = "${ui.tags.size} tag${if (ui.tags.size == 1) "" else "s"}" +
-                                "  ·  TAP to rename, HOLD to delete",
-                            style = R1.labelMicro,
-                            color = R1.InkSoft,
-                            modifier = Modifier
-                                .padding(vertical = R1.space.xs)
-                                .semantics { heading() },
-                        )
+                // Multi-column flow on roomy tiers (gridColumns: 2/2/3/4/5) so a wide panel
+                // fills with tag cards side by side instead of one tall ribbon; the R1 /
+                // compact panel stays single column where a row's name + scan time + id
+                // need the full width to read.
+                else -> {
+                    val tagColumns = if (dimens.capsContentWidth) dimens.gridColumns else 1
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(tagColumns),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = dimens.screenGutter,
+                            vertical = R1.space.s,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    ) {
+                        item(key = "tags-header", span = { GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                text = "${ui.tags.size} tag${if (ui.tags.size == 1) "" else "s"}" +
+                                    "  ·  TAP to rename, HOLD to delete",
+                                style = responsiveType(R1.labelMicro),
+                                color = R1.InkSoft,
+                                modifier = Modifier
+                                    .padding(vertical = R1.space.xs)
+                                    .semantics { heading() },
+                            )
+                        }
+                        items(items = ui.tags, key = { it.id }) { tag ->
+                            TagRow(
+                                tag = tag,
+                                onTap = { renaming = tag },
+                                onLongPress = { deleting = tag },
+                            )
+                        }
+                        item(key = "tags-footer-spacer", span = { GridItemSpan(maxLineSpan) }) {
+                            Spacer(Modifier.size(R1.space.xl))
+                        }
                     }
-                    items(items = ui.tags, key = { it.id }) { tag ->
-                        TagRow(
-                            tag = tag,
-                            onTap = { renaming = tag },
-                            onLongPress = { deleting = tag },
-                        )
-                    }
-                    item(key = "tags-footer-spacer") { Spacer(Modifier.size(R1.space.xl)) }
                 }
             }
         }
@@ -240,7 +256,7 @@ private fun TagRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = displayName,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -251,10 +267,10 @@ private fun TagRow(
                 RelativeTimeLabel(
                     at = tag.lastScanned,
                     color = R1.AccentCool,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                 )
             } else {
-                Text(text = "NEVER SCANNED", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "NEVER SCANNED", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             }
         }
         if (tag.name != null && tag.name.isNotBlank()) {
@@ -274,7 +290,7 @@ private fun TagRow(
             Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = tag.description,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
@@ -321,16 +337,16 @@ private fun RenameTagSheet(
                 .r1Pressable(onClick = {}, hapticOnClick = false)
                 .padding(R1.space.l),
         ) {
-            Text(text = "RENAME TAG", style = R1.sectionHeader, color = R1.AccentWarm)
+            Text(text = "RENAME TAG", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
-                style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                style = responsiveType(R1.body).copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkMuted,
                 maxLines = 1,
             )
             Spacer(Modifier.size(R1.space.m))
-            Text(text = "NAME", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "NAME", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = name,
@@ -339,7 +355,7 @@ private fun RenameTagSheet(
                 monospace = false,
             )
             Spacer(Modifier.size(R1.space.m))
-            Text(text = "DESCRIPTION", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "DESCRIPTION", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Spacer(Modifier.size(R1.space.xs))
             R1TextField(
                 value = desc,
@@ -378,12 +394,12 @@ private fun RenameTagSheet(
                         .r1Pressable(onClick = {}, hapticOnClick = false)
                         .padding(R1.space.l),
                 ) {
-                    Text(text = "DISCARD EDITS?", style = R1.sectionHeader, color = R1.AccentWarm)
+                    Text(text = "DISCARD EDITS?", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
                     Spacer(Modifier.size(R1.space.s))
                     Text(
                         text = "You've changed this tag's name or description. Leaving now " +
                             "throws those edits away.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                     Spacer(Modifier.size(R1.space.l))
@@ -435,17 +451,17 @@ private fun DeleteTagSheet(
                 .r1Pressable(onClick = {}, hapticOnClick = false)
                 .padding(R1.space.l),
         ) {
-            Text(text = "DELETE TAG", style = R1.sectionHeader, color = R1.StatusRed)
+            Text(text = "DELETE TAG", style = responsiveType(R1.sectionHeader), color = R1.StatusRed)
             Spacer(Modifier.size(R1.space.s))
             Text(
                 text = tag.name?.takeIf { it.isNotBlank() } ?: tag.id,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
             )
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = tag.id,
-                style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
+                style = responsiveType(R1.labelMicro).copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkMuted,
                 maxLines = 1,
             )
@@ -453,7 +469,7 @@ private fun DeleteTagSheet(
             Text(
                 text = "The tag will be removed from HA's registry. The physical tag still " +
                     "broadcasts its id; a future scan re-registers it with a blank name.",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkMuted,
             )
             Spacer(Modifier.size(R1.space.l))

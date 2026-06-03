@@ -15,9 +15,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +38,9 @@ import com.github.itskenny0.r1ha.core.ha.LogbookEntry
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.rememberCoroutineScope
 import com.github.itskenny0.r1ha.core.util.R1Log
@@ -47,7 +52,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
@@ -64,7 +69,7 @@ import kotlinx.coroutines.launch
  * Recent Activity surface: mirrors HA's Logbook panel. Reverse-
  * chronological list of state changes, automation triggers, scene
  * activations, and script invocations. The wheel scrolls the list;
- * pull-to-refresh on the LazyColumn isn't wired (the WINDOW chips
+ * pull-to-refresh on the feed grid isn't wired (the WINDOW chips
  * implicitly re-fetch on a change and the back-then-forward nav
  * triggers a fresh load via [LaunchedEffect]).
  *
@@ -94,7 +99,7 @@ fun LogbookScreen(
     // per-second relative-timestamp ticks).
     val visibleEntries by vm.visibleEntries.collectAsState()
     val domains by vm.domains.collectAsState()
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Entity-picker overlay visibility. The picker itself is the shared
@@ -104,7 +109,7 @@ fun LogbookScreen(
     // Day-grouped view of the filtered rows, computed off the device zone.
     val zone = remember { java.time.ZoneId.systemDefault() }
     val groups = remember(visibleEntries) { groupByDay(visibleEntries, zone) }
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = listState, settings = settings)
     val appSettings by settings.settings.collectAsState(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
     )
@@ -220,7 +225,7 @@ fun LogbookScreen(
                     .semantics { liveRegion = LiveRegionMode.Polite },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = ui.error!!, style = R1.body, color = R1.StatusRed)
+                Text(text = ui.error!!, style = responsiveType(R1.body), color = R1.StatusRed)
             }
             visibleEntries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
@@ -241,7 +246,7 @@ fun LogbookScreen(
                     filtered -> "No matches for the active filters in this window."
                     else -> "Logbook is empty for the selected window."
                 }
-                Text(text = msg, style = R1.body, color = R1.InkMuted)
+                Text(text = msg, style = responsiveType(R1.body), color = R1.InkMuted)
             }
             // Pull-to-refresh wrap: the logbook is naturally append-only
             // so a refresh just re-issues the same window query and picks
@@ -251,20 +256,35 @@ fun LogbookScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(
+                // On the roomy tablet / desktop tiers the feed flows into two
+                // columns so a 13in panel isn't one narrow ribbon of rows with
+                // dead space either side; mini / compact / phone stay a single
+                // readable chronological column. Day headers always span the
+                // full row so the TODAY / YESTERDAY buckets read across both
+                // columns.
+                val columns = when (LocalWindowTier.current.tier) {
+                    WindowTier.EXPANDED, WindowTier.EXTRA_LARGE -> 2
+                    else -> 1
+                }
+                LazyVerticalGrid(
                     state = listState,
+                    columns = GridCells.Fixed(columns),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
                         horizontal = R1.space.m, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     // Rows are bucketed under relative-day headers ("TODAY",
                     // "YESTERDAY", then absolute dates) using the shared
                     // R1Section header so the grouping reads like the rest of
                     // the app. Each group's count rides in the section pill.
                     for (group in groups) {
-                        item(key = "hdr|${group.header}") {
+                        item(
+                            key = "hdr|${group.header}",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
                             // Promote the day header to a TalkBack heading so a
                             // screen-reader user can jump between TODAY /
                             // YESTERDAY / dated buckets.
@@ -335,9 +355,14 @@ private fun WindowChips(
     current: LogbookViewModel.Window,
     onSelect: (LogbookViewModel.Window) -> Unit,
 ) {
+    // Horizontally scrollable so the five window chips never clip on the
+    // R1's ~240dp panel; on roomy tiers they simply sit left-aligned with
+    // slack to spare.
+    val scroll = androidx.compose.foundation.rememberScrollState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .horizontalScroll(scroll)
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
@@ -476,26 +501,26 @@ private fun LogbookRow(
         ) {
             Text(
                 text = domainGlyph(entry.domain),
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = accentFor(entry.domain),
             )
             Text(
                 text = (entry.domain ?: "—").uppercase().take(4),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = accentFor(entry.domain),
                 maxLines = 1,
             )
         }
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = entry.name, style = R1.bodyEmph, color = R1.Ink, maxLines = 2)
+            Text(text = entry.name, style = responsiveType(R1.bodyEmph), color = R1.Ink, maxLines = 2)
             // Friendly state-change line: the message HA gave us, plus an arrow
             // to the post-event state when one is present ("turned on → on").
             // Falls back to the bare message for stateless events (automation
             // triggers).
             Text(
                 text = entry.state?.let { "${entry.message} → $it" } ?: entry.message,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 2,
             )
@@ -507,7 +532,7 @@ private fun LogbookRow(
             triggeredByLabel(entry)?.let { label ->
                 Text(
                     text = label,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                     maxLines = 1,
                 )
@@ -519,7 +544,7 @@ private fun LogbookRow(
         RelativeTimeLabel(
             at = entry.timestamp,
             color = R1.InkMuted,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
         )
     }
 }
@@ -534,7 +559,7 @@ private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
     ) {
         Text(
             text = "FIND",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
             modifier = Modifier.padding(end = R1.space.s),
         )

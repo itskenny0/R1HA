@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +38,8 @@ import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.sync.HaSettingsSync
 import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
@@ -109,6 +112,12 @@ fun HaSyncOnboardingPrompt(
         mutableStateOf(settings.integrations.haSyncExcludedCategories)
     }
 
+    // Cap the card on roomy tiers so the overlay reads as a centred dialog
+    // panel rather than one wall-wide sheet on a tablet / xxl window. Unspecified
+    // (R1 / compact) leaves widthIn a no-op, so the card fills the panel as before.
+    val dimens = rememberResponsiveDimens()
+    val cardWidthCap = if (dimens.capsContentWidth) 520.dp else androidx.compose.ui.unit.Dp.Unspecified
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -122,6 +131,7 @@ fun HaSyncOnboardingPrompt(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .widthIn(max = cardWidthCap)
                 .systemBarsPadding()
                 .padding(horizontal = R1.space.l, vertical = R1.space.m)
                 // Cap to the available height so the R1's 320dp tall display
@@ -135,19 +145,19 @@ fun HaSyncOnboardingPrompt(
                 .padding(horizontal = R1.space.l, vertical = R1.space.l),
             verticalArrangement = Arrangement.spacedBy(R1.space.s),
         ) {
-            Text(text = "SYNC ACROSS DEVICES", style = R1.labelMicro, color = R1.AccentWarm)
+            Text(text = "SYNC ACROSS DEVICES", style = responsiveType(R1.labelMicro), color = R1.AccentWarm)
             Text(
                 text = "Mirror your preferences via Home Assistant so any R1 " +
                     "or phone signed into the same HA user shares the same " +
                     "theme, pages, favourites, and overrides.",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
             )
             Text(
                 text = "Storage is HA's per-user JSON bucket; no add-on " +
                     "needed. Server URL, iBeacon, webhook, and MQTT stay " +
                     "device-local.",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.xxs))
@@ -162,7 +172,7 @@ fun HaSyncOnboardingPrompt(
             )
 
             Spacer(Modifier.height(R1.space.xs))
-            Text(text = "INCLUDE", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "INCLUDE", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             // Per-category opt-out chips inside the prompt; the user can
             // pre-trim what gets shared before committing to import/push.
             SyncCategory.entries.forEach { category ->
@@ -187,7 +197,7 @@ fun HaSyncOnboardingPrompt(
                 ) {
                     Text(
                         text = category.displayLabel,
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.Ink,
                         modifier = Modifier.weight(1f),
                     )
@@ -294,9 +304,9 @@ private fun ProbeStatusRow(probed: Boolean, hasRemote: Boolean, error: String?) 
         )
         Spacer(Modifier.size(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = label, style = R1.labelMicro, color = tint)
+            Text(text = label, style = responsiveType(R1.labelMicro), color = tint)
             Spacer(Modifier.height(R1.space.xxs))
-            Text(text = body, style = R1.body, color = R1.InkSoft)
+            Text(text = body, style = responsiveType(R1.body), color = R1.InkSoft)
         }
     }
 }
@@ -327,7 +337,7 @@ private fun PromptButton(
     ) {
         Text(
             text = text,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             // Dim the label while disabled so "CHECKING…" reads as pending,
             // not tappable.
             color = if (enabled) tint else tint.copy(alpha = 0.4f),

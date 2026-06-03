@@ -39,6 +39,8 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -74,6 +76,7 @@ fun DeviceScreen(
     val app = context.applicationContext as App
     val vm: DeviceViewModel = viewModel(factory = DeviceViewModel.factory(app))
     val ui by vm.ui.collectAsState()
+    val dimens = rememberResponsiveDimens()
     val scrollState = rememberScrollState()
     // Pulled from settings so we can hide the "not exposed to HA" banner
     // when IoT Sensors Mode is publishing this device to HA — the banner
@@ -133,9 +136,9 @@ fun DeviceScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -144,7 +147,7 @@ fun DeviceScreen(
                         // matches the device's actual exposure to HA.
                         text = if (sensorsExposed) "PUBLISHED TO HA · IoT SENSORS MODE"
                         else "LOCAL · NOT EXPOSED TO HA",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = if (sensorsExposed) R1.AccentGreen else R1.InkMuted,
                         modifier = Modifier.weight(1f),
                     )
@@ -155,7 +158,7 @@ fun DeviceScreen(
                         RelativeTimeLabel(
                             at = Instant.ofEpochMilli(ui.lastReadAtMillis),
                             color = R1.InkMuted,
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                         )
                     }
                 }
@@ -207,7 +210,7 @@ private fun BatteryCard(ui: DeviceViewModel.UiState) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "BATTERY", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "BATTERY", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             // Per-band tint matching the rest of the app's battery
             // language — red < 10, amber < 25, ink otherwise.
             val tint = when {
@@ -218,14 +221,14 @@ private fun BatteryCard(ui: DeviceViewModel.UiState) {
             }
             Text(
                 text = if (ui.batteryPct >= 0) "${ui.batteryPct}%" else "—",
-                style = R1.numeralXl.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.numeralXl).copy(fontWeight = FontWeight.SemiBold),
                 color = tint,
             )
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = ui.batteryStatus.ifBlank { "—" },
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (ui.isCharging) R1.AccentGreen else R1.InkSoft,
             )
             if (ui.isCharging) {
@@ -268,13 +271,13 @@ private fun BrightnessCard(
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "SCREEN BRIGHTNESS", style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+            Text(text = "SCREEN BRIGHTNESS", style = responsiveType(R1.labelMicro), color = R1.InkSoft, modifier = Modifier.weight(1f))
             Text(
                 // FOLLOW SYSTEM mode shows the SYSTEM value alongside the label so
                 // the user can read the current brightness without dragging the
                 // slider into override mode just to find out.
                 text = if (isOverride) "${pct}%" else "FOLLOW SYSTEM · ${systemPct}%",
-                style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                 color = if (isOverride) R1.AccentWarm else R1.InkSoft,
             )
         }
@@ -295,7 +298,7 @@ private fun BrightnessCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "Per-app only. Leaves system brightness untouched.",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.weight(1f),
             )
@@ -312,7 +315,7 @@ private fun BrightnessCard(
                     .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "RESET", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "RESET", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
             Spacer(Modifier.width(R1.space.xs + R1.space.xxs))
             Box(
@@ -328,7 +331,7 @@ private fun BrightnessCard(
                     .padding(horizontal = R1.space.s, vertical = R1.space.xs),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "SYSTEM", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "SYSTEM", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
         }
     }
@@ -346,10 +349,10 @@ private fun VolumeCard(label: String, pct: Int, onChange: (Int) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "$label VOLUME", style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+            Text(text = "$label VOLUME", style = responsiveType(R1.labelMicro), color = R1.InkSoft, modifier = Modifier.weight(1f))
             Text(
                 text = "${pct}%",
-                style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                 color = if (pct > 0) R1.AccentWarm else R1.InkMuted,
             )
         }
@@ -393,10 +396,10 @@ private fun FlashlightCard(on: Boolean, onToggle: () -> Unit) {
         )
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "FLASHLIGHT", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "FLASHLIGHT", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Text(
                 text = if (on) "ON" else "OFF",
-                style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                 color = if (on) R1.AccentWarm else R1.InkSoft,
             )
         }
@@ -413,7 +416,7 @@ private fun FlashlightCard(on: Boolean, onToggle: () -> Unit) {
         ) {
             Text(
                 text = if (on) "TURN OFF" else "TURN ON",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (on) R1.AccentWarm else R1.InkSoft,
             )
         }
@@ -434,14 +437,16 @@ private fun NetworkCard(ssid: String?, onOpenWifi: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "WIFI", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "WIFI", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Text(
                 text = ssid ?: "—",
-                style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                 color = if (ssid != null) R1.Ink else R1.InkMuted,
+                maxLines = 1,
             )
         }
-        Text(text = "OPEN", style = R1.labelMicro, color = R1.AccentWarm)
+        Spacer(Modifier.width(R1.space.s))
+        Text(text = "OPEN", style = responsiveType(R1.labelMicro), color = R1.AccentWarm)
     }
 }
 
@@ -473,13 +478,13 @@ private fun MirroredSensorsCard(iot: IotSensorsSettings, ui: DeviceViewModel.UiS
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "MIRRORED TO HA",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentGreen,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = "EVERY ${iot.publishIntervalSec}s",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
         }
@@ -518,7 +523,7 @@ private fun MirroredSensorsCard(iot: IotSensorsSettings, ui: DeviceViewModel.UiS
         )
         Text(
             text = "Read-only here. Toggle sensors under Settings · IoT Sensors.",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
         )
     }
@@ -539,22 +544,30 @@ private fun MirrorRow(label: String, enabled: Boolean, reading: String?) {
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = label,
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = if (enabled) R1.InkSoft else R1.InkMuted,
             modifier = Modifier.weight(1f),
+            maxLines = 1,
         )
         if (enabled && reading != null) {
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = reading,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.Ink,
+                maxLines = 1,
+                // Share the row's flex with the label so a long reading
+                // (e.g. a wide SSID) ellipsizes on the 240dp panel instead
+                // of shoving the MIRRORING badge off the right edge.
+                modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(Modifier.width(R1.space.s))
         }
         Text(
             text = if (enabled) "MIRRORING" else "OFF",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = if (enabled) R1.AccentGreen else R1.InkMuted,
+            maxLines = 1,
         )
     }
 }

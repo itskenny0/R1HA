@@ -175,7 +175,7 @@ fun CamerasScreen(
                     )
                     Text(
                         text = "Cameras load failed: ${ui.error}",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.StatusRed,
                     )
                 }
@@ -196,7 +196,7 @@ fun CamerasScreen(
                     )
                     Text(
                         text = "No cameras in HA. Add a camera integration to see them here.",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -206,14 +206,24 @@ fun CamerasScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // Centre + width-cap the wall on big tiers so the tiles read
+                // as a centred grid rather than stretching into a few giant
+                // squares across a 13" panel. No-op on R1 / compact (those
+                // fill edge to edge).
+                com.github.itskenny0.r1ha.ui.components.R1CenteredContent {
                 LazyVerticalGrid(
                     state = gridState,
-                    // Column count adapts to the host width so tablets
-                    // actually use the extra horizontal space: R1 stays
-                    // at 2 columns (today's layout), phones stay at 2,
-                    // tablets jump to 3 inside the responsive column.
+                    // Column count steps up by window tier so big panels
+                    // actually use the extra horizontal space instead of
+                    // ballooning a handful of tiles: mini/compact stay at 2
+                    // (today's R1 layout), small tablets get 3, big tablets
+                    // 4, and desktop-class windows 5. Routed through the
+                    // shared responsive tokens so the camera wall tracks the
+                    // same breakpoints as the rest of the app.
                     columns = GridCells.Fixed(
-                        com.github.itskenny0.r1ha.ui.layout.gridColumnsFor(),
+                        com.github.itskenny0.r1ha.core.theme.R1Responsive.gridColumns(
+                            com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.tier,
+                        ),
                     ),
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -233,6 +243,7 @@ fun CamerasScreen(
                             onTap = { viewingEntityId = camera.entityId },
                         )
                     }
+                }
                 }
             }
             viewMode == "GRID" -> Box(
@@ -255,7 +266,7 @@ fun CamerasScreen(
                     )
                     Text(
                         text = "Grid view needs a server connection. Loading…",
-                        style = R1.body,
+                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                 }
@@ -265,6 +276,10 @@ fun CamerasScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
+                // Centre + width-cap the list on big tiers so rows read as a
+                // centred column instead of one row stretched the full width
+                // of a wide panel. No-op on R1 / compact.
+                com.github.itskenny0.r1ha.ui.components.R1CenteredContent {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -276,6 +291,7 @@ fun CamerasScreen(
                     items(items = ui.cameras, key = { it.entityId }) { camera ->
                         CameraRow(camera, onTap = { viewingEntityId = camera.entityId })
                     }
+                }
                 }
             }
         }
@@ -421,7 +437,7 @@ private fun CameraTile(
         ) {
             Text(
                 text = camera.name,
-                style = R1.body,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -459,7 +475,7 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
         Column(modifier = Modifier.fillMaxWidth().padding(end = R1.space.s)) {
             Text(
                 text = camera.name,
-                style = R1.body,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -575,7 +591,7 @@ private fun CameraDetailOverlay(
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = displayName.uppercase(),
-                    style = R1.sectionHeader,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -601,12 +617,20 @@ private fun CameraDetailOverlay(
                 }
             }
             val s = serverUrl
+            // Centre + width-cap the feed and its controls on big tiers so a
+            // single 16:9 (or portrait) source fits as a centred panel rather
+            // than stretching the bitmap and the stepper edge to edge across a
+            // wide window. No-op on R1 / compact, where it fills the panel.
+            com.github.itskenny0.r1ha.ui.components.R1CenteredContent(
+                modifier = Modifier.weight(1f),
+            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
             if (s == null) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "Loading…", style = R1.body, color = R1.InkMuted)
+                    Text(text = "Loading…", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkMuted)
                 }
             } else {
                 // Use the available vertical space rather than locking to 16:9. Portrait
@@ -707,6 +731,8 @@ private fun CameraDetailOverlay(
                     color = R1.InkMuted,
                     modifier = Modifier.padding(horizontal = R1.space.m),
                 )
+            }
+            }
             }
         }
     }

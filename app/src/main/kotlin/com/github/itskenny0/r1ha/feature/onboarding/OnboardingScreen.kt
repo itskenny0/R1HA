@@ -55,6 +55,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.feature.sync.SyncOnboardingStep
 import com.github.itskenny0.r1ha.ui.components.R1Button
@@ -233,11 +235,11 @@ private fun StepCallout(number: String, label: String) {
             contentDescription = "Step $number: $label"
         },
     ) {
-        Text(text = number, style = R1.labelMicro, color = R1.AccentWarm)
+        Text(text = number, style = responsiveType(R1.labelMicro), color = R1.AccentWarm)
         Spacer(Modifier.size(R1.space.xs))
         Box(modifier = Modifier.size(width = 14.dp, height = 1.dp).background(R1.AccentWarm))
         Spacer(Modifier.size(R1.space.xs))
-        Text(text = label, style = R1.labelMicro, color = R1.AccentWarm)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = R1.AccentWarm)
     }
 }
 
@@ -246,42 +248,53 @@ private fun StepCallout(number: String, label: String) {
  *  has hung. */
 @Composable
 private fun ExchangingStep() {
-    Column(
+    val dimens = rememberResponsiveDimens()
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding()
             .padding(horizontal = R1.space.xl),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.Start,
+        contentAlignment = Alignment.Center,
     ) {
-        StepCallout(number = "02", label = "AUTHORISE")
-        Spacer(Modifier.height(R1.space.m))
-        Text(
-            text = "Exchanging tokens",
-            style = R1.screenTitle,
-            color = R1.Ink,
-        )
-        Spacer(Modifier.height(R1.space.s))
-        Text(
-            text = "Swapping the authorisation code for an access token. " +
-                "One round-trip, usually a second.",
-            style = R1.body,
-            color = R1.InkMuted,
-        )
-        Spacer(Modifier.height(R1.space.xl))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(16.dp),
-                strokeWidth = 2.dp,
-                color = R1.AccentWarm,
-            )
-            Spacer(Modifier.size(R1.space.s))
+        // Cap + centre the column on roomy tiers so the interstitial reads as a
+        // centred beat instead of a marooned line pinned to the left edge; on
+        // R1 / compact maxContentWidth is Unspecified so it fills as before.
+        Column(
+            modifier = Modifier
+                .widthIn(max = dimens.maxContentWidth)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.Start,
+        ) {
+            StepCallout(number = "02", label = "AUTHORISE")
+            Spacer(Modifier.height(R1.space.m))
             Text(
-                text = "WORKING",
-                style = R1.labelMicro,
-                color = R1.InkSoft,
+                text = "Exchanging tokens",
+                style = responsiveType(R1.screenTitle),
+                color = R1.Ink,
             )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Swapping the authorisation code for an access token. " +
+                    "One round-trip, usually a second.",
+                style = responsiveType(R1.body),
+                color = R1.InkMuted,
+            )
+            Spacer(Modifier.height(R1.space.xl))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = R1.AccentWarm,
+                )
+                Spacer(Modifier.size(R1.space.s))
+                Text(
+                    text = "WORKING",
+                    style = responsiveType(R1.labelMicro),
+                    color = R1.InkSoft,
+                )
+            }
         }
     }
 }
@@ -330,7 +343,7 @@ private fun UrlEntryForm(
             Spacer(Modifier.height(R1.space.m))
             Text(
                 text = "Point me at\nHome Assistant.",
-                style = R1.screenTitle,
+                style = responsiveType(R1.screenTitle),
                 color = R1.Ink,
             )
             Spacer(Modifier.height(R1.space.m))
@@ -338,7 +351,7 @@ private fun UrlEntryForm(
                 text = "Type a host. Protocol and port are optional: " +
                     "local hosts default to http:// :8123, public domains " +
                     "default to https:// :443.",
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.s))
@@ -348,7 +361,7 @@ private fun UrlEntryForm(
             // ── Field ────────────────────────────────────────────────
             Text(
                 text = "URL",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.s))
@@ -384,13 +397,13 @@ private fun UrlEntryForm(
                 ) {
                     Text(
                         text = "WILL PROBE",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                     )
                     Spacer(Modifier.size(R1.space.xs))
                     Text(
                         text = normalised,
-                        style = R1.numeralS,
+                        style = responsiveType(R1.numeralS),
                         color = R1.Ink,
                     )
                 }
@@ -426,7 +439,7 @@ private fun UrlEntryForm(
                 ) {
                     Text(
                         text = "OPEN IN BROWSER",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                     )
                 }
@@ -474,7 +487,7 @@ private fun UrlEntryForm(
                 ) {
                     Text(
                         text = "USE A LONG-LIVED TOKEN INSTEAD",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.AccentWarm,
                         modifier = Modifier
                             .heightIn(min = R1.MinTarget)
@@ -515,13 +528,13 @@ private fun ExampleHostsBlock() {
             ) {
                 Text(
                     text = host,
-                    style = R1.numeralS,
+                    style = responsiveType(R1.numeralS),
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = kind.uppercase(),
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                 )
             }
@@ -554,13 +567,13 @@ private fun ErrorPanel(message: String) {
         Column {
             Text(
                 text = "PROBE FAILED",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.StatusRed,
             )
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = message,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
             )
         }

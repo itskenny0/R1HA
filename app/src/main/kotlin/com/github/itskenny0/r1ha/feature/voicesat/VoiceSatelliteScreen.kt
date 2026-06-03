@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,7 +47,10 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.voice.VoiceSatelliteEngine
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -147,7 +151,7 @@ fun VoiceSatelliteScreen(
             ) {
                 Text(
                     text = statusLabel(state),
-                    style = R1.screenTitle,
+                    style = responsiveType(R1.screenTitle),
                     color = R1.Ink,
                     // Announce stage changes for screen readers as the pipeline
                     // advances wake, listen, think, speak.
@@ -160,7 +164,7 @@ fun VoiceSatelliteScreen(
                 if (sub != null) {
                     Text(
                         text = sub,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         textAlign = TextAlign.Center,
                     )
@@ -181,6 +185,17 @@ fun VoiceSatelliteScreen(
                 val response = (state as? VoiceSatelliteEngine.State.Speaking)?.responseText
                     ?: (state as? VoiceSatelliteEngine.State.Done)?.responseText
 
+                // On roomy tiers the surrounding Column is wide, so cap the
+                // transcript's line length and centre it under the hero rather
+                // than letting it run as one wall-wide line. On mini / compact
+                // the cap is generous enough that it just fills the panel.
+                val bigTier = LocalWindowTier.current.tier.isAtLeast(WindowTier.MEDIUM)
+                val transcriptAlign = if (bigTier) TextAlign.Center else TextAlign.Start
+                val transcriptModifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 560.dp)
+                    .padding(horizontal = R1.space.s)
+
                 AnimatedVisibility(
                     visible = !sttText.isNullOrBlank(),
                     enter = fadeIn(),
@@ -188,11 +203,10 @@ fun VoiceSatelliteScreen(
                 ) {
                     Text(
                         text = "You: ${sttText.orEmpty()}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.Ink,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = R1.space.s),
+                        textAlign = transcriptAlign,
+                        modifier = transcriptModifier,
                     )
                 }
                 Spacer(Modifier.height(R1.space.m))
@@ -203,11 +217,10 @@ fun VoiceSatelliteScreen(
                 ) {
                     Text(
                         text = "HA: ${response.orEmpty()}",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.AccentCool,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = R1.space.s),
+                        textAlign = transcriptAlign,
+                        modifier = transcriptModifier,
                     )
                 }
 
@@ -238,11 +251,12 @@ fun VoiceSatelliteScreen(
                     Spacer(Modifier.height(R1.space.m))
                     Text(
                         text = "Microphone access is off. Enable it in system settings, then tap to talk.",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.StatusAmber,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .widthIn(max = 560.dp)
                             .padding(horizontal = R1.space.s),
                     )
                 }
@@ -288,10 +302,23 @@ private fun MicHero(
         label = "voicesat-pulse-scale",
     )
 
+    // Hero diameter scales with the tier. The R1 / compact baseline stays the
+    // hand-tuned 160dp (R1.space.xxl * 5) so the mini panel renders exactly as
+    // before; roomier tiers step the hero up modestly so it reads as the focal
+    // control on a large panel instead of being marooned in whitespace. The
+    // largest step (240dp) still fits comfortably inside the capped content
+    // column.
+    val heroSize = when (LocalWindowTier.current.tier) {
+        WindowTier.R1, WindowTier.COMPACT -> R1.space.xxl * 5
+        WindowTier.MEDIUM -> R1.space.xxl * 6
+        WindowTier.EXPANDED -> R1.space.xxl * 6.75f
+        WindowTier.EXTRA_LARGE -> R1.space.xxl * 7.5f
+    }
+
     val cd = micContentDescription(state, hasMicPerm)
     Box(
         modifier = Modifier
-            .size(R1.space.xxl * 5)
+            .size(heroSize)
             .scale(if (listening) pulse else 1f)
             .clip(CircleShape)
             .background(accent)
@@ -309,7 +336,7 @@ private fun MicHero(
                 is VoiceSatelliteEngine.State.Speaking -> "SPEAK"
                 else -> "TALK"
             },
-            style = R1.titleCard,
+            style = responsiveType(R1.titleCard),
             color = R1.Bg,
         )
     }

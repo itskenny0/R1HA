@@ -59,6 +59,10 @@ import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
@@ -162,13 +166,27 @@ fun HistoryScreen(
             onRefresh = { vm.refresh() },
             modifier = Modifier.fillMaxSize(),
         ) {
+            val dimens = rememberResponsiveDimens()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+              // Centre + width-cap the body on medium/expanded/extra-large tiers so the
+              // chart and summary panels read as a centred column rather than one
+              // wall-wide line on a big panel; on R1 / compact the cap is unspecified so
+              // every pixel of the narrow panel is kept.
+              Column(
+                modifier = Modifier
+                    .then(
+                        if (dimens.capsContentWidth) Modifier.widthIn(max = dimens.maxContentWidth)
+                        else Modifier,
+                    )
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+              ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Icon(
                         imageVector = R1Icons.forEntity(entityId),
@@ -178,7 +196,7 @@ fun HistoryScreen(
                     )
                     Text(
                         text = entityId,
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkMuted,
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
@@ -213,12 +231,13 @@ fun HistoryScreen(
                     ) {
                         Text(
                             text = ui.error ?: "",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.StatusRed,
                         )
                     }
                 }
                 Spacer(Modifier.size(24.dp))
+              }
             }
         }
     }
@@ -265,7 +284,7 @@ private fun WindowChips(
             ) {
                 Text(
                     text = w.label,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = if (active) R1.Bg else R1.InkSoft,
                 )
             }
@@ -286,6 +305,17 @@ internal val SERIES_COLORS: List<Color> = listOf(
 internal fun seriesColor(colorIndex: Int): Color =
     SERIES_COLORS.getOrElse(colorIndex) { R1.AccentNeutral }
 
+/** Tier-aware chart height. The base 180 dp is right for the R1 / phone, but
+ *  on a roomy tablet or desktop panel the same 180 dp leaves the line marooned
+ *  in a thin strip; step it up so the chart uses the extra vertical room. Pure
+ *  in the tier so it stays testable. */
+internal fun chartHeightDp(tier: WindowTier): androidx.compose.ui.unit.Dp = when (tier) {
+    WindowTier.R1, WindowTier.COMPACT -> 180.dp
+    WindowTier.MEDIUM -> 220.dp
+    WindowTier.EXPANDED -> 260.dp
+    WindowTier.EXTRA_LARGE -> 300.dp
+}
+
 @Composable
 private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
     Column(
@@ -296,10 +326,11 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             .border(1.dp, R1.Hairline, R1.ShapeS)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
+        val chartHeight = chartHeightDp(LocalWindowTier.current.tier)
         val anyPoints = ui.series.any { it.points.isNotEmpty() }
         if (ui.loading && !anyPoints) {
             Box(
-                modifier = Modifier.fillMaxWidth().height(180.dp),
+                modifier = Modifier.fillMaxWidth().height(chartHeight),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
@@ -336,17 +367,18 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         value = numericPoint.numeric,
                         unit = ui.unit,
                         timestamp = numericPoint.timestamp,
+                        height = chartHeight,
                     )
                 !ui.isOverlay && isCategoricalHistory(primaryPoints) && primaryPoints.isNotEmpty() ->
                     StateTimelinePanel(name = ui.displayName, points = primaryPoints)
                 else -> {
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    modifier = Modifier.fillMaxWidth().height(chartHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = if (ui.isOverlay) "NO NUMERIC HISTORY YET" else "NOT ENOUGH HISTORY YET",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkMuted,
                     )
                 }
@@ -383,7 +415,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(chartHeight)
                         .clip(RoundedCornerShape(2.dp))
                         .background(R1.Surface)
                         .semantics { contentDescription = chartDescription }
@@ -461,7 +493,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                     )
                     Text(
                         text = fmt.format(scrubTime),
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.Ink,
                     )
                     for (s in multi.series) {
@@ -479,7 +511,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                             }
                             Text(
                                 text = s.displayName,
-                                style = R1.labelMicro,
+                                style = responsiveType(R1.labelMicro),
                                 color = R1.InkSoft,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
@@ -487,7 +519,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                             )
                             Text(
                                 text = sample?.let { "${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}" } ?: "n/a",
-                                style = R1.labelMicro,
+                                style = responsiveType(R1.labelMicro),
                                 color = seriesColor(s.colorIndex),
                                 maxLines = 1,
                             )
@@ -497,11 +529,11 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                     Row {
                         Text(
                             text = fmt.format(tStart),
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             modifier = Modifier.weight(1f),
                         )
-                        Text(text = fmt.format(tEnd), style = R1.labelMicro, color = R1.InkSoft)
+                        Text(text = fmt.format(tEnd), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     }
                 }
             }
@@ -512,10 +544,17 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             if (single) {
                 val s = multi.series[0]
                 Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.width(56.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                // Y-axis label gutter widens a touch on roomy tiers so the scaled-up
+                // type isn't ellipsized into the unit on a big panel.
+                val axisWidth = when (LocalWindowTier.current.tier) {
+                    WindowTier.R1, WindowTier.COMPACT -> 56.dp
+                    WindowTier.MEDIUM -> 64.dp
+                    else -> 72.dp
+                }
+                Column(modifier = Modifier.width(axisWidth), verticalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         text = "${formatNum(s.yMax)}${s.unit?.let { " $it" } ?: ""}",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -523,7 +562,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                     Spacer(Modifier.weight(1f))
                     Text(
                         text = "${formatNum(s.yMin)}${s.unit?.let { " $it" } ?: ""}",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -551,7 +590,7 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
             modifier = Modifier.fillMaxWidth().height(180.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "NO HISTORY YET", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "NO HISTORY YET", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         }
         return
     }
@@ -572,10 +611,18 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
         androidx.compose.runtime.mutableStateOf<Float?>(null)
     }
     val chartDescription = buildTimelineContentDescription(name, timeline)
+    // The state-timeline band is intentionally thin (one stacked run of
+    // coloured segments), but on roomy tiers a little extra height keeps it
+    // legible rather than a hairline strip on a big panel.
+    val bandHeight = when (LocalWindowTier.current.tier) {
+        WindowTier.R1, WindowTier.COMPACT -> R1.space.xxl + R1.space.l
+        WindowTier.MEDIUM -> R1.space.xxl + R1.space.xl
+        else -> R1.space.xxl + R1.space.xxl
+    }
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(R1.space.xxl + R1.space.l)
+            .height(bandHeight)
             .clip(R1.ShapeS)
             .background(R1.Surface)
             .semantics { contentDescription = chartDescription }
@@ -613,13 +660,13 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = fmt.format(scrubTime),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = seg?.state?.let { formatStateLabel(it) } ?: "n/a",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = seg?.let { colorOf[it.state] } ?: R1.InkSoft,
             )
         }
@@ -627,11 +674,11 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
         Row {
             Text(
                 text = fmt.format(timeline.tStart),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
             )
-            Text(text = fmt.format(timeline.tEnd), style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = fmt.format(timeline.tEnd), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
     }
     // State legend: swatch + label per distinct state, so colours are named.
@@ -654,7 +701,7 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
             )
             Text(
                 text = formatStateLabel(st),
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
             )
@@ -670,24 +717,29 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
  * bar labelled with a number.
  */
 @Composable
-private fun SingleValuePanel(value: Double?, unit: String?, timestamp: Instant) {
+private fun SingleValuePanel(
+    value: Double?,
+    unit: String?,
+    timestamp: Instant,
+    height: androidx.compose.ui.unit.Dp = 180.dp,
+) {
     val zone = ZoneId.systemDefault()
     val fmt = remember { DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(zone) }
     Box(
-        modifier = Modifier.fillMaxWidth().height(180.dp),
+        modifier = Modifier.fillMaxWidth().height(height),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "ONLY ONE READING IN WINDOW", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "ONLY ONE READING IN WINDOW", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "${value?.let { formatNum(it) } ?: "—"}${unit?.let { " $it" } ?: ""}",
-                style = R1.numeralM,
+                style = responsiveType(R1.numeralM),
                 color = R1.Ink,
                 maxLines = 1,
             )
             Spacer(Modifier.height(4.dp))
-            Text(text = fmt.format(timestamp), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(text = fmt.format(timestamp), style = responsiveType(R1.labelMicro), color = R1.InkSoft, maxLines = 1)
         }
     }
 }
@@ -716,7 +768,7 @@ private fun OverlayLegend(
     ) {
         Text(
             text = "OVERLAY, ${ui.series.size} of ${HistoryViewModel.MAX_SERIES}",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             modifier = Modifier.semantics { heading() },
         )
@@ -758,7 +810,7 @@ private fun OverlayLegend(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = s.displayName,
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.Ink,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -770,7 +822,7 @@ private fun OverlayLegend(
                         }
                         Text(
                             text = range,
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -813,7 +865,7 @@ private fun OverlayLegend(
         ) {
             Text(
                 text = if (ui.atCap) "OVERLAY FULL (${HistoryViewModel.MAX_SERIES} MAX)" else "+ ADD ENTITY",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (ui.atCap) R1.InkMuted else R1.AccentWarm,
             )
         }
@@ -833,7 +885,7 @@ private fun SummaryPanel(ui: HistoryViewModel.UiState) {
     ) {
         Text(
             text = "SUMMARY, ${ui.window.label}",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             modifier = Modifier.semantics { heading() },
         )
@@ -944,7 +996,7 @@ private fun RewindPanel(ui: HistoryViewModel.UiState) {
     ) {
         Text(
             text = "REWIND",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             modifier = Modifier.semantics { heading() },
         )
@@ -972,10 +1024,10 @@ private fun SummaryRow(
     accent: androidx.compose.ui.graphics.Color,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.width(80.dp))
+        Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkSoft, modifier = Modifier.width(80.dp))
         Text(
             text = value,
-            style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+            style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
             color = accent,
             modifier = Modifier.weight(1f),
             maxLines = 1,

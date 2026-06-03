@@ -22,6 +22,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -591,9 +594,9 @@ private fun FilteredEmptyState(filter: PickerFilter, query: String) {
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(heading, style = R1.labelMicro, color = R1.InkSoft)
+        Text(heading, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro), color = R1.InkSoft)
         Spacer(Modifier.height(8.dp))
-        Text(body, style = R1.body, color = R1.InkMuted)
+        Text(body, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkMuted)
     }
 }
 
@@ -712,7 +715,7 @@ private fun CenteredLoading() {
                 color = R1.AccentWarm,
             )
             Spacer(Modifier.height(16.dp))
-            Text("FETCHING ENTITIES…", style = R1.sectionHeader, color = R1.InkMuted)
+            Text("FETCHING ENTITIES…", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader), color = R1.InkMuted)
         }
     }
 }
@@ -726,13 +729,13 @@ private fun ErrorState(message: String) {
         horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("ERROR", style = R1.labelMicro, color = R1.StatusRed)
+        Text("ERROR", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro), color = R1.StatusRed)
         Spacer(Modifier.height(8.dp))
-        Text(message, style = R1.body, color = R1.Ink)
+        Text(message, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.Ink)
         Spacer(Modifier.height(16.dp))
         Text(
             text = "Open Settings → Sign out & reconnect to recover.",
-            style = R1.body,
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
             color = R1.InkMuted,
         )
     }
@@ -788,31 +791,64 @@ private fun ChannelList(
             )
         }
     } else {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 4.dp),
-            // contentType lets Compose recycle row composables across items rather than
-            // throwing away the layout tree for every scroll step. Two contentTypes: one
-            // for favourite rows (have move-arrows) and one for non-favourites. Without
-            // this hint, every row re-composes from scratch on swap.
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 48.dp),
-        ) {
-            items(
-                items = rows,
-                key = { it.state.id.value },
-                contentType = { if (it.isFavorite) "fav" else "non-fav" },
-            ) { row ->
-                ChannelRow(
-                    row = row,
-                    favCount = favCount,
-                    onToggle = { onToggle(row.state.id.value) },
-                    onMoveUp = { onMoveUp(row.state.id.value) },
-                    onMoveDown = { onMoveDown(row.state.id.value) },
-                    onEdit = { onEdit(row.state.id.value) },
-                    onLongPress = { onPreview(row.state) },
-                )
+        // On roomy tiers the picker is a long flat entity list, so flow it into the
+        // tier's grid-column count (2/3/4/5) to use the extra width instead of one
+        // tall single column. Mini / compact (no width cap) stay a single column and
+        // keep the wheel-scroll-bound LazyColumn so the hardware wheel still drives
+        // the list exactly as before.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+        val gridColumns = if (dimens.capsContentWidth) dimens.gridColumns else 1
+        if (gridColumns > 1) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(gridColumns),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 4.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 48.dp),
+            ) {
+                gridItems(
+                    items = rows,
+                    key = { it.state.id.value },
+                    contentType = { if (it.isFavorite) "fav" else "non-fav" },
+                ) { row ->
+                    ChannelRow(
+                        row = row,
+                        favCount = favCount,
+                        onToggle = { onToggle(row.state.id.value) },
+                        onMoveUp = { onMoveUp(row.state.id.value) },
+                        onMoveDown = { onMoveDown(row.state.id.value) },
+                        onEdit = { onEdit(row.state.id.value) },
+                        onLongPress = { onPreview(row.state) },
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 4.dp),
+                // contentType lets Compose recycle row composables across items rather than
+                // throwing away the layout tree for every scroll step. Two contentTypes: one
+                // for favourite rows (have move-arrows) and one for non-favourites. Without
+                // this hint, every row re-composes from scratch on swap.
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 48.dp),
+            ) {
+                items(
+                    items = rows,
+                    key = { it.state.id.value },
+                    contentType = { if (it.isFavorite) "fav" else "non-fav" },
+                ) { row ->
+                    ChannelRow(
+                        row = row,
+                        favCount = favCount,
+                        onToggle = { onToggle(row.state.id.value) },
+                        onMoveUp = { onMoveUp(row.state.id.value) },
+                        onMoveDown = { onMoveDown(row.state.id.value) },
+                        onEdit = { onEdit(row.state.id.value) },
+                        onLongPress = { onPreview(row.state) },
+                    )
+                }
             }
         }
     }
@@ -902,7 +938,7 @@ private fun ChannelRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = row.displayName,
-                    style = R1.bodyEmph,
+                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.bodyEmph),
                     color = R1.Ink,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -923,7 +959,7 @@ private fun ChannelRow(
             }
             Text(
                 text = row.state.id.value,
-                style = R1.numeralS,
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.numeralS),
                 color = R1.InkMuted,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

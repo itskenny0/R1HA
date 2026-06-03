@@ -47,7 +47,10 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Row
@@ -56,7 +59,6 @@ import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
-import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -139,13 +141,19 @@ fun EnergyScreen(
                 }
             },
         )
-        AdaptiveContent(modifier = Modifier.weight(1f)) {
+        // Centre + width-cap the body on medium/expanded/extra-large tiers so the
+        // tiles and chart read as a centred column instead of stretching one giant
+        // line edge to edge; R1 / compact stay full-bleed (no cap) so the tiny
+        // panel keeps every pixel. Gutters and the section gap step up with the
+        // tier via the responsive dims rather than a fixed R1.space.
+        val dimens = rememberResponsiveDimens()
+        R1CenteredContent(modifier = Modifier.weight(1f)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
                 // ── DRAW + PRODUCTION row ──────────────────────────────
                 Row(
@@ -238,7 +246,7 @@ fun EnergyScreen(
                             text = "No power sensors found. Add a power integration " +
                                 "(smart meter, smart plug, energy monitor) and the " +
                                 "dashboard will populate.",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )
                     }
@@ -256,14 +264,14 @@ fun EnergyScreen(
                     ) {
                         Text(
                             text = error,
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.StatusRed,
                         )
                     }
                 }
                 Spacer(Modifier.height(R1.space.xl))
             }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
 }
 
@@ -308,11 +316,11 @@ private fun BigStatTile(
                     modifier = Modifier.size(14.dp),
                 )
             }
-            Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
         Text(
             text = value,
-            style = R1.numeralXl.copy(fontWeight = FontWeight.SemiBold),
+            style = responsiveType(R1.numeralXl).copy(fontWeight = FontWeight.SemiBold),
             color = accent,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -334,7 +342,7 @@ private fun ConsumerRow(c: EnergyViewModel.Consumer, onClick: () -> Unit) {
         trailing = {
             Text(
                 text = formatWatts(c.watts),
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = drawAccent(c.watts),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -365,7 +373,7 @@ private fun EnergyHistorySection(
         trailing = {
             Text(
                 text = ui.window.label,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentWarm,
             )
         },
@@ -450,7 +458,7 @@ private fun HistoryNote(text: String) {
     Box(
         modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.s),
     ) {
-        Text(text = text, style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = text, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
     }
 }
 
@@ -487,6 +495,11 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
     val chartDescription = remember(proj) {
         energyChartDescription(proj.heights.size, proj.total, proj.peak)
     }
+    // The plot takes the flexible width (weight) so it scales with the tier; the
+    // y-axis label gutter grows in step with the type scale so the larger
+    // "Σ X.X kWh" still fits without clipping on big panels.
+    val dimens = rememberResponsiveDimens()
+    val axisWidth = (64.dp.value * dimens.typeScale).dp
     Row {
         Column(modifier = Modifier.weight(1f)) {
             Canvas(
@@ -549,13 +562,13 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
                 Row {
                     Text(
                         text = fmt.format(sample.timestamp),
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.Ink,
                         modifier = Modifier.weight(1f),
                     )
                     Text(
                         text = formatKwh(sample.kwh),
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.AccentWarm,
                     )
                 }
@@ -563,30 +576,30 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
                 Row {
                     Text(
                         text = fmt.format(firstStart),
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(text = fmt.format(lastStart), style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = fmt.format(lastStart), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 }
             }
         }
         Spacer(Modifier.width(R1.space.s))
         Column(
-            modifier = Modifier.width(64.dp),
+            modifier = Modifier.width(axisWidth),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
                 text = formatKwh(proj.peak),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 1,
             )
             Spacer(Modifier.weight(1f))
             // Window total: the headline number a user actually wants from a
             // consumption history, distinct from the per-bucket peak above.
-            Text(text = "Σ ${formatKwh(proj.total)}", style = R1.labelMicro, color = R1.AccentWarm, maxLines = 1)
-            Text(text = "0", style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(text = "Σ ${formatKwh(proj.total)}", style = responsiveType(R1.labelMicro), color = R1.AccentWarm, maxLines = 1)
+            Text(text = "0", style = responsiveType(R1.labelMicro), color = R1.InkSoft, maxLines = 1)
         }
     }
 }

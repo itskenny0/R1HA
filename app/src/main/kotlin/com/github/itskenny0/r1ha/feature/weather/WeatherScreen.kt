@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,12 +39,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
-import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
  * Weather surface: lists every `weather.*` entity HA reports with
@@ -84,7 +87,12 @@ fun WeatherScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "WEATHER", onBack = onBack)
-        AdaptiveContent(modifier = Modifier.weight(1f)) {
+        // Centre + width-cap the list on medium+ tiers (R1CenteredContent is a
+        // fill-width passthrough on R1 / compact, a centred capped column above),
+        // so the rows read as a single column on a wide panel instead of being
+        // stretched edge to edge.
+        val dimens = rememberResponsiveDimens()
+        R1CenteredContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
                 modifier = Modifier.fillMaxSize(),
@@ -105,7 +113,7 @@ fun WeatherScreen(
                 // DNS, server down) rather than a config gap.
                 Text(
                     text = "Weather load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -115,7 +123,7 @@ fun WeatherScreen(
             ) {
                 Text(
                     text = "No weather entities in HA. Add a weather integration to see them here.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -131,9 +139,9 @@ fun WeatherScreen(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
-                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                    verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
                 ) {
                     items(items = ui.weathers, key = { it.entityId }) { w ->
                         WeatherRow(w)
@@ -141,7 +149,7 @@ fun WeatherScreen(
                 }
             }
         }
-        } // AdaptiveContent
+        } // R1CenteredContent
     }
 }
 
@@ -176,7 +184,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = w.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -185,7 +193,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             if (w.temperature != null) {
                 Text(
                     text = formatTemp(w.temperature, w.temperatureUnit),
-                    style = R1.numeralM,
+                    style = responsiveType(R1.numeralM),
                     color = R1.Ink,
                 )
             }
@@ -194,7 +202,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = conditionLabel(w.condition).uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = conditionAccent(w.condition),
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -206,7 +214,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             if (w.apparentTemperature != null && w.apparentTemperature != w.temperature) {
                 Text(
                     text = "FEELS ${formatTemp(w.apparentTemperature, w.temperatureUnit)}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 1,
                 )
@@ -240,7 +248,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             Spacer(Modifier.size(R1.space.xxs))
             Text(
                 text = parts.joinToString(" · "),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -272,14 +280,23 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 }
                 Spacer(Modifier.size(R1.space.xs))
             }
+            // Forecast strip always scrolls horizontally so it never clips on
+            // the R1's narrow panel; on larger tiers the tiles + gaps breathe
+            // (wider min-width, more padding, stepped-up type) instead of
+            // staying R1-tight.
+            val tier = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.tier
+            val stripGap = if (tier.isAtLeast(
+                    com.github.itskenny0.r1ha.ui.components.WindowTier.MEDIUM,
+                )
+            ) R1.space.m else R1.space.s
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                horizontalArrangement = Arrangement.spacedBy(stripGap),
             ) {
                 for (entry in entries) {
-                    ForecastTile(entry, mode, w.temperatureUnit, w.windUnit)
+                    ForecastTile(entry, mode, w.temperatureUnit, w.windUnit, tier)
                 }
             }
         }
@@ -292,17 +309,26 @@ private fun ForecastTile(
     kind: ForecastKind,
     tempUnit: String?,
     windUnit: String?,
+    tier: com.github.itskenny0.r1ha.ui.components.WindowTier =
+        com.github.itskenny0.r1ha.ui.components.WindowTier.R1,
 ) {
+    // Breathe on bigger tiers: a wider floor + roomier inset keep each tile
+    // legible across a large panel, while the R1 keeps its tight 56dp tiles
+    // so the whole strip still fits the narrow panel's scroll.
+    val isWide = tier.isAtLeast(com.github.itskenny0.r1ha.ui.components.WindowTier.MEDIUM)
+    val tileMinWidth = if (isWide) 76.dp else 56.dp
+    val tileInset = if (isWide) R1.space.m else R1.space.s
     Column(
         modifier = Modifier
+            .widthIn(min = tileMinWidth)
             .clip(R1.ShapeS)
             .background(R1.Bg)
-            .padding(horizontal = R1.space.s, vertical = R1.space.s),
+            .padding(horizontal = tileInset, vertical = tileInset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = formatForecastLabel(entry.whenIso, kind),
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
             maxLines = 1,
         )
@@ -322,20 +348,20 @@ private fun ForecastTile(
             }
         }
         if (tempLine.isNotBlank()) {
-            Text(text = tempLine, style = R1.labelMicro, color = R1.Ink)
+            Text(text = tempLine, style = responsiveType(R1.labelMicro), color = R1.Ink)
         }
         // Precipitation probability reads as the primary "will it rain"
         // signal; fall back to the amount when only that is reported.
         if (entry.precipitationProbability != null) {
             Text(
                 text = "${entry.precipitationProbability}%",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentCool,
             )
         } else if (entry.precipitation != null && entry.precipitation > 0.0) {
             Text(
                 text = "${"%.1f".format(java.util.Locale.US, entry.precipitation)}mm",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentCool,
             )
         }
@@ -345,7 +371,7 @@ private fun ForecastTile(
             val windStr = "${formatNumber(entry.windSpeed)} ${windUnit ?: ""}".trim()
             Text(
                 text = if (bearing != null) "$windStr $bearing" else windStr,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
             )
         }

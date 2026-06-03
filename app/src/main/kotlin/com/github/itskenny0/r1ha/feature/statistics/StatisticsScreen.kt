@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +56,9 @@ import com.github.itskenny0.r1ha.core.ha.StatisticId
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -112,12 +116,19 @@ fun StatisticsScreen(
                     )
                 },
             )
+            // Centre + width-cap the body on medium/expanded/extra-large tiers so the
+            // pickers, chart, and summary read as a centred column instead of stretching
+            // one giant line edge to edge; R1 / compact stay full-bleed (no cap) so the
+            // tiny panel keeps every pixel. Gutters and the section gap step up with the
+            // tier via the responsive dims rather than a fixed R1.space.
+            val dimens = rememberResponsiveDimens()
+            R1CenteredContent(modifier = Modifier.weight(1f)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                    .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                     .verticalScroll(scrollState),
-                verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
                 StatisticPickerBar(ui = ui, onOpen = { vm.openPicker() })
                 if (ui.selected != null) {
@@ -153,6 +164,7 @@ fun StatisticsScreen(
                 }
                 Spacer(Modifier.size(R1.space.xl))
             }
+            }
         }
         if (ui.pickerOpen) {
             StatisticPickerSheet(
@@ -180,7 +192,7 @@ private fun StatisticPickerBar(
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
-        Text(text = "STATISTIC", style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = "STATISTIC", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         Spacer(Modifier.size(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (selected != null) {
@@ -200,7 +212,7 @@ private fun StatisticPickerBar(
                 if (selected != null) {
                     Text(
                         text = selected.name?.takeIf { it.isNotBlank() } ?: selected.statisticId,
-                        style = R1.bodyEmph,
+                        style = responsiveType(R1.bodyEmph),
                         color = R1.Ink,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -224,7 +236,7 @@ private fun StatisticPickerBar(
                 } else {
                     Text(
                         text = if (ui.catalogueLoading) "Loading recorder catalogue…" else "Pick a statistic",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = if (ui.catalogueLoading) R1.InkMuted else R1.Ink,
                     )
                     Text(
@@ -232,7 +244,7 @@ private fun StatisticPickerBar(
                             "Recorder reported no statistics."
                         else
                             "${ui.available.size} series available",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                     )
                 }
@@ -240,7 +252,7 @@ private fun StatisticPickerBar(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = if (selected == null) "PICK" else "CHANGE",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentWarm,
             )
         }
@@ -253,7 +265,9 @@ private fun WindowChips(
     onSelect: (StatisticsViewModel.Window) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Window.entries.forEach { w ->
@@ -276,7 +290,9 @@ private fun PeriodChips(
     onSelect: (StatisticsViewModel.Period) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Period.entries.forEach { p ->
@@ -306,7 +322,9 @@ private fun AggregationChips(
     onSelect: (StatisticsViewModel.Aggregation) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         StatisticsViewModel.Aggregation.entries.forEach { agg ->
@@ -338,6 +356,12 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
         if (ui.aggregation == StatisticsViewModel.Aggregation.MEAN) vm.bandPoints(ui) else emptyList()
     }
     val unit = ui.selected?.unitOfMeasurement?.takeIf { it.isNotBlank() }
+    // The chart grows taller on roomier tiers (the band + trend earn the extra
+    // vertical room on a 13in panel) while the R1 keeps its hand-tuned 180dp;
+    // the y-axis label gutter widens the same way so scaled-up readings still fit.
+    val dimens = rememberResponsiveDimens()
+    val chartHeight = (180.dp.value * dimens.typeScale).dp
+    val axisWidth = (56.dp.value * dimens.typeScale).dp
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -348,7 +372,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
     ) {
         if (ui.seriesLoading && points.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxWidth().height(180.dp),
+                modifier = Modifier.fillMaxWidth().height(chartHeight),
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(
@@ -365,7 +389,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             // user staring at a flat panel knows whether to widen the window or
             // pick a different aggregation.
             Box(
-                modifier = Modifier.fillMaxWidth().height(180.dp),
+                modifier = Modifier.fillMaxWidth().height(chartHeight),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -375,7 +399,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     } else {
                         "NO STATISTICS IN WINDOW"
                     },
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
@@ -450,7 +474,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(chartHeight)
                         .clip(RoundedCornerShape(2.dp))
                         .background(R1.Surface)
                         .semantics { contentDescription = chartDescription }
@@ -563,14 +587,14 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     Row {
                         Text(
                             text = fmt.format(sample.timestamp),
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.Ink,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                         )
                         Text(
                             text = "${formatNum(sample.value)}${unit?.let { " $it" } ?: ""}",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.AccentWarm,
                             maxLines = 1,
                         )
@@ -579,22 +603,22 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     Row {
                         Text(
                             text = fmt.format(tStart),
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                             modifier = Modifier.weight(1f),
                         )
-                        Text(text = fmt.format(tEnd), style = R1.labelMicro, color = R1.InkSoft)
+                        Text(text = fmt.format(tEnd), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     }
                 }
             }
             Spacer(Modifier.width(R1.space.s))
             Column(
-                modifier = Modifier.width(56.dp),
+                modifier = Modifier.width(axisWidth),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
                     text = "${formatNum(yMax)}${unit?.let { " $it" } ?: ""}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -602,7 +626,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = "${formatNum(yMin)}${unit?.let { " $it" } ?: ""}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -631,7 +655,7 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
     ) {
         Text(
             text = "SUMMARY · ${ui.aggregation.label} · ${ui.window.label} · ${ui.period.label}",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
         )
         if (metered) {
@@ -702,11 +726,17 @@ private fun SummaryRow(
     value: String,
     accent: androidx.compose.ui.graphics.Color,
 ) {
+    val dimens = rememberResponsiveDimens()
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.width(80.dp))
+        Text(
+            text = label,
+            style = responsiveType(R1.labelMicro),
+            color = R1.InkSoft,
+            modifier = Modifier.width((80.dp.value * dimens.typeScale).dp),
+        )
         Text(
             text = value,
-            style = R1.bodyEmph,
+            style = responsiveType(R1.bodyEmph),
             color = accent,
             modifier = Modifier.weight(1f),
             maxLines = 1,
@@ -726,12 +756,12 @@ private fun EmptyHero() {
             .padding(horizontal = R1.space.l, vertical = R1.space.xl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "NO STATISTIC PICKED", style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(text = "NO STATISTIC PICKED", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
         Spacer(Modifier.size(R1.space.s))
         Text(
             text = "Tap the STATISTIC card above to choose any sensor or " +
                 "meter the recorder is tracking.",
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkSoft,
         )
     }
@@ -748,17 +778,17 @@ private fun NoPlottablePanel() {
             .padding(horizontal = R1.space.l, vertical = R1.space.l),
         verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
-        Text(text = "NOTHING TO PLOT", style = R1.sectionHeader, color = R1.AccentWarm)
+        Text(text = "NOTHING TO PLOT", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
         Text(
             text = "The recorder tracks this statistic with neither a mean nor a sum, " +
                 "so there's no series any aggregation can chart. It may still feed " +
                 "energy totals or diagnostics inside Home Assistant.",
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkSoft,
         )
         Text(
             text = "Pick a different statistic, or one that shows a MEAN or SUM badge in the picker.",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
         )
     }
@@ -774,7 +804,7 @@ private fun ErrorPanel(message: String) {
             .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
-        Text(text = message, style = R1.labelMicro, color = R1.StatusRed)
+        Text(text = message, style = responsiveType(R1.labelMicro), color = R1.StatusRed)
     }
 }
 
@@ -818,11 +848,11 @@ private fun StatisticPickerSheet(
                 .r1Pressable(onClick = {}, hapticOnClick = false)
                 .padding(R1.space.l),
         ) {
-            Text(text = "PICK STATISTIC", style = R1.sectionHeader, color = R1.AccentWarm)
+            Text(text = "PICK STATISTIC", style = responsiveType(R1.sectionHeader), color = R1.AccentWarm)
             Spacer(Modifier.height(R1.space.xs))
             Text(
                 text = "${rows.size} series from HA's recorder",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
             )
             Spacer(Modifier.height(R1.space.m))
@@ -868,7 +898,7 @@ private fun StatisticPickerSheet(
                             "Recorder reported no statistics. Enable the recorder integration in HA."
                         else
                             "No matches for '${query}'.",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkMuted,
                     )
                 }
@@ -897,7 +927,7 @@ private fun StatisticPickerSheet(
                     .padding(vertical = R1.space.m),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "CANCEL", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "CANCEL", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             }
         }
     }
@@ -925,7 +955,7 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = row.name?.takeIf { it.isNotBlank() } ?: row.statisticId,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,

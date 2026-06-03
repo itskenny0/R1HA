@@ -14,9 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,9 +39,11 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
@@ -63,8 +68,8 @@ fun PersonsScreen(
 ) {
     val vm: PersonsViewModel = viewModel(factory = PersonsViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
-    val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val gridState = rememberLazyGridState()
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = gridState, settings = settings)
     val appSettings by settings.settings.collectAsState(
         initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
     )
@@ -81,6 +86,12 @@ fun PersonsScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "WHO'S HOME", onBack = onBack)
+        // Size-aware dimensions: gutter, content-width cap, and the person-grid
+        // column count all step up with the window tier. One column on R1 /
+        // compact (the stacked list, unchanged); two on medium / expanded; three
+        // on extra-large, so a wide tablet fills its width with a person grid
+        // instead of one stretched column of rows.
+        val dimens = rememberResponsiveDimens()
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
@@ -103,7 +114,7 @@ fun PersonsScreen(
                 // itself failed (auth, network, server down).
                 Text(
                     text = "Persons load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -113,7 +124,7 @@ fun PersonsScreen(
             ) {
                 Text(
                     text = "No people or device trackers in HA. Add a person integration to see them here.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -125,13 +136,27 @@ fun PersonsScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                // Centre + width-cap the grid on big tiers so a person grid on a
+                // 13in panel reads as a tidy centred block rather than rows
+                // stretched edge-to-edge; mini / compact fill (maxContentWidth is
+                // Unspecified there).
+                val capped = if (dimens.capsContentWidth) {
+                    Modifier
+                        .fillMaxSize()
+                        .widthIn(max = dimens.maxContentWidth)
+                        .align(Alignment.TopCenter)
+                } else {
+                    Modifier.fillMaxSize()
+                }
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(dimens.dashboardColumns),
+                    modifier = capped,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     // Each row is its own `items` entry keyed by entity_id so the
                     // list lazily composes/recycles rows and a single person's
@@ -139,7 +164,11 @@ fun PersonsScreen(
                     // section. The section header is a plain header item above
                     // its rows; ordering and visible content are unchanged.
                     if (ui.people.isNotEmpty()) {
-                        item(key = "__sec_people", contentType = "header") {
+                        item(
+                            key = "__sec_people",
+                            contentType = "header",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
                             // heading() promotes the section title to a TalkBack
                             // navigation landmark so users can jump between the
                             // People and Device trackers groups.
@@ -162,7 +191,11 @@ fun PersonsScreen(
                         }
                     }
                     if (ui.devices.isNotEmpty()) {
-                        item(key = "__sec_devices", contentType = "header") {
+                        item(
+                            key = "__sec_devices",
+                            contentType = "header",
+                            span = { GridItemSpan(maxLineSpan) },
+                        ) {
                             Box(modifier = Modifier.semantics { heading() }) {
                                 R1Section(
                                     title = "Device trackers",
@@ -344,13 +377,13 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
         // Zone-presence chip: HOME (green), AWAY (amber), unknown (red), or
         // the named HA zone (cool accent). Derivation lives in the pure
         // presenceLabel() helper so it's unit-tested and Compose-free.
-        Text(text = presence.label, style = R1.labelMicro, color = presence.color)
+        Text(text = presence.label, style = responsiveType(R1.labelMicro), color = presence.color)
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = entry.name,
-                    style = R1.bodyEmph,
+                    style = responsiveType(R1.bodyEmph),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -140,7 +141,18 @@ fun IotCameraSettingsScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(title = "IOT CAMERA MODE", onBack = onBack)
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        // Centre + width-cap the form on tablet / desktop tiers. R1 / compact
+        // stay Unspecified = fill full-bleed.
+        val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
+        val listModifier = if (dimens.capsContentWidth) {
+            Modifier
+                .fillMaxSize()
+                .widthIn(max = dimens.maxContentWidth)
+                .align(Alignment.CenterHorizontally)
+        } else {
+            Modifier.fillMaxSize()
+        }
+        LazyColumn(modifier = listModifier) {
             item {
                 Text(
                     text = "Turn this device into a Home Assistant camera. " +

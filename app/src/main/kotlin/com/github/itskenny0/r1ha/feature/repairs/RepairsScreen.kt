@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -40,6 +41,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.RepairIssue
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -65,6 +68,7 @@ fun RepairsScreen(
     // physical scroll wheel can drive it once the wheel input is plumbed through
     // (see the SHARED CHANGE REQUEST in the surface report).
     val listState = rememberLazyListState()
+    val dimens = rememberResponsiveDimens()
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -116,19 +120,19 @@ fun RepairsScreen(
                     ) {
                         Text(
                             text = "COULDN'T LOAD REPAIRS",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.StatusAmber,
                         )
                         Spacer(Modifier.height(R1.space.xs))
                         Text(
                             text = ui.error ?: "",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.InkSoft,
                         )
                         Spacer(Modifier.height(R1.space.m))
                         Text(
                             text = "Repairs only flows over the live WebSocket. If your link is down or the server is offline, retry once it reconnects.",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkMuted,
                         )
                     }
@@ -143,13 +147,13 @@ fun RepairsScreen(
                     ) {
                         Text(
                             text = "NO OPEN REPAIRS",
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.AccentCool,
                         )
                         Spacer(Modifier.height(R1.space.xs))
                         Text(
                             text = "Nothing for HA's integrations to flag.",
-                            style = R1.body,
+                            style = responsiveType(R1.body),
                             color = R1.InkMuted,
                         )
                     }
@@ -163,8 +167,10 @@ fun RepairsScreen(
                         state = listState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = R1.space.m, vertical = R1.space.s),
-                        verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                            // Gutter steps up with the tier so roomy panels breathe
+                            // while the R1 keeps its tight 12dp inset.
+                            .padding(horizontal = dimens.screenGutter, vertical = R1.space.s),
+                        verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
                     ) {
                         item(key = "summary") {
                             // Compose a severity breakdown line: gives the user
@@ -180,7 +186,7 @@ fun RepairsScreen(
                             }
                             Text(
                                 text = summary,
-                                style = R1.labelMicro,
+                                style = responsiveType(R1.labelMicro),
                                 color = accent,
                                 modifier = Modifier.padding(vertical = R1.space.xs),
                             )
@@ -240,59 +246,69 @@ private fun RepairRow(
                 .padding(horizontal = R1.space.m, vertical = R1.space.s),
             verticalArrangement = Arrangement.spacedBy(R1.space.xs),
         ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Severity glyph: an alert siren for critical/error/warning, the
-            // neutral generic mark for anything HA didn't flag, tinted to the
-            // row's severity tone so the list triages by colour + shape.
-            Icon(
-                imageVector = RepairsLogic.severityIcon(issue.severity),
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(R1.space.xs))
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(tone.copy(alpha = 0.18f))
-                    .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
-                    .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
-            ) {
-                Text(
-                    text = issue.severity.uppercase(),
-                    style = R1.labelMicro,
-                    color = tone,
+        // Severity badge, domain, and status labels wrap onto extra rows on a
+        // narrow R1 panel rather than clipping past the edge; on roomy tiers
+        // they all sit on one line. The icon + severity badge stay glued
+        // together as the leading group so the triage colour reads first.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Severity glyph: an alert siren for critical/error/warning, the
+                // neutral generic mark for anything HA didn't flag, tinted to the
+                // row's severity tone so the list triages by colour + shape.
+                Icon(
+                    imageVector = RepairsLogic.severityIcon(issue.severity),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(16.dp),
                 )
+                Spacer(Modifier.width(R1.space.xs))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(tone.copy(alpha = 0.18f))
+                        .border(1.dp, tone.copy(alpha = 0.5f), R1.ShapeS)
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+                ) {
+                    Text(
+                        text = issue.severity.uppercase(),
+                        style = responsiveType(R1.labelMicro),
+                        color = tone,
+                    )
+                }
             }
-            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = issue.domain,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.CenterVertically),
             )
             if (issue.ignored) {
-                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "IGNORED",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
+                    modifier = Modifier.align(Alignment.CenterVertically),
                 )
             }
             // Fixable issues route through HA's multi-step fix flow; the rest
             // are informational and can only be read or ignored. Labelling
             // both makes the distinction explicit rather than implied.
-            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = if (issue.isFixable) "FIXABLE" else "INFO",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (issue.isFixable) R1.AccentCool else R1.InkMuted,
+                modifier = Modifier.align(Alignment.CenterVertically),
             )
         }
         Text(
             text = RepairsLogic.humanizeTitle(issue.translationKey, issue.issueId),
-            style = R1.bodyEmph,
+            style = responsiveType(R1.bodyEmph),
             color = if (issue.ignored) R1.InkMuted else R1.Ink,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -300,7 +316,7 @@ private fun RepairRow(
         if (!issue.description.isNullOrBlank()) {
             Text(
                 text = issue.description,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
@@ -319,7 +335,7 @@ private fun RepairRow(
             ) {
                 Text(
                     text = "Breaks in ${issue.breaksInHaVersion}",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.StatusAmber,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -344,7 +360,7 @@ private fun RepairRow(
             ) {
                 Text(
                     text = "LEARN MORE ↗",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.AccentCool,
                 )
             }
@@ -354,10 +370,17 @@ private fun RepairRow(
             RelativeTimeLabel(
                 at = createdAt,
                 color = R1.InkMuted,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Action controls wrap onto a second line on a narrow R1 panel rather
+        // than the long "FIX IN HOME ASSISTANT" label shoving IGNORE off the
+        // edge; on roomy tiers FIX sits left and IGNORE trails to the right.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
             // The full multi-step fix flow lives in HA's own frontend. When we
             // know HA's web-UI URL we deep-link straight into the repairs
             // dashboard; otherwise we still surface the entry point with copy
@@ -378,12 +401,13 @@ private fun RepairRow(
                 ) {
                     Text(
                         text = if (repairsUrl != null) "FIX IN HA ↗" else "FIX IN HOME ASSISTANT",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.AccentCool,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
             Box(
                 modifier = Modifier
                     .heightIn(min = R1.MinTarget)
@@ -403,7 +427,7 @@ private fun RepairRow(
             ) {
                 Text(
                     text = if (issue.ignored) "RESTORE" else "IGNORE",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = if (issue.ignored) R1.AccentWarm else R1.StatusAmber,
                 )
             }

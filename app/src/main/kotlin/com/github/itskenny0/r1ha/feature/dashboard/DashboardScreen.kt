@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
@@ -216,12 +217,12 @@ fun DashboardScreen(
                         Column {
                             Text(
                                 text = "Dashboard refresh failed. Tap to retry.",
-                                style = R1.body,
+                                style = responsiveType(R1.body),
                                 color = R1.StatusRed,
                             )
                             Text(
                                 text = ui.error ?: "",
-                                style = R1.labelMicro,
+                                style = responsiveType(R1.labelMicro),
                                 color = R1.InkSoft,
                                 maxLines = 2,
                             )
@@ -390,12 +391,12 @@ fun DashboardScreen(
                     Spacer(Modifier.size(R1.space.xl))
                     Text(
                         text = "Every dashboard tile is hidden.",
-                        style = R1.body,
+                        style = responsiveType(R1.body),
                         color = R1.InkMuted,
                     )
                     Text(
                         text = "Re-enable cards under Settings → DASHBOARD → VISIBLE CARDS.",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkSoft,
                     )
                     Spacer(Modifier.size(R1.space.m))
@@ -488,14 +489,14 @@ private fun WeatherCard(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = w.name.uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = w.condition.replace('-', ' ').uppercase(),
-                style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -510,7 +511,7 @@ private fun WeatherCard(
             if (extras.isNotEmpty()) {
                 Text(
                     text = extras.joinToString("  ·  "),
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -520,7 +521,7 @@ private fun WeatherCard(
         if (w.temperature != null) {
             Text(
                 text = "${"%.0f".format(w.temperature)}$unit",
-                style = R1.numeralXl,
+                style = responsiveType(R1.numeralXl),
                 color = R1.Ink,
             )
         }
@@ -557,11 +558,11 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
             )
             Spacer(Modifier.width(R1.space.m))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "SUN", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "SUN", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Text(
                     text = (if (isUp) "ABOVE HORIZON" else "BELOW HORIZON") +
                         (s.elevation?.let { " · ${"%.1f".format(java.util.Locale.US, it)}°" } ?: ""),
-                    style = R1.body.copy(fontWeight = FontWeight.SemiBold),
+                    style = responsiveType(R1.body).copy(fontWeight = FontWeight.SemiBold),
                     color = R1.Ink,
                 )
             }
@@ -575,28 +576,28 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
         ).withLocale(locale)
         Row {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "NEXT RISE", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "NEXT RISE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    RelativeTimeLabel(at = s.nextRising, color = R1.AccentWarm, style = R1.labelMicro)
+                    RelativeTimeLabel(at = s.nextRising, color = R1.AccentWarm, style = responsiveType(R1.labelMicro))
                     s.nextRising?.let {
                         Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )
                     }
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "NEXT SET", style = R1.labelMicro, color = R1.InkMuted)
+                Text(text = "NEXT SET", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    RelativeTimeLabel(at = s.nextSetting, color = R1.AccentCool, style = R1.labelMicro)
+                    RelativeTimeLabel(at = s.nextSetting, color = R1.AccentCool, style = responsiveType(R1.labelMicro))
                     s.nextSetting?.let {
                         Spacer(Modifier.width(R1.space.s))
                         Text(
                             text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
-                            style = R1.labelMicro,
+                            style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )
                     }
@@ -649,7 +650,7 @@ private fun DashboardTopBar(
             }
             Text(
                 text = "TODAY · $dayName",
-                style = R1.screenTitle,
+                style = responsiveType(R1.screenTitle),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
             )
@@ -736,7 +737,7 @@ private fun LowBatteryCard(
             Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = "${entries.size} BATTERIES LOW",
-                style = R1.labelMicro.copy(fontWeight = FontWeight.SemiBold),
+                style = responsiveType(R1.labelMicro).copy(fontWeight = FontWeight.SemiBold),
                 color = R1.StatusAmber,
             )
         }
@@ -752,7 +753,7 @@ private fun LowBatteryCard(
             ) {
                 Text(
                     text = entry.name,
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -761,7 +762,7 @@ private fun LowBatteryCard(
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = "${entry.pct}%",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = if (entry.pct < 10) R1.StatusRed else R1.StatusAmber,
                 )
                 // Drill-in affordance: each battery row opens its history view.
@@ -772,7 +773,7 @@ private fun LowBatteryCard(
         if (entries.size > 5) {
             Text(
                 text = "and ${entries.size - 5} more…",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
         }
@@ -805,9 +806,9 @@ private fun TimerCard(
                 "paused" -> "PAUSED" to R1.StatusAmber
                 else -> t.state.uppercase() to R1.InkSoft
             }
-            Text(text = label, style = R1.labelMicro, color = color)
+            Text(text = label, style = responsiveType(R1.labelMicro), color = color)
             Spacer(Modifier.width(R1.space.m))
-            Text(text = t.name, style = R1.bodyEmph, color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(text = t.name, style = responsiveType(R1.bodyEmph), color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
             Spacer(Modifier.width(R1.space.s))
             // Paused timers freeze finishes_at at the pause moment, so a
             // RelativeTimeLabel would tick into the past and show
@@ -818,9 +819,9 @@ private fun TimerCard(
             // finishes_at failed to parse, so a control without a
             // readable countdown still shows *something*.
             if ((t.state == "paused" || t.finishesAt == null) && !t.remaining.isNullOrBlank()) {
-                Text(text = t.remaining, style = R1.labelMicro, color = color)
+                Text(text = t.remaining, style = responsiveType(R1.labelMicro), color = color)
             } else {
-                RelativeTimeLabel(at = t.finishesAt, color = color, style = R1.labelMicro)
+                RelativeTimeLabel(at = t.finishesAt, color = color, style = responsiveType(R1.labelMicro))
             }
         }
         Row(
@@ -861,7 +862,7 @@ private fun TimerPill(
             .padding(vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.labelMicro, color = accent)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = accent)
     }
 }
 
@@ -911,10 +912,10 @@ private fun Greeting() {
     )
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xs, vertical = R1.space.xs)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(text = greeting, style = R1.sectionHeader, color = R1.AccentWarm, modifier = Modifier.weight(1f))
-            Text(text = timeLine, style = R1.numeralM, color = R1.Ink)
+            Text(text = greeting, style = responsiveType(R1.sectionHeader), color = R1.AccentWarm, modifier = Modifier.weight(1f))
+            Text(text = timeLine, style = responsiveType(R1.numeralM), color = R1.Ink)
         }
-        Text(text = dateLine.uppercase(), style = R1.labelMicro, color = R1.InkSoft)
+        Text(text = dateLine.uppercase(), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
     }
 }
 
@@ -944,7 +945,7 @@ private fun MediaCard(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = media.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -952,7 +953,7 @@ private fun MediaCard(
         }
         val titleLine = listOfNotNull(media.title, media.artist).joinToString(" · ")
         if (titleLine.isNotBlank()) {
-            Text(text = titleLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 2)
+            Text(text = titleLine, style = responsiveType(R1.labelMicro), color = R1.InkSoft, maxLines = 2)
         }
         // Transport row: prev/play-pause/next, each gated on the
         // player's supported_features so we never offer a control the
@@ -1079,11 +1080,11 @@ private fun PersonsCard(
         verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "PEOPLE", style = R1.labelMicro, color = R1.InkSoft)
+            Text(text = "PEOPLE", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
             Spacer(Modifier.weight(1f))
-            Text(text = "${p.homeCount} HOME", style = R1.labelMicro, color = R1.AccentGreen)
+            Text(text = "${p.homeCount} HOME", style = responsiveType(R1.labelMicro), color = R1.AccentGreen)
             Spacer(Modifier.width(R1.space.s))
-            Text(text = "${p.awayCount} AWAY", style = R1.labelMicro, color = R1.StatusAmber)
+            Text(text = "${p.awayCount} AWAY", style = responsiveType(R1.labelMicro), color = R1.StatusAmber)
             // Drill-in affordance: the card opens the full Who's Home surface.
             Spacer(Modifier.width(R1.space.xs))
             Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
@@ -1092,7 +1093,7 @@ private fun PersonsCard(
             Row {
                 Text(
                     text = name,
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
@@ -1112,13 +1113,13 @@ private fun PersonsCard(
                     "not_home" -> "AWAY"
                     else -> state.uppercase()
                 }
-                Text(text = label, style = R1.labelMicro, color = color)
+                Text(text = label, style = responsiveType(R1.labelMicro), color = color)
             }
         }
         if (p.total > p.rows.size) {
             Text(
                 text = "and ${p.total - p.rows.size} more. Tap to see all",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
             )
         }
@@ -1145,7 +1146,7 @@ private fun CalendarCard(
                 R1Chip(text = "NOW", variant = R1ChipVariant.Pill, tone = R1.AccentGreen)
                 Spacer(Modifier.width(R1.space.s))
             } else {
-                Text(text = "NEXT", style = R1.labelMicro, color = R1.InkSoft)
+                Text(text = "NEXT", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 Spacer(Modifier.width(R1.space.s))
             }
             if (c.allDay) {
@@ -1154,20 +1155,20 @@ private fun CalendarCard(
             }
             Text(
                 text = c.calendarName.uppercase(),
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            RelativeTimeLabel(at = c.eventStart, color = R1.InkMuted, style = R1.labelMicro)
+            RelativeTimeLabel(at = c.eventStart, color = R1.InkMuted, style = responsiveType(R1.labelMicro))
             // Drill-in affordance: the card opens the full Calendars surface.
             Spacer(Modifier.width(R1.space.xs))
             Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
         }
         Text(
             text = c.eventTitle,
-            style = R1.bodyEmph,
+            style = responsiveType(R1.bodyEmph),
             color = R1.Ink,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -1217,13 +1218,13 @@ private fun MetricsRow(
                 )
                 Spacer(Modifier.width(R1.space.s))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "DRAW", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "DRAW", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                     Text(
                         // Format kilowatts once the draw reaches 1 kW so a
                         // four-digit watt figure doesn't blow out the tile;
                         // one decimal of kW is plenty of precision at a glance.
                         text = formatPower(totalPowerW),
-                        style = R1.numeralXl,
+                        style = responsiveType(R1.numeralXl),
                         color = when {
                             totalPowerW > redW -> R1.StatusRed
                             totalPowerW > amberW -> R1.StatusAmber
@@ -1233,7 +1234,7 @@ private fun MetricsRow(
                 }
                 Text(
                     text = "sum of power sensors",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
@@ -1298,8 +1299,8 @@ private fun Metric(
             .then(pressable)
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
     ) {
-        Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
-        Text(text = value, style = R1.numeralXl, color = accent)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
+        Text(text = value, style = responsiveType(R1.numeralXl), color = accent)
     }
 }
 
@@ -1324,7 +1325,7 @@ private fun NotificationPreview(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = n.title?.takeIf { it.isNotBlank() } ?: n.notificationId,
-                    style = R1.bodyEmph,
+                    style = responsiveType(R1.bodyEmph),
                     color = R1.Ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1337,12 +1338,12 @@ private fun NotificationPreview(
                 RelativeTimeLabel(
                     at = n.createdAt,
                     color = R1.InkMuted,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                 )
             }
             Text(
                 text = n.message,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

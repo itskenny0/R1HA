@@ -42,11 +42,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
@@ -127,7 +130,7 @@ fun ZonesScreen(
             ) {
                 Text(
                     text = "Zones load failed: ${ui.error}",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.StatusRed,
                 )
             }
@@ -137,7 +140,7 @@ fun ZonesScreen(
             ) {
                 Text(
                     text = "No zones defined. Settings, Areas & Zones in HA's web UI.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -146,11 +149,24 @@ fun ZonesScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
+                val dimens = rememberResponsiveDimens()
+                // The map preview scales with the panel: a slab on the R1 would
+                // eat the whole viewport, while 200dp marooned in the centre of a
+                // 13in panel reads as an afterthought. Grow it gently by tier.
+                val mapHeight = when (dimens.tier) {
+                    WindowTier.R1 -> 160.dp
+                    WindowTier.COMPACT -> 200.dp
+                    WindowTier.MEDIUM -> 240.dp
+                    else -> 280.dp
+                }
+                // On roomy tiers the single zone column wastes the centred width,
+                // so flow the zone rows two-up. Mini / compact stay one column.
+                val zoneColumns = if (dimens.tier.isAtLeast(WindowTier.EXPANDED)) 2 else 1
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = R1.space.m, vertical = R1.space.s,
+                        horizontal = dimens.screenGutter, vertical = R1.space.s,
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
@@ -163,11 +179,35 @@ fun ZonesScreen(
                     val points = mappableZones.size + ui.trackers.size
                     if (mappableZones.isNotEmpty() && points >= 2) {
                         item("__map__") {
-                            ZoneMap(zones = mappableZones, trackers = ui.trackers)
+                            ZoneMap(
+                                zones = mappableZones,
+                                trackers = ui.trackers,
+                                height = mapHeight,
+                            )
                         }
                     }
-                    items(items = ui.zones, key = { it.entityId }) { zone ->
-                        ZoneRow(zone)
+                    if (zoneColumns > 1) {
+                        // Pair the rows into two-wide bands so the extra width is
+                        // used; each cell shares the row height via weight.
+                        val rows = ui.zones.chunked(zoneColumns)
+                        items(items = rows, key = { it.first().entityId }) { chunk ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                            ) {
+                                chunk.forEach { zone ->
+                                    Box(modifier = Modifier.weight(1f)) { ZoneRow(zone) }
+                                }
+                                // Keep a half-pair left-aligned by padding the gap.
+                                repeat(zoneColumns - chunk.size) {
+                                    Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        items(items = ui.zones, key = { it.entityId }) { zone ->
+                            ZoneRow(zone)
+                        }
                     }
                     if (ui.outside.isNotEmpty()) {
                         item("__outside__") {
@@ -197,6 +237,7 @@ fun ZonesScreen(
 private fun ZoneMap(
     zones: List<ResolvedZone>,
     trackers: List<MappableTracker>,
+    height: androidx.compose.ui.unit.Dp = 200.dp,
 ) {
     // Bounding box across every plotted point: zone centres and tracker
     // positions both, so the frame contains everyone.
@@ -218,7 +259,7 @@ private fun ZoneMap(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(200.dp)
+            .height(height)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -357,7 +398,7 @@ private fun ZoneRow(zone: ResolvedZone) {
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = zone.name,
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -367,14 +408,14 @@ private fun ZoneRow(zone: ResolvedZone) {
             // Occupancy badge: filled accent when one or more, muted when 0.
             Text(
                 text = "${zone.occupants.size}",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = if (occupied) R1.AccentWarm else R1.InkMuted,
             )
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = zone.entityId,
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
@@ -386,7 +427,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = "HOME",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.AccentWarm,
                 )
             }
@@ -396,7 +437,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = "PASSIVE",
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkMuted,
                 )
             }
@@ -404,7 +445,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = formatRadius(r),
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.AccentNeutral,
                 )
             }
@@ -423,7 +464,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 Spacer(Modifier.width(R1.space.xs))
                 Text(
                     text = zone.occupants.joinToString(" · "),
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.AccentWarm,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
@@ -451,13 +492,13 @@ private fun OutsideRow(names: List<String>) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "OUTSIDE",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = "${names.size}",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.StatusAmber,
             )
         }
@@ -472,7 +513,7 @@ private fun OutsideRow(names: List<String>) {
             Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = names.joinToString(" · "),
-                style = R1.body,
+                style = responsiveType(R1.body),
                 color = R1.InkSoft,
                 maxLines = 4,
                 overflow = TextOverflow.Ellipsis,

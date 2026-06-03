@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +45,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -241,7 +243,7 @@ private fun SectionHeader(
         Spacer(Modifier.width(R1.space.s))
         Text(
             text = label,
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.AccentWarm,
             modifier = Modifier.semantics { heading() },
         )
@@ -278,7 +280,7 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = blueprint.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
@@ -422,7 +424,7 @@ private fun EmptyState() {
         Text(
             text = "Blueprints are reusable automation and script templates. " +
                 "Tap IMPORT URL above to add one from a HA community post or GitHub link.",
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
         )
     }
@@ -437,7 +439,7 @@ private fun ErrorState(message: String) {
     ) {
         Text(text = "COULDN'T LOAD BLUEPRINTS", style = R1.labelMicro, color = R1.StatusAmber)
         Spacer(Modifier.height(R1.space.s))
-        Text(text = message, style = R1.body, color = R1.InkSoft)
+        Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
         Spacer(Modifier.height(R1.space.m))
         Text(
             text = "blueprint/list only flows over the live WebSocket. Retry once it reconnects.",
@@ -468,7 +470,12 @@ private fun ImportFlowDialog(
     Dialog(onDismissRequest = onCancel) {
         Column(
             modifier = Modifier
+                // Mini/compact: fill the platform-inset dialog window. Larger tiers: cap so the
+                // form + preview read as a centred panel instead of one wall-wide line on a 13in
+                // screen. widthIn after fillMaxWidth keeps the cap from forcing a wider box than
+                // the R1 panel offers.
                 .fillMaxWidth()
+                .widthIn(max = 520.dp)
                 .clip(R1.ShapeM)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeM)
@@ -481,7 +488,7 @@ private fun ImportFlowDialog(
                     BlueprintsViewModel.ImportPhase.INSTALLING -> "INSTALL BLUEPRINT"
                     else -> "IMPORT BLUEPRINT FROM URL"
                 },
-                style = R1.sectionHeader,
+                style = responsiveType(R1.sectionHeader),
                 color = R1.AccentWarm,
             )
             when (phase) {
@@ -491,7 +498,7 @@ private fun ImportFlowDialog(
                         text = "Paste a HA community blueprint URL, GitHub permalink, " +
                             "or raw YAML URL. HA fetches and validates before anything " +
                             "lands on disk.",
-                        style = R1.labelMicro,
+                        style = responsiveType(R1.labelMicro),
                         color = R1.InkMuted,
                     )
                     R1TextField(
@@ -583,7 +590,7 @@ private fun PreviewPane(preview: BlueprintInfo) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = preview.name,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,

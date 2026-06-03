@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +40,8 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -53,6 +58,7 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * leaving the screen. The default template (`{{ now().isoformat() }}`)
  * is a one-keystroke "is this connected?" smoke test.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TemplateScreen(
     haRepository: HaRepository,
@@ -64,6 +70,7 @@ fun TemplateScreen(
         factory = TemplateViewModel.factory(haRepository, settings),
     )
     val ui by vm.ui.collectAsState()
+    val dimens = rememberResponsiveDimens()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -84,7 +91,7 @@ fun TemplateScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = R1.space.m, vertical = R1.space.s)
+                .padding(horizontal = dimens.screenGutter, vertical = R1.space.s)
                 .verticalScroll(scrollState),
         ) {
             // Example chips — one-tap insertion of common templates so the
@@ -112,13 +119,18 @@ fun TemplateScreen(
                     .semantics { contentDescription = TemplateA11y.editorLabel() },
             )
             Spacer(Modifier.padding(top = R1.space.s))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Controls wrap (FlowRow) so RENDER + AUTO + LIVE stay >=48dp and
+            // never overflow horizontally on the ~240dp R1 panel; on roomier
+            // tiers they sit on one line as before.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                verticalArrangement = Arrangement.spacedBy(R1.space.s),
+            ) {
                 R1Button(
                     text = if (ui.inFlight) "RENDERING…" else "RENDER",
                     onClick = { vm.render() },
                     enabled = ui.template.isNotBlank() && !ui.inFlight && !ui.live && !ui.auto,
                 )
-                Spacer(Modifier.width(R1.space.s))
                 // AUTO toggle — debounced render-on-type. While on, every edit
                 // re-renders after a short pause so the output tracks the
                 // template without a button tap. Mutually exclusive with LIVE.
@@ -131,7 +143,6 @@ fun TemplateScreen(
                     spokenLabel = TemplateA11y.autoToggleLabel(ui.auto),
                     onToggle = { vm.setAuto(!ui.auto) },
                 )
-                Spacer(Modifier.width(R1.space.s))
                 // LIVE toggle — subscribes to HA's render_template WS command,
                 // streaming re-renders on every relevant state change. The
                 // manual RENDER button is disabled while LIVE is on (the
@@ -145,17 +156,19 @@ fun TemplateScreen(
                     spokenLabel = TemplateA11y.liveToggleLabel(ui.live),
                     onToggle = { vm.setLive(!ui.live) },
                 )
-                Spacer(Modifier.width(R1.space.s))
-                Text(
-                    text = when {
-                        ui.live -> "subscribed to render_template"
-                        ui.auto -> "renders as you type"
-                        else -> "POSTs /api/template"
-                    },
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
             }
+            Spacer(Modifier.padding(top = R1.space.xs))
+            // Mode caption on its own line so it never gets squeezed out of the
+            // control row on the narrow R1 panel.
+            Text(
+                text = when {
+                    ui.live -> "subscribed to render_template"
+                    ui.auto -> "renders as you type"
+                    else -> "POSTs /api/template"
+                },
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
             Spacer(Modifier.padding(top = R1.space.m))
             // Output panel — distinct loading / error / rendered / empty
             // states. Loading takes priority so a slow render shows progress
@@ -167,7 +180,7 @@ fun TemplateScreen(
                 // stale previous value isn't read as the current live output.
                 ui.live && ui.liveConnecting && ui.error == null -> Text(
                     text = "Subscribing to live re-renders…",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkSoft,
                     modifier = Modifier.semantics {
                         liveRegion = LiveRegionMode.Polite
@@ -176,7 +189,7 @@ fun TemplateScreen(
                 )
                 ui.inFlight && ui.rendered.isEmpty() && ui.error == null -> Text(
                     text = "Rendering against live HA state…",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkSoft,
                     // Live region so TalkBack announces the in-flight state.
                     modifier = Modifier.semantics {
@@ -202,7 +215,7 @@ fun TemplateScreen(
                 )
                 else -> Text(
                     text = "Hit RENDER, or turn on AUTO to evaluate as you type.",
-                    style = R1.body,
+                    style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )
             }
@@ -263,7 +276,7 @@ private fun RecentTemplateRow(template: String, onPick: () -> Unit) {
         // user can tap to reload the full text into the editor.
         Text(
             text = template,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.Ink,
             maxLines = 2,
         )
@@ -350,6 +363,10 @@ private fun ResultPanel(
     announce: Boolean = false,
 ) {
     val clipboard = LocalClipboardManager.current
+    // On big tiers cap the readout width so a wide render reads as a centred
+    // block, not one wall-long line; on R1 / compact the cap is Unspecified
+    // (fill the panel) and the horizontal scroll handles overflow instead.
+    val readoutMaxWidth = rememberResponsiveDimens().maxContentWidth
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -396,8 +413,20 @@ private fun ResultPanel(
                 .padding(horizontal = R1.space.s, vertical = R1.space.s),
         ) {
             // Rendered output and Jinja tracebacks are code, so show them in the
-            // monospace readout style rather than proportional body text.
-            Text(text = body, style = R1.numeralS, color = R1.Ink)
+            // monospace readout style rather than proportional body text. The
+            // mono size stays fixed across tiers (code stays aligned); long
+            // single lines scroll horizontally instead of clipping on the
+            // narrow R1 panel, and the readout caps its width on big tiers so a
+            // wide render doesn't stretch into one wall-long line.
+            Text(
+                text = body,
+                style = R1.numeralS,
+                color = R1.Ink,
+                softWrap = false,
+                modifier = Modifier
+                    .widthIn(max = readoutMaxWidth)
+                    .horizontalScroll(rememberScrollState()),
+            )
         }
     }
 }

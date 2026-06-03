@@ -2,6 +2,8 @@ package com.github.itskenny0.r1ha.feature.logs
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +43,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
@@ -130,6 +133,11 @@ fun LogsScreen(
             onBack = onBack,
             action = {
                 Row(
+                    // On the R1 panel the title plus up to four action chips outruns the
+                    // bar width; let the chip cluster pan horizontally so every chip stays
+                    // reachable instead of clipping off the right edge. Roomier tiers never
+                    // overflow, so the scroll is a no-op there.
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
@@ -211,12 +219,12 @@ private fun SizeHint(ui: LogsViewModel.UiState) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "/api/error_log · $pretty$freshness",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
         )
         if (ui.error != null) {
-            Text(text = "ERROR", style = R1.labelMicro, color = R1.StatusRed)
+            Text(text = "ERROR", style = responsiveType(R1.labelMicro), color = R1.StatusRed)
         }
     }
     if (ui.error != null) {
@@ -229,7 +237,7 @@ private fun SizeHint(ui: LogsViewModel.UiState) {
                 .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
                 .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
-            Text(text = ui.error ?: "", style = R1.labelMicro, color = R1.StatusRed)
+            Text(text = ui.error ?: "", style = responsiveType(R1.labelMicro), color = R1.StatusRed)
         }
     }
 }
@@ -240,7 +248,10 @@ private fun LevelChips(
     onSelect: (LogsViewModel.Level) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // Five level chips do not fit the R1 panel width side by side; pan the row
+        // horizontally so every filter stays tappable rather than clipping at the edge.
+        // On wider tiers the chips fit and the scroll never engages.
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         LogsViewModel.Level.entries.forEach { lvl ->
@@ -326,13 +337,20 @@ private fun LogBody(
                     .border(1.dp, R1.Hairline, R1.ShapeS),
             ) {
                 // The monospace line style is constant; build it once rather than
-                // allocating a fresh TextStyle.copy per line per recomposition.
+                // allocating a fresh TextStyle.copy per line per recomposition. The 11sp
+                // size is deliberately kept fixed across tiers: a log is read as a fixed
+                // mono grid, and scaling it would reflow the columns the reader is scanning.
                 val lineStyle = remember {
                     R1.body.copy(
                         fontFamily = FontFamily.Monospace,
                         fontSize = TextUnit(11f, TextUnitType.Sp),
                     )
                 }
+                // One shared horizontal-scroll state for every row so long lines pan as a
+                // single grid rather than wrapping. On the narrow R1 panel this keeps a
+                // long stack-trace line readable end to end; on wide tiers the lines simply
+                // fit and the pan never engages.
+                val lineScroll = rememberScrollState()
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -342,7 +360,7 @@ private fun LogBody(
                     ),
                 ) {
                     items(items = visible, key = { it.index }) { line ->
-                        LogLineRow(line, lineStyle)
+                        LogLineRow(line, lineStyle, lineScroll)
                     }
                 }
             }
@@ -360,7 +378,7 @@ private fun EmptyState(text: String) {
     ) {
         Text(
             text = text,
-            style = R1.body,
+            style = responsiveType(R1.body),
             color = R1.InkMuted,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
@@ -368,7 +386,11 @@ private fun EmptyState(text: String) {
 }
 
 @Composable
-private fun LogLineRow(line: LogsViewModel.Line, style: androidx.compose.ui.text.TextStyle) {
+private fun LogLineRow(
+    line: LogsViewModel.Line,
+    style: androidx.compose.ui.text.TextStyle,
+    scrollState: androidx.compose.foundation.ScrollState,
+) {
     val accent = when (line.level) {
         LogsViewModel.Level.ERROR -> R1.StatusRed
         LogsViewModel.Level.WARN -> R1.StatusAmber
@@ -376,11 +398,15 @@ private fun LogLineRow(line: LogsViewModel.Line, style: androidx.compose.ui.text
         LogsViewModel.Level.DEBUG -> R1.InkMuted
         else -> R1.InkSoft
     }
+    // Keep each line on one row and let the shared horizontal scroll pan past the panel
+    // edge instead of wrapping a 200-char stack-trace line into a ragged paragraph that
+    // is far harder to scan. softWrap = false preserves the mono column alignment.
     Text(
         text = line.text.ifBlank { " " },
         style = style,
         color = accent,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp),
+        softWrap = false,
+        modifier = Modifier.horizontalScroll(scrollState).padding(vertical = 1.dp),
     )
 }
 

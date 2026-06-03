@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -42,11 +45,14 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
+import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
@@ -71,15 +77,26 @@ fun DevicesScreen(
     val vm: DevicesViewModel = viewModel(factory = DevicesViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     val detail by vm.detail.collectAsState()
-    val listState = rememberLazyListState()
+    val dimens = rememberResponsiveDimens()
+    val gridState = rememberLazyGridState()
     val detailListState = rememberLazyListState()
-    // The wheel drives whichever surface is visible: the detail list while
-    // a device is drilled in, the device list otherwise.
-    WheelScrollFor(
-        wheelInput = wheelInput,
-        listState = if (detail != null) detailListState else listState,
-        settings = settings,
-    )
+    // The wheel drives whichever surface is visible: the detail list while a
+    // device is drilled in, the device grid otherwise. The list is a grid (one
+    // column on small tiers, more on roomy ones) so it routes through the grid
+    // overload; the detail surface stays a single LazyColumn.
+    if (detail != null) {
+        WheelScrollFor(
+            wheelInput = wheelInput,
+            listState = detailListState,
+            settings = settings,
+        )
+    } else {
+        WheelScrollForGrid(
+            wheelInput = wheelInput,
+            gridState = gridState,
+            settings = settings,
+        )
+    }
     LaunchedEffect(Unit) { vm.refresh() }
     // Hardware Back: close the drill-in first, only then leave the screen.
     BackHandler(enabled = detail != null) { vm.closeDevice() }
@@ -165,25 +182,39 @@ fun DevicesScreen(
                         if (sections.isEmpty()) {
                             EmptyState(message = "No matches for '${ui.query}'.")
                         } else {
-                            LazyColumn(
-                                state = listState,
+                            // One column on mini / compact / phone; two on tablet /
+                            // expanded, three on extra-large (dashboardColumns gives the
+                            // 1/1/2/2/3 progression). Section headers and the count line
+                            // span the full row so the grouping stays legible across the
+                            // columns.
+                            val columns = dimens.dashboardColumns
+                            LazyVerticalGrid(
+                                state = gridState,
+                                columns = GridCells.Fixed(columns),
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(
                                     horizontal = R1.space.m, vertical = R1.space.s,
                                 ),
                                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                                horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                             ) {
-                                item(key = "count-header") {
+                                item(
+                                    key = "count-header",
+                                    span = { GridItemSpan(maxLineSpan) },
+                                ) {
                                     Text(
                                         text = "$filteredCount DEVICE" +
                                             if (filteredCount == 1) "" else "S",
-                                        style = R1.labelMicro,
+                                        style = responsiveType(R1.labelMicro),
                                         color = R1.AccentCool,
                                         modifier = Modifier.padding(vertical = R1.space.xs),
                                     )
                                 }
                                 for ((label, devices) in sections) {
-                                    item(key = "section/$label") {
+                                    item(
+                                        key = "section/$label",
+                                        span = { GridItemSpan(maxLineSpan) },
+                                    ) {
                                         SectionHeader(label = label, count = devices.size)
                                     }
                                     for (device in devices) {
@@ -222,7 +253,7 @@ private fun SearchAndGroupBar(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "FIND",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.padding(end = R1.space.s),
             )
@@ -242,7 +273,7 @@ private fun SearchAndGroupBar(
                         .r1Pressable({ onQueryChange("") }, contentDescription = "Clear search"),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "X", style = R1.labelMicro, color = R1.InkSoft)
+                    Text(text = "X", style = responsiveType(R1.labelMicro), color = R1.InkSoft)
                 }
             }
         }
@@ -250,7 +281,7 @@ private fun SearchAndGroupBar(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "GROUP",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkMuted,
                 modifier = Modifier.padding(end = R1.space.s),
             )
@@ -291,7 +322,7 @@ private fun SectionHeader(label: String, count: Int) {
     ) {
         Text(
             text = label.uppercase(),
-            style = R1.sectionHeader,
+            style = responsiveType(R1.sectionHeader),
             color = R1.AccentWarm,
         )
         Spacer(Modifier.width(R1.space.m))
@@ -347,7 +378,7 @@ private fun DeviceRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = device.displayName,
-                style = R1.bodyEmph,
+                style = responsiveType(R1.bodyEmph),
                 color = if (disabled) R1.InkMuted else R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
@@ -356,13 +387,13 @@ private fun DeviceRow(
             Spacer(Modifier.width(R1.space.s))
             Text(
                 text = "$entityCount",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.AccentCool,
             )
             Spacer(Modifier.width(R1.space.xs))
             Text(
                 text = ">",
-                style = R1.labelMicro,
+                style = responsiveType(R1.labelMicro),
                 color = R1.InkSoft,
             )
         }
@@ -377,7 +408,7 @@ private fun DeviceRow(
             if (meta.isNotBlank()) {
                 Text(
                     text = meta,
-                    style = R1.labelMicro,
+                    style = responsiveType(R1.labelMicro),
                     color = R1.InkSoft,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
@@ -404,7 +435,7 @@ private fun EmptyState(message: String) {
         modifier = Modifier.fillMaxSize().padding(R1.space.xl),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = message, style = R1.body, color = R1.InkMuted)
+        Text(text = message, style = responsiveType(R1.body), color = R1.InkMuted)
     }
 }
 
@@ -415,13 +446,13 @@ private fun ErrorState(message: String) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "COULDN'T LOAD DEVICES", style = R1.labelMicro, color = R1.StatusAmber)
+        Text(text = "COULDN'T LOAD DEVICES", style = responsiveType(R1.labelMicro), color = R1.StatusAmber)
         Spacer(Modifier.height(R1.space.xs))
-        Text(text = message, style = R1.body, color = R1.InkSoft)
+        Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
         Spacer(Modifier.height(R1.space.m))
         Text(
             text = "Device registry only flows over the live WebSocket. Retry once it reconnects.",
-            style = R1.labelMicro,
+            style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
         )
     }
