@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,9 +36,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -50,6 +54,8 @@ import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -151,12 +157,18 @@ fun EnergyScreen(
                         label = "DRAW",
                         value = ui.currentDrawW?.let { formatWatts(it) } ?: NO_VALUE,
                         accent = drawAccent(ui.currentDrawW),
+                        // Lightning bolt: consumption / power draw.
+                        icon = R1Icons.forDomain("power"),
                     )
                     BigStatTile(
                         modifier = Modifier.weight(1f),
                         label = "PRODUCTION",
                         value = ui.productionW?.let { formatWatts(it) } ?: NO_VALUE,
                         accent = if ((ui.productionW ?: 0.0) > 0) R1.AccentGreen else R1.InkMuted,
+                        // Sun for a solar site; battery when the install
+                        // exposes a battery power source, so the tile reads as
+                        // the real generation source rather than always-solar.
+                        icon = if (ui.hasBatterySource) R1IconSet.Battery else R1IconSet.Sun,
                     )
                 }
                 // ── TODAY (kWh) row ────────────────────────────────────
@@ -264,9 +276,16 @@ private fun BigStatTile(
     label: String,
     value: String,
     accent: Color,
+    /** Optional glyph drawn beside the label to disambiguate the otherwise
+     *  near-identical DRAW / PRODUCTION tiles (a lightning bolt vs a sun /
+     *  battery). Null on tiles that don't need one (TODAY). Tinted with the
+     *  tile's [accent] so the icon reinforces the value's status colour. */
+    icon: ImageVector? = null,
 ) {
     // Merge the label and value into one spoken node so TalkBack announces
-    // "DRAW, 1.2 kW" rather than two disconnected fragments.
+    // "DRAW, 1.2 kW" rather than two disconnected fragments. The icon is
+    // decorative (null contentDescription) so it adds nothing to the spoken
+    // string.
     val spoken = "$label, $value"
     Column(
         modifier = modifier
@@ -277,12 +296,26 @@ private fun BigStatTile(
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
-        Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+            Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+        }
         Text(
             text = value,
             style = R1.numeralXl.copy(fontWeight = FontWeight.SemiBold),
             color = accent,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -304,6 +337,7 @@ private fun ConsumerRow(c: EnergyViewModel.Consumer, onClick: () -> Unit) {
                 style = R1.bodyEmph,
                 color = drawAccent(c.watts),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         },
     )

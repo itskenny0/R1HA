@@ -4,7 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -59,6 +61,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import java.time.Duration
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -180,6 +183,19 @@ private fun StatisticPickerBar(
         Text(text = "STATISTIC", style = R1.labelMicro, color = R1.InkSoft)
         Spacer(Modifier.size(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (selected != null) {
+                // Leading domain glyph derived from the statistic id (e.g.
+                // sensor.kitchen_temperature -> the temperature glyph), so the
+                // selected statistic reads at a glance the way dashboard rows do.
+                // External statistic ids (domain:object) fall through to the
+                // generic glyph rather than mis-resolving.
+                androidx.compose.material3.Icon(
+                    imageVector = R1Icons.forEntity(selected.statisticId),
+                    contentDescription = null,
+                    tint = R1.AccentWarm,
+                    modifier = Modifier.padding(end = R1.space.s).size(18.dp),
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 if (selected != null) {
                     Text(
@@ -187,6 +203,7 @@ private fun StatisticPickerBar(
                         style = R1.bodyEmph,
                         color = R1.Ink,
                         maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                     Text(
                         text = buildString {
@@ -202,6 +219,7 @@ private fun StatisticPickerBar(
                         ),
                         color = R1.InkSoft,
                         maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 } else {
                     Text(
@@ -438,24 +456,37 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                         .semantics { contentDescription = chartDescription }
                         .padding(horizontal = 6.dp, vertical = 6.dp)
                         .pointerInput(proj) {
-                            val canvasW = size.width.toFloat()
-                            detectTapGestures(
-                                onPress = { pressOffset ->
-                                    val target = (pressOffset.x / canvasW).coerceIn(0f, 1f)
-                                    var bestI = 0
-                                    var bestD = Float.POSITIVE_INFINITY
-                                    for (i in proj.xsNorm.indices) {
-                                        val d = kotlin.math.abs(proj.xsNorm[i] - target)
-                                        if (d < bestD) {
-                                            bestD = d
-                                            bestI = i
-                                        }
+                            val canvasW = size.width.toFloat().coerceAtLeast(1f)
+                            // Press-and-drag scrub: set the index on press, then
+                            // follow the finger as it slides so the user can read
+                            // adjacent buckets without lifting and re-tapping. The
+                            // old press-and-hold-only handler ignored drag.
+                            fun nearest(x: Float): Int {
+                                val target = (x / canvasW).coerceIn(0f, 1f)
+                                var bestI = 0
+                                var bestD = Float.POSITIVE_INFINITY
+                                for (i in proj.xsNorm.indices) {
+                                    val d = kotlin.math.abs(proj.xsNorm[i] - target)
+                                    if (d < bestD) {
+                                        bestD = d
+                                        bestI = i
                                     }
-                                    scrubIdx.value = bestI
-                                    tryAwaitRelease()
-                                    scrubIdx.value = null
-                                },
-                            )
+                                }
+                                return bestI
+                            }
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                scrubIdx.value = nearest(down.position.x)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                    if (change == null || !change.pressed) break
+                                    if (change.positionChange() != Offset.Zero) change.consume()
+                                    scrubIdx.value = nearest(change.position.x)
+                                }
+                                scrubIdx.value = null
+                            }
                         },
                 ) {
                     val w = size.width
@@ -535,11 +566,13 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                             style = R1.labelMicro,
                             color = R1.Ink,
                             modifier = Modifier.weight(1f),
+                            maxLines = 1,
                         )
                         Text(
                             text = "${formatNum(sample.value)}${unit?.let { " $it" } ?: ""}",
                             style = R1.labelMicro,
                             color = R1.AccentWarm,
+                            maxLines = 1,
                         )
                     }
                 } else {
@@ -564,6 +597,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -571,6 +605,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
@@ -600,6 +635,20 @@ private fun SummaryPanel(vm: StatisticsViewModel, ui: StatisticsViewModel.UiStat
             color = R1.InkSoft,
         )
         if (metered) {
+            // When the SUM (cumulative) series is on screen the chart draws the
+            // ever-growing running total, so the summary leads with the latest
+            // cumulative reading (the chart's last point) to keep the two in
+            // agreement; the per-bucket TOTAL / PER BUCKET / PEAK still describe
+            // consumption over the window. Under CHANGE the chart already shows
+            // per-bucket deltas, so the consumption headline matches without an
+            // extra cumulative row.
+            if (ui.aggregation == StatisticsViewModel.Aggregation.SUM) {
+                SummaryRow(
+                    label = "CUMULATIVE",
+                    value = summary.current?.let { withUnit(it) } ?: "--",
+                    accent = R1.Ink,
+                )
+            }
             // Headline a metered series by how much it counted over the window;
             // the cumulative sum is rarely what the user wants to compare.
             SummaryRow(
@@ -661,6 +710,7 @@ private fun SummaryRow(
             color = accent,
             modifier = Modifier.weight(1f),
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
@@ -866,12 +916,19 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        androidx.compose.material3.Icon(
+            imageVector = R1Icons.forEntity(row.statisticId),
+            contentDescription = null,
+            tint = R1.AccentNeutral,
+            modifier = Modifier.padding(end = R1.space.s).size(18.dp),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = row.name?.takeIf { it.isNotBlank() } ?: row.statisticId,
                 style = R1.bodyEmph,
                 color = R1.Ink,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
                 text = buildString {
@@ -887,6 +944,7 @@ private fun StatisticPickRow(row: StatisticId, onPick: () -> Unit) {
                 ),
                 color = R1.InkSoft,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(R1.space.s))

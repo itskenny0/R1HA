@@ -45,8 +45,27 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.State
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import java.time.Instant
+
+/**
+ * A `now` instant that re-emits roughly once a minute so countdowns ("IN 5M"),
+ * the NOW pill, and the TODAY/ongoing grouping stay live instead of freezing
+ * at the value captured when the screen first composed. One minute is fine: the
+ * coarsest unit any calendar hint renders is the minute.
+ */
+@Composable
+internal fun rememberTickingNow(): State<Instant> = produceState(initialValue = Instant.now()) {
+    while (true) {
+        value = Instant.now()
+        delay(60_000L)
+    }
+}
 
 /**
  * Cross-calendar Agenda: merges upcoming events from every visible
@@ -119,7 +138,7 @@ private fun AgendaBody(
     onToggle: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val now = Instant.now()
+    val now by rememberTickingNow()
     val days = ui.toDays(now)
     Column(modifier = Modifier.fillMaxSize()) {
         if (ui.calendars.size > 1) {
@@ -185,7 +204,7 @@ private fun CalendarChipRow(ui: AgendaViewModel.UiState, onToggle: (String) -> U
             val accent = accentForCalendar(cal.entityId)
             val selected = cal.entityId !in ui.hidden
             R1Chip(
-                text = cal.name.take(16),
+                text = ellipsize(cal.name, 16),
                 variant = R1ChipVariant.Filter,
                 selected = selected,
                 tone = accent,
@@ -217,7 +236,22 @@ private fun DayHeader(header: String, count: Int) {
             .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = header, style = R1.sectionHeader, color = R1.AccentWarm)
+        // Leading calendar glyph anchoring each day section; decorative, the
+        // heading semantics carry the spoken header.
+        Icon(
+            imageVector = R1Icons.forDomain("calendar"),
+            contentDescription = null,
+            tint = R1.AccentWarm,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        Text(
+            text = header,
+            style = R1.sectionHeader,
+            color = R1.AccentWarm,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
@@ -268,6 +302,7 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
                 val hint = relativeStartHint(event, now)
                 if (hint.isNotEmpty()) {
@@ -278,13 +313,21 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
             }
             Spacer(Modifier.size(R1.space.xxs))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = formatEventTime(event), style = R1.labelMicro, color = R1.InkSoft)
+                Text(
+                    text = formatEventTime(event),
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = entry.calendarName,
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
             }
             if (!event.location.isNullOrBlank()) {
@@ -294,6 +337,7 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
             if (!event.description.isNullOrBlank()) {
@@ -303,6 +347,7 @@ private fun AgendaRow(entry: AgendaEntry, now: Instant) {
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }

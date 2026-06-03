@@ -41,7 +41,10 @@ internal object EnergyShareSnapshot {
     private val INK = Color.parseColor("#EDEDED")
     private val INK_MUTED = Color.parseColor("#6E6E6E")
     private val ACCENT_WARM = Color.parseColor("#F36F21")
-    private val ACCENT_COOL = Color.parseColor("#41BDF5")
+    // PRODUCTION green, kept byte-for-byte in sync with R1.AccentGreen
+    // (0xFF52C77F) so the shared image's production figure matches the
+    // in-app PRODUCTION tile rather than diverging to the old cool blue.
+    private val ACCENT_GREEN = Color.parseColor("#52C77F")
     private val HAIRLINE = Color.parseColor("#2A2A2A")
 
     /** Build the snapshot bitmap. The caller owns the bitmap and must recycle. */
@@ -81,8 +84,8 @@ internal object EnergyShareSnapshot {
         canvas.drawText("PRODUCTION", PADDING + halfWidth, y, labelPaint)
         y += 80f
         canvas.drawText(formatW(state.currentDrawW), PADDING, y, bigPaint)
-        canvas.drawText(formatW(state.productionW), PADDING + halfWidth, y, bigPaint.apply { color = ACCENT_COOL })
-        // Reset bigPaint colour for downstream uses (it'd otherwise stay cool).
+        canvas.drawText(formatW(state.productionW), PADDING + halfWidth, y, bigPaint.apply { color = ACCENT_GREEN })
+        // Reset bigPaint colour for downstream uses (it'd otherwise stay green).
         bigPaint.color = INK
         y += 70f
 

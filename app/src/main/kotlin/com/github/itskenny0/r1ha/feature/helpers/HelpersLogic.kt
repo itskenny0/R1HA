@@ -174,10 +174,21 @@ object HelpersLogic {
      *  we spend a round-trip. */
     fun isValidDate(date: String): Boolean {
         val m = Regex("""^(\d{4})-(\d{2})-(\d{2})$""").matchEntire(date.trim()) ?: return false
-        val (_, mm, dd) = m.destructured
+        val (yyyy, mm, dd) = m.destructured
+        val year = yyyy.toInt()
         val month = mm.toInt()
         val day = dd.toInt()
-        return month in 1..12 && day in 1..31
+        if (month !in 1..12 || day < 1) return false
+        // Day-of-month must fit the actual month, accounting for leap years
+        // (Feb 29 only on leap years). HA rejects e.g. 2023-02-29 outright, so
+        // catch it here before spending a round-trip.
+        val daysInMonth = when (month) {
+            1, 3, 5, 7, 8, 10, 12 -> 31
+            4, 6, 9, 11 -> 30
+            2 -> if ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) 29 else 28
+            else -> return false
+        }
+        return day <= daysInMonth
     }
 
     /** True when a time string is a plausible HH:MM or HH:MM:SS. */

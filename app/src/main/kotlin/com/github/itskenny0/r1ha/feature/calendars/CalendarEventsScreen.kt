@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +51,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -141,7 +143,10 @@ fun CalendarEventsScreen(
             .background(R1.Bg)
             .systemBarsPadding(),
     ) {
-        R1TopBar(title = calendarName.uppercase().take(20), onBack = onBack)
+        // Cap the title so a long calendar name doesn't wrap the top bar, but
+        // append an ellipsis instead of a hard mid-word cut so the truncation
+        // reads as intentional ("Work Calend…" not "Work Calend").
+        R1TopBar(title = ellipsize(calendarName.uppercase(), 20), onBack = onBack)
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             when {
                 ui.loading && ui.events.isEmpty() -> Box(
@@ -175,7 +180,7 @@ fun CalendarEventsScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    val now = Instant.now()
+                    val now by rememberTickingNow()
                     val days = groupEventsByDay(ui.events, now)
                     LazyColumn(
                         state = listState,
@@ -220,7 +225,22 @@ private fun DayHeader(header: String, count: Int) {
             .semantics(mergeDescendants = true) { heading() },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = header, style = R1.sectionHeader, color = R1.AccentWarm)
+        // Leading calendar glyph anchoring each day section; decorative, the
+        // heading semantics carry the spoken header.
+        Icon(
+            imageVector = R1Icons.forDomain("calendar"),
+            contentDescription = null,
+            tint = R1.AccentWarm,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(R1.space.s))
+        Text(
+            text = header,
+            style = R1.sectionHeader,
+            color = R1.AccentWarm,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.width(R1.space.s))
         Box(
             modifier = Modifier
@@ -256,7 +276,14 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean, now: Instant) {
                 R1Chip(text = "ALL-DAY", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
                 Spacer(Modifier.width(R1.space.s))
             }
-            Text(text = e.summary, style = R1.bodyEmph, color = R1.Ink, maxLines = 2, modifier = Modifier.weight(1f))
+            Text(
+                text = e.summary,
+                style = R1.bodyEmph,
+                color = R1.Ink,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
             // Forward-looking hint ("IN 2H" / "IN 3D"): RelativeTimeLabel only
             // renders past "ago" strings, so for an upcoming-events list it
             // collapsed every future event to "just now". The NOW pill already
@@ -272,14 +299,32 @@ private fun EventRow(e: CalendarEvent, isHappeningNow: Boolean, now: Instant) {
         // Concrete time range under the title so the user sees the clock time,
         // not just a relative hint (and an unambiguous span for multi-day events).
         Spacer(Modifier.size(R1.space.xxs))
-        Text(text = formatEventTime(e), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+        Text(
+            text = formatEventTime(e),
+            style = R1.labelMicro,
+            color = R1.InkSoft,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         if (!e.location.isNullOrBlank()) {
             Spacer(Modifier.size(R1.space.xxs))
-            Text(text = "@ ${e.location}", style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(
+                text = "@ ${e.location}",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
         if (!e.description.isNullOrBlank()) {
             Spacer(Modifier.size(R1.space.xxs))
-            Text(text = e.description, style = R1.labelMicro, color = R1.InkMuted, maxLines = 3)
+            Text(
+                text = e.description,
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
     }
 }

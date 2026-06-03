@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +47,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 
@@ -154,12 +156,11 @@ fun HelpersScreen(
                     ?: return@collect
                 if (entry.kind != HelpersViewModel.Kind.NUMBER) return@collect
                 val value = entry.numericValue ?: return@collect
-                val step = entry.step ?: 1.0
-                val sign = if (event.direction ==
-                    com.github.itskenny0.r1ha.core.input.WheelEvent.Direction.UP) +1 else -1
-                val next = (value + sign * step)
-                    .coerceAtLeast(entry.min ?: Double.NEGATIVE_INFINITY)
-                    .coerceAtMost(entry.max ?: Double.POSITIVE_INFINITY)
+                val up = event.direction ==
+                    com.github.itskenny0.r1ha.core.input.WheelEvent.Direction.UP
+                // Step via the unit-tested grid-snapping path so each detent
+                // lands on a value HA accepts rather than raw value +/- step.
+                val next = HelpersLogic.stepNumber(value, up, entry.min, entry.max, entry.step)
                 if (next != value) {
                     vm.setNumber(entry, next)
                     tickHaptic()
@@ -379,11 +380,22 @@ private fun HelperRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Leading per-domain glyph from the in-house icon set, tinted to
+            // the kind's accent so the eye can scan by type as well as by the
+            // grouped sort order.
+            Icon(
+                imageVector = R1Icons.forEntity(entry.id.value),
+                contentDescription = null,
+                tint = accentForKind(entry.kind),
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = entry.name,
                 style = R1.bodyEmph,
                 color = R1.Ink,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (isWheelActive) {
@@ -437,6 +449,7 @@ private fun HelperRow(
             style = R1.labelMicro,
             color = R1.InkSoft,
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         Spacer(Modifier.height(R1.space.s))
         // Per-kind control row, branches on entry.kind so each domain
@@ -494,7 +507,12 @@ private fun NumberControl(
     val step = entry.step ?: 1.0
     Row(verticalAlignment = Alignment.CenterVertically) {
         StepPill(label = "−", onClick = {
-            if (value != null) vm.setNumber(entry, (value - step).coerceAtLeast(entry.min ?: Double.NEGATIVE_INFINITY))
+            // Step via the grid-snapping logic so off-grid bases still land on
+            // a value HA accepts; setNumber re-clamps as a backstop.
+            if (value != null) vm.setNumber(
+                entry,
+                HelpersLogic.stepNumber(value, up = false, min = entry.min, max = entry.max, step = entry.step),
+            )
         })
         Spacer(Modifier.width(R1.space.s))
         // Live value display, formatted as integer when the step is
@@ -513,6 +531,8 @@ private fun NumberControl(
             text = withUnit,
             style = R1.bodyEmph,
             color = if (isWheelActive) R1.AccentWarm else R1.Ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
                 .r1Pressable(
@@ -523,7 +543,10 @@ private fun NumberControl(
                 .padding(vertical = R1.space.xs),
         )
         StepPill(label = "+", onClick = {
-            if (value != null) vm.setNumber(entry, (value + step).coerceAtMost(entry.max ?: Double.POSITIVE_INFINITY))
+            if (value != null) vm.setNumber(
+                entry,
+                HelpersLogic.stepNumber(value, up = true, min = entry.min, max = entry.max, step = entry.step),
+            )
         })
     }
 }
@@ -547,6 +570,8 @@ private fun CounterControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) 
             text = value?.toInt()?.toString() ?: entry.state,
             style = R1.bodyEmph,
             color = R1.Ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         StepPill(label = "+", onClick = { vm.counterIncrement(entry) })
@@ -621,8 +646,10 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
                 style = R1.bodyEmph,
                 color = R1.AccentWarm,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.semantics {
-                    contentDescription = "Current option ${entry.state}, tap to change"
+                    contentDescription =
+                        "Current option ${entry.state}, tap for next, long-press for previous"
                 },
             )
         }
@@ -632,7 +659,10 @@ private fun SelectControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
             style = R1.labelMicro,
             color = R1.InkSoft,
         )
-        if (options.size > 3) {
+        // Always offer the full-list picker, even for 2-3 option selects:
+        // long-press (cycle backward) is undiscoverable on its own, so the
+        // picker chip is the visible affordance for jumping to any option.
+        if (options.isNotEmpty()) {
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
                 text = "···",
@@ -708,6 +738,7 @@ private fun SelectOptionPicker(
                             style = R1.body,
                             color = if (isCurrent) R1.AccentWarm else R1.Ink,
                             maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
                         if (isCurrent) {
@@ -763,6 +794,7 @@ private fun TextControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel) {
             style = R1.body,
             color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
             maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(R1.space.s))
@@ -866,6 +898,7 @@ private fun DateTimeControl(entry: HelpersViewModel.Entry, vm: HelpersViewModel)
             style = R1.body,
             color = if (entry.state.isBlank()) R1.InkSoft else R1.Ink,
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Spacer(Modifier.width(R1.space.s))

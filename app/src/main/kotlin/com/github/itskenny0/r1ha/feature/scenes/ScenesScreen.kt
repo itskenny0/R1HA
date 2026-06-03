@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +34,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
@@ -49,6 +51,7 @@ import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -195,6 +198,7 @@ fun ScenesScreen(
                                 entry,
                                 firing = entry.id in ui.firing,
                                 onFire = { vm.fire(entry) },
+                                onStop = { vm.stopScript(entry) },
                                 onLongPress = { vm.showDetail(entry) },
                             )
                         }
@@ -210,6 +214,7 @@ private fun SceneRow(
     entry: ScenesViewModel.Entry,
     firing: Boolean,
     onFire: () -> Unit,
+    onStop: () -> Unit,
     onLongPress: () -> Unit,
 ) {
     val kindLabel = when (entry.kind) {
@@ -250,27 +255,42 @@ private fun SceneRow(
         Modifier
     }
     // Canonical row: friendly name primary, entity_id secondary, kind shown as a
-    // leading Pill chip. Tap fires the scene/script; long-press surfaces the
-    // detail toast (entity_id + service) since it's the non-destructive gesture,
-    // so the row stays on r1RowPressable rather than R1Row's single onClick.
+    // leading domain icon (scene vs script glyph). Tap fires the scene/script (or
+    // stops a running script); long-press surfaces the detail toast (entity_id +
+    // service) since it's the non-destructive gesture, so the row stays on
+    // r1RowPressable rather than R1Row's single onClick.
     // Trailing freshness label: scenes set their state to the last-activated
     // timestamp (scripts report it via last_triggered), surfaced as a subtle
     // 'activated <relative>' so the user can tell which scenes ran recently. It
     // self-omits when the entity has never run (label resolves to "").
-    // Unavailable entries dim their leading kind chip too, so the whole row reads
-    // as inert at a glance rather than just the muted label text.
-    val chipTone = if (entry.available) kindTone else R1.InkMuted
+    // Unavailable entries dim their leading icon too, so the whole row reads
+    // as inert at a glance rather than just the muted label text. A running script
+    // tints its icon green to match the RUNNING / STOP badge.
+    val iconTone = when {
+        !entry.available -> R1.InkMuted
+        entry.running -> R1.AccentGreen
+        else -> kindTone
+    }
     R1Row(
         label = entry.name,
         description = entry.id.value,
         boxed = true,
         enabled = entry.available,
         leadingContent = {
-            R1Chip(text = kindLabel, variant = R1ChipVariant.Pill, tone = chipTone)
+            Icon(
+                imageVector = R1Icons.forDomain(
+                    if (entry.kind == ScenesViewModel.Kind.SCRIPT) "script" else "scene",
+                ),
+                // The text kind label ("SCENE" / "SCRIPT") moves into the content
+                // description so the icon keeps the same a11y meaning the old pill had.
+                contentDescription = kindLabel,
+                tint = iconTone,
+                modifier = Modifier.size(20.dp),
+            )
         },
         // Trailing priority: the transient tap echo (firing spinner) wins, then the
-        // unavailable badge (can't be fired), then a script's persistent RUNNING
-        // indicator, and finally the subtle last-activated freshness label.
+        // unavailable badge (can't be fired), then a running script's STOP control
+        // (tap to fire script.turn_off), and finally the subtle last-activated label.
         trailing = when {
             firing -> {
                 {
@@ -292,10 +312,17 @@ private fun SceneRow(
             }
             entry.running -> {
                 {
+                    // A running script's badge doubles as a STOP control: tapping it
+                    // fires script.turn_off (same as tapping the row body). It reads
+                    // "STOP x2" when several copies are in flight so the user knows the
+                    // tap cancels the run rather than restarting it.
                     R1Chip(
-                        text = entry.runningCount?.let { "RUNNING x$it" } ?: "RUNNING",
-                        variant = R1ChipVariant.Pill,
-                        tone = R1.AccentGreen,
+                        text = entry.runningCount?.let { "STOP x$it" } ?: "STOP",
+                        variant = R1ChipVariant.Action,
+                        selected = true,
+                        tone = R1.StatusRed,
+                        onClick = onStop,
+                        contentDescription = "Stop ${entry.name} script",
                     )
                 }
             }
@@ -305,6 +332,8 @@ private fun SceneRow(
                         text = "activated $relative",
                         style = R1.labelMicro,
                         color = R1.InkMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -402,7 +431,7 @@ private fun MasterActionsRow(
     // hint nobody would find it. Single muted line under the row keeps the
     // visual weight low while still surfacing the gesture.
     Text(
-        text = "Tap = OFF, long-press LIGHTS for ON",
+        text = "Tap to arm, tap again to confirm; long-press LIGHTS for ON",
         style = R1.labelMicro,
         color = R1.InkMuted,
         modifier = Modifier

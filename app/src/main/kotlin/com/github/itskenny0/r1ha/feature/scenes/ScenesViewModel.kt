@@ -239,7 +239,6 @@ class ScenesViewModel(
     fun allLightsOff() = fireMasterOff(
         domain = Domain.LIGHT,
         service = "turn_off",
-        emptyMessage = "No light entities. Nothing to turn off",
         successMessage = "All lights off",
         failurePrefix = "All-lights-off",
     )
@@ -250,7 +249,6 @@ class ScenesViewModel(
     fun allLightsOn() = fireMasterOff(
         domain = Domain.LIGHT,
         service = "turn_on",
-        emptyMessage = "No light entities. Nothing to turn on",
         successMessage = "All lights on",
         failurePrefix = "All-lights-on",
     )
@@ -261,7 +259,6 @@ class ScenesViewModel(
     fun allMediaPause() = fireMasterOff(
         domain = Domain.MEDIA_PLAYER,
         service = "media_pause",
-        emptyMessage = "No media players. Nothing to pause",
         successMessage = "All media paused",
         failurePrefix = "All-media-pause",
     )
@@ -271,36 +268,32 @@ class ScenesViewModel(
     fun allSwitchesOff() = fireMasterOff(
         domain = Domain.SWITCH,
         service = "turn_off",
-        emptyMessage = "No switches. Nothing to turn off",
         successMessage = "All switches off",
         failurePrefix = "All-switches-off",
     )
 
-    /** Common dispatcher for the "all X off" master buttons. Picks any
-     *  entity in [domain] from the cached states so the [ServiceCall]
-     *  constructor can carry a target: the actual scope is set via
-     *  the `entity_id: "all"` data field which HA recognises as
-     *  "every entity in this domain". */
+    /** Common dispatcher for the "all X off" master buttons. The action's
+     *  scope comes entirely from the `entity_id: "all"` data field, which HA
+     *  recognises as "every entity in this domain"; the [ServiceCall] target
+     *  is just a syntactically-valid placeholder in that domain. We synthesise
+     *  it as `<domain>.all` rather than fetching the full entity list to find a
+     *  real member: a fetch hiccup must not abort a mass action whose true
+     *  target is the literal "all". */
     private fun fireMasterOff(
         domain: Domain,
         service: String,
-        emptyMessage: String,
         successMessage: String,
         failurePrefix: String,
     ) {
         if (_ui.value.masterActionInFlight) return
         _ui.value = _ui.value.copy(masterActionInFlight = true)
         viewModelScope.launch {
-            val anyEntity = haRepository.listAllEntities().getOrNull()
-                ?.firstOrNull { it.id.domain == domain }
-                ?.id
-            if (anyEntity == null) {
-                Toaster.show(emptyMessage)
-                _ui.value = _ui.value.copy(masterActionInFlight = false)
-                return@launch
-            }
+            // Placeholder target in the right domain: HA scopes the call off the
+            // `entity_id: "all"` payload below, so the target id just has to parse
+            // into this domain. `<domain>.all` does, and needs no second fetch.
+            val target = EntityId("${domain.prefix}.all")
             val call = ServiceCall(
-                target = anyEntity,
+                target = target,
                 service = service,
                 data = buildJsonObject {
                     put("entity_id", JsonPrimitive("all"))
@@ -321,18 +314,27 @@ class ScenesViewModel(
     }
 
     /**
-     * Fire a scene or script. Both use `turn_on` with no payload: HA
-     * treats `scene.turn_on` / `script.turn_on` as the activation
-     * service for these action-only domains.
+     * Handle a tap on a row. Scenes always activate (`scene.turn_on`). A script
+     * that HA reports as `running` flips the tap into a STOP: re-tapping a
+     * visibly-running script would otherwise re-issue `script.turn_on`, which in
+     * `restart` mode kills the run and starts over (an easy accidental restart of
+     * something the user can see is already going). Routing the tap to
+     * [stopScript] instead makes the running badge double as a stop control. Tap
+     * an idle script to run it as before.
      */
     fun fire(entry: Entry) {
-        // Ignore a re-tap while this entity's turn_on is still in flight so a
-        // slow HA round-trip can't double-fire the scene.
+        // Ignore a re-tap while this entity's turn_on / turn_off is still in flight
+        // so a slow HA round-trip can't double-fire.
         if (entry.id in _ui.value.firing) return
         // An unavailable entity (integration offline) can't be activated; HA's own
         // frontend gates this. Tell the user rather than firing into the void.
         if (!entry.available) {
             Toaster.show("'${entry.name}' is unavailable")
+            return
+        }
+        // A running script: the tap means "stop this", not "restart it".
+        if (entry.kind == Kind.SCRIPT && entry.running) {
+            stopScript(entry)
             return
         }
         _ui.value = _ui.value.copy(firing = _ui.value.firing + entry.id)
@@ -350,6 +352,37 @@ class ScenesViewModel(
                 onFailure = { t ->
                     R1Log.w("Scenes", "fire ${entry.id.value} failed: ${t.message}")
                     Toaster.error("Fire failed: ${t.message ?: "unknown"}")
+                },
+            )
+            _ui.value = _ui.value.copy(firing = _ui.value.firing - entry.id)
+        }
+    }
+
+    /**
+     * Stop a running script via `script.turn_off`. Reached by tapping a script
+     * row whose RUNNING badge is showing; HA cancels the in-flight run. No-op for
+     * scenes (they have no run to stop) and guarded against re-entry by the same
+     * `firing` set [fire] uses, so the row shows its spinner while the turn_off is
+     * in flight. The live state from the next refresh / push clears the badge.
+     */
+    fun stopScript(entry: Entry) {
+        if (entry.kind != Kind.SCRIPT) return
+        if (entry.id in _ui.value.firing) return
+        _ui.value = _ui.value.copy(firing = _ui.value.firing + entry.id)
+        viewModelScope.launch {
+            val call = ServiceCall(
+                target = entry.id,
+                service = "turn_off",
+                data = JsonObject(emptyMap()),
+            )
+            haRepository.call(call).fold(
+                onSuccess = {
+                    R1Log.i("Scenes", "stopped ${entry.id.value}")
+                    Toaster.show("Stopped '${entry.name}'")
+                },
+                onFailure = { t ->
+                    R1Log.w("Scenes", "stop ${entry.id.value} failed: ${t.message}")
+                    Toaster.error("Stop failed: ${t.message ?: "unknown"}")
                 },
             )
             _ui.value = _ui.value.copy(firing = _ui.value.firing - entry.id)

@@ -35,9 +35,10 @@ import java.time.ZoneId
  *   1. Current power draw (W) — sum of every `device_class=power` sensor
  *      with positive state (negative-sign sensors are battery export /
  *      solar production and are excluded from the consumption total)
- *   2. Solar production (W) — sum of `device_class=power` sensors whose
- *      entity_id matches `*solar*` / `*pv*` / `*grid_export*` /
- *      `*production*` heuristics
+ *   2. Solar production (W) — sum of positive-state `device_class=power`
+ *      sensors whose entity_id matches the word-boundary-anchored
+ *      `solar` / `pv` / `photovoltaic` / `production` heuristics, plus a
+ *      `grid_export` sensor's exported (negative) power as max(-state, 0)
  *   3. Today's energy (kWh) — sum of every `device_class=energy` sensor
  *      whose `state_class=total_increasing` and whose `last_reset`
  *      lands today (the standard HA pattern for "kWh since midnight"
@@ -99,6 +100,12 @@ class EnergyViewModel(
         val statsTodayKwh: Double? = null,
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
+        /** True when the install exposes a battery power source (a
+         *  `device_class=power` sensor whose entity_id carries a `battery`
+         *  hint). Lets the UI mark the PRODUCTION tile with the battery glyph
+         *  instead of the solar sun, so a battery-backed site reads correctly
+         *  rather than implying everything is photovoltaic. */
+        val hasBatterySource: Boolean = false,
         val error: String? = null,
         /** Selected history window for the consumption chart. */
         val window: Window = Window.TODAY,
@@ -132,12 +139,14 @@ class EnergyViewModel(
             val prodJob = async { haRepository.renderTemplate(SUM_PRODUCTION) }
             val kwhJob = async { haRepository.renderTemplate(SUM_TODAY_KWH) }
             val topJob = async { haRepository.renderTemplate(TOP_CONSUMERS_JSON) }
-            awaitAll(drawJob, prodJob, kwhJob, topJob)
+            val batJob = async { haRepository.renderTemplate(HAS_BATTERY_SOURCE) }
+            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob)
 
             val drawRaw = drawJob.await().getOrNull()?.trim()
             val prodRaw = prodJob.await().getOrNull()?.trim()
             val kwhRaw = kwhJob.await().getOrNull()?.trim()
             val topRaw = topJob.await().getOrNull()?.trim()
+            val batRaw = batJob.await().getOrNull()?.trim()
 
             // Any single template failure shouldn't tank the whole
             // surface — we render whatever did succeed and the other
@@ -166,6 +175,11 @@ class EnergyViewModel(
                 productionW = prodRaw?.toDoubleOrNull(),
                 todayKwh = kwhRaw?.toDoubleOrNull(),
                 topConsumers = top,
+                // Best-effort enrichment: leave the flag unchanged if the
+                // probe failed (null) so a transient template error doesn't
+                // flip the icon off mid-session.
+                hasBatterySource = batRaw?.equals("True", ignoreCase = true)
+                    ?: _ui.value.hasBatterySource,
                 error = if (anyFailed && drawRaw == null && prodRaw == null &&
                     kwhRaw == null && top.isEmpty()) {
                     "All energy templates returned errors. Does HA have any " +
@@ -328,6 +342,17 @@ class EnergyViewModel(
         runCatching { content }.getOrNull()?.takeIf { it != "null" }
 
     companion object {
+        /** Word-boundary-anchored production regex shared by DRAW (reject),
+         *  PRODUCTION (select), and TOP_CONSUMERS (reject). Anchoring `pv` and
+         *  `solar` to `\b` stops the old bare `pv` substring from matching
+         *  unrelated ids like `sensor.hp_valve_power` ("...pv..." within
+         *  another word). `photovoltaic`, `grid_export`, and `production` stay
+         *  as plain (already-bounded enough) substrings. The doubled
+         *  backslashes are Kotlin escapes: the template receives a single
+         *  `\b` per anchor, which is the regex word-boundary the HA-side
+         *  `search` (Python `re.search`) test consumes. */
+        private const val PRODUCTION_RE = "\\bsolar\\b|photovoltaic|grid_export|production|\\bpv\\b"
+
         /** Sum positive-state device_class=power sensors. Excludes
          *  unavailable / unknown / non-numeric, and excludes the
          *  production-heuristic entities (solar / pv / grid_export /
@@ -339,18 +364,40 @@ class EnergyViewModel(
         private const val SUM_POWER_DRAW = "{{ states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            "| rejectattr('entity_id','search','solar|pv|grid_export|production') " +
+            "| rejectattr('entity_id','search','$PRODUCTION_RE') " +
             "| map(attribute='state') | map('float',0) " +
             "| select('>',0) | sum | round(0) }}"
 
-        /** Production heuristic — sum power sensors whose entity_id
-         *  contains 'solar', 'pv', 'production', or 'grid_export'. */
-        private const val SUM_PRODUCTION = "{{ states.sensor " +
+        /** Production heuristic. Solar / PV / photovoltaic / production
+         *  inverters report generation as a positive power value, so only
+         *  positive states count (a 0 W night-time inverter, or a sign-flipped
+         *  reading, must not subtract from the total). A `grid_export` sensor
+         *  is really signed grid power: positive = importing, negative =
+         *  exporting, so its contribution to PRODUCTION is max(-state, 0).
+         *  The old `map('abs')` inflated the figure by folding imported grid
+         *  power in as if it were generation. Two passes summed together. */
+        private const val SUM_PRODUCTION = "{% set gen = states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            "| selectattr('entity_id','search','solar|pv|grid_export|production') " +
+            "| selectattr('entity_id','search','\\bsolar\\b|photovoltaic|production|\\bpv\\b') " +
             "| map(attribute='state') | map('float',0) " +
-            "| map('abs') | sum | round(0) }}"
+            "| select('>',0) | sum %}" +
+            "{% set grid = states.sensor " +
+            "| selectattr('attributes.device_class','eq','power') " +
+            "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            "| selectattr('entity_id','search','grid_export') " +
+            "| map(attribute='state') | map('float',0) | sum %}" +
+            "{% set exp = [(grid * -1), 0] | max %}" +
+            "{{ (gen + exp) | round(0) }}"
+
+        /** True when at least one `device_class=power` sensor carries a
+         *  `battery` word-boundary hint in its entity_id. Drives the
+         *  PRODUCTION tile's battery-vs-sun icon. Emits a bare "True"/"False"
+         *  the client parses case-insensitively. */
+        private const val HAS_BATTERY_SOURCE = "{{ (states.sensor " +
+            "| selectattr('attributes.device_class','eq','power') " +
+            "| selectattr('entity_id','search','\\bbattery\\b') " +
+            "| list | count) > 0 }}"
 
         /** Sum every device_class=energy sensor whose state_class is
          *  total_increasing — those are the per-day-resetting kWh
@@ -369,6 +416,7 @@ class EnergyViewModel(
             "{%- for s in (states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            "| rejectattr('entity_id','search','$PRODUCTION_RE') " +
             "| sort(attribute='state', reverse=True))[:8] -%}" +
             "{%- set w = s.state | float(0) -%}" +
             "{%- if w > 0 -%}" +

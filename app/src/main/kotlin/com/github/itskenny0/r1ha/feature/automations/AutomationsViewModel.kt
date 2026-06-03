@@ -81,6 +81,13 @@ class AutomationsViewModel(
         /** True while the bulk RELOAD action is in flight. The chip
          *  disables itself to prevent double-tap re-fires. */
         val reloading: Boolean = false,
+        /** Automations whose manual `automation.trigger` is currently in
+         *  flight. Drives the per-row RUN spinner / "RUN…" affordance so the
+         *  indicator tracks the real dispatch (set before the call, cleared on
+         *  success or failure) rather than a fixed screen-local timer that
+         *  would lie on a slow or failed call. Mirrors how Scenes tracks its
+         *  `firing` set. */
+        val firing: Set<EntityId> = emptySet(),
         val error: String? = null,
     ) {
         /** Substring filter against name + entity_id, case-insensitive.
@@ -153,6 +160,14 @@ class AutomationsViewModel(
             Toaster.error("'${entry.name}' is unavailable")
             return
         }
+        // Ignore a re-tap while this automation's trigger is still in flight so
+        // a slow HA round-trip can't double-fire it.
+        if (entry.id in _ui.value.firing) return
+        // Mark in-flight up front so the row's RUN affordance reflects the real
+        // dispatch. Cleared on both success and failure below, so a slow or
+        // failed call can't leave the indicator stuck (the old screen-local
+        // 1.5s timer lied here).
+        _ui.value = _ui.value.copy(firing = _ui.value.firing + entry.id)
         viewModelScope.launch {
             val call = ServiceCall(
                 target = entry.id,
@@ -171,12 +186,23 @@ class AutomationsViewModel(
                     Toaster.error("Trigger failed: ${t.message ?: "unknown"}")
                 },
             )
+            _ui.value = _ui.value.copy(firing = _ui.value.firing - entry.id)
             // Pull a fresh state shortly after firing so the
             // last_triggered + current counts update immediately
             // instead of waiting for the next manual refresh.
             kotlinx.coroutines.delay(600L)
             refresh()
         }
+    }
+
+    /**
+     * Surface why an unavailable automation is inert. Tapping an unavailable
+     * row's body can't toggle or run it (both would no-op against HA), so the
+     * screen routes the tap here to toast the reason rather than silently
+     * opening History as if the tap did nothing.
+     */
+    fun explainUnavailable(entry: Entry) {
+        Toaster.show("'${entry.name}' is unavailable")
     }
 
     /** Enable / disable the automation (whether its triggers fire
@@ -232,22 +258,18 @@ class AutomationsViewModel(
     fun reload() {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(reloading = true)
-            // Build a no-target call by piggybacking on an existing
-            // automation entity (HA accepts the call without a target
-            // but the SDK expects one). Pick any automation; the
-            // call's `domain` + service alone drive the action.
-            val anyAutomation = _ui.value.all.firstOrNull()?.id
-            if (anyAutomation == null) {
-                Toaster.show("No automations to reload")
-                _ui.value = _ui.value.copy(reloading = false)
-                return@launch
-            }
-            val call = ServiceCall(
-                target = anyAutomation,
+            // automation.reload is a domain-level service that takes no
+            // entity_id, so dispatch it via callRawService rather than the
+            // entity-targeted call path. The old approach piggybacked on
+            // all.firstOrNull(), which silently no-opped when the list was
+            // empty: exactly the case (a config error left no automations
+            // loaded) where the user most needs reload to work. Going
+            // domain-level means reload fires regardless of the current list.
+            haRepository.callRawService(
+                domain = "automation",
                 service = "reload",
                 data = JsonObject(emptyMap()),
-            )
-            haRepository.call(call).fold(
+            ).fold(
                 onSuccess = {
                     R1Log.i("Automations", "reload dispatched")
                     Toaster.show("Automations reloaded")

@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.flow.first
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +56,7 @@ import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 
 /**
  * Cameras surface: lists every `camera.*` entity HA reports and lets
@@ -136,7 +138,12 @@ fun CamerasScreen(
         if (ui.cameras.isNotEmpty()) {
             ViewModeRow(current = viewMode, onSelect = { viewModeOverride = it })
         }
+        // Stop composing the grid/list entirely while the detail overlay is
+        // up. The overlay draws over this column, and if the tiles stayed
+        // composed they'd keep polling at the grid cadence behind the
+        // overlay's faster poll, doubling network load for no visible gain.
         when {
+            viewingEntityId != null -> Unit
             ui.loading && ui.cameras.isEmpty() -> Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -156,21 +163,43 @@ fun CamerasScreen(
             ) {
                 // The camera registry fetch itself failed (auth, DNS,
                 // server down). Distinct from "no cameras in HA".
-                Text(
-                    text = "Cameras load failed: ${ui.error}",
-                    style = R1.body,
-                    color = R1.StatusRed,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                ) {
+                    Icon(
+                        imageVector = R1IconSet.Camera,
+                        contentDescription = null,
+                        tint = R1.StatusRed,
+                        modifier = Modifier.size(R1.space.xl),
+                    )
+                    Text(
+                        text = "Cameras load failed: ${ui.error}",
+                        style = R1.body,
+                        color = R1.StatusRed,
+                    )
+                }
             }
             ui.cameras.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "No cameras in HA. Add a camera integration to see them here.",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                ) {
+                    Icon(
+                        imageVector = R1IconSet.Camera,
+                        contentDescription = null,
+                        tint = R1.InkMuted,
+                        modifier = Modifier.size(R1.space.xl),
+                    )
+                    Text(
+                        text = "No cameras in HA. Add a camera integration to see them here.",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                }
             }
             viewMode == "GRID" && serverUrl != null -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 isRefreshing = ui.loading,
@@ -206,6 +235,31 @@ fun CamerasScreen(
                     }
                 }
             }
+            viewMode == "GRID" -> Box(
+                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
+                contentAlignment = Alignment.Center,
+            ) {
+                // GRID is selected but we have no server URL yet (settings
+                // still loading, or no server configured). Show a real
+                // placeholder instead of silently rendering the LIST view
+                // while the chip claims GRID, which read as a glitch.
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                ) {
+                    Icon(
+                        imageVector = R1IconSet.Camera,
+                        contentDescription = null,
+                        tint = R1.InkMuted,
+                        modifier = Modifier.size(R1.space.xl),
+                    )
+                    Text(
+                        text = "Grid view needs a server connection. Loading…",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                }
+            }
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 isRefreshing = ui.loading,
                 onRefresh = { vm.refresh() },
@@ -229,14 +283,19 @@ fun CamerasScreen(
     // Detail overlay: fullscreen snapshot polling. Back-press dismisses.
     val viewing = viewingEntityId
     if (viewing != null) {
+        val tuning = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
+            .from(appSettings.connection)
         CameraDetailOverlay(
             entityId = viewing,
             displayName = ui.cameras.firstOrNull { it.entityId == viewing }?.name ?: viewing,
             settings = settings,
             tokens = tokens,
-            pollSec = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
-                .from(appSettings.connection)
-                .flooredCameraSeconds(appSettings.integrations.cameraOverlayPollSec),
+            pollSec = tuning.flooredCameraSeconds(appSettings.integrations.cameraOverlayPollSec),
+            // Strict-mode floor in millis: the overlay's refresh stepper can
+            // walk down to 200 ms, which would otherwise undercut the
+            // configured minimum camera interval. Pass it so the stepper
+            // clamps its faster bound to it.
+            minPollMillis = tuning.minCameraIntervalMillis,
             onDismiss = { viewingEntityId = null },
         )
     }
@@ -334,14 +393,50 @@ private fun CameraTile(
             ) {
                 Text(text = statusLabel, style = R1.labelMicro, color = statusColor)
             }
+            // Motion badge, matching the LIST row's MOTION indicator. Shown
+            // as an icon to stay legible at tile scale; the text label rides
+            // along as the a11y contentDescription. Null = the integration
+            // doesn't model motion, so nothing is drawn.
+            if (camera.motionDetection == true) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(R1.space.xs)
+                        .clip(R1.ShapeS)
+                        .background(R1.Bg.copy(alpha = 0.7f))
+                        .padding(R1.space.xxs),
+                ) {
+                    Icon(
+                        imageVector = R1IconSet.Motion,
+                        contentDescription = "Motion detection armed",
+                        tint = R1.AccentCool,
+                        modifier = Modifier.size(R1.space.l),
+                    )
+                }
+            }
         }
-        Text(
-            text = camera.name,
-            style = R1.body,
-            color = R1.Ink,
-            maxLines = 1,
+        Row(
             modifier = Modifier.padding(horizontal = R1.space.s, vertical = R1.space.xs),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = camera.name,
+                style = R1.body,
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            // Relative "since X" staleness, matching the LIST row, so an
+            // offline/stuck tile reads as stale without opening it. Empty
+            // (and so invisible) when HA gave no last_changed.
+            RelativeTimeLabel(
+                at = camera.lastChanged,
+                color = R1.InkMuted,
+                style = R1.labelMicro,
+                modifier = Modifier.padding(start = R1.space.xs),
+            )
+        }
     }
 }
 
@@ -362,7 +457,13 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(end = R1.space.s)) {
-            Text(text = camera.name, style = R1.body, color = R1.Ink, maxLines = 2)
+            Text(
+                text = camera.name,
+                style = R1.body,
+                color = R1.Ink,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = camera.entityId,
@@ -386,16 +487,25 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
                 // also surfaced by the picture-glance card). Null = the
                 // integration doesn't model it, so we show nothing.
                 if (camera.motionDetection == true) {
-                    Text(
-                        text = "MOTION",
-                        style = R1.labelMicro,
-                        color = R1.AccentCool,
-                        modifier = Modifier.padding(end = R1.space.xs),
+                    Icon(
+                        imageVector = R1IconSet.Motion,
+                        contentDescription = "Motion detection armed",
+                        tint = R1.AccentCool,
+                        modifier = Modifier
+                            .padding(end = R1.space.xs)
+                            .size(R1.space.l),
                     )
                 }
                 // State chip, coloured by HA state. "streaming" is the
-                // healthy live-feed state.
-                Text(text = label, style = R1.labelMicro, color = color)
+                // healthy live-feed state. Truncates so an unusually long
+                // custom state can't shove the row layout off-screen.
+                Text(
+                    text = label,
+                    style = R1.labelMicro,
+                    color = color,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -408,9 +518,13 @@ private fun CameraDetailOverlay(
     settings: SettingsRepository,
     tokens: TokenStore,
     pollSec: Int,
+    minPollMillis: Long = 0L,
     onDismiss: () -> Unit,
 ) {
     BackHandler(onBack = onDismiss)
+    // Floor every poll cadence at the strict-mode minimum (if set) but never
+    // below the 200 ms hard floor. With strict-mode off this stays at 200 ms.
+    val pollFloorMillis = maxOf(200L, minPollMillis)
     // Pull the server URL + bearer token through produceState so the
     // overlay can fetch lazily without making them mandatory params.
     val serverUrl by produceState<String?>(null, settings) {
@@ -425,7 +539,7 @@ private fun CameraDetailOverlay(
     // watching the feed, and rotate via the on-overlay button for cameras
     // mounted at non-zero degrees without editing the source.
     var pollMillisLive by androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf((pollSec * 1000L).coerceAtLeast(200L))
+        androidx.compose.runtime.mutableStateOf((pollSec * 1000L).coerceAtLeast(pollFloorMillis))
     }
     var rotationDegrees by androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableFloatStateOf(0f)
@@ -463,6 +577,8 @@ private fun CameraDetailOverlay(
                     text = displayName.uppercase(),
                     style = R1.sectionHeader,
                     color = R1.Ink,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 // 90-degree increments. Holding modulo-360 in floats stays
@@ -540,7 +656,9 @@ private fun CameraDetailOverlay(
                             .border(1.dp, R1.Hairline, R1.ShapeS)
                             .r1Pressable(
                                 onClick = {
-                                    pollMillisLive = nextRefreshStep(pollMillisLive, faster = true)
+                                    pollMillisLive = nextRefreshStep(
+                                        pollMillisLive, faster = true, floorMillis = pollFloorMillis,
+                                    )
                                 },
                                 contentDescription = "Refresh faster",
                             ),
@@ -566,7 +684,9 @@ private fun CameraDetailOverlay(
                             .border(1.dp, R1.Hairline, R1.ShapeS)
                             .r1Pressable(
                                 onClick = {
-                                    pollMillisLive = nextRefreshStep(pollMillisLive, faster = false)
+                                    pollMillisLive = nextRefreshStep(
+                                        pollMillisLive, faster = false, floorMillis = pollFloorMillis,
+                                    )
                                 },
                                 contentDescription = "Refresh slower",
                             ),
@@ -601,11 +721,14 @@ private val REFRESH_STEPS_MILLIS: LongArray = longArrayOf(
     200L, 333L, 500L, 1_000L, 2_000L, 4_000L, 8_000L, 15_000L, 30_000L,
 )
 
-private fun nextRefreshStep(current: Long, faster: Boolean): Long {
+private fun nextRefreshStep(current: Long, faster: Boolean, floorMillis: Long = 200L): Long {
     val idx = REFRESH_STEPS_MILLIS.indexOfFirst { it >= current }
         .let { if (it < 0) REFRESH_STEPS_MILLIS.lastIndex else it }
     val next = if (faster) (idx - 1).coerceAtLeast(0) else (idx + 1).coerceAtMost(REFRESH_STEPS_MILLIS.lastIndex)
-    return REFRESH_STEPS_MILLIS[next]
+    // Clamp the faster bound to the strict-mode floor so a tap can't poll
+    // below the configured minimum camera interval. floorMillis defaults to
+    // the 200 ms hard floor when strict mode isn't set.
+    return REFRESH_STEPS_MILLIS[next].coerceAtLeast(floorMillis)
 }
 
 private fun formatPollInterval(millis: Long): String = when {

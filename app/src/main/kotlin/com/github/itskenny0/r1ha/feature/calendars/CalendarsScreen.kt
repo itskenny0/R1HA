@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -41,6 +42,7 @@ import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import java.time.Instant
 
 /**
@@ -154,6 +156,7 @@ fun CalendarsScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
+                val now by rememberTickingNow()
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
@@ -162,7 +165,6 @@ fun CalendarsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(R1.space.s),
                 ) {
-                    val now = Instant.now()
                     items(items = ui.calendars, key = { it.entityId }) { c ->
                         CalendarRow(c, now = now, onTap = { drillingInto = c })
                     }
@@ -205,6 +207,15 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
             },
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Leading calendar glyph so the row reads as a calendar at a glance;
+            // decorative (the merged row description carries the spoken label).
+            Icon(
+                imageVector = R1Icons.forDomain("calendar"),
+                contentDescription = null,
+                tint = R1.InkSoft,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             if (c.state == "on") {
                 // NOW pill: pulled to the front of the line so the user
                 // sees "this is happening right now" at a glance.
@@ -217,6 +228,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             if (c.allDay && c.state != "on") {
                 // ALL-DAY pill: surfaced instead of a relative-time countdown
@@ -244,6 +256,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
                 style = R1.body,
                 color = R1.InkSoft,
                 maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
         if (!c.eventLocation.isNullOrBlank()) {
@@ -253,6 +266,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }

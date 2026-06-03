@@ -36,7 +36,6 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -97,15 +96,6 @@ fun AutomationsScreen(
             ?.favorites?.toSet() ?: emptySet()
     }
     val ui by vm.ui.collectAsState()
-    // Transient per-row "RUN tapped" set, kept screen-local (the ViewModel has no
-    // per-row in-flight flag and editing it is out of slice). A tapped row flips
-    // its spoken label to "Running <name>" under a polite live region for a beat
-    // so a screen-reader user hears that the manual trigger registered; it clears
-    // itself shortly after, matching the ViewModel's post-trigger refresh delay.
-    val runningNow = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
-    }
-    val runScope = androidx.compose.runtime.rememberCoroutineScope()
     // entries is a getter that re-filters the full automation set on every read;
     // it's read for the empty-state branch and the items() call, and recompose
     // fires per search keystroke. Memoise against its inputs so the filter runs
@@ -210,17 +200,22 @@ fun AutomationsScreen(
                             AutomationRow(
                                 entry = entry,
                                 isFavorite = entry.id.value in activeFavourites,
-                                running = runningNow[entry.id.value] == true,
-                                onRun = {
-                                    runningNow[entry.id.value] = true
-                                    runScope.launch {
-                                        kotlinx.coroutines.delay(1_500L)
-                                        runningNow.remove(entry.id.value)
-                                    }
-                                    vm.trigger(entry)
-                                },
+                                // In-flight flag is driven by the ViewModel's `firing`
+                                // set (set around the real haRepository.call, cleared
+                                // on success or failure) so the RUN indicator tracks
+                                // the actual dispatch rather than a fixed timer that
+                                // lied on slow / failed calls.
+                                running = entry.id in ui.firing,
+                                onRun = { vm.trigger(entry) },
                                 onToggleEnabled = { vm.setEnabled(entry, !entry.enabled) },
-                                onLongPress = { onOpenHistory(entry.id.value) },
+                                onOpenHistory = { onOpenHistory(entry.id.value) },
+                                // Tapping an unavailable row's body: explain the inert
+                                // state (toast) and still drill into History, rather
+                                // than silently opening History as if nothing happened.
+                                onUnavailable = {
+                                    vm.explainUnavailable(entry)
+                                    onOpenHistory(entry.id.value)
+                                },
                                 onFavorite = { vm.addToFavorites(entry) },
                             )
                         }
@@ -279,7 +274,12 @@ private fun AutomationRow(
     running: Boolean,
     onRun: () -> Unit,
     onToggleEnabled: () -> Unit,
-    onLongPress: () -> Unit,
+    /** Drill into the History surface for this automation; wired to long-press. */
+    onOpenHistory: () -> Unit,
+    /** Tap on an unavailable row's body: explain the inert state (and still
+     *  open History). Distinct from [onToggleEnabled] so the unavailable tap
+     *  doesn't silently fall through to a doomed toggle / a bare History open. */
+    onUnavailable: () -> Unit,
     onFavorite: () -> Unit,
 ) {
     // Resolve the relative last-triggered phrase once so the visible label and the
@@ -330,21 +330,41 @@ private fun AutomationRow(
             // can see when this automation last fired + how
             // frequently. Separate RUN affordance on the right edge
             // dispatches a manual trigger. When the automation is
-            // unavailable there's no on/off to flip, so the tap falls
-            // back to opening History rather than firing a doomed toggle.
+            // unavailable there's no on/off to flip, so the tap routes
+            // to onUnavailable, which explains the inert state (toast)
+            // and still opens History, rather than silently opening
+            // History as if the tap did nothing.
             .r1RowPressable(
-                onTap = if (entry.available) onToggleEnabled else onLongPress,
-                onLongPress = onLongPress,
+                onTap = if (entry.available) onToggleEnabled else onUnavailable,
+                onLongPress = onOpenHistory,
                 contentDescription = rowLabel,
             )
             .heightIn(min = R1.MinTarget)
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Leading domain glyph (the in-house automation icon), tinted by state:
+        // green when enabled, muted when disabled, amber when unavailable. This
+        // is the primary at-a-glance cue; the ON / OFF / N-A token below is kept
+        // as a compact secondary label, and the spoken state lives in the merged
+        // row description (the icon itself carries no contentDescription so it
+        // isn't announced twice).
+        val stateTint = when {
+            !entry.available -> R1.StatusAmber
+            entry.enabled -> R1.AccentGreen
+            else -> R1.InkMuted
+        }
+        androidx.compose.material3.Icon(
+            imageVector = com.github.itskenny0.r1ha.ui.icons.R1Icons.forDomain("automation"),
+            contentDescription = null,
+            tint = stateTint,
+            modifier = Modifier.size(R1.space.l),
+        )
+        Spacer(Modifier.width(R1.space.s))
         // State label: ON green when active, OFF muted when disabled, and an
         // amber "N/A" for an unavailable automation (matches the rest of the
-        // app's StatusAmber 'unavailable' treatment). Sized to fit the longest
-        // token without pushing the name column around.
+        // app's StatusAmber 'unavailable' treatment). Secondary to the icon now;
+        // sized to fit the longest token without pushing the name column around.
         Text(
             text = when {
                 !entry.available -> "N/A"
@@ -352,11 +372,9 @@ private fun AutomationRow(
                 else -> "OFF"
             },
             style = R1.labelMicro,
-            color = when {
-                !entry.available -> R1.StatusAmber
-                entry.enabled -> R1.AccentGreen
-                else -> R1.InkMuted
-            },
+            color = stateTint,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.width(R1.space.xl),
         )
         Spacer(Modifier.width(R1.space.s))
@@ -367,6 +385,7 @@ private fun AutomationRow(
                     style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(R1.space.s))
@@ -382,6 +401,7 @@ private fun AutomationRow(
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 if (entry.mode != AutomationsViewModel.Mode.UNKNOWN) {
@@ -402,17 +422,20 @@ private fun AutomationRow(
                         color = R1.AccentNeutral,
                         // The badge sits inside the row, so its own gesture
                         // detector swallows taps before they reach the row's
-                        // enabled-toggle. Forward a tap to onToggleEnabled so
-                        // tapping the badge behaves identically to tapping the
-                        // rest of the row; long-press keeps the mode explainer.
-                        // clearAndSetSemantics keeps the badge from registering as
-                        // a separate bare-text focus node: the run mode is already
-                        // spoken as part of the merged row description, so the
-                        // reader hears it once in context rather than twice.
+                        // enabled-toggle. Forward a tap so tapping the badge
+                        // behaves identically to tapping the rest of the row:
+                        // toggle when available, explain the inert state when
+                        // unavailable (the badge previously toggled enable even
+                        // on unavailable rows). Long-press keeps the mode
+                        // explainer. clearAndSetSemantics keeps the badge from
+                        // registering as a separate bare-text focus node: the run
+                        // mode is already spoken as part of the merged row
+                        // description, so the reader hears it once in context
+                        // rather than twice.
                         modifier = Modifier
                             .clearAndSetSemantics {}
                             .r1RowPressable(
-                                onTap = if (entry.available) onToggleEnabled else onLongPress,
+                                onTap = if (entry.available) onToggleEnabled else onUnavailable,
                                 onLongPress = { modeExplain.value = true },
                             ),
                     )

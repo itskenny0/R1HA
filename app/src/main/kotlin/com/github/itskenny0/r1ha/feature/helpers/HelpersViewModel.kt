@@ -160,15 +160,24 @@ class HelpersViewModel(
             val entries = rows.map { row ->
                 val attrs = row.attributes
                 val kind = kindOf(row.entityId.substringBefore('.'))
+                // HA reuses the `min` / `max` attribute keys for two unrelated
+                // meanings: input_number / counter carry numeric value bounds
+                // there, input_text carries length bounds. Both keys can be
+                // present regardless, so gate the parse on the kind: value
+                // bounds (Double) only for NUMBER / COUNTER, length bounds (Int)
+                // only for TEXT. Parsing both unconditionally let a text helper's
+                // length cap masquerade as a numeric ceiling (and vice versa).
+                val isNumeric = kind == Kind.NUMBER || kind == Kind.COUNTER
+                val isText = kind == Kind.TEXT
                 Entry(
                     id = EntityId(row.entityId),
                     name = row.friendlyName,
                     state = row.state,
                     kind = kind,
                     numericValue = row.state.toDoubleOrNull(),
-                    min = (attrs["min"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                    max = (attrs["max"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
-                    step = (attrs["step"] as? JsonPrimitive)?.content?.toDoubleOrNull(),
+                    min = if (isNumeric) (attrs["min"] as? JsonPrimitive)?.content?.toDoubleOrNull() else null,
+                    max = if (isNumeric) (attrs["max"] as? JsonPrimitive)?.content?.toDoubleOrNull() else null,
+                    step = if (isNumeric) (attrs["step"] as? JsonPrimitive)?.content?.toDoubleOrNull() else null,
                     unit = (attrs["unit_of_measurement"] as? JsonPrimitive)?.content,
                     options = (attrs["options"] as? JsonArray)
                         ?.mapNotNull { (it as? JsonPrimitive)?.content } ?: emptyList(),
@@ -176,8 +185,8 @@ class HelpersViewModel(
                         ?.let { parseHaInstant(it) },
                     pressedAt = if (kind == Kind.BUTTON) parseHaInstant(row.state) else null,
                     remaining = (attrs["remaining"] as? JsonPrimitive)?.content,
-                    textMin = (attrs["min"] as? JsonPrimitive)?.content?.toIntOrNull(),
-                    textMax = (attrs["max"] as? JsonPrimitive)?.content?.toIntOrNull(),
+                    textMin = if (isText) (attrs["min"] as? JsonPrimitive)?.content?.toIntOrNull() else null,
+                    textMax = if (isText) (attrs["max"] as? JsonPrimitive)?.content?.toIntOrNull() else null,
                     hasDate = (attrs["has_date"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
                     hasTime = (attrs["has_time"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: false,
                     mode = (attrs["mode"] as? JsonPrimitive)?.content,
@@ -224,12 +233,17 @@ class HelpersViewModel(
      *  only ever passes input_number entries. */
     fun setNumber(entry: Entry, newValue: Double) {
         viewModelScope.launch {
+            // Snap onto the entity's step grid + clamp into [min, max] before
+            // dispatching: HA's input_number rejects off-grid / out-of-bounds
+            // values outright, so do it here rather than passing the raw
+            // candidate straight through.
+            val value = HelpersLogic.clampNumber(newValue, entry.min, entry.max, entry.step)
             haRepository.call(
                 ServiceCall(
                     target = entry.id,
                     service = "set_value",
                     data = buildJsonObject {
-                        put("value", JsonPrimitive(newValue))
+                        put("value", JsonPrimitive(value))
                     },
                 ),
             ).onFailure { Toaster.error("Set failed: ${it.message ?: "unknown"}") }

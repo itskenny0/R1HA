@@ -1,8 +1,10 @@
 package com.github.itskenny0.r1ha.feature.history
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +63,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -133,7 +136,7 @@ fun HistoryScreen(
             .systemBarsPadding(),
     ) {
         R1TopBar(
-            title = ui.displayName.uppercase().take(22),
+            title = ellipsize(ui.displayName.uppercase(), 22),
             onBack = onBack,
             action = {
                 Box(
@@ -166,11 +169,22 @@ fun HistoryScreen(
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = entityId,
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Icon(
+                        imageVector = R1Icons.forEntity(entityId),
+                        contentDescription = null,
+                        tint = R1.InkMuted,
+                        modifier = Modifier.padding(end = 6.dp).size(14.dp),
+                    )
+                    Text(
+                        text = entityId,
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
                 WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
                 HistoryChartPanel(ui)
                 OverlayLegend(
@@ -311,9 +325,21 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
             // an empty message. Overlays stay numeric-only (a shared line
             // chart can't host categorical states), so they keep the prompt.
             val primaryPoints = ui.primary?.points.orEmpty()
-            if (!ui.isOverlay && isCategoricalHistory(primaryPoints) && primaryPoints.isNotEmpty()) {
-                StateTimelinePanel(name = ui.displayName, points = primaryPoints)
-            } else {
+            val numericPoint = primaryPoints.lastOrNull { it.numeric != null }
+            when {
+                // A numeric sensor with exactly one reading in the window can't draw
+                // a line, but rendering it as a categorical timeline (one full-width
+                // band of "23.4") is misleading. Show the single reading as a numeric
+                // readout instead, so the user sees the value rather than a state band.
+                !ui.isOverlay && numericPoint != null && isSingleNumericPoint(primaryPoints) ->
+                    SingleValuePanel(
+                        value = numericPoint.numeric,
+                        unit = ui.unit,
+                        timestamp = numericPoint.timestamp,
+                    )
+                !ui.isOverlay && isCategoricalHistory(primaryPoints) && primaryPoints.isNotEmpty() ->
+                    StateTimelinePanel(name = ui.displayName, points = primaryPoints)
+                else -> {
                 Box(
                     modifier = Modifier.fillMaxWidth().height(180.dp),
                     contentAlignment = Alignment.Center,
@@ -323,6 +349,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         style = R1.labelMicro,
                         color = R1.InkMuted,
                     )
+                }
                 }
             }
             return@Column
@@ -361,16 +388,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         .background(R1.Surface)
                         .semantics { contentDescription = chartDescription }
                         .padding(horizontal = 6.dp, vertical = 6.dp)
-                        .pointerInput(multi) {
-                            val canvasW = size.width.toFloat()
-                            detectTapGestures(
-                                onPress = { pressOffset ->
-                                    scrubX.value = (pressOffset.x / canvasW).coerceIn(0f, 1f)
-                                    tryAwaitRelease()
-                                    scrubX.value = null
-                                },
-                            )
-                        },
+                        .scrubGesture(multi) { frac -> scrubX.value = frac },
                 ) {
                     val w = size.width
                     val h = size.height
@@ -465,11 +483,13 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                                 color = R1.InkSoft,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                             Text(
                                 text = sample?.let { "${formatNum(it.second)}${s.unit?.let { u -> " $u" } ?: ""}" } ?: "n/a",
                                 style = R1.labelMicro,
                                 color = seriesColor(s.colorIndex),
+                                maxLines = 1,
                             )
                         }
                     }
@@ -498,6 +518,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                         maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -505,6 +526,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                         maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -557,16 +579,7 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
             .clip(R1.ShapeS)
             .background(R1.Surface)
             .semantics { contentDescription = chartDescription }
-            .pointerInput(timeline) {
-                val canvasW = size.width.toFloat()
-                detectTapGestures(
-                    onPress = { pressOffset ->
-                        scrubX.value = (pressOffset.x / canvasW).coerceIn(0f, 1f)
-                        tryAwaitRelease()
-                        scrubX.value = null
-                    },
-                )
-            },
+            .scrubGesture(timeline) { frac -> scrubX.value = frac },
     ) {
         val w = size.width
         val h = size.height
@@ -650,6 +663,36 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
 }
 
 /**
+ * Single-reading readout for a numeric sensor with exactly one sample in the
+ * window. Replaces the misleading state-timeline band a one-point numeric
+ * sensor would otherwise get: shows the value large, the unit beside it, and
+ * the sample's timestamp, so the user reads the number rather than a coloured
+ * bar labelled with a number.
+ */
+@Composable
+private fun SingleValuePanel(value: Double?, unit: String?, timestamp: Instant) {
+    val zone = ZoneId.systemDefault()
+    val fmt = remember { DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(zone) }
+    Box(
+        modifier = Modifier.fillMaxWidth().height(180.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "ONLY ONE READING IN WINDOW", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "${value?.let { formatNum(it) } ?: "—"}${unit?.let { " $it" } ?: ""}",
+                style = R1.numeralM,
+                color = R1.Ink,
+                maxLines = 1,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(text = fmt.format(timestamp), style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+        }
+    }
+}
+
+/**
  * Legend + overlay management. Lists every loaded series with its accent
  * swatch, friendly name, and per-series min..max (the absolute scale the
  * chart's shared 0..1 axis hides). The primary entity (index 0) can't be
@@ -690,30 +733,49 @@ private fun OverlayLegend(
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.semantics(mergeDescendants = true) {
-                    contentDescription = rowLabel
-                },
             ) {
-                Box(
+                // Merge only the swatch + name + range into one spoken label so
+                // the colour is described, not implied. Crucially this merge does
+                // NOT wrap the remove button: a row-level mergeDescendants would
+                // swallow the button's own contentDescription / click action,
+                // leaving it unreachable to a screen reader. Scoping the merge to
+                // the descriptive cluster keeps the button a separate, operable node.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .padding(end = 8.dp)
-                        .size(10.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(seriesColor(s.colorIndex)),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = s.displayName,
-                        style = R1.body,
-                        color = R1.Ink,
-                        maxLines = 1,
+                        .weight(1f)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = rowLabel
+                        },
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(10.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(seriesColor(s.colorIndex)),
                     )
-                    val range = if (s.min != null && s.max != null) {
-                        "${formatNum(s.min)} to ${formatNum(s.max)}${s.unit?.let { " $it" } ?: ""}"
-                    } else {
-                        s.entityId.value
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = s.displayName,
+                            style = R1.body,
+                            color = R1.Ink,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        val range = if (s.min != null && s.max != null) {
+                            "${formatNum(s.min)} to ${formatNum(s.max)}${s.unit?.let { " $it" } ?: ""}"
+                        } else {
+                            s.entityId.value
+                        }
+                        Text(
+                            text = range,
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(text = range, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
                 }
                 // Index 0 is the primary drill-in entity, which stays pinned.
                 if (index != 0) {
@@ -848,7 +910,13 @@ private fun SummaryPanel(ui: HistoryViewModel.UiState) {
 private fun RewindPanel(ui: HistoryViewModel.UiState) {
     val points = ui.points
     if (points.size < 2) return
-    val now = java.time.Instant.now()
+    // Anchor offsets to the data's own end time, not the wall clock. A
+    // slow-changing sensor can have its last sample sit hours stale; anchoring
+    // to Instant.now() then makes every short offset row resolve to that same
+    // most-recent sample (15 MIN, 1 HR, 6 HR all collapse to one value). Walking
+    // back from the last sample's timestamp keeps each offset distinct and matches
+    // the window the chart draws.
+    val anchor = points.maxByOrNull { it.timestamp }?.timestamp ?: java.time.Instant.now()
     // Curated offsets. Capped to the loaded window so the user doesn't see
     // a row that says "1d ago — —" when only an hour of data is available.
     val candidateOffsets = listOf(
@@ -881,7 +949,7 @@ private fun RewindPanel(ui: HistoryViewModel.UiState) {
             modifier = Modifier.semantics { heading() },
         )
         for ((label, offsetSec) in applicable) {
-            val target = now.minusSeconds(offsetSec)
+            val target = anchor.minusSeconds(offsetSec)
             // Pick the latest point at or before the target time, falling back
             // to the earliest if nothing is found (which shouldn't happen given
             // the applicable filter above, but stays defensive).
@@ -911,6 +979,7 @@ private fun SummaryRow(
             color = accent,
             modifier = Modifier.weight(1f),
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
@@ -932,6 +1001,13 @@ private fun formatNum(v: Double): String =
 // Accessibility text helpers. Pure and deterministic so they can be unit
 // tested without a Compose runtime, and reused by the screen's semantics.
 // ---------------------------------------------------------------------------
+
+/** Truncate to [max] characters with a trailing ellipsis instead of a hard cut,
+ *  so an over-long title reads as "Living Room Temp…" rather than losing its tail
+ *  silently. R1TopBar draws the title single-line without its own overflow, so the
+ *  ellipsis has to live in the string. */
+internal fun ellipsize(text: String, max: Int): String =
+    if (text.length <= max) text else text.take((max - 1).coerceAtLeast(0)) + "…"
 
 /** Spoken-out window label, e.g. "24H" reads as "1 day" rather than letters. */
 internal fun windowAccessibleLabel(window: HistoryViewModel.Window): String =
@@ -1091,6 +1167,32 @@ internal fun buildMultiProjection(series: List<HistoryViewModel.Series>): MultiP
     return MultiProjection(projected, tStart, tEnd, tSpan)
 }
 
+/**
+ * Press-and-drag scrub gesture for a chart Canvas. Reports the touched x as a
+ * fraction [0..1] of the canvas width on the initial press, tracks it as the
+ * finger slides (so the user can slide to read values rather than re-tapping),
+ * and reports null on release. [key] re-arms the gesture when the projection
+ * changes. Replaces the old press-and-hold-only handler that ignored drag.
+ */
+internal fun Modifier.scrubGesture(
+    key: Any?,
+    onScrub: (Float?) -> Unit,
+): Modifier = this.pointerInput(key) {
+    val canvasW = size.width.toFloat().coerceAtLeast(1f)
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        onScrub((down.position.x / canvasW).coerceIn(0f, 1f))
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == down.id } ?: event.changes.firstOrNull()
+            if (change == null || !change.pressed) break
+            if (change.positionChange() != Offset.Zero) change.consume()
+            onScrub((change.position.x / canvasW).coerceIn(0f, 1f))
+        }
+        onScrub(null)
+    }
+}
+
 /** Nearest sample index to a normalized x fraction, or -1 if empty. Linear
  *  scan; sample counts are bounded by the History fetch's downsampling. */
 internal fun nearestIndex(xsNorm: FloatArray, frac: Float): Int {
@@ -1191,6 +1293,13 @@ internal fun isCategoricalHistory(points: List<HistoryPoint>): Boolean {
     // categorical so a mostly-text entity still gets a timeline.
     return numericCount < 2
 }
+
+/** True when the window holds exactly one numeric reading and no other numeric
+ *  samples: a numeric sensor that simply hasn't changed (or only just started
+ *  reporting). Such an entity can't draw a line, but it's numeric, not
+ *  categorical, so it deserves a single-value readout rather than a state band. */
+internal fun isSingleNumericPoint(points: List<HistoryPoint>): Boolean =
+    points.count { it.numeric != null } == 1
 
 /** Human-readable spoken label for the state timeline, for the Canvas
  *  contentDescription. Names the current state, how many changes occurred,
