@@ -149,13 +149,13 @@ fun MqttSettingsScreen(
                         )
                         Spacer(Modifier.height(R1.space.s))
                         Text("Password (optional)", style = R1.labelMicro, color = R1.InkSoft)
-                        R1TextField(
+                        MaskedSecretField(
                             value = advanced.mqttPassword,
                             onValueChange = { v ->
                                 vm.updateAdvanced { it.copy(mqttPassword = v) }
                             },
                             placeholder = "broker password",
-                            modifier = Modifier.fillMaxWidth().padding(top = R1.space.xs),
+                            modifier = Modifier.padding(top = R1.space.xs),
                         )
                         Spacer(Modifier.height(R1.space.m))
                         Row(
@@ -470,6 +470,87 @@ private fun FeatureRow(title: String, on: Boolean, detail: String) {
             )
         },
     )
+}
+
+/**
+ * Password / secret input that defaults to a masked rendering. R1TextField
+ * (in ui/components, off-limits) has no visual-transformation parameter, so
+ * masking is done at the value level here rather than in the shared field:
+ *  - hidden (default): a non-editable surface showing one dot per character so
+ *    the secret can't be shoulder-surfed, plus a SHOW toggle;
+ *  - revealed: the real editable [R1TextField], plus a HIDE toggle.
+ *
+ * Feeding the dot string back through onValueChange would corrupt the stored
+ * secret, which is exactly why the masked state is a separate read-only
+ * surface rather than a transformed text field. Edits only happen while
+ * revealed, so the stored value is always the genuine secret.
+ *
+ * Lives in this file but `internal` so the mTLS keystore-password field in
+ * SettingsScreen reuses the same treatment.
+ */
+@Composable
+internal fun MaskedSecretField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+) {
+    var revealed by remember { mutableStateOf(false) }
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            if (revealed) {
+                R1TextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    placeholder = placeholder,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(R1.ShapeS)
+                        .background(R1.Bg)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .padding(horizontal = R1.space.m, vertical = R1.space.m),
+                ) {
+                    val shown = if (value.isEmpty()) {
+                        placeholder ?: ""
+                    } else {
+                        "•".repeat(value.length.coerceAtMost(24))
+                    }
+                    Text(
+                        text = shown,
+                        style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                        color = if (value.isEmpty()) R1.InkMuted else R1.Ink,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.size(R1.space.s))
+        Box(
+            modifier = Modifier
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(
+                    onClick = { revealed = !revealed },
+                    contentDescription = if (revealed) "Hide secret" else "Show secret",
+                )
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        ) {
+            Text(
+                text = if (revealed) "HIDE" else "SHOW",
+                style = R1.labelMicro,
+                color = R1.AccentWarm,
+            )
+        }
+    }
 }
 
 private fun formatClock(millis: Long): String {

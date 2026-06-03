@@ -118,6 +118,7 @@ fun KeyBindingsScreen(
                         bound = effective,
                         isCustomized = isCustomized,
                         conflictingCodes = conflictingCodes,
+                        capturing = captureFor == action,
                         onAdd = { captureFor = action },
                         onRemove = { code -> vm.removeKeyBinding(action, code) },
                         onReset = { vm.resetKeyBinding(action) },
@@ -204,6 +205,7 @@ private fun KeyBindingActionRow(
     bound: List<Int>,
     isCustomized: Boolean,
     conflictingCodes: Set<Int>,
+    capturing: Boolean,
     onAdd: () -> Unit,
     onRemove: (Int) -> Unit,
     onReset: () -> Unit,
@@ -246,10 +248,13 @@ private fun KeyBindingActionRow(
                     )
                 }
                 R1Chip(
-                    text = "ADD",
+                    // Selected (armed) only while this row's capture overlay is
+                    // active; otherwise the chip reads as a plain idle action
+                    // so every row no longer looks permanently armed.
+                    text = if (capturing) "ADD…" else "ADD",
                     variant = R1ChipVariant.Action,
                     tone = R1.AccentWarm,
-                    selected = true,
+                    selected = capturing,
                     onClick = onAdd,
                     contentDescription = "Add a key binding",
                 )

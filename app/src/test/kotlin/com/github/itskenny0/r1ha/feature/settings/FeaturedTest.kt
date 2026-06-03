@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.settings
 
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
@@ -7,7 +8,7 @@ class FeaturedTest {
 
     private fun catalogue(size: Int): List<FeaturedItem> =
         (0 until size).map { i ->
-            FeaturedItem(glyph = "g$i", title = "t$i", blurb = "b$i", onOpen = {})
+            FeaturedItem(icon = R1IconSet.Generic, title = "t$i", blurb = "b$i", onOpen = {})
         }
 
     @Test

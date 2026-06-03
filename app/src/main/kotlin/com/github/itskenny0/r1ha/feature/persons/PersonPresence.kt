@@ -91,34 +91,44 @@ fun presenceSpoken(state: String): String {
 }
 
 /**
- * Home-vs-away tally for a group of person/device rows, shown as a short
- * summary chip in the section header ("3 home, 2 away") so the user gets a
- * who's-in count without scanning every row. ZONE counts as away (the person
- * is somewhere other than home); UNKNOWN is excluded from both buckets so a
- * stale/unavailable tracker doesn't inflate either side.
+ * Home / away / elsewhere tally for a group of person/device rows, shown as a
+ * short summary in the section header ("3 home, 2 away, 1 out") so the user
+ * gets a who's-in count without scanning every row.
+ *
+ * The three buckets reconcile with the row colours: HOME (green) -> [home],
+ * AWAY / not_home (amber) -> [away], a named HA zone like "Work" (the cool
+ * blue zone chip) -> [elsewhere]. Previously a named zone was lumped into
+ * "away" even though its row rendered blue, so the header and the rows
+ * disagreed; [elsewhere] keeps them consistent. UNKNOWN is excluded from
+ * every bucket so a stale / unavailable tracker doesn't inflate any side.
  */
-data class PresenceTally(val home: Int, val away: Int) {
-    /** "3 home, 2 away", dropping a zero bucket, or "" when both are zero. */
+data class PresenceTally(val home: Int, val away: Int, val elsewhere: Int = 0) {
+    /** "3 home, 2 away, 1 out", dropping any zero bucket, or "" when all zero.
+     *  Named zones read as "out" (they're somewhere specific, not just away). */
     fun summary(): String {
         val parts = mutableListOf<String>()
         if (home > 0) parts += "$home home"
         if (away > 0) parts += "$away away"
+        if (elsewhere > 0) parts += "$elsewhere out"
         return parts.joinToString(", ")
     }
 }
 
-/** Tally a group's raw HA states into home / away buckets (see [PresenceTally]). */
+/** Tally a group's raw HA states into home / away / elsewhere buckets
+ *  (see [PresenceTally]). */
 fun presenceTally(states: List<String>): PresenceTally {
     var home = 0
     var away = 0
+    var elsewhere = 0
     for (s in states) {
         when (presenceLabel(s).kind) {
             PresenceKind.HOME -> home++
-            PresenceKind.AWAY, PresenceKind.ZONE -> away++
+            PresenceKind.AWAY -> away++
+            PresenceKind.ZONE -> elsewhere++
             PresenceKind.UNKNOWN -> Unit
         }
     }
-    return PresenceTally(home, away)
+    return PresenceTally(home, away, elsewhere)
 }
 
 /**

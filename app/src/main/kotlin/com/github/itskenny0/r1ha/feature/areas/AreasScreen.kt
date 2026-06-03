@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.Domain
@@ -48,10 +50,13 @@ import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -135,22 +140,22 @@ fun AreasScreen(
             action = {
                 // Sort chip: toggles between alphabetical and entity-count. A long
                 // tap-cycle reveal would be over-engineered; two states fit fine.
+                // Routed through R1Chip so the current sort + next action is spoken.
                 val nextSort = if (ui.sort == AreasViewModel.Sort.ALPHA)
                     AreasViewModel.Sort.COUNT else AreasViewModel.Sort.ALPHA
-                Box(
-                    modifier = Modifier
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(onClick = { vm.setSort(nextSort) })
-                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
-                ) {
-                    Text(
-                        text = if (ui.sort == AreasViewModel.Sort.ALPHA) "A→Z" else "BY COUNT",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
+                val sortSpoken = if (ui.sort == AreasViewModel.Sort.ALPHA) {
+                    "Sorted A to Z. Tap to sort by entity count."
+                } else {
+                    "Sorted by entity count. Tap to sort A to Z."
                 }
+                R1Chip(
+                    text = if (ui.sort == AreasViewModel.Sort.ALPHA) "A-Z" else "BY COUNT",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.setSort(nextSort) },
+                    modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
+                        .semantics { contentDescription = sortSpoken },
+                )
             },
         )
         val sortedAreas by vm.sortedAreas.collectAsState()
@@ -183,7 +188,7 @@ fun AreasScreen(
                 )
             }
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = ui.loading,
+                isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -249,11 +254,34 @@ private fun AreaRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = area.name, style = R1.body, color = R1.Ink, maxLines = 1)
-                // Secondary line: HA's area-card temperature / humidity readout.
+                Text(
+                    text = area.name,
+                    style = R1.body,
+                    color = R1.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Secondary line: HA's area-card temperature / humidity readout,
+                // led by a small thermometer glyph so it reads as a climate row.
                 // Only painted once the state snapshot enriched the row.
                 area.summary?.takeIf { it.isNotBlank() }?.let { s ->
-                    Text(text = s, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = R1Icons.forDomain("temperature"),
+                            contentDescription = null,
+                            tint = R1.InkSoft,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(R1.space.xxs))
+                        Text(
+                            text = s,
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(R1.space.s))
@@ -312,16 +340,33 @@ private fun AreaRow(
                 modifier = Modifier.padding(start = R1.space.m, end = R1.space.m, bottom = R1.space.s),
             ) {
                 for (eid in area.entityIds) {
-                    Text(
-                        text = eid,
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                        maxLines = 1,
+                    // Prefer the resolved friendly name (folded in once the state
+                    // snapshot loaded); fall back to the raw entity_id only for
+                    // entities the snapshot didn't carry.
+                    val display = area.entityNames[eid] ?: eid
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .r1Pressable(onClick = { onTapEntity(eid) })
                             .padding(vertical = R1.space.xxs),
-                    )
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = R1Icons.forEntity(eid),
+                            contentDescription = null,
+                            tint = R1.InkMuted,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(R1.space.xs))
+                        Text(
+                            text = display,
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
@@ -481,10 +526,20 @@ private fun AreaDrillScreen(
                         }
                         for (group in drill.groups) {
                             item(key = "__hdr_${group.domain.prefix}") {
+                                // Trailing domain glyph from the in-house icon set
+                                // so the bucket reads by type, not just by label.
                                 com.github.itskenny0.r1ha.ui.components.R1Section(
                                     title = group.label,
                                     count = group.entities.size,
                                     topSpace = R1.space.m,
+                                    trailing = {
+                                        Icon(
+                                            imageVector = R1Icons.forDomain(group.domain.prefix),
+                                            contentDescription = null,
+                                            tint = R1.AccentWarm,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    },
                                 ) {}
                             }
                             items(
@@ -561,13 +616,33 @@ private fun AreaEntityRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Per-entity glyph, tinted to the row's state colour so an on light reads
+        // warm and an inert sensor reads soft, matching the card-stack mini rows.
+        Icon(
+            imageVector = R1Icons.forEntity(
+                entity.id.value,
+                deviceClass = entity.deviceClass,
+                state = entity.rawState,
+            ),
+            contentDescription = null,
+            tint = stateColor,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(R1.space.s))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = entity.friendlyName, style = R1.bodyEmph, color = R1.Ink, maxLines = 1)
+            Text(
+                text = entity.friendlyName,
+                style = R1.bodyEmph,
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = stateLine,
                 style = R1.labelMicro,
                 color = stateColor,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(8.dp))

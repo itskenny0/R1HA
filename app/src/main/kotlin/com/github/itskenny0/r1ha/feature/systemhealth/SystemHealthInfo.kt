@@ -156,10 +156,32 @@ object SystemHealthInfo {
             sb.append("### ").append(section.title).append('\n')
             sb.append("key | value\n-- | --\n")
             section.rows.forEach { row ->
-                sb.append(row.label).append(" | ").append(row.value.display).append('\n')
+                sb.append(row.label).append(" | ").append(markdownValue(row.value)).append('\n')
             }
         }
         return sb.toString().trimEnd('\n')
+    }
+
+    /**
+     * Render a [HealthValue] for the copied report. A plain bug-report needs to
+     * carry the pass/fail signal that the on-screen status dot conveys, so a
+     * reachability check exports as e.g. "ok ✅" / "failed ❌ (unreachable)"
+     * rather than dropping the status and the error detail. Neutral values copy
+     * verbatim. The error detail is appended only when it isn't already folded
+     * into the display string (HA prefixes failures with "failed: …").
+     */
+    private fun markdownValue(value: HealthValue): String {
+        val badge = when (value.status) {
+            HealthStatus.OK -> " ✅"
+            HealthStatus.PENDING -> " ⏳"
+            HealthStatus.FAILED -> " ❌"
+            HealthStatus.NEUTRAL -> ""
+        }
+        val detail = value.error
+            ?.takeIf { it.isNotBlank() && !value.display.contains(it) }
+            ?.let { " ($it)" }
+            .orEmpty()
+        return "${value.display}$badge$detail"
     }
 
     /**

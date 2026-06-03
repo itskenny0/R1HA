@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -33,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.DeviceInfo
@@ -46,6 +48,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -335,12 +338,20 @@ private fun DeviceRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = R1IconSet.Generic,
+                contentDescription = null,
+                tint = if (disabled) R1.InkMuted else R1.AccentWarm,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = device.displayName,
                 style = R1.bodyEmph,
                 color = if (disabled) R1.InkMuted else R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(R1.space.s))
             Text(
@@ -370,6 +381,7 @@ private fun DeviceRow(
                     color = R1.InkSoft,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             } else {
                 Spacer(Modifier.weight(1f))

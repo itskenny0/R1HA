@@ -43,6 +43,18 @@ object DevicesA11y {
     }
 
     /**
+     * Spoken coverage phrase for the drill-in entities header, e.g. "3 of 5
+     * reporting". Live state only arrives for entities HA is actively
+     * reporting, so spelling out the ratio keeps the count honest about how
+     * much of the device is actually live. Returns null when every entity is
+     * reporting (full coverage needs no caveat) or there are no entities.
+     */
+    fun reportingCoverageDescription(reporting: Int, total: Int): String? {
+        if (total <= 0 || reporting >= total) return null
+        return "$reporting of $total reporting"
+    }
+
+    /**
      * Spoken header for a section in the list, e.g. "Kitchen, 3 devices". The
      * visible header shows the same label and a count pill, but the pill's digit
      * alone is not announced as part of the heading without this.

@@ -118,26 +118,58 @@ fun resolveZoneMembership(
     zones: List<ZoneInput>,
     trackers: List<TrackedInput>,
 ): ZoneResolution {
-    // Bucket every tracker by the lower-cased state so a zone can pick up its
-    // occupants in one lookup regardless of casing differences.
-    val byState = HashMap<String, MutableList<String>>()
-    val outside = mutableListOf<String>()
+    // The home zone is resolved first and authoritatively: the reserved state
+    // "home" belongs to it and to no one else, even if a second zone happens to
+    // be named "Home". Keep its lower-cased name so a tracker reporting the home
+    // zone by name routes there too (and isn't double-counted by a twin).
+    val homeZone = zones.firstOrNull { it.isHome }
+    val homeName = homeZone?.name?.trim()?.lowercase(Locale.US)
+
+    // Index non-home zones by lower-cased name for a name-state match. The home
+    // zone is excluded so the reserved "home" state, not the name bucket, is
+    // what fills it; a non-home zone literally named "home" would otherwise
+    // steal the reserved state.
+    val zoneByName = HashMap<String, ZoneInput>()
+    for (z in zones) {
+        if (z.isHome) continue
+        zoneByName.putIfAbsent(z.name.trim().lowercase(Locale.US), z)
+    }
+
+    // Each tracker resolves to at most one zone, recorded by entity_id so the
+    // same tracker can never be counted in two zones (the old friendly_name +
+    // "home" double-count) and de-duping keys on the stable id, not the name.
+    val occupantsByZoneEntity = HashMap<String, LinkedHashMap<String, String>>()
+    val outside = LinkedHashMap<String, String>()
     for (t in trackers) {
         val key = t.state.trim().lowercase(Locale.US)
         if (key in OUTSIDE_STATES) {
-            outside.add(t.name)
-        } else {
-            byState.getOrPut(key) { mutableListOf() }.add(t.name)
+            // Away / unknown / unavailable: surfaced under the OUTSIDE bucket.
+            outside.putIfAbsent(t.entityId, t.name)
+            continue
+        }
+        val target: ZoneInput? = when {
+            // "home" resolves strictly to the configured home zone.
+            key == "home" -> homeZone
+            // A tracker reporting the home zone by friendly_name is also at home.
+            homeName != null && key == homeName -> homeZone
+            else -> zoneByName[key]
+        }
+        // A non-outside state that matches no zone (e.g. "home" with no home zone
+        // configured, or an unknown zone name) places the tracker nowhere:
+        // neither in a zone nor genuinely outside, so it is dropped rather than
+        // wrongly bucketed under OUTSIDE.
+        if (target != null) {
+            occupantsByZoneEntity
+                .getOrPut(target.entityId) { LinkedHashMap() }
+                .putIfAbsent(t.entityId, t.name)
         }
     }
-    val homeOccupants = byState["home"].orEmpty()
+
     val resolved = zones.map { z ->
-        val direct = byState[z.name.trim().lowercase(Locale.US)].orEmpty()
-        // The reserved state "home" maps to whichever zone is the home zone, so
-        // fold those occupants in there too. Without this, anyone reporting
-        // "home" (the common case) would never match a zone and would wrongly
-        // appear under OUTSIDE.
-        val occupants = if (z.isHome) (direct + homeOccupants) else direct
+        // Keyed on entity_id above so a tracker can't count twice; the display
+        // list is then name-de-duped so a person and their identically named
+        // phone tracker collapse to one "Alice" rather than "Alice · Alice".
+        val occupants = occupantsByZoneEntity[z.entityId]?.values?.distinct().orEmpty()
         ResolvedZone(
             entityId = z.entityId,
             name = z.name,
@@ -147,14 +179,14 @@ fun resolveZoneMembership(
             icon = z.icon,
             isHome = z.isHome,
             passive = z.passive,
-            occupants = occupants.distinct(),
+            occupants = occupants,
         )
     }.sortedWith(
         compareByDescending<ResolvedZone> { it.occupants.size }
             .thenBy { it.name.lowercase(Locale.US) }
             .thenBy { it.entityId },
     )
-    return ZoneResolution(zones = resolved, outside = outside.distinct())
+    return ZoneResolution(zones = resolved, outside = outside.values.distinct())
 }
 
 /**

@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
@@ -45,6 +47,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -182,12 +185,23 @@ private fun UserRow(row: UserRowModel) {
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Leading glyph: a person row carries the Person icon, a system /
+            // service account the generic glyph, so the eye can split humans
+            // from plumbing before reading the chips.
+            Icon(
+                imageVector = if (row.systemGenerated) R1IconSet.Generic else R1IconSet.Person,
+                contentDescription = null,
+                tint = if (row.isActive) R1.InkSoft else R1.InkMuted,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = row.displayName,
                 style = R1.bodyEmph,
                 color = if (row.isActive) R1.Ink else R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         // Flag chips wrap onto a second line on narrow widths rather than
@@ -236,6 +250,7 @@ private fun UserRow(row: UserRowModel) {
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 if (row.linkedPersonSince != null) {
@@ -257,14 +272,20 @@ private fun UserRow(row: UserRowModel) {
             ),
             color = R1.InkMuted,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        if (row.groupIds.isNotEmpty()) {
+        // Only list groups when the user belongs to a CUSTOM group beyond HA's
+        // built-ins: built-in membership (Admin / Users / Read-only) is already
+        // shown by the flag chips above, so repeating it here is just noise.
+        val customGroups = customGroupIds(row.groupIds)
+        if (customGroups.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.xs))
             Text(
-                text = "GROUPS · " + row.groupIds.joinToString(", ") { prettyGroupId(it) },
+                text = "GROUPS · " + customGroups.joinToString(", ") { prettyGroupId(it) },
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

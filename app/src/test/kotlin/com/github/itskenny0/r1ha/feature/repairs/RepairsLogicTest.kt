@@ -46,6 +46,27 @@ class RepairsLogicTest {
         assertThat(RepairsLogic.severityRank("Error")).isEqualTo(1)
     }
 
+    // --- humanizeTitle ---
+
+    @Test
+    fun humanizeTitle_strips_issue_prefix_and_title_cases() {
+        assertThat(
+            RepairsLogic.humanizeTitle("issue_homeassistant_yaml_deprecated", "fallback"),
+        ).isEqualTo("Homeassistant Yaml Deprecated")
+    }
+
+    @Test
+    fun humanizeTitle_falls_back_when_key_blank_or_null() {
+        assertThat(RepairsLogic.humanizeTitle(null, "id_fallback")).isEqualTo("id_fallback")
+        assertThat(RepairsLogic.humanizeTitle("   ", "id_fallback")).isEqualTo("id_fallback")
+    }
+
+    @Test
+    fun humanizeTitle_handles_dot_and_dash_separators() {
+        assertThat(RepairsLogic.humanizeTitle("deprecated.api-call", "fb"))
+            .isEqualTo("Deprecated Api Call")
+    }
+
     // --- sortIssues ---
 
     @Test

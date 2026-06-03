@@ -21,7 +21,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -151,7 +154,11 @@ fun RepairsScreen(
                         )
                     }
                 }
-                else -> {
+                else -> PullToRefreshBox(
+                    isRefreshing = ui.loading,
+                    onRefresh = { vm.refresh() },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -234,6 +241,16 @@ private fun RepairRow(
             verticalArrangement = Arrangement.spacedBy(R1.space.xs),
         ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Severity glyph: an alert siren for critical/error/warning, the
+            // neutral generic mark for anything HA didn't flag, tinted to the
+            // row's severity tone so the list triages by colour + shape.
+            Icon(
+                imageVector = RepairsLogic.severityIcon(issue.severity),
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(R1.space.xs))
             Box(
                 modifier = Modifier
                     .clip(R1.ShapeS)
@@ -252,6 +269,8 @@ private fun RepairRow(
                 text = issue.domain,
                 style = R1.labelMicro,
                 color = R1.InkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (issue.ignored) {
                 Spacer(Modifier.width(R1.space.s))
@@ -272,9 +291,11 @@ private fun RepairRow(
             )
         }
         Text(
-            text = issue.translationKey ?: issue.issueId,
+            text = RepairsLogic.humanizeTitle(issue.translationKey, issue.issueId),
             style = R1.bodyEmph,
             color = if (issue.ignored) R1.InkMuted else R1.Ink,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         if (!issue.description.isNullOrBlank()) {
             Text(
@@ -282,7 +303,51 @@ private fun RepairRow(
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
+        }
+        // "Breaks in <ver>" chip: a distinct, scannable callout for deprecation
+        // repairs that name the HA release where the flagged behaviour stops
+        // working, kept separate from the body so the deadline reads at a glance.
+        if (!issue.breaksInHaVersion.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(R1.ShapeS)
+                    .background(R1.StatusAmber.copy(alpha = 0.15f))
+                    .border(1.dp, R1.StatusAmber.copy(alpha = 0.5f), R1.ShapeS)
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+            ) {
+                Text(
+                    text = "Breaks in ${issue.breaksInHaVersion}",
+                    style = R1.labelMicro,
+                    color = R1.StatusAmber,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        // LEARN MORE: HA's per-issue documentation link, opened in the system
+        // browser. Rendered as a tappable affordance rather than dumped into the
+        // body text (which is where the URL used to be mis-mapped).
+        if (!issue.learnMoreUrl.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .heightIn(min = R1.MinTarget)
+                    .clip(R1.ShapeS)
+                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                    .r1Pressable(onClick = { openUrl(context, issue.learnMoreUrl) })
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs)
+                    .semantics {
+                        contentDescription = "Learn more about ${issue.domain} issue"
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "LEARN MORE ↗",
+                    style = R1.labelMicro,
+                    color = R1.AccentCool,
+                )
+            }
         }
         val createdAt = RepairsLogic.parseCreatedAt(issue.createdAt)
         if (createdAt != null) {
@@ -366,5 +431,19 @@ private fun openFixFlow(context: android.content.Context, repairsUrl: String?) {
         )
     }.onFailure {
         Toaster.error("No browser to open Home Assistant")
+    }
+}
+
+/** Open an arbitrary issue URL (the repair's learn-more link) in the system browser. */
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }.onFailure {
+        Toaster.error("No browser to open this link")
     }
 }

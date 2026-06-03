@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -42,9 +43,12 @@ import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
+import com.github.itskenny0.r1ha.ui.components.R1Chip
+import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
 /**
  * Zones surface: a list-by-zone view of who's currently where,
@@ -87,26 +91,20 @@ fun ZonesScreen(
             title = "ZONES",
             onBack = onBack,
             action = {
-                Box(
+                // Refresh chip routed through R1Chip so the busy/idle state is
+                // spoken rather than only shown by the swapped glyph.
+                val busy = ui.loading || ui.refreshing
+                R1Chip(
+                    text = if (busy) "..." else "REFRESH",
+                    variant = R1ChipVariant.Action,
+                    onClick = { vm.refresh() },
                     modifier = Modifier
-                        .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
-                        .clip(R1.ShapeS)
-                        .background(R1.SurfaceMuted)
-                        .border(1.dp, R1.Hairline, R1.ShapeS)
-                        .r1Pressable(
-                            onClick = { vm.refresh() },
+                        .heightIn(min = R1.MinTarget)
+                        .semantics {
                             contentDescription =
-                                if (ui.loading) "Refreshing zones" else "Refresh zones",
-                        )
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (ui.loading) "…" else "REFRESH",
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                    )
-                }
+                                if (busy) "Refreshing zones" else "Refresh zones"
+                        },
+                )
             },
         )
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
@@ -144,7 +142,7 @@ fun ZonesScreen(
                 )
             }
             else -> PullToRefreshBox(
-                isRefreshing = ui.loading,
+                isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -347,19 +345,22 @@ private fun ZoneRow(zone: ResolvedZone) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            zone.icon?.let { icon ->
-                Text(
-                    text = zoneIconLabel(icon),
-                    style = R1.labelMicro,
-                    color = R1.AccentNeutral,
-                )
-                Spacer(Modifier.width(R1.space.xs))
-            }
+            // Lead with the zone's configured mdi glyph when we curate it,
+            // otherwise the in-house Zone marker. An occupied zone tints warm so
+            // the eye catches "someone's here" before reading the count.
+            Icon(
+                imageVector = R1Icons.forMdi(zone.icon) ?: R1Icons.forDomain("zone"),
+                contentDescription = null,
+                tint = if (occupied) R1.AccentWarm else R1.AccentNeutral,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = zone.name,
                 style = R1.body,
                 color = R1.Ink,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.xs))
@@ -377,6 +378,7 @@ private fun ZoneRow(zone: ResolvedZone) {
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             // The home zone gets a small marker so the "home" special-case is
             // visible to sighted users, mirroring how HA highlights zone.home.
@@ -409,12 +411,25 @@ private fun ZoneRow(zone: ResolvedZone) {
         }
         if (zone.occupants.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.xs))
-            Text(
-                text = zone.occupants.joinToString(" · "),
-                style = R1.body,
-                color = R1.AccentWarm,
-                maxLines = 3,
-            )
+            Row(verticalAlignment = Alignment.Top) {
+                // A person glyph fronts the occupant list so the line reads as
+                // "who's here" at a glance.
+                Icon(
+                    imageVector = R1Icons.forDomain("person"),
+                    contentDescription = null,
+                    tint = R1.AccentWarm,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(R1.space.xs))
+                Text(
+                    text = zone.occupants.joinToString(" · "),
+                    style = R1.body,
+                    color = R1.AccentWarm,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -447,12 +462,23 @@ private fun OutsideRow(names: List<String>) {
             )
         }
         Spacer(Modifier.size(R1.space.xs))
-        Text(
-            text = names.joinToString(" · "),
-            style = R1.body,
-            color = R1.InkSoft,
-            maxLines = 4,
-        )
+        Row(verticalAlignment = Alignment.Top) {
+            Icon(
+                imageVector = R1Icons.forDomain("person"),
+                contentDescription = null,
+                tint = R1.InkSoft,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(R1.space.xs))
+            Text(
+                text = names.joinToString(" · "),
+                style = R1.body,
+                color = R1.InkSoft,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -461,14 +487,3 @@ private fun OutsideRow(names: List<String>) {
 private fun formatRadius(meters: Double): String =
     if (meters >= 1000) "${"%.1f".format(java.util.Locale.US, meters / 1000.0)}km"
     else "${meters.toInt()}m"
-
-/**
- * Compact label for an HA icon string. HA stores zone icons as MDI
- * identifiers like "mdi:home"; there is no glyph font in this app, so we
- * surface the bare icon name ("home") as a small text tag rather than an
- * actual glyph. Strips the "mdi:" / "hass:" prefix when present.
- */
-private fun zoneIconLabel(icon: String): String {
-    val bare = icon.substringAfter(':', icon).trim()
-    return bare.ifBlank { icon }.uppercase(java.util.Locale.US)
-}

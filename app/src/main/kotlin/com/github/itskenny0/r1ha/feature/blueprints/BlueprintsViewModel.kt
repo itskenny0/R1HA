@@ -90,7 +90,13 @@ class BlueprintsViewModel(
             val grouped = BlueprintGrouping.group(autoRes, scriptRes)
             if (grouped.error != null) {
                 R1Log.w("Blueprints", "load failed: ${grouped.error}")
-                Toaster.error("Blueprints load failed: ${grouped.error}")
+                // On a cold start the inline ErrorState already reports the
+                // failure, so a toast on top of it is a double report. Toast
+                // only when rows are already on screen (a failed re-fetch that
+                // the inline error slot won't show because the list isn't empty).
+                if (_ui.value.totalCount > 0) {
+                    Toaster.error("Blueprints load failed: ${grouped.error}")
+                }
                 _ui.value = _ui.value.copy(loading = false, error = grouped.error)
             } else {
                 R1Log.i(

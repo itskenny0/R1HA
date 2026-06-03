@@ -58,6 +58,20 @@ data class UserRowModel(
     val section: UserSection = sectionFor(systemGenerated = systemGenerated, isAdmin = isAdmin)
 }
 
+/** The three group ids HA Core ships built-in. Membership in these is already
+ *  conveyed by the ADMIN / READ-ONLY flag chips, so the per-row "GROUPS …" line
+ *  only earns its space when a row also belongs to a custom (non-built-in)
+ *  group the chips don't cover. */
+private val BUILT_IN_GROUPS = setOf(GROUP_ADMIN, GROUP_USERS, GROUP_READ_ONLY)
+
+/**
+ * Group ids that aren't one of HA Core's built-ins, in display order. Returns
+ * empty when a user is only in the standard system groups (the common case), so
+ * the renderer can skip the redundant "GROUPS · Admin, Users" line entirely.
+ */
+fun customGroupIds(groupIds: List<String>): List<String> =
+    groupIds.filterNot { it.lowercase(Locale.US) in BUILT_IN_GROUPS }
+
 /** True when [groupIds] grants administrator access. */
 fun isAdmin(groupIds: List<String>): Boolean = groupIds.any { it.equals(GROUP_ADMIN, ignoreCase = true) }
 

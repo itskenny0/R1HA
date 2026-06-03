@@ -50,6 +50,13 @@ class AreasViewModel(
     data class Area(
         val name: String,
         val entityIds: List<String>,
+        /**
+         * Resolved friendly names keyed by entity_id, folded in by
+         * [enrichSummaries] off the same state snapshot the summary uses. The
+         * in-place expanded peek reads names from here and falls back to the raw
+         * entity_id only for entities the snapshot didn't carry.
+         */
+        val entityNames: Map<String, String> = emptyMap(),
         /** Stable HA area_id (e.g. "kitchen"). Surfaced from the
          *  template's `id` field. Drives the drill-in's entity lookup
          *  and is the handle a future rename call would key on. */
@@ -116,7 +123,11 @@ class AreasViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
+        /** True only on the initial load (full-screen spinner). Subsequent
+         *  fetches over an already-populated list drive [refreshing] instead so
+         *  the list stays on screen and only the pull indicator moves. */
         val loading: Boolean = true,
+        val refreshing: Boolean = false,
         val areas: List<Area> = emptyList(),
         val sort: Sort = Sort.ALPHA,
         val error: String? = null,
@@ -146,7 +157,16 @@ class AreasViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            // First load shows the full-screen spinner; a re-fetch over an
+            // already-populated list keeps the rows on screen and drives the
+            // pull-to-refresh indicator instead, so the 60s silent refresh never
+            // blanks the list back to a spinner.
+            val firstLoad = _ui.value.areas.isEmpty()
+            _ui.value = _ui.value.copy(
+                loading = firstLoad,
+                refreshing = !firstLoad,
+                error = null,
+            )
             // HA's templating gives us areas() + area_entities(area_id).
             // We pull both in one pass to avoid a per-area network round
             // trip (which would be O(N) requests on a big install).
@@ -176,7 +196,9 @@ class AreasViewModel(
                             Area(name = name, entityIds = entities, areaId = areaId)
                         }.sortedBy { it.name.lowercase() }
                         R1Log.i("Areas", "loaded ${list.size}")
-                        _ui.value = _ui.value.copy(loading = false, areas = list, error = null)
+                        _ui.value = _ui.value.copy(
+                            loading = false, refreshing = false, areas = list, error = null,
+                        )
                         // The template only gives us names + entity_ids; the live
                         // sensor summary (temperature / humidity) and the active-alert
                         // count need the state snapshot. Pull it once and fold the
@@ -186,13 +208,13 @@ class AreasViewModel(
                     }.onFailure { t ->
                         R1Log.w("Areas", "parse failed: ${t.message}")
                         Toaster.error("Areas parse failed. Try Templates to debug")
-                        _ui.value = _ui.value.copy(loading = false, error = t.message)
+                        _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                     }
                 },
                 onFailure = { t ->
                     R1Log.w("Areas", "fetch failed: ${t.message}")
                     Toaster.error("Areas load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }
@@ -212,7 +234,13 @@ class AreasViewModel(
                     val byId = all.associateBy { it.id.value }
                     val enriched = areas.map { area ->
                         val states = area.entityIds.mapNotNull { byId[it] }
+                        // Resolve friendly names for the in-place expanded peek so
+                        // it reads "Kitchen Ceiling" rather than the raw entity_id.
+                        val names = area.entityIds.mapNotNull { eid ->
+                            byId[eid]?.let { eid to it.friendlyName }
+                        }.toMap()
                         area.copy(
+                            entityNames = names,
                             summary = sensorSummary(states),
                             activeAlerts = states.count { isActiveAlert(it) },
                         )
@@ -477,10 +505,18 @@ class AreasViewModel(
             return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
 
-        /** Plural, uppercase domain header (e.g. "LIGHTS", "BINARY SENSORS"). */
+        /**
+         * Plural, uppercase domain header (e.g. "LIGHTS", "SWITCHES", "BINARY
+         * SENSORS"). Sibilant endings (s / x / z / ch / sh) take "ES" so
+         * "switch" pluralises to "SWITCHES" rather than the wrong "SWITCHS".
+         */
         private fun domainLabel(domain: Domain): String {
             val base = domain.prefix.replace('_', ' ').uppercase()
-            return if (base.endsWith("S")) base else "${base}S"
+            return when {
+                base.endsWith("S") || base.endsWith("X") || base.endsWith("Z") ||
+                    base.endsWith("CH") || base.endsWith("SH") -> "${base}ES"
+                else -> "${base}S"
+            }
         }
 
         fun factory(haRepository: HaRepository) = viewModelFactory {

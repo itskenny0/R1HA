@@ -76,17 +76,32 @@ class WeatherViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
-        val loading: Boolean = true,
+        /** True only during the very first load, before any data has landed.
+         *  Drives the full-screen spinner. */
+        val initialLoading: Boolean = true,
+        /** True while a refresh (manual or auto) is in flight once data already
+         *  exists. Drives the pull-to-refresh spinner WITHOUT swapping the
+         *  populated list back to the centre spinner, so auto-refresh ticks
+         *  don't blip the screen. */
+        val refreshing: Boolean = false,
         val weathers: List<Weather> = emptyList(),
         val error: String? = null,
-    )
+    ) {
+        /** Back-compat alias: the full-screen spinner condition. */
+        val loading: Boolean get() = initialLoading
+    }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            val hasData = _ui.value.weathers.isNotEmpty()
+            _ui.value = _ui.value.copy(
+                initialLoading = !hasData,
+                refreshing = hasData,
+                error = null,
+            )
             haRepository.listRawEntitiesByDomain("weather").fold(
                 onSuccess = { rows ->
                     val list = rows.map { row ->
@@ -121,12 +136,21 @@ class WeatherViewModel(
                         )
                     }.sortedBy { it.name.lowercase() }
                     R1Log.i("Weather", "loaded ${list.size}")
-                    _ui.value = _ui.value.copy(loading = false, weathers = list, error = null)
+                    _ui.value = _ui.value.copy(
+                        initialLoading = false,
+                        refreshing = false,
+                        weathers = list,
+                        error = null,
+                    )
                 },
                 onFailure = { t ->
                     R1Log.w("Weather", "list failed: ${t.message}")
                     Toaster.error("Weather load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(
+                        initialLoading = false,
+                        refreshing = false,
+                        error = t.message,
+                    )
                 },
             )
         }

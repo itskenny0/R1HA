@@ -122,6 +122,15 @@ class DashboardViewModel(
         val remaining: String? = null,
     )
 
+    /** One low-battery row: the entity id (for the history drill-in), its
+     *  friendly name (shown to the user), and the integer percent. */
+    @androidx.compose.runtime.Stable
+    data class LowBattery(
+        val entityId: String,
+        val name: String,
+        val pct: Int,
+    )
+
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
@@ -144,9 +153,9 @@ class DashboardViewModel(
          *  device_class='power', in Watts. -1 sentinel for "not loaded
          *  yet" / "no power sensors". */
         val totalPowerW: Int = -1,
-        /** List of "<entity_id>=<pct>" for every battery sensor under
-         *  20%. Empty list means all batteries healthy. */
-        val lowBatteries: List<String> = emptyList(),
+        /** Every battery sensor under the configured threshold, with its
+         *  friendly name + percent. Empty list means all batteries healthy. */
+        val lowBatteries: List<LowBattery> = emptyList(),
         val error: String? = null,
     )
 
@@ -198,6 +207,11 @@ class DashboardViewModel(
                 //   without waiting for an emit. Safe because settings is a
                 //   hot StateFlow seeded on the repo's init.
                 val batteryJob = async {
+                    // Emit a JSON array of {id, name, pct} objects so the
+                    // dashboard can render the friendly name (the raw entity_id
+                    // alone read as plumbing, e.g. "sensor.kitchen_motion_battery").
+                    // name falls back to the entity_id inside the template when
+                    // the sensor has no friendly_name set.
                     haRepository.renderTemplate(
                         "{%- set out = namespace(items=[]) -%}" +
                             "{%- for s in states.sensor " +
@@ -205,7 +219,10 @@ class DashboardViewModel(
                             "| rejectattr('state','in',['unavailable','unknown']) -%}" +
                             "{%- set pct = s.state | float(101) -%}" +
                             "{%- if pct < $lowBatteryPct -%}" +
-                            "{%- set _ = out.items.append(s.entity_id ~ '=' ~ (pct | int)) -%}" +
+                            "{%- set _ = out.items.append({" +
+                            "'id': s.entity_id, " +
+                            "'name': s.name, " +
+                            "'pct': (pct | int)}) -%}" +
                             "{%- endif -%}" +
                             "{%- endfor -%}" +
                             "{{ out.items | tojson }}",
@@ -319,7 +336,17 @@ class DashboardViewModel(
                         // (ignoreUnknownKeys, explicitNulls=false).
                         val arr = com.github.itskenny0.r1ha.core.ha.HaJson.parseToJsonElement(raw)
                             as? kotlinx.serialization.json.JsonArray
-                        arr?.mapNotNull { (it as? JsonPrimitive)?.content }
+                        arr?.mapNotNull { el ->
+                            val obj = el as? kotlinx.serialization.json.JsonObject
+                                ?: return@mapNotNull null
+                            val id = (obj["id"] as? JsonPrimitive)?.content
+                                ?: return@mapNotNull null
+                            val pct = (obj["pct"] as? JsonPrimitive)?.content?.toIntOrNull()
+                                ?: return@mapNotNull null
+                            val name = (obj["name"] as? JsonPrimitive)?.content
+                                ?.takeIf { it.isNotBlank() } ?: id
+                            LowBattery(entityId = id, name = name, pct = pct)
+                        }
                     }.getOrNull()
                 }.orEmpty()
                 val timers = timerJob.await().getOrNull()

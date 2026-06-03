@@ -60,7 +60,11 @@ class LabelsViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
+        /** True only on the initial load (full-screen spinner). A re-fetch over an
+         *  already-populated list drives [refreshing] so the pull indicator moves
+         *  instead of the list blanking to the spinner. */
         val loading: Boolean = true,
+        val refreshing: Boolean = false,
         val labels: List<Label> = emptyList(),
         val error: String? = null,
         val sort: Sort = Sort.ALPHA,
@@ -99,7 +103,14 @@ class LabelsViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            // First load shows the full-screen spinner; a re-fetch over an
+            // already-populated list drives the pull indicator instead.
+            val firstLoad = _ui.value.labels.isEmpty()
+            _ui.value = _ui.value.copy(
+                loading = firstLoad,
+                refreshing = !firstLoad,
+                error = null,
+            )
             // Resolve member names inline so the drill-in needs no extra round
             // trips. label_color/label_icon are wrapped in defaults() so older
             // HA cores that lack them still render (color falls back in the UI).
@@ -136,17 +147,19 @@ class LabelsViewModel(
                     runCatching {
                         val list = parse(rendered)
                         R1Log.i("Labels", "loaded ${list.size}")
-                        _ui.value = _ui.value.copy(loading = false, labels = list, error = null)
+                        _ui.value = _ui.value.copy(
+                            loading = false, refreshing = false, labels = list, error = null,
+                        )
                     }.onFailure { t ->
                         R1Log.w("Labels", "parse failed: ${t.message}")
                         Toaster.error("Labels parse failed. Try Templates to debug")
-                        _ui.value = _ui.value.copy(loading = false, error = t.message)
+                        _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                     }
                 },
                 onFailure = { t ->
                     R1Log.w("Labels", "fetch failed: ${t.message}")
                     Toaster.error("Labels load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }

@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.dashboard
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -25,11 +27,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.Chevron
+import com.github.itskenny0.r1ha.ui.components.ChevronDirection
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
@@ -465,18 +477,28 @@ private fun WeatherCard(
             .padding(horizontal = R1.space.l, vertical = R1.space.l),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = conditionGlyph(w.condition),
-            style = R1.numeralXl,
-            color = conditionAccent(w.condition),
+        // In-house condition line vector (replaces the unicode glyph).
+        Icon(
+            imageVector = R1Icons.conditionIcon(w.condition),
+            contentDescription = null,
+            tint = conditionAccent(w.condition),
+            modifier = Modifier.size(34.dp),
         )
         Spacer(Modifier.width(R1.space.l))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = w.name.uppercase(), style = R1.labelMicro, color = R1.InkSoft)
+            Text(
+                text = w.name.uppercase(),
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = w.condition.replace('-', ' ').uppercase(),
                 style = R1.body.copy(fontWeight = FontWeight.SemiBold),
                 color = R1.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             // Secondary line: feels-like and humidity when the integration
             // reports them. HA surfaces these in the more-info weather view;
@@ -490,6 +512,8 @@ private fun WeatherCard(
                     text = extras.joinToString("  ·  "),
                     style = R1.labelMicro,
                     color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -500,6 +524,9 @@ private fun WeatherCard(
                 color = R1.Ink,
             )
         }
+        // Drill-in affordance: the card opens the full Weather surface.
+        Spacer(Modifier.width(R1.space.s))
+        Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
     }
 }
 
@@ -518,13 +545,15 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // Sun glyph state: above_horizon = ☀, below_horizon = ☾, plus
-            // muted tint so the night state reads as quiet.
+            // In-house sun / moon line vector by state: above_horizon = sun
+            // (warm), below_horizon = crescent (cool), the muted tint keeping
+            // the night state quiet.
             val isUp = s.state == "above_horizon"
-            Text(
-                text = if (isUp) "☀" else "☾",
-                style = R1.numeralXl,
-                color = if (isUp) R1.AccentWarm else R1.AccentCool,
+            Icon(
+                imageVector = if (isUp) R1IconSet.Sun else R1IconSet.ClearNight,
+                contentDescription = null,
+                tint = if (isUp) R1.AccentWarm else R1.AccentCool,
+                modifier = Modifier.size(30.dp),
             )
             Spacer(Modifier.width(R1.space.m))
             Column(modifier = Modifier.weight(1f)) {
@@ -681,12 +710,13 @@ private fun DashboardTopBar(
 
 @Composable
 private fun LowBatteryCard(
-    entries: List<String>,
+    entries: List<DashboardViewModel.LowBattery>,
     onOpenHistory: (entityId: String) -> Unit,
 ) {
-    // Each entry is "<entity_id>=<pct>": split and render two-column. Each row is
-    // a tap target that opens the entity's history view so the user can drill into
-    // which battery is dying without scrolling Search for the entity_id.
+    // Each row shows the battery sensor's friendly name (the raw entity_id read
+    // as plumbing) with the in-house battery glyph and the percent. Each row is
+    // a tap target that opens the entity's history view so the user can drill
+    // into which battery is dying without scrolling Search for the entity_id.
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -696,37 +726,47 @@ private fun LowBatteryCard(
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
     ) {
-        Text(
-            text = "${entries.size} BATTERIES LOW",
-            style = R1.labelMicro.copy(fontWeight = FontWeight.SemiBold),
-            color = R1.StatusAmber,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = R1IconSet.Battery,
+                contentDescription = null,
+                tint = R1.StatusAmber,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(R1.space.xs))
+            Text(
+                text = "${entries.size} BATTERIES LOW",
+                style = R1.labelMicro.copy(fontWeight = FontWeight.SemiBold),
+                color = R1.StatusAmber,
+            )
+        }
         for (entry in entries.take(5)) {
-            val idx = entry.indexOf('=')
-            val id = if (idx > 0) entry.substring(0, idx) else entry
-            val pct = if (idx > 0) entry.substring(idx + 1) else "?"
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(R1.ShapeS)
-                    .r1Pressable(onClick = { onOpenHistory(id) })
+                    .r1Pressable(onClick = { onOpenHistory(entry.entityId) })
                     .heightIn(min = R1.MinTarget)
                     .padding(vertical = R1.space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = id,
+                    text = entry.name,
                     style = R1.body,
                     color = R1.Ink,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(R1.space.s))
                 Text(
-                    text = "${pct}%",
+                    text = "${entry.pct}%",
                     style = R1.body,
-                    color = if (pct.toIntOrNull()?.let { it < 10 } == true) R1.StatusRed else R1.StatusAmber,
+                    color = if (entry.pct < 10) R1.StatusRed else R1.StatusAmber,
                 )
+                // Drill-in affordance: each battery row opens its history view.
+                Spacer(Modifier.width(R1.space.xs))
+                Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
             }
         }
         if (entries.size > 5) {
@@ -925,7 +965,7 @@ private fun MediaCard(
             ) {
                 if (media.canPrev) {
                     TransportButton(
-                        label = "◄◄",
+                        glyph = TransportGlyph.Previous,
                         onClick = onPrev,
                         modifier = Modifier.weight(1f),
                         contentDescription = "Previous track",
@@ -933,7 +973,7 @@ private fun MediaCard(
                 }
                 if (media.canPlayPause) {
                     TransportButton(
-                        label = if (playing) "❚❚" else "▶",
+                        glyph = if (playing) TransportGlyph.Pause else TransportGlyph.Play,
                         onClick = onPlayPause,
                         modifier = Modifier.weight(1f),
                         accent = R1.AccentWarm,
@@ -942,7 +982,7 @@ private fun MediaCard(
                 }
                 if (media.canNext) {
                     TransportButton(
-                        label = "►►",
+                        glyph = TransportGlyph.Next,
                         onClick = onNext,
                         modifier = Modifier.weight(1f),
                         contentDescription = "Next track",
@@ -953,9 +993,14 @@ private fun MediaCard(
     }
 }
 
+/** Media transport icons drawn in-house (replacing the unicode arrows /
+ *  bars), so the dashboard never switches to symbol-font / color-emoji
+ *  rendering mid-row. */
+private enum class TransportGlyph { Previous, Play, Pause, Next }
+
 @Composable
 private fun TransportButton(
-    label: String,
+    glyph: TransportGlyph,
     onClick: () -> Unit,
     modifier: Modifier,
     accent: androidx.compose.ui.graphics.Color = R1.InkSoft,
@@ -971,7 +1016,50 @@ private fun TransportButton(
             .padding(vertical = R1.space.s),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = label, style = R1.body, color = accent)
+        TransportIcon(glyph = glyph, tint = accent, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** Draws a single transport glyph on a 24x24 canvas in the Mission Control
+ *  line aesthetic: filled triangles for play/skip, two bars for pause. */
+@Composable
+private fun TransportIcon(
+    glyph: TransportGlyph,
+    tint: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        fun tri(x0: Float, x1: Float, pointRight: Boolean): Path = Path().apply {
+            val top = h * 0.22f
+            val bot = h * 0.78f
+            val midY = h * 0.5f
+            if (pointRight) {
+                moveTo(w * x0, top); lineTo(w * x1, midY); lineTo(w * x0, bot)
+            } else {
+                moveTo(w * x1, top); lineTo(w * x0, midY); lineTo(w * x1, bot)
+            }
+            close()
+        }
+        when (glyph) {
+            TransportGlyph.Play -> drawPath(tri(0.28f, 0.74f, pointRight = true), color = tint)
+            TransportGlyph.Pause -> {
+                val barW = w * 0.14f
+                val top = h * 0.24f
+                val bot = h * 0.76f
+                drawLine(tint, Offset(w * 0.38f, top), Offset(w * 0.38f, bot), strokeWidth = barW, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.62f, top), Offset(w * 0.62f, bot), strokeWidth = barW, cap = StrokeCap.Round)
+            }
+            TransportGlyph.Previous -> {
+                drawPath(tri(0.20f, 0.50f, pointRight = false), color = tint)
+                drawPath(tri(0.50f, 0.80f, pointRight = false), color = tint)
+            }
+            TransportGlyph.Next -> {
+                drawPath(tri(0.20f, 0.50f, pointRight = true), color = tint)
+                drawPath(tri(0.50f, 0.80f, pointRight = true), color = tint)
+            }
+        }
     }
 }
 
@@ -996,10 +1084,20 @@ private fun PersonsCard(
             Text(text = "${p.homeCount} HOME", style = R1.labelMicro, color = R1.AccentGreen)
             Spacer(Modifier.width(R1.space.s))
             Text(text = "${p.awayCount} AWAY", style = R1.labelMicro, color = R1.StatusAmber)
+            // Drill-in affordance: the card opens the full Who's Home surface.
+            Spacer(Modifier.width(R1.space.xs))
+            Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
         }
         for ((name, state) in p.rows) {
             Row {
-                Text(text = name, style = R1.body, color = R1.Ink, modifier = Modifier.weight(1f), maxLines = 1)
+                Text(
+                    text = name,
+                    style = R1.body,
+                    color = R1.Ink,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Spacer(Modifier.width(R1.space.s))
                 val color = when (state.lowercase()) {
                     "home" -> R1.AccentGreen
@@ -1060,10 +1158,20 @@ private fun CalendarCard(
                 color = R1.InkMuted,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             RelativeTimeLabel(at = c.eventStart, color = R1.InkMuted, style = R1.labelMicro)
+            // Drill-in affordance: the card opens the full Calendars surface.
+            Spacer(Modifier.width(R1.space.xs))
+            Chevron(direction = ChevronDirection.Right, tint = R1.InkMuted)
         }
-        Text(text = c.eventTitle, style = R1.bodyEmph, color = R1.Ink, maxLines = 2)
+        Text(
+            text = c.eventTitle,
+            style = R1.bodyEmph,
+            color = R1.Ink,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -1096,10 +1204,25 @@ private fun MetricsRow(
                 .padding(horizontal = R1.space.l, vertical = R1.space.m),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // In-house power bolt instead of a bare label-only tile.
+                Icon(
+                    imageVector = R1IconSet.Power,
+                    contentDescription = null,
+                    tint = when {
+                        totalPowerW > redW -> R1.StatusRed
+                        totalPowerW > amberW -> R1.StatusAmber
+                        else -> R1.AccentCool
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(R1.space.s))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "DRAW", style = R1.labelMicro, color = R1.InkSoft)
                     Text(
-                        text = "${totalPowerW} W",
+                        // Format kilowatts once the draw reaches 1 kW so a
+                        // four-digit watt figure doesn't blow out the tile;
+                        // one decimal of kW is plenty of precision at a glance.
+                        text = formatPower(totalPowerW),
                         style = R1.numeralXl,
                         color = when {
                             totalPowerW > redW -> R1.StatusRed
@@ -1204,6 +1327,7 @@ private fun NotificationPreview(
                     style = R1.bodyEmph,
                     color = R1.Ink,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(R1.space.s))
@@ -1221,12 +1345,14 @@ private fun NotificationPreview(
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         Spacer(Modifier.width(R1.space.s))
-        // ✕ dismiss tile: separate tap target from the row's onClick
-        // so a dismiss doesn't accidentally navigate to the
-        // Notifications surface (and vice versa).
+        // Dismiss tile: separate tap target from the row's onClick so a dismiss
+        // doesn't accidentally navigate to the Notifications surface (and vice
+        // versa). The X is an in-house line glyph rather than the unicode ✕ so
+        // the row doesn't switch to symbol-font rendering.
         Box(
             modifier = Modifier
                 .size(R1.MinTarget)
@@ -1234,25 +1360,43 @@ private fun NotificationPreview(
                 .r1Pressable(onClick = onDismiss, contentDescription = "Dismiss notification"),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = "✕", style = R1.body, color = R1.InkSoft)
+            DismissGlyph(tint = R1.InkSoft, modifier = Modifier.size(14.dp))
         }
     }
 }
 
-private fun conditionGlyph(condition: String): String = when (condition.lowercase()) {
-    "sunny", "clear" -> "☀"
-    "clear-night" -> "☾"
-    "partlycloudy" -> "⛅"
-    "cloudy" -> "☁"
-    "rainy" -> "☂"
-    "pouring" -> "☔"
-    "snowy", "snowy-rainy" -> "❄"
-    "fog" -> "≋"
-    "lightning", "lightning-rainy" -> "⚡"
-    "windy", "windy-variant" -> "🌬"
-    "hail" -> "•"
-    else -> "·"
+/** A small X (dismiss) drawn as two crossing strokes, matching the Mission
+ *  Control hairline aesthetic; replaces the unicode ✕. */
+@Composable
+private fun DismissGlyph(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val pad = size.minDimension * 0.18f
+        val sw = size.minDimension * 0.14f
+        drawLine(
+            tint,
+            Offset(pad, pad),
+            Offset(size.width - pad, size.height - pad),
+            strokeWidth = sw,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            tint,
+            Offset(size.width - pad, pad),
+            Offset(pad, size.height - pad),
+            strokeWidth = sw,
+            cap = StrokeCap.Round,
+        )
+    }
 }
+
+/** Format a watt reading for the DRAW tile: bare watts under 1 kW, one-decimal
+ *  kilowatts at or above 1000 W so a four-digit figure doesn't overflow. */
+private fun formatPower(watts: Int): String =
+    if (watts >= 1000) {
+        "${"%.1f".format(java.util.Locale.US, watts / 1000.0)} kW"
+    } else {
+        "$watts W"
+    }
 
 private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Color =
     when (condition.lowercase()) {

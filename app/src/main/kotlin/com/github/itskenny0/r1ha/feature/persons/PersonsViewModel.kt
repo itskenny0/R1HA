@@ -52,31 +52,61 @@ class PersonsViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
-        val loading: Boolean = true,
+        /** True only during the first load before any data lands; drives the
+         *  full-screen spinner. */
+        val initialLoading: Boolean = true,
+        /** True while a refresh runs once data already exists; drives the
+         *  pull-to-refresh spinner so auto-refresh ticks don't blip the list
+         *  back to the centre spinner. */
+        val refreshing: Boolean = false,
         val people: List<Entry> = emptyList(),
         val devices: List<Entry> = emptyList(),
         val error: String? = null,
-    )
+    ) {
+        /** Back-compat alias: the full-screen spinner condition. */
+        val loading: Boolean get() = initialLoading
+    }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            val hasData = _ui.value.people.isNotEmpty() || _ui.value.devices.isNotEmpty()
+            _ui.value = _ui.value.copy(
+                initialLoading = !hasData,
+                refreshing = hasData,
+                error = null,
+            )
             // Two parallel fetches would be nice but listRawEntitiesByDomain
             // hits the same /api/states; one batched request would be ideal
             // long-term. For now sequential is fine: the response is
             // already cached in HA's RAM.
             val personResult = haRepository.listRawEntitiesByDomain("person")
             val deviceResult = haRepository.listRawEntitiesByDomain("device_tracker")
-            val combined = listOf(personResult, deviceResult).firstOrNull { it.isFailure }
-            if (combined != null) {
-                val t = combined.exceptionOrNull()
-                R1Log.w("Persons", "list failed: ${t?.message}")
+            // Partial-failure tolerance: render whichever fetch succeeded
+            // rather than blanking the whole screen. Only when BOTH fail do we
+            // surface the hard error state; a single failed domain becomes a
+            // toast and we keep the other domain's rows. This avoids a flaky
+            // device_tracker integration hiding the perfectly-good person list.
+            if (personResult.isFailure && deviceResult.isFailure) {
+                val t = personResult.exceptionOrNull() ?: deviceResult.exceptionOrNull()
+                R1Log.w("Persons", "both lists failed: ${t?.message}")
                 Toaster.error("Persons load failed: ${t?.message ?: "unknown"}")
-                _ui.value = _ui.value.copy(loading = false, error = t?.message)
+                _ui.value = _ui.value.copy(
+                    initialLoading = false,
+                    refreshing = false,
+                    error = t?.message,
+                )
                 return@launch
+            }
+            if (personResult.isFailure) {
+                R1Log.w("Persons", "person list failed: ${personResult.exceptionOrNull()?.message}")
+                Toaster.error("People failed to load; showing device trackers only")
+            }
+            if (deviceResult.isFailure) {
+                R1Log.w("Persons", "device list failed: ${deviceResult.exceptionOrNull()?.message}")
+                Toaster.error("Device trackers failed to load; showing people only")
             }
             val people = personResult.getOrNull().orEmpty().map { row ->
                 Entry(
@@ -111,10 +141,14 @@ class PersonsViewModel(
                 )
             }.sortedBy { it.name.lowercase() }
             R1Log.i("Persons", "loaded people=${people.size} devices=${devices.size}")
+            // On a partial failure keep the last-known rows for the failed
+            // domain rather than wiping them, so a transient blip doesn't empty
+            // a section the user was just looking at.
             _ui.value = _ui.value.copy(
-                loading = false,
-                people = people,
-                devices = devices,
+                initialLoading = false,
+                refreshing = false,
+                people = if (personResult.isFailure) _ui.value.people else people,
+                devices = if (deviceResult.isFailure) _ui.value.devices else devices,
                 error = null,
             )
         }

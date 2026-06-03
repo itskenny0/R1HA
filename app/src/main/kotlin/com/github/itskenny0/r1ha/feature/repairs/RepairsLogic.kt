@@ -1,7 +1,9 @@
 package com.github.itskenny0.r1ha.feature.repairs
 
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.github.itskenny0.r1ha.core.ha.RepairIssue
 import com.github.itskenny0.r1ha.core.ha.parseHaInstant
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import java.time.Instant
 import java.util.Locale
 
@@ -23,6 +25,17 @@ object RepairsLogic {
         "error" -> 1
         "warning" -> 2
         else -> 3
+    }
+
+    /**
+     * Severity glyph for the row's leading mark: an alert siren for anything HA
+     * flagged (critical / error / warning) and the neutral generic glyph for
+     * unlabelled / informational issues. Tinted at the call site to the row's
+     * severity tone.
+     */
+    fun severityIcon(severity: String): ImageVector = when (severity.lowercase(Locale.US)) {
+        "critical", "error", "warning" -> R1IconSet.Siren
+        else -> R1IconSet.Generic
     }
 
     /**
@@ -91,6 +104,31 @@ object RepairsLogic {
     fun parseCreatedAt(raw: String?): Instant? {
         if (raw.isNullOrBlank()) return null
         return parseHaInstant(raw)
+    }
+
+    /**
+     * Humanize a repair title for display. HA routes most titles through a
+     * translation key shaped like `issue_homeassistant_yaml_deprecated`; the raw
+     * key reads as noise, so we strip a leading `issue_` marker, replace
+     * separators with spaces, and Title-Case each word. A blank input falls back
+     * to the issue id (handled by the caller passing it as [fallback]).
+     */
+    fun humanizeTitle(translationKey: String?, fallback: String): String {
+        val key = translationKey?.trim()?.takeIf { it.isNotBlank() } ?: return fallback
+        val cleaned = key
+            .removePrefix("issue_")
+            .replace('_', ' ')
+            .replace('.', ' ')
+            .replace('-', ' ')
+            .trim()
+            .ifBlank { return fallback }
+        return cleaned.split(' ')
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { word ->
+                word.replaceFirstChar { c ->
+                    if (c.isLowerCase()) c.titlecase(Locale.US) else c.toString()
+                }
+            }
     }
 
     /**

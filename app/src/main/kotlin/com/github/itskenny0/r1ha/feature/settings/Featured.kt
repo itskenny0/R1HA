@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -31,8 +33,10 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * [SettingsScreen], so a tap always lands somewhere.
  */
 data class FeaturedItem(
-    /** Single-glyph emblem rendered large on the lead card / inline on the tail cards. */
-    val glyph: String,
+    /** In-house vector emblem rendered large on the lead card / inline on the tail
+     *  cards. Swapped from the old ad-hoc unicode glyph to an [R1Icons] vector so
+     *  the spotlight reads in the same icon language as the rest of the app. */
+    val icon: ImageVector,
     /** Short, sentence-case feature name. */
     val title: String,
     /** One-line "why you'd care" blurb. */
@@ -155,12 +159,29 @@ private fun FeaturedLeadCard(item: FeaturedItem) {
                 .border(1.dp, R1.Hairline, R1.ShapeS),
             contentAlignment = Alignment.Center,
         ) {
-            Text(text = item.glyph, style = R1.numeralM, color = R1.AccentWarm)
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = R1.AccentWarm,
+                modifier = Modifier.size(24.dp),
+            )
         }
         Spacer(Modifier.width(R1.space.l))
         Column(verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
-            Text(text = item.title, style = R1.titleCard, color = R1.Ink, maxLines = 1)
-            Text(text = item.blurb, style = R1.labelMicro, color = R1.InkSoft, maxLines = 2)
+            Text(
+                text = item.title,
+                style = R1.titleCard,
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                text = item.blurb,
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -179,14 +200,26 @@ private fun FeaturedTailCard(item: FeaturedItem) {
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
         verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
     ) {
-        Text(text = item.glyph, style = R1.numeralM, color = R1.InkSoft)
+        Icon(
+            imageVector = item.icon,
+            contentDescription = null,
+            tint = R1.InkSoft,
+            modifier = Modifier.size(20.dp),
+        )
         Spacer(Modifier.height(R1.space.xxs))
-        Text(text = item.title, style = R1.bodyEmph, color = R1.Ink, maxLines = 1)
+        Text(
+            text = item.title,
+            style = R1.bodyEmph,
+            color = R1.Ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         Text(
             text = item.blurb,
             style = R1.labelMicro,
             color = R1.InkMuted,
             maxLines = 2,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             textAlign = TextAlign.Start,
         )
     }

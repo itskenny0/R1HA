@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -32,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.ConfigEntry
@@ -45,6 +48,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -98,6 +102,7 @@ fun IntegrationsScreen(
                     onSelect = { vm.setFilter(it) },
                     totalCount = ui.all.size,
                     loadedCount = ui.loadedCount,
+                    pendingCount = ui.pendingCount,
                     failedCount = ui.failedCount,
                 )
                 if (ui.all.isNotEmpty()) {
@@ -144,6 +149,7 @@ fun IntegrationsScreen(
                                 message = when {
                                     ui.query.isNotBlank() -> "No integrations match \"${ui.query.trim()}\"."
                                     ui.filter == IntegrationsViewModel.Filter.LOADED -> "No loaded integrations."
+                                    ui.filter == IntegrationsViewModel.Filter.PENDING -> "Nothing setting up or pending."
                                     ui.filter == IntegrationsViewModel.Filter.FAILED -> "No failed integrations. Nice."
                                     else -> "No matching integrations."
                                 },
@@ -190,43 +196,59 @@ private fun FilterBar(
     onSelect: (IntegrationsViewModel.Filter) -> Unit,
     totalCount: Int,
     loadedCount: Int,
+    pendingCount: Int,
     failedCount: Int,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = R1.space.m, vertical = R1.space.s),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         Text(
             text = "SHOW",
             style = R1.labelMicro,
             color = R1.InkMuted,
-            modifier = Modifier.padding(end = R1.space.s),
+            modifier = Modifier.padding(end = R1.space.s, top = R1.space.xs),
         )
-        R1Chip(
-            text = "ALL $totalCount",
-            variant = R1ChipVariant.Filter,
-            selected = current == IntegrationsViewModel.Filter.ALL,
-            tone = R1.AccentNeutral,
-            onClick = { onSelect(IntegrationsViewModel.Filter.ALL) },
-        )
-        Spacer(Modifier.width(R1.space.s))
-        R1Chip(
-            text = "LOADED $loadedCount",
-            variant = R1ChipVariant.Filter,
-            selected = current == IntegrationsViewModel.Filter.LOADED,
-            tone = R1.AccentGreen,
-            onClick = { onSelect(IntegrationsViewModel.Filter.LOADED) },
-        )
-        Spacer(Modifier.width(R1.space.s))
-        R1Chip(
-            text = "FAILED $failedCount",
-            variant = R1ChipVariant.Filter,
-            selected = current == IntegrationsViewModel.Filter.FAILED,
-            tone = R1.StatusRed,
-            onClick = { onSelect(IntegrationsViewModel.Filter.FAILED) },
-        )
+        // Four filter chips overflow the R1's narrow width on one line; let
+        // them wrap rather than clip so PENDING stays reachable.
+        FlowRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
+            R1Chip(
+                text = "ALL $totalCount",
+                variant = R1ChipVariant.Filter,
+                selected = current == IntegrationsViewModel.Filter.ALL,
+                tone = R1.AccentNeutral,
+                onClick = { onSelect(IntegrationsViewModel.Filter.ALL) },
+            )
+            R1Chip(
+                text = "LOADED $loadedCount",
+                variant = R1ChipVariant.Filter,
+                selected = current == IntegrationsViewModel.Filter.LOADED,
+                tone = R1.AccentGreen,
+                onClick = { onSelect(IntegrationsViewModel.Filter.LOADED) },
+            )
+            // PENDING surfaces setup_in_progress / not_loaded entries that HA's
+            // own list buries: a stuck "SETTING UP" integration is findable here.
+            R1Chip(
+                text = "PENDING $pendingCount",
+                variant = R1ChipVariant.Filter,
+                selected = current == IntegrationsViewModel.Filter.PENDING,
+                tone = R1.StatusAmber,
+                onClick = { onSelect(IntegrationsViewModel.Filter.PENDING) },
+            )
+            R1Chip(
+                text = "FAILED $failedCount",
+                variant = R1ChipVariant.Filter,
+                selected = current == IntegrationsViewModel.Filter.FAILED,
+                tone = R1.StatusRed,
+                onClick = { onSelect(IntegrationsViewModel.Filter.FAILED) },
+            )
+        }
     }
 }
 
@@ -258,6 +280,13 @@ private fun DomainHeader(
             },
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(
+            imageVector = R1Icons.forDomain(domain),
+            contentDescription = null,
+            tint = R1.AccentWarm,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = domain.uppercase(),
             style = R1.sectionHeader,
@@ -345,6 +374,7 @@ private fun EntryRow(
                 color = if (disabled) R1.InkMuted else R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
@@ -353,24 +383,29 @@ private fun EntryRow(
                 tone = stateTone,
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "via ${entry.source}",
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-                modifier = Modifier.weight(1f),
-            )
+        Text(
+            text = "via ${entry.source}",
+            style = R1.labelMicro,
+            color = R1.InkSoft,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // Pref / status chips plus the reload action wrap rather than clip on
+        // the R1's narrow width, so every applicable marker stays visible.
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+            verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
             if (disabled && disabledLabel != null) {
                 R1Chip(text = disabledLabel, variant = R1ChipVariant.Pill, tone = R1.StatusAmber)
-                Spacer(Modifier.width(R1.space.s))
             }
             if (entry.prefDisablePolling) {
                 R1Chip(text = "NO POLL", variant = R1ChipVariant.Pill, tone = R1.AccentCool)
-                Spacer(Modifier.width(R1.space.s))
             }
             if (entry.prefDisableNewEntities) {
                 R1Chip(text = "MANUAL ENTITIES", variant = R1ChipVariant.Pill, tone = R1.AccentNeutral)
-                Spacer(Modifier.width(R1.space.s))
             }
             ReloadChip(
                 // A disabled entry isn't loaded, so reload can't act on it
@@ -388,6 +423,7 @@ private fun EntryRow(
                 style = R1.labelMicro,
                 color = R1.StatusAmber,
                 maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

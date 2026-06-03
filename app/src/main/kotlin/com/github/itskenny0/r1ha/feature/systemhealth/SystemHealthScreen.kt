@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -297,10 +298,22 @@ private fun HealthSectionPanel(section: HealthSection) {
         ) {
             StatusDot(headerStatus)
             Spacer(Modifier.size(R1.space.xs))
+            // Per-domain glyph from the in-house set so the eye can scan
+            // integrations by type alongside the status dot.
+            androidx.compose.material3.Icon(
+                imageVector = com.github.itskenny0.r1ha.ui.icons.R1Icons.forDomain(section.domain),
+                contentDescription = null,
+                tint = R1.InkSoft,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.size(R1.space.xs))
             Text(
                 text = section.title.uppercase(),
                 style = R1.labelMicro,
                 color = R1.Ink,
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             val manageUrl = section.manageUrl
             if (manageUrl != null) {
@@ -421,16 +434,34 @@ private fun Pair<String, String?>.render(multiline: Boolean = false) {
 
 @Composable
 private fun ErrorLogPanel(body: String) {
+    // The log tail can be tens of KB; rendered as one unbounded Text it pushes
+    // every control below it (and the whole screen) into an enormous scroll. Cap
+    // the panel height and give it its OWN vertical scroll so the log stays a
+    // contained, scrollable viewport. We also trim to the last ~40 lines here so
+    // the contained view shows the freshest output; OPEN FULL streams the
+    // complete tail in the dedicated viewer.
+    val tail = remember(body) {
+        val lines = body.trimEnd().lines()
+        if (lines.size > MAX_LOG_LINES) {
+            "… (showing last $MAX_LOG_LINES lines; tap OPEN FULL for more)\n" +
+                lines.takeLast(MAX_LOG_LINES).joinToString("\n")
+        } else {
+            body
+        }
+    }
+    val logScroll = rememberScrollState()
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = 220.dp)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
+            .verticalScroll(logScroll)
             .padding(horizontal = R1.space.s, vertical = R1.space.s),
     ) {
         Text(
-            text = body,
+            text = tail,
             style = R1.body.copy(
                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
                 fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
@@ -439,6 +470,9 @@ private fun ErrorLogPanel(body: String) {
         )
     }
 }
+
+/** Lines kept in the inline error-log viewport; OPEN FULL streams the rest. */
+private const val MAX_LOG_LINES = 40
 
 @Composable
 private fun ErrorPanel(msg: String) {

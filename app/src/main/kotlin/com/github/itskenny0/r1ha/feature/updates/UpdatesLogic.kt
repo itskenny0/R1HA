@@ -1,5 +1,7 @@
 package com.github.itskenny0.r1ha.feature.updates
 
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -143,6 +145,18 @@ object UpdatesLogic {
             tail.endsWith("_update") -> UpdatesViewModel.Bucket.ADDON
             else -> UpdatesViewModel.Bucket.INTEGRATION
         }
+    }
+
+    /**
+     * Category glyph for the row's bucket badge: the update arrow for the system
+     * CORE platform, the script glyph for add-ons (managed mini-apps), and the
+     * generic mark for the catch-all integration / firmware bucket. Tinted at the
+     * call site to the badge colour.
+     */
+    fun bucketIcon(bucket: UpdatesViewModel.Bucket): ImageVector = when (bucket) {
+        UpdatesViewModel.Bucket.CORE -> R1IconSet.Update
+        UpdatesViewModel.Bucket.ADDON -> R1IconSet.Script
+        UpdatesViewModel.Bucket.INTEGRATION -> R1IconSet.Generic
     }
 
     /** Best human-readable title: HA's `title` attribute, then friendly_name,

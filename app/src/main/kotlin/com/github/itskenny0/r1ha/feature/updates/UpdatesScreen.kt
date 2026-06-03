@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
@@ -80,6 +83,20 @@ fun UpdatesScreen(
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
+
+    // While any install is running, poll so the progress bar advances and the
+    // row flips to "up to date" on its own: HA doesn't push these state changes
+    // to our REST-fetch surface, so without the poll the bar would sit frozen
+    // until the user manually refreshed. Keyed on whether anything is in
+    // progress so the loop starts on the first install and stops once the last
+    // one settles.
+    val polling = ui.inProgressCount > 0
+    LaunchedEffect(polling) {
+        while (polling) {
+            kotlinx.coroutines.delay(3000L)
+            vm.refresh()
+        }
+    }
 
     // Entity currently being inspected in the details dialog. Holds the full
     // Entry so the dialog can render the latest version + release notes even
@@ -176,7 +193,18 @@ fun UpdatesScreen(
                             UpdateRow(
                                 entry = entry,
                                 onOpen = { detailFor = entry },
-                                onInstall = { vm.install(entry, backup = false) },
+                                // Backup-capable installs (CORE / Supervisor / OS and
+                                // any add-on advertising SUPPORT_BACKUP) route through
+                                // the dialog so the backup toggle, which defaults ON for
+                                // CORE, actually applies. Plain rows install directly:
+                                // there's no backup decision to make.
+                                onInstall = {
+                                    if (entry.supportsBackup) {
+                                        detailFor = entry
+                                    } else {
+                                        vm.install(entry, backup = false)
+                                    }
+                                },
                             )
                         }
                     }
@@ -288,7 +316,19 @@ private fun UpdateRow(
                     .border(1.dp, badgeColor.copy(alpha = 0.5f), R1.ShapeS)
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
-                Text(text = entry.bucket.label, style = R1.labelMicro, color = badgeColor)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Bucket / category glyph: a quick visual tag for the
+                    // update's class (system core vs add-on vs integration)
+                    // ahead of the text label, tinted to the badge colour.
+                    Icon(
+                        imageVector = UpdatesLogic.bucketIcon(entry.bucket),
+                        contentDescription = null,
+                        tint = badgeColor,
+                        modifier = Modifier.size(13.dp),
+                    )
+                    Spacer(Modifier.width(R1.space.xxs))
+                    Text(text = entry.bucket.label, style = R1.labelMicro, color = badgeColor)
+                }
             }
             Spacer(Modifier.width(R1.space.s))
             Text(
@@ -296,6 +336,7 @@ private fun UpdateRow(
                 style = R1.body,
                 color = R1.Ink,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (entry.skipped) {
@@ -335,7 +376,13 @@ private fun UpdateRow(
             entry.installedVersion != null -> "${entry.installedVersion} · UP TO DATE"
             else -> "UP TO DATE"
         }
-        Text(text = versionLine, style = R1.labelMicro, color = statusColor)
+        Text(
+            text = versionLine,
+            style = R1.labelMicro,
+            color = statusColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         // Live install progress bar. Determinate when HA reports both the
         // PROGRESS feature and a concrete percentage, indeterminate otherwise
         // so a long install still reads as "moving" rather than stuck at 0 %.
@@ -375,6 +422,7 @@ private fun UpdateRow(
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         if (entry.updateAvailable && !entry.inProgress) {
@@ -452,11 +500,19 @@ private fun UpdateDetailDialog(
         containerColor = R1.Bg,
         title = {
             Column {
-                Text(text = entry.title, style = R1.sectionHeader, color = R1.Ink)
+                Text(
+                    text = entry.title,
+                    style = R1.sectionHeader,
+                    color = R1.Ink,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 Text(
                     text = entry.id.value,
                     style = R1.labelMicro,
                     color = R1.InkSoft,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         },

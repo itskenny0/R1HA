@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +37,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
@@ -56,6 +58,7 @@ import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
+import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -83,7 +86,7 @@ fun TagsScreen(
     // HA's tag panel live-updates last_scanned off a tag_scanned subscription; we can't
     // subscribe from here, so poll the registry periodically to keep the newest-scan-first
     // ordering current. Registry data is low-churn, so a relaxed cadence is plenty.
-    AutoRefresh(30_000L) { vm.refresh() }
+    AutoRefresh(30_000L) { vm.refreshQuiet() }
 
     var renaming by remember { mutableStateOf<HaTag?>(null) }
     var deleting by remember { mutableStateOf<HaTag?>(null) }
@@ -226,13 +229,24 @@ private fun TagRow(
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Leading glyph so a tag row scans as a tag at a glance, matching the
+            // leading-icon rhythm of the other registry browsers.
+            Icon(
+                imageVector = R1IconSet.Generic,
+                contentDescription = null,
+                tint = R1.InkSoft,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = displayName,
                 style = R1.bodyEmph,
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.width(R1.space.s))
             if (tag.lastScanned != null) {
                 RelativeTimeLabel(
                     at = tag.lastScanned,
@@ -253,6 +267,7 @@ private fun TagRow(
                 ),
                 color = R1.InkMuted,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         if (!tag.description.isNullOrBlank()) {
@@ -262,6 +277,7 @@ private fun TagRow(
                 style = R1.labelMicro,
                 color = R1.InkSoft,
                 maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -273,14 +289,23 @@ private fun RenameTagSheet(
     onDismiss: () -> Unit,
     onSave: (name: String, description: String) -> Unit,
 ) {
-    BackHandler(onBack = onDismiss)
     var name by remember(tag.id) { mutableStateOf(tag.name.orEmpty()) }
     var desc by remember(tag.id) { mutableStateOf(tag.description.orEmpty()) }
+    var confirmingDiscard by remember(tag.id) { mutableStateOf(false) }
+    // The sheet is dirty when the typed name/description differs from what the
+    // tag started with. An outside-tap or back-press while dirty would throw
+    // away typed edits silently, so route those through a discard confirm; a
+    // clean sheet dismisses immediately.
+    val isDirty = name != tag.name.orEmpty() || desc != tag.description.orEmpty()
+    val attemptDismiss: () -> Unit = {
+        if (isDirty) confirmingDiscard = true else onDismiss()
+    }
+    BackHandler(onBack = attemptDismiss)
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg.copy(alpha = 0.92f))
-            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
+            .r1Pressable(onClick = attemptDismiss, hapticOnClick = false)
             .systemBarsPadding()
             .imePadding(),
         contentAlignment = Alignment.Center,
@@ -327,9 +352,57 @@ private fun RenameTagSheet(
             Spacer(Modifier.size(R1.space.l))
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.weight(1f))
-                R1Button(text = "CANCEL", onClick = onDismiss, variant = R1ButtonVariant.Outlined)
+                R1Button(text = "CANCEL", onClick = attemptDismiss, variant = R1ButtonVariant.Outlined)
                 Spacer(Modifier.width(R1.space.s))
                 R1Button(text = "SAVE", onClick = { onSave(name.trim(), desc.trim()) })
+            }
+        }
+        // Discard guard: a second confirm over the sheet, so a stray outside-tap
+        // can't quietly drop typed edits. KEEP returns to editing; DISCARD exits.
+        if (confirmingDiscard) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(R1.Bg.copy(alpha = 0.92f))
+                    .r1Pressable(onClick = { confirmingDiscard = false }, hapticOnClick = false),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 440.dp)
+                        .fillMaxWidth()
+                        .padding(horizontal = R1.space.l, vertical = R1.space.l)
+                        .clip(R1.ShapeS)
+                        .background(R1.Surface)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .r1Pressable(onClick = {}, hapticOnClick = false)
+                        .padding(R1.space.l),
+                ) {
+                    Text(text = "DISCARD EDITS?", style = R1.sectionHeader, color = R1.AccentWarm)
+                    Spacer(Modifier.size(R1.space.s))
+                    Text(
+                        text = "You've changed this tag's name or description. Leaving now " +
+                            "throws those edits away.",
+                        style = R1.body,
+                        color = R1.InkMuted,
+                    )
+                    Spacer(Modifier.size(R1.space.l))
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Spacer(Modifier.weight(1f))
+                        R1Button(
+                            text = "KEEP EDITING",
+                            onClick = { confirmingDiscard = false },
+                            variant = R1ButtonVariant.Outlined,
+                        )
+                        Spacer(Modifier.width(R1.space.s))
+                        R1Button(
+                            text = "DISCARD",
+                            onClick = { confirmingDiscard = false; onDismiss() },
+                            variant = R1ButtonVariant.Outlined,
+                            accent = R1.StatusRed,
+                        )
+                    }
+                }
             }
         }
     }

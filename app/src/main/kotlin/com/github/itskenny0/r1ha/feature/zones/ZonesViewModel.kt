@@ -34,7 +34,11 @@ class ZonesViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
+        /** True only on the initial load (full-screen spinner). Subsequent
+         *  fetches (including the 60s auto-refresh) drive [refreshing] instead so
+         *  the populated list never blips back to the spinner. */
         val loading: Boolean = true,
+        val refreshing: Boolean = false,
         val zones: List<ResolvedZone> = emptyList(),
         /** Trackers reporting GPS, for the abstract map. */
         val trackers: List<MappableTracker> = emptyList(),
@@ -50,7 +54,15 @@ class ZonesViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            // First load shows the full-screen spinner; once populated, a re-fetch
+            // (manual or the 60s auto-refresh) keeps the list on screen and drives
+            // the pull indicator instead of blanking back to the spinner.
+            val firstLoad = _ui.value.zones.isEmpty()
+            _ui.value = _ui.value.copy(
+                loading = firstLoad,
+                refreshing = !firstLoad,
+                error = null,
+            )
             // Three parallel fetches: zones AND person/device_tracker.
             // /api/states returns the full registry per domain.
             val zoneJob = async { haRepository.listRawEntitiesByDomain("zone") }
@@ -64,7 +76,7 @@ class ZonesViewModel(
                 val t = zoneRes.exceptionOrNull()
                 R1Log.w("Zones", "zone load failed: ${t?.message}")
                 Toaster.error("Zones load failed: ${t?.message ?: "unknown"}")
-                _ui.value = _ui.value.copy(loading = false, error = t?.message)
+                _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t?.message)
                 return@launch
             }
             val zoneRows = zoneRes.getOrNull().orEmpty()
@@ -85,6 +97,7 @@ class ZonesViewModel(
             )
             _ui.value = _ui.value.copy(
                 loading = false,
+                refreshing = false,
                 zones = resolution.zones,
                 trackers = trackers,
                 outside = resolution.outside,

@@ -6,8 +6,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.AreaInfo
 import com.github.itskenny0.r1ha.core.ha.DeviceInfo
-import com.github.itskenny0.r1ha.core.ha.Domain
-import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityRegistryEntry
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -116,7 +114,16 @@ class DevicesViewModel(
         val parent: DeviceInfo?,
         val groups: List<DeviceEntityGroup>,
         val liveStates: Map<String, EntityState> = emptyMap(),
-    )
+    ) {
+        /** Every entity registered to this device, across all groups. */
+        val totalEntities: Int get() = groups.sumOf { it.entities.size }
+
+        /** How many of [totalEntities] HA is currently reporting a live
+         *  state for. The detail view labels coverage as "N of M reporting"
+         *  off this so an entity whose integration is silent is visibly
+         *  accounted for rather than mistaken for the whole picture. */
+        val reportingEntities: Int get() = liveStates.size
+    }
 
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
@@ -128,8 +135,12 @@ class DevicesViewModel(
     private var liveJob: Job? = null
 
     /** Drill into [deviceId]: resolve metadata, group entities, and start a
-     *  live-state subscription for the entities whose domain the client
-     *  models (others render registry-only, no live state). */
+     *  live-state subscription for EVERY one of the device's entities,
+     *  regardless of domain. The detail view is read-only, so it gates
+     *  nothing on the card stack's supported-domain set: it just shows what
+     *  HA is reporting. [observeRaw] takes the raw `domain.object_id` strings
+     *  (so a `device_tracker` / `event` / custom-integration sensor is still
+     *  requested) and seeds + subscribes them as a side effect. */
     fun openDevice(deviceId: String) {
         val snapshot = _ui.value
         val device = snapshot.devices.firstOrNull { it.id == deviceId } ?: return
@@ -143,24 +154,16 @@ class DevicesViewModel(
             parent = parent,
             groups = groups,
         )
-        // Only construct EntityId for domains the value class accepts; its
-        // init{} throws on unmodelled domains. Unmodelled entities simply
-        // carry no live state and the view labels them "no live state".
-        val observable = deviceEntities.mapNotNull { entry ->
-            val prefix = domainOfEntityId(entry.entityId)
-            if (Domain.isSupportedPrefix(prefix)) {
-                runCatching { EntityId(entry.entityId) }.getOrNull()
-            } else {
-                null
-            }
-        }.toSet()
+        // Subscribe to ALL the device's entity ids verbatim. No domain gate:
+        // health counts and the "N of M reporting" coverage label must be
+        // based on the full entity set, not just the modelled domains.
+        val observable = deviceEntities.map { it.entityId }.toSet()
         liveJob?.cancel()
         liveJob = if (observable.isEmpty()) {
             null
         } else {
             viewModelScope.launch {
-                haRepository.observe(observable).collect { map ->
-                    val byString = map.mapKeys { it.key.value }
+                haRepository.observeRaw(observable).collect { byString ->
                     _detail.value = _detail.value?.copy(liveStates = byString)
                 }
             }

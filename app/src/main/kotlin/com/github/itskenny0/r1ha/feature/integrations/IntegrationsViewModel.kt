@@ -30,7 +30,7 @@ class IntegrationsViewModel(
     private val haRepository: HaRepository,
 ) : ViewModel() {
 
-    enum class Filter { ALL, LOADED, FAILED }
+    enum class Filter { ALL, LOADED, PENDING, FAILED }
 
     /** Resolvable counts for a single integration domain. Counts are per
      *  domain, not per entry: HA's slim registry models the repo exposes
@@ -72,6 +72,15 @@ class IntegrationsViewModel(
          *  surfaced totals. */
         val loadedCount: Int get() = all.count { it.state.equals("loaded", ignoreCase = true) }
         val failedCount: Int get() = all.count { stateRank(it.state) == StateBucket.FAILED }
+
+        /** Entries mid-flight or inert (setup_in_progress / not_loaded). HA's
+         *  own list makes a stuck "SETTING UP" entry easy to lose; surfacing
+         *  this count + a PENDING filter makes it findable. Disabled entries
+         *  report not_loaded but are framed by their disabled cause, not as a
+         *  pending fault, so they're excluded. */
+        val pendingCount: Int get() = all.count {
+            it.disabledBy == null && stateRank(it.state) == StateBucket.PENDING
+        }
     }
 
     enum class StateBucket { LOADED, FAILED, PENDING, OTHER }
@@ -216,6 +225,8 @@ class IntegrationsViewModel(
         fun matchesFilter(entry: ConfigEntry, filter: Filter): Boolean = when (filter) {
             Filter.ALL -> true
             Filter.LOADED -> entry.state.equals("loaded", ignoreCase = true)
+            Filter.PENDING ->
+                entry.disabledBy == null && stateRank(entry.state) == StateBucket.PENDING
             Filter.FAILED -> stateRank(entry.state) == StateBucket.FAILED
         }
 

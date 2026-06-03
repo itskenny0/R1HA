@@ -37,6 +37,12 @@ data class RepairIssue(
      *  through translation keys). Fallback rendering uses [translationKey] when
      *  this is null. */
     val description: String?,
+    /** Optional URL HA attaches so the user can read more about the issue. Rendered
+     *  as a tappable "LEARN MORE" link; null when the integration didn't set one. */
+    val learnMoreUrl: String? = null,
+    /** HA version in which the flagged behaviour stops working (set on deprecation
+     *  repairs). Rendered as a distinct "Breaks in <ver>" chip; null when absent. */
+    val breaksInHaVersion: String? = null,
     /** When true the integration recommends the user opens the fix flow rather than
      *  just ignoring it. Surfaced as a colored chip in the UI. */
     val isFixable: Boolean,

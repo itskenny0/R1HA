@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -30,9 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,6 +52,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -135,6 +139,7 @@ fun BlueprintsScreen(
                         item(key = "automation_header") {
                             SectionHeader(
                                 label = "AUTOMATION BLUEPRINTS",
+                                domain = "automation",
                                 count = ui.automations.size,
                                 expanded = ui.automationsExpanded,
                                 onToggle = { vm.toggleAutomations() },
@@ -158,6 +163,7 @@ fun BlueprintsScreen(
                         item(key = "script_header") {
                             SectionHeader(
                                 label = "SCRIPT BLUEPRINTS",
+                                domain = "script",
                                 count = ui.scripts.size,
                                 expanded = ui.scriptsExpanded,
                                 onToggle = { vm.toggleScripts() },
@@ -204,6 +210,7 @@ fun BlueprintsScreen(
 @Composable
 private fun SectionHeader(
     label: String,
+    domain: String,
     count: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -223,6 +230,15 @@ private fun SectionHeader(
             .padding(top = R1.space.s, bottom = R1.space.xs, start = R1.space.xs, end = R1.space.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Domain glyph (automation cog / script) so the two sections read apart
+        // at a glance, tinted to the same accent as the header type.
+        Icon(
+            imageVector = R1Icons.forDomain(domain),
+            contentDescription = null,
+            tint = R1.AccentWarm,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.width(R1.space.s))
         Text(
             text = label,
             style = R1.sectionHeader,
@@ -249,6 +265,7 @@ private fun SectionHeader(
 
 @Composable
 private fun BlueprintRow(blueprint: BlueprintInfo) {
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,6 +282,7 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
@@ -280,6 +298,7 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 color = R1.InkSoft,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             BlueprintGrouping.inputChipLabel(blueprint.inputCount)?.let { label ->
                 Spacer(Modifier.width(R1.space.s))
@@ -300,12 +319,29 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
             val src = blueprint.sourceUrl
             if (!src.isNullOrBlank()) {
                 Spacer(Modifier.width(R1.space.s))
+                val openable = src.startsWith("http://") || src.startsWith("https://")
                 Text(
                     text = src,
                     style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
-                    color = R1.InkMuted,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
+                    // A real link reads as tappable (accent) and opens in the
+                    // browser; a non-URL source (a bare slug) stays muted text.
+                    // Either way it wraps to two lines rather than truncating to
+                    // a single unreadable fragment.
+                    color = if (openable) R1.AccentCool else R1.InkMuted,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (openable) {
+                                Modifier.r1Pressable(
+                                    onClick = { openBlueprintUrl(context, src) },
+                                    contentDescription = "Open blueprint source URL",
+                                )
+                            } else {
+                                Modifier
+                            },
+                        ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -315,8 +351,22 @@ private fun BlueprintRow(blueprint: BlueprintInfo) {
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+/** Fire an ACTION_VIEW for a blueprint's http(s) source link, swallowing the
+ *  no-browser case so a tap can't crash the screen. */
+private fun openBlueprintUrl(context: android.content.Context, url: String) {
+    runCatching {
+        context.startActivity(
+            android.content.Intent(
+                android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url),
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 
@@ -537,6 +587,7 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(R1.space.s))
             R1Chip(
@@ -551,6 +602,7 @@ private fun PreviewPane(preview: BlueprintInfo) {
                 style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
                 color = R1.InkSoft,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         BlueprintGrouping.inputChipLabel(preview.inputCount)?.let { label ->
@@ -575,6 +627,7 @@ private fun PreviewPane(preview: BlueprintInfo) {
                     color = R1.InkMuted,
                     modifier = Modifier.weight(1f),
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }

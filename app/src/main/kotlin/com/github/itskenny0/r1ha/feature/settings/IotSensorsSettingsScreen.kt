@@ -161,6 +161,12 @@ fun IotSensorsSettingsScreen(
                 )
             }
 
+            // Per-sensor rows below stay dimmed + non-interactive until the
+            // master ENABLED switch is on, so the page reads as "nothing
+            // publishes yet" rather than offering live toggles for a service
+            // that isn't running.
+            val rowsEnabled = sensors.enabled
+
             // ── BATTERY & POWER ────────────────────────────────────────
             categorySection(
                 key = SectionKey.BATTERY,
@@ -179,6 +185,7 @@ fun IotSensorsSettingsScreen(
                         topic = "sensor.${nodeId}_battery",
                         meta = "percent, measurement",
                         checked = sensors.publishBattery,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishBattery = !it.publishBattery) } },
                     )
                 }
@@ -188,6 +195,7 @@ fun IotSensorsSettingsScreen(
                         topic = "binary_sensor.${nodeId}_charging",
                         meta = "device_class: battery_charging",
                         checked = sensors.publishCharging,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishCharging = !it.publishCharging) } },
                     )
                 }
@@ -211,6 +219,7 @@ fun IotSensorsSettingsScreen(
                         topic = "sensor.${nodeId}_illuminance",
                         meta = "lux. Off on devices without an ALS.",
                         checked = sensors.publishLightSensor,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishLightSensor = !it.publishLightSensor) } },
                     )
                 }
@@ -221,6 +230,7 @@ fun IotSensorsSettingsScreen(
                         meta = "software detector from accelerometer; raise " +
                             "threshold if a still device triggers it.",
                         checked = sensors.publishVibration,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishVibration = !it.publishVibration) } },
                     )
                 }
@@ -233,6 +243,7 @@ fun IotSensorsSettingsScreen(
                             step = 0.25f,
                             min = 0.25f,
                             max = 5f,
+                            enabled = rowsEnabled,
                             onChange = { v -> vm.updateIotSensors { it.copy(vibrationThresholdG = v) } },
                         )
                     }
@@ -257,6 +268,7 @@ fun IotSensorsSettingsScreen(
                         topic = "binary_sensor.${nodeId}_screen",
                         meta = "follows ACTION_SCREEN_ON / OFF.",
                         checked = sensors.publishScreenOn,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishScreenOn = !it.publishScreenOn) } },
                     )
                 }
@@ -267,6 +279,7 @@ fun IotSensorsSettingsScreen(
                         meta = "diagnostic. Off by default; SSID can " +
                             "identify your home network.",
                         checked = sensors.publishWifiSsid,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(publishWifiSsid = !it.publishWifiSsid) } },
                     )
                 }
@@ -278,6 +291,7 @@ fun IotSensorsSettingsScreen(
                         step = 15f,
                         min = 15f,
                         max = 600f,
+                        enabled = rowsEnabled,
                         onChange = { v ->
                             vm.updateIotSensors { it.copy(publishIntervalSec = v.toInt().coerceAtLeast(5)) }
                         },
@@ -305,6 +319,7 @@ fun IotSensorsSettingsScreen(
                         topic = "switch.${nodeId}_flashlight",
                         meta = "no extra permission required.",
                         checked = sensors.controlFlashlight,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(controlFlashlight = !it.controlFlashlight) } },
                     )
                 }
@@ -314,10 +329,11 @@ fun IotSensorsSettingsScreen(
                         topic = "number.${nodeId}_brightness",
                         meta = "0 to 100. Requires Modify system settings.",
                         checked = sensors.controlBrightness,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(controlBrightness = !it.controlBrightness) } },
                     )
                 }
-                if (sensors.controlBrightness && !canWriteBrightness) {
+                if (rowsEnabled && sensors.controlBrightness && !canWriteBrightness) {
                     item {
                         PermissionGrantBanner(
                             message = "Brightness control needs \"Modify system settings\". " +
@@ -338,6 +354,7 @@ fun IotSensorsSettingsScreen(
                         topic = "number.${nodeId}_volume",
                         meta = "0 to 100. STREAM_MUSIC.",
                         checked = sensors.controlVolume,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(controlVolume = !it.controlVolume) } },
                     )
                 }
@@ -348,10 +365,11 @@ fun IotSensorsSettingsScreen(
                         meta = "needs Device Admin (force-lock). Revoke " +
                             "any time in system Security settings.",
                         checked = sensors.controlLockScreen,
+                        enabled = rowsEnabled,
                         onCheckedChange = { vm.updateIotSensors { it.copy(controlLockScreen = !it.controlLockScreen) } },
                     )
                 }
-                if (sensors.controlLockScreen && !deviceAdminGranted) {
+                if (rowsEnabled && sensors.controlLockScreen && !deviceAdminGranted) {
                     item {
                         PermissionGrantBanner(
                             message = "Lock screen control needs the Device Admin " +
@@ -548,6 +566,7 @@ private fun SensorRow(
     topic: String,
     meta: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: () -> Unit,
 ) {
     Row(
@@ -558,31 +577,47 @@ private fun SensorRow(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
             .border(1.dp, R1.Hairline, R1.ShapeS)
-            .r1Pressable(
-                onClick = onCheckedChange,
-                // Fold title + on/off into one phrase; topic / meta are power-user
-                // captions that don't add to the spoken state.
-                contentDescription = SettingsA11y.switchRowDescription(title, null, checked),
+            .then(
+                if (enabled) {
+                    Modifier.r1Pressable(
+                        onClick = onCheckedChange,
+                        // Fold title + on/off into one phrase; topic / meta are
+                        // power-user captions that don't add to the spoken state.
+                        contentDescription = SettingsA11y.switchRowDescription(title, null, checked),
+                    )
+                } else {
+                    Modifier
+                },
             )
             .padding(horizontal = R1.space.l, vertical = R1.space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = R1.bodyEmph, color = R1.Ink)
+            Text(
+                title,
+                style = R1.bodyEmph,
+                color = if (enabled) R1.Ink else R1.InkMuted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(R1.space.xxs))
             Text(
                 text = topic,
                 style = R1.numeralS,
-                color = if (checked) R1.AccentWarm else R1.InkMuted,
+                color = if (checked && enabled) R1.AccentWarm else R1.InkMuted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
                 text = meta,
                 style = R1.labelMicro,
                 color = R1.InkMuted,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = R1.space.xxs),
             )
         }
-        R1Switch(checked = checked, onCheckedChange = { onCheckedChange() })
+        R1Switch(checked = checked, enabled = enabled, onCheckedChange = { onCheckedChange() })
     }
 }
 
@@ -594,6 +629,7 @@ private fun NumberStepperRow(
     step: Float,
     min: Float,
     max: Float,
+    enabled: Boolean = true,
     onChange: (Float) -> Unit,
 ) {
     Row(
@@ -607,18 +643,24 @@ private fun NumberStepperRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = R1.bodyEmph, color = R1.Ink)
+            Text(
+                label,
+                style = R1.bodyEmph,
+                color = if (enabled) R1.Ink else R1.InkMuted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             Text(
                 text = "${"%.2f".format(value).trimEnd('0').trimEnd('.')} $unit",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
         }
-        StepperButton(label = "−", enabled = value > min) {
+        StepperButton(label = "−", enabled = enabled && value > min) {
             onChange((value - step).coerceAtLeast(min))
         }
         Spacer(Modifier.width(R1.space.s))
-        StepperButton(label = "+", enabled = value < max) {
+        StepperButton(label = "+", enabled = enabled && value < max) {
             onChange((value + step).coerceAtMost(max))
         }
     }

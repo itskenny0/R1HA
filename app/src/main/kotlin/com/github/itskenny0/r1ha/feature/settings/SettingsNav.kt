@@ -153,6 +153,38 @@ fun focusPathForSection(sectionName: String): List<SettingsNode> = when (section
     else -> listOf(SettingsNode.ROOT)
 }
 
+/**
+ * A standalone Settings sub-screen that the registry-based search can't find,
+ * because it isn't backed by an [com.github.itskenny0.r1ha.core.prefs.AppSettings]
+ * field (MQTT broker, Sync, the IoT modes, Security, Key bindings). [open] routes
+ * to it; [keywords] feed the second search index.
+ */
+data class SettingsDestination(
+    val title: String,
+    val subtitle: String,
+    val keywords: List<String>,
+    val open: () -> Unit,
+)
+
+/**
+ * Case-insensitive match of [query] against each destination's title, subtitle,
+ * and keyword list. Mirrors [com.github.itskenny0.r1ha.core.prefs.searchSettings]
+ * so the two indices behave identically, letting "mqtt", "sync", "camera",
+ * "pin", "key" surface the standalone screens the registry misses.
+ */
+fun searchSettingsDestinations(
+    query: String,
+    destinations: List<SettingsDestination>,
+): List<SettingsDestination> {
+    if (query.isBlank()) return emptyList()
+    val q = query.trim().lowercase()
+    return destinations.filter { d ->
+        d.title.lowercase().contains(q) ||
+            d.subtitle.lowercase().contains(q) ||
+            d.keywords.any { it.lowercase().contains(q) }
+    }
+}
+
 /** Title-case a ThemeId-style enum name: `PRAGMATIC_HYBRID` -> `Pragmatic hybrid`.
  *  Shared by every Settings row that surfaces a theme value so the formatting
  *  lives in one tested place. */

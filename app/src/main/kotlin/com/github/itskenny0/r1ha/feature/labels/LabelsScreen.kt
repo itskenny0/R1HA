@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -48,6 +50,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -275,22 +278,35 @@ private fun LabelRow(
                     .border(1.dp, R1.Hairline, R1.ShapeS),
             )
             Spacer(Modifier.width(R1.space.s))
+            // The label's configured mdi icon, rendered as an in-house glyph
+            // (when we curate that slug) rather than the literal "mdi:..." text
+            // it used to show. Tinted to the legible accent. Omitted when the
+            // slug isn't curated.
+            val iconGlyph = remember(iconSlug) { R1Icons.forMdi(iconSlug) }
+            if (iconGlyph != null) {
+                Icon(
+                    imageVector = iconGlyph,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(R1.space.s))
+            }
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = label.name, style = R1.body, color = R1.Ink, maxLines = 1)
+                Text(
+                    text = label.name,
+                    style = R1.body,
+                    color = R1.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 if (!label.description.isNullOrBlank()) {
                     Text(
                         text = label.description,
                         style = R1.labelMicro,
                         color = R1.InkSoft,
                         maxLines = 2,
-                    )
-                }
-                if (iconSlug != null) {
-                    Text(
-                        text = "mdi:$iconSlug",
-                        style = R1.labelMicro,
-                        color = R1.InkMuted,
-                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -387,17 +403,36 @@ private fun MemberGroup(
                     .padding(horizontal = R1.space.l, vertical = R1.space.xxs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(R1.space.xs)
-                        .clip(R1.ShapeS)
-                        .background(accent),
+                // Lead each member with a glyph for its kind: the entity's own
+                // domain glyph, a zone/area marker for areas, a generic chip for
+                // devices. Tinted to the label accent so the group reads as one.
+                Icon(
+                    imageVector = when (m.kind) {
+                        LabelLogic.MemberKind.ENTITY -> R1Icons.forEntity(m.id)
+                        LabelLogic.MemberKind.AREA -> R1Icons.forDomain("zone")
+                        LabelLogic.MemberKind.DEVICE -> R1Icons.forDomain("generic")
+                    },
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(R1.space.s))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = m.name, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+                    Text(
+                        text = m.name,
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     if (m.name != m.id) {
-                        Text(text = m.id, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                        Text(
+                            text = m.id,
+                            style = R1.labelMicro,
+                            color = R1.InkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Slider
@@ -223,6 +224,55 @@ fun SettingsScreen(
     val matchedEntries = androidx.compose.runtime.remember(settingsQuery) {
         com.github.itskenny0.r1ha.core.prefs.searchSettings(settingsQuery)
     }
+    // Second search index: the standalone sub-screens that are their own nav
+    // routes (MQTT, Sync, IoT Camera / Sensors, Security/TLS-mTLS, Key
+    // bindings). These have no AppSettings-field registry entry and route via
+    // [onOpenCategory] / dedicated openers rather than the in-tree back-stack,
+    // so the registry-only search misses them. We match their keywords here
+    // and surface them as a "Jump to" group above the field-level results.
+    val settingsDestinations = androidx.compose.runtime.remember(onOpenCategory, onOpenKeyBindings, push) {
+        listOf(
+            SettingsDestination(
+                title = "MQTT broker",
+                subtitle = "Host, port, auth, TLS for the IoT modes",
+                keywords = listOf("mqtt", "broker", "publish", "topic", "iot"),
+                open = { onOpenCategory(SettingsCategory.MQTT) },
+            ),
+            SettingsDestination(
+                title = "Sync",
+                subtitle = "Mirror settings across devices via Home Assistant",
+                keywords = listOf("sync", "mirror", "devices", "backup"),
+                open = { onOpenCategory(SettingsCategory.SYNC) },
+            ),
+            SettingsDestination(
+                title = "IoT Camera Mode",
+                subtitle = "Stream the device camera to Home Assistant",
+                keywords = listOf("iot", "camera", "stream", "mjpeg", "snapshot"),
+                open = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+            ),
+            SettingsDestination(
+                title = "IoT Sensors Mode",
+                subtitle = "Expose device sensors and controls to Home Assistant",
+                keywords = listOf("iot", "sensors", "sensor", "battery", "flashlight", "vibration"),
+                open = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
+            ),
+            SettingsDestination(
+                title = "Security",
+                subtitle = "TLS certificate pinning, mTLS client cert",
+                keywords = listOf("security", "tls", "pin", "pinning", "mtls", "certificate", "cert", "keystore"),
+                open = { push(SettingsNode.CONNECTION_SECURITY) },
+            ),
+            SettingsDestination(
+                title = "Key bindings",
+                subtitle = "Map hardware keys to in-app actions",
+                keywords = listOf("key", "keys", "bindings", "binding", "hardware", "button", "shortcut"),
+                open = onOpenKeyBindings,
+            ),
+        )
+    }
+    val matchedDestinations = androidx.compose.runtime.remember(settingsQuery, settingsDestinations) {
+        searchSettingsDestinations(settingsQuery, settingsDestinations)
+    }
     val modifiedCount = androidx.compose.runtime.remember(s) {
         com.github.itskenny0.r1ha.core.prefs.modifiedSettings(s).size
     }
@@ -259,16 +309,16 @@ fun SettingsScreen(
     // deep-link callback is actually wired, so a tap always lands somewhere.
     val featuredCatalogue = androidx.compose.runtime.remember {
         listOf(
-            FeaturedItem("⊞", "Dashboards", "Browse every native Lovelace dashboard", onOpenDashboards),
-            FeaturedItem("⚡", "Energy", "Live power flow and consumption totals", onOpenEnergy),
-            FeaturedItem("◎", "Assist", "Talk to Home Assistant from the wheel", onOpenAssist),
-            FeaturedItem("◉", "Cameras", "Snapshots and live streams at a glance", onOpenCameras),
-            FeaturedItem("⚙", "Automations", "Inspect, trigger and trace your rules", onOpenAutomations),
-            FeaturedItem("∿", "Statistics", "Long-term history for any sensor", onOpenStatistics),
-            FeaturedItem("≡", "Logbook", "Recent activity across the whole home", onOpenLogbook),
-            FeaturedItem("✦", "Scenes", "Fire a saved scene in one tap", onOpenScenes),
-            FeaturedItem("☀", "Weather", "Forecast and conditions for your zone", onOpenWeather),
-            FeaturedItem("▦", "Media", "Browse media sources and libraries", onOpenMediaBrowse),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Generic, "Dashboards", "Browse every native Lovelace dashboard", onOpenDashboards),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Power, "Energy", "Live power flow and consumption totals", onOpenEnergy),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Speaker, "Assist", "Talk to Home Assistant from the wheel", onOpenAssist),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Camera, "Cameras", "Snapshots and live streams at a glance", onOpenCameras),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Automation, "Automations", "Inspect, trigger and trace your rules", onOpenAutomations),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Sensor, "Statistics", "Long-term history for any sensor", onOpenStatistics),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Todo, "Logbook", "Recent activity across the whole home", onOpenLogbook),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Scene, "Scenes", "Fire a saved scene in one tap", onOpenScenes),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.Weather, "Weather", "Forecast and conditions for your zone", onOpenWeather),
+            FeaturedItem(com.github.itskenny0.r1ha.ui.icons.R1IconSet.MediaPlayer, "Media", "Browse media sources and libraries", onOpenMediaBrowse),
         )
     }
     // Strict per-launch round-robin: advance the persisted rotation cursor by the
@@ -354,11 +404,16 @@ fun SettingsScreen(
                     settingsSearchResults(
                         query = settingsQuery,
                         matched = matchedEntries,
+                        matchedDestinations = matchedDestinations,
                         current = s,
                         onJump = { entry ->
                             val path = focusPathForSection(sectionNameForCategory(entry.category))
                             settingsQuery = ""
                             if (path.size > 1) backStack = SettingsBackStack(path)
+                        },
+                        onOpenDestination = { dest ->
+                            settingsQuery = ""
+                            dest.open()
                         },
                     )
                     return@LazyColumn
@@ -539,6 +594,14 @@ private fun LazyListScope.rootCategories(
             onClick = onOpenAbout,
             showChevron = true,
             contentDescription = "Open About",
+            leadingContent = {
+                androidx.compose.material3.Icon(
+                    imageVector = com.github.itskenny0.r1ha.ui.icons.R1IconSet.Generic,
+                    contentDescription = null,
+                    tint = R1.InkSoft,
+                    modifier = Modifier.size(22.dp),
+                )
+            },
         )
     }
 }
@@ -1807,10 +1870,12 @@ private fun SettingsSearchBar(query: String, onQueryChange: (String) -> Unit) {
 private fun LazyListScope.settingsSearchResults(
     query: String,
     matched: List<com.github.itskenny0.r1ha.core.prefs.SettingEntry>,
+    matchedDestinations: List<SettingsDestination>,
     current: AppSettings,
     onJump: (com.github.itskenny0.r1ha.core.prefs.SettingEntry) -> Unit,
+    onOpenDestination: (SettingsDestination) -> Unit,
 ) {
-    if (matched.isEmpty()) {
+    if (matched.isEmpty() && matchedDestinations.isEmpty()) {
         item {
             Text(
                 text = "No settings match \"$query\".",
@@ -1820,6 +1885,30 @@ private fun LazyListScope.settingsSearchResults(
             )
         }
         return
+    }
+    // Standalone sub-screens first, under a "JUMP TO" header, so the
+    // screen-level destinations the registry can't index are the most
+    // prominent results.
+    if (matchedDestinations.isNotEmpty()) {
+        item("__search_dest_header") {
+            Text(
+                text = "JUMP TO",
+                style = R1.labelMicro,
+                color = R1.AccentWarm,
+                modifier = Modifier.padding(start = 18.dp, top = 8.dp, bottom = 2.dp),
+            )
+        }
+        items(matchedDestinations, key = { "__dest_${it.title}" }) { dest ->
+            R1Row(
+                label = dest.title,
+                description = dest.subtitle,
+                onClick = { onOpenDestination(dest) },
+                boxed = true,
+                showChevron = true,
+                contentDescription = "Open ${dest.title}",
+                modifier = Modifier.padding(horizontal = R1.space.m, vertical = R1.space.xs),
+            )
+        }
     }
     val grouped = matched
         .groupBy { it.category }
@@ -1842,6 +1931,53 @@ private fun LazyListScope.settingsSearchResults(
 
 // ── Category rows ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Map a [SettingsNode] to an in-house [com.github.itskenny0.r1ha.ui.icons.R1IconSet]
+ * glyph for the row's leading slot, so the category list scans by shape as well as
+ * by text. The icon set is HA-domain focused, so a few categories borrow the closest
+ * semantic glyph (Generic for the abstract ones); the point is a stable, distinct
+ * emblem per row rather than a literal depiction.
+ */
+private fun nodeLeadingIcon(node: SettingsNode): androidx.compose.ui.graphics.vector.ImageVector {
+    val set = com.github.itskenny0.r1ha.ui.icons.R1IconSet
+    return when (node) {
+        SettingsNode.CONNECTION, SettingsNode.CONNECTION_ACCOUNT -> set.Generic
+        SettingsNode.CONNECTION_BACKUP -> set.Update
+        SettingsNode.CONNECTION_SECURITY -> set.Lock
+        SettingsNode.APPEARANCE, SettingsNode.APPEARANCE_THEME -> set.Light
+        SettingsNode.APPEARANCE_NAVPANEL -> set.Select
+        SettingsNode.APPEARANCE_CARDS, SettingsNode.APPEARANCE_CARDS_VALUEBAR,
+        SettingsNode.APPEARANCE_CARDS_CHROME,
+        -> set.Button
+        SettingsNode.INPUT, SettingsNode.INPUT_WHEEL -> set.Counter
+        SettingsNode.BEHAVIOUR -> set.Automation
+        SettingsNode.BEHAVIOUR_QUICKTILES -> set.Switch
+        SettingsNode.DASHBOARD, SettingsNode.DASHBOARD_CARDS,
+        SettingsNode.DASHBOARD_THRESHOLDS, SettingsNode.DASHBOARD_ORDER,
+        -> set.Sensor
+        SettingsNode.INTEGRATIONS, SettingsNode.INTEGRATIONS_REFRESH,
+        SettingsNode.INTEGRATIONS_DEFAULTS,
+        -> set.Remote
+        SettingsNode.INTEGRATIONS_CAMERAS -> set.Camera
+        SettingsNode.ADVANCED -> set.Script
+        SettingsNode.BROWSE, SettingsNode.BROWSE_TODAY, SettingsNode.BROWSE_TALK,
+        SettingsNode.BROWSE_STATUS, SettingsNode.BROWSE_POWER,
+        -> set.Todo
+        SettingsNode.ROOT -> set.Generic
+    }
+}
+
+/** Standard leading emblem for a Settings row: a muted-tinted [node] glyph. */
+@Composable
+private fun RowLeadingIcon(node: SettingsNode) {
+    androidx.compose.material3.Icon(
+        imageVector = nodeLeadingIcon(node),
+        contentDescription = null,
+        tint = R1.InkSoft,
+        modifier = Modifier.size(22.dp),
+    )
+}
+
 /** Top-level Settings list row: title + Android-style summary secondary text +
  *  optional modified-count badge, drills into [node]. */
 @Composable
@@ -1852,6 +1988,7 @@ private fun CategoryRow(node: SettingsNode, summary: String, badge: Int, onClick
         onClick = onClick,
         showChevron = true,
         contentDescription = "Open ${node.title}",
+        leadingContent = { RowLeadingIcon(node) },
         trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
     )
 }
@@ -1866,6 +2003,7 @@ private fun CategorySubRow(node: SettingsNode, summary: String, badge: Int, onCl
         onClick = onClick,
         showChevron = true,
         contentDescription = "Open ${node.title}",
+        leadingContent = { RowLeadingIcon(node) },
         trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
     )
 }
@@ -2471,7 +2609,13 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
             .padding(horizontal = R1.space.xl, vertical = R1.space.m),
         verticalAlignment = Alignment.Top,
     ) {
-        Text(label, style = R1.bodyEmph, color = R1.Ink)
+        Text(
+            label,
+            style = R1.bodyEmph,
+            color = R1.Ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.width(R1.space.l))
         Text(
             text = value,
@@ -2480,6 +2624,11 @@ private fun InfoRow(label: String, value: String, mono: Boolean = false) {
             color = R1.InkSoft,
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.End,
+            // Bound a very long value (e.g. a URL or a long status string) to a
+            // few lines with an ellipsis rather than letting it grow the row
+            // unbounded.
+            maxLines = 3,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
@@ -3280,11 +3429,10 @@ private fun MtlsClientCertEditor(
     LabeledControl(label = "Keystore password") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.weight(1f)) {
-                R1TextField(
+                MaskedSecretField(
                     value = pendingPassword.value,
                     onValueChange = { pendingPassword.value = it },
                     placeholder = "(empty)",
-                    monospace = true,
                 )
             }
             Spacer(Modifier.width(R1.space.s))

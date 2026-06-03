@@ -253,6 +253,29 @@ object R1Icons {
     }
 
     /**
+     * Resolve an HA weather `condition` slug (the raw `weather.*` state, e.g.
+     * "partlycloudy", "clear-night", "lightning-rainy") to an in-house weather
+     * glyph. Covers the full HA standard condition vocabulary; unknown / future
+     * conditions fall back to [R1IconSet.Weather] (the sun-behind-cloud glyph)
+     * so the layout never breaks. Tint at the call site (conditionAccent).
+     */
+    fun conditionIcon(condition: String): ImageVector = when (condition.trim().lowercase()) {
+        "sunny", "clear", "clear-day", "exceptional-clear" -> R1IconSet.Sun
+        "clear-night", "night" -> R1IconSet.ClearNight
+        "partlycloudy", "partly-cloudy", "partlycloudy-night" -> R1IconSet.PartlyCloudy
+        "cloudy", "overcast" -> R1IconSet.Cloudy
+        "rainy", "snowy-rainy", "hail-rainy" -> R1IconSet.Rainy
+        "pouring" -> R1IconSet.Pouring
+        "snowy" -> R1IconSet.Snowy
+        "fog", "mist", "haze" -> R1IconSet.Fog
+        "lightning", "lightning-rainy", "thunderstorm" -> R1IconSet.Lightning
+        "windy", "windy-variant" -> R1IconSet.Windy
+        "hail" -> R1IconSet.Hail
+        "exceptional" -> R1IconSet.Exceptional
+        else -> R1IconSet.Weather
+    }
+
+    /**
      * Map a HA sensor / binary_sensor `device_class` to an icon, or null when
      * the class is unknown / absent (caller then falls back to the generic
      * sensor glyph).

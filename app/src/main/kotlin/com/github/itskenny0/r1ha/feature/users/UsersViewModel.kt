@@ -80,11 +80,19 @@ class UsersViewModel(
                 },
                 onFailure = { t ->
                     val msg = t.message.orEmpty()
+                    // Classify a not-an-admin rejection vs a generic transport
+                    // failure. We deliberately do NOT key off any mention of
+                    // "admin": HA's own error copy ("config/auth/list requires
+                    // admin") would match on a transport error that merely
+                    // echoes the command name. Match the actual HA permission
+                    // error codes / phrases instead.
                     val denied = msg.contains("unauthorized", ignoreCase = true) ||
                         msg.contains("permission", ignoreCase = true) ||
-                        msg.contains("admin", ignoreCase = true) ||
                         msg.contains("auth_error", ignoreCase = true) ||
-                        msg.contains("not_allowed", ignoreCase = true)
+                        msg.contains("not_allowed", ignoreCase = true) ||
+                        msg.contains("admin required", ignoreCase = true) ||
+                        msg.contains("requires admin", ignoreCase = true) ||
+                        msg.contains("unauthorized_admin", ignoreCase = true)
                     R1Log.w("Users", "fetch failed (denied=$denied): $msg")
                     _ui.value = _ui.value.copy(
                         loading = false,
@@ -126,8 +134,11 @@ class UsersViewModel(
             val link = links[user.id]
             rowModelFor(
                 user = user,
-                // `is_owner` isn't surfaced through HaUser today; once core/ha
-                // carries it this is the single line to update.
+                // `config/auth/list` does include `is_owner`, but HaUser
+                // (core/ha) doesn't carry the field, so the value can't reach
+                // here. Until HaUser/listAuthUsers gains an `isOwner` field this
+                // stays false and the OWNER chip never lights. This is the single
+                // line to flip once that field exists.
                 isOwner = false,
                 linkedPersonName = link?.name,
                 linkedPersonState = link?.state,

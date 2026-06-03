@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
@@ -42,6 +44,7 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
@@ -194,11 +197,22 @@ private fun FloorRow(
                 )
                 Spacer(Modifier.width(R1.space.s))
             }
+            // Floor glyph: the user's configured mdi icon when we curate it,
+            // otherwise the in-house generic marker. Leads the name so floors
+            // scan as a row type alongside areas / zones.
+            Icon(
+                imageVector = R1Icons.forMdi(floor.icon) ?: R1Icons.forDomain("generic"),
+                contentDescription = null,
+                tint = R1.AccentNeutral,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(R1.space.s))
             Text(
                 text = floor.name,
                 style = R1.body,
                 color = R1.Ink,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.s))
@@ -219,11 +233,21 @@ private fun FloorRow(
             Column(verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
                 for (a in floor.areas) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Each constituent area leads with the in-house area /
+                        // zone marker so the expanded list reads as areas.
+                        Icon(
+                            imageVector = R1Icons.forDomain("zone"),
+                            contentDescription = null,
+                            tint = R1.InkMuted,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(R1.space.xs))
                         Text(
                             text = a.name,
                             style = R1.labelMicro,
                             color = R1.InkSoft,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
                         Spacer(Modifier.width(R1.space.s))

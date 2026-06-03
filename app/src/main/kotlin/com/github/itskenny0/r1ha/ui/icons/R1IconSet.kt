@@ -256,6 +256,169 @@ object R1IconSet {
         },
     )
 
+    /** clear-night: a crescent moon. */
+    val ClearNight: ImageVector = lineIcon("r1_clear_night",
+        {
+            moveTo(15.5f, 4.5f)
+            arcTo(8f, 8f, 0f, true, false, 19.5f, 14.5f)
+            arcTo(6.2f, 6.2f, 0f, true, true, 15.5f, 4.5f)
+            close()
+        },
+    )
+
+    /** partly cloudy: a sun peeking from behind a cloud. */
+    val PartlyCloudy: ImageVector = lineIcon("r1_partlycloudy",
+        { circle(9f, 8.5f, 2.6f) },
+        {
+            moveTo(9f, 3.2f)
+            lineTo(9f, 4.6f)
+            moveTo(4.4f, 5.4f)
+            lineTo(5.4f, 6.4f)
+            moveTo(3.2f, 9f)
+            lineTo(4.6f, 9f)
+        },
+        {
+            moveTo(9.5f, 19f)
+            arcTo(3f, 3f, 0f, false, true, 10.5f, 13.2f)
+            arcTo(3.6f, 3.6f, 0f, false, true, 17f, 14.8f)
+            arcTo(2.4f, 2.4f, 0f, false, true, 17.2f, 19f)
+            close()
+        },
+    )
+
+    /** cloudy: a single full cloud outline. */
+    val Cloudy: ImageVector = lineIcon("r1_cloudy",
+        {
+            moveTo(7f, 18f)
+            arcTo(3.4f, 3.4f, 0f, false, true, 7.6f, 11.4f)
+            arcTo(4f, 4f, 0f, false, true, 15f, 9.8f)
+            arcTo(3.4f, 3.4f, 0f, false, true, 17.8f, 18f)
+            close()
+        },
+    )
+
+    /** rainy: a cloud with a few short rain streaks. */
+    val Rainy: ImageVector = lineIcon("r1_rainy",
+        {
+            moveTo(7f, 14f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 7.6f, 8f)
+            arcTo(3.8f, 3.8f, 0f, false, true, 14.8f, 6.6f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 17.4f, 14f)
+            close()
+        },
+        {
+            moveTo(9f, 17f)
+            lineTo(8f, 20f)
+            moveTo(12f, 17f)
+            lineTo(11f, 20f)
+            moveTo(15f, 17f)
+            lineTo(14f, 20f)
+        },
+    )
+
+    /** pouring: a cloud with heavier, longer rain streaks. */
+    val Pouring: ImageVector = lineIcon("r1_pouring",
+        {
+            moveTo(7f, 13f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 7.6f, 7f)
+            arcTo(3.8f, 3.8f, 0f, false, true, 14.8f, 5.6f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 17.4f, 13f)
+            close()
+        },
+        {
+            moveTo(8.5f, 15f)
+            lineTo(7f, 20.5f)
+            moveTo(12f, 15f)
+            lineTo(10.5f, 20.5f)
+            moveTo(15.5f, 15f)
+            lineTo(14f, 20.5f)
+        },
+    )
+
+    /** snowy: a cloud with falling flake dots. */
+    val Snowy: ImageVector = lineIcon("r1_snowy",
+        {
+            moveTo(7f, 14f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 7.6f, 8f)
+            arcTo(3.8f, 3.8f, 0f, false, true, 14.8f, 6.6f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 17.4f, 14f)
+            close()
+        },
+        { dot(9f, 18f, 0.7f) },
+        { dot(12f, 20f, 0.7f) },
+        { dot(15f, 18f, 0.7f) },
+    )
+
+    /** fog: four stacked horizontal mist lines. */
+    val Fog: ImageVector = lineIcon("r1_fog",
+        {
+            moveTo(4.5f, 7f)
+            lineTo(19.5f, 7f)
+            moveTo(4.5f, 11f)
+            lineTo(19.5f, 11f)
+            moveTo(4.5f, 15f)
+            lineTo(19.5f, 15f)
+            moveTo(4.5f, 19f)
+            lineTo(15f, 19f)
+        },
+    )
+
+    /** lightning: a single bolt (reuses the power-bolt shape). */
+    val Lightning: ImageVector = lineIcon("r1_lightning",
+        {
+            moveTo(13f, 3f)
+            lineTo(6f, 13f)
+            lineTo(11f, 13f)
+            lineTo(10f, 21f)
+            lineTo(18f, 10f)
+            lineTo(13f, 10f)
+            close()
+        },
+    )
+
+    /** windy: two horizontal gust curls. */
+    val Windy: ImageVector = lineIcon("r1_windy",
+        {
+            moveTo(4f, 9f)
+            lineTo(14f, 9f)
+            arcTo(2.2f, 2.2f, 0f, true, false, 11.8f, 6.8f)
+        },
+        {
+            moveTo(4f, 14f)
+            lineTo(17f, 14f)
+            arcTo(2.4f, 2.4f, 0f, true, true, 14.6f, 16.4f)
+        },
+    )
+
+    /** hail: a cloud with falling pellets. */
+    val Hail: ImageVector = lineIcon("r1_hail",
+        {
+            moveTo(7f, 13f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 7.6f, 7f)
+            arcTo(3.8f, 3.8f, 0f, false, true, 14.8f, 5.6f)
+            arcTo(3.2f, 3.2f, 0f, false, true, 17.4f, 13f)
+            close()
+        },
+        { dot(9f, 17f, 0.9f) },
+        { dot(13f, 19f, 0.9f) },
+        { dot(16f, 16f, 0.9f) },
+    )
+
+    /** exceptional (severe): a triangle with a bang. */
+    val Exceptional: ImageVector = lineIcon("r1_exceptional",
+        {
+            moveTo(12f, 4f)
+            lineTo(20.5f, 19.5f)
+            lineTo(3.5f, 19.5f)
+            close()
+        },
+        {
+            moveTo(12f, 9.5f)
+            lineTo(12f, 14f)
+        },
+        { dot(12f, 17f, 0.8f) },
+    )
+
     // --- Media -------------------------------------------------------------
 
     /** media_player: a play triangle inside a rounded panel. */

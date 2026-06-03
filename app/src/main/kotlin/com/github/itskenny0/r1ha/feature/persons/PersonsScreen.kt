@@ -118,7 +118,10 @@ fun PersonsScreen(
                 )
             }
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = ui.loading,
+                // Pull-to-refresh spinner only; the populated list stays put on
+                // auto-refresh ticks (initialLoading drives the full-screen
+                // spinner branch above).
+                isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -186,9 +189,11 @@ fun PersonsScreen(
 
 /**
  * Round avatar for a person/device row. Renders the HA entity_picture via the
- * shared AsyncBitmap loader when one is set; otherwise a tinted initials chip
- * derived from the display name. The initials also stand in while a picture
- * has yet to decode or fails to load, so the slot is never an empty circle.
+ * shared AsyncBitmap loader when one is set; otherwise an in-house line glyph
+ * (Person, or the Zone map-pin when the entity is in a named HA zone) drawn
+ * faintly behind the display-name initials. The glyph and initials are tinted
+ * by presence so a pictureless row still reads home/away/elsewhere at a glance,
+ * and the slot is never an empty circle while a picture decodes or fails.
  */
 @Composable
 private fun PersonAvatar(
@@ -196,6 +201,14 @@ private fun PersonAvatar(
     presenceColor: androidx.compose.ui.graphics.Color,
 ) {
     val size = 36.dp
+    // A named-zone presence reads as a place, so back the initials with the
+    // map-pin (Zone) glyph rather than the head-and-shoulders (Person).
+    val inNamedZone = presenceLabel(entry.state).kind == PresenceKind.ZONE
+    val glyph = if (inNamedZone) {
+        com.github.itskenny0.r1ha.ui.icons.R1IconSet.Zone
+    } else {
+        com.github.itskenny0.r1ha.ui.icons.R1IconSet.Person
+    }
     Box(
         modifier = Modifier
             .size(size)
@@ -203,7 +216,17 @@ private fun PersonAvatar(
             .background(presenceColor.copy(alpha = 0.18f)),
         contentAlignment = Alignment.Center,
     ) {
-        // Initials sit underneath as the always-present fallback.
+        // In-house glyph sits behind the initials at a low alpha so it reads as
+        // a tinted backdrop rather than competing with the letters.
+        if (entry.entityPicture == null) {
+            androidx.compose.material3.Icon(
+                imageVector = glyph,
+                contentDescription = null,
+                tint = presenceColor.copy(alpha = 0.5f),
+                modifier = Modifier.size(size * 0.7f),
+            )
+        }
+        // Initials sit on top as the always-present fallback label.
         Text(
             text = initialsFor(entry.name),
             style = R1.labelMicro,
@@ -256,31 +279,25 @@ private fun rowPresence(state: String): RowPresence {
 @Composable
 private fun PresenceSummary(entries: List<PersonsViewModel.Entry>) {
     val tally = presenceTally(entries.map { it.state })
-    if (tally.home == 0 && tally.away == 0) return
+    if (tally.home == 0 && tally.away == 0 && tally.elsewhere == 0) return
+    // Reconciled with the row chips: HOME green, AWAY amber, and named-zone
+    // "OUT" in the same cool accent the zone chips use, so the header counts
+    // match how each row is coloured (a named zone is no longer mislabelled as
+    // away). A thin divider separates whichever buckets are present.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.clearAndSetSemantics { contentDescription = tally.summary() },
     ) {
-        if (tally.home > 0) {
-            Text(
-                text = "${tally.home} HOME",
-                style = R1.labelMicro,
-                color = R1.AccentGreen,
-            )
+        val shown = buildList {
+            if (tally.home > 0) add("${tally.home} HOME" to R1.AccentGreen)
+            if (tally.away > 0) add("${tally.away} AWAY" to R1.StatusAmber)
+            if (tally.elsewhere > 0) add("${tally.elsewhere} OUT" to R1.AccentCool)
         }
-        if (tally.home > 0 && tally.away > 0) {
-            Text(
-                text = " / ",
-                style = R1.labelMicro,
-                color = R1.InkMuted,
-            )
-        }
-        if (tally.away > 0) {
-            Text(
-                text = "${tally.away} AWAY",
-                style = R1.labelMicro,
-                color = R1.StatusAmber,
-            )
+        shown.forEachIndexed { i, (label, color) ->
+            if (i > 0) {
+                Text(text = " / ", style = R1.labelMicro, color = R1.InkMuted)
+            }
+            Text(text = label, style = R1.labelMicro, color = color)
         }
     }
 }
@@ -351,8 +368,18 @@ private fun PersonRow(entry: PersonsViewModel.Entry, onTap: () -> Unit = {}) {
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // The raw entity_id is plumbing detail. For person.* rows it
+                // merely restates the display name (person.jane_doe), so demote
+                // it: show the friendlier presence-spoken location instead, and
+                // keep the raw id only for device_tracker rows where it's the
+                // useful "which device" disambiguator.
+                val secondary = if (entry.kind == PersonsViewModel.Kind.PERSON) {
+                    presenceSpoken(entry.state)
+                } else {
+                    entry.entityId
+                }
                 Text(
-                    text = entry.entityId,
+                    text = secondary,
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 1,

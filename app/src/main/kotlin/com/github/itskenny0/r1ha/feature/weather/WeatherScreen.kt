@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -29,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
@@ -44,14 +47,15 @@ import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 
 /**
  * Weather surface: lists every `weather.*` entity HA reports with
- * its current condition glyph + temperature + secondary readings
+ * its current condition icon + temperature + secondary readings
  * (humidity, wind, pressure). Read-only display; no controls.
  *
- * Glyphs are drawn from the HA standard condition vocabulary
+ * Condition icons are in-house line vectors resolved by
+ * [R1Icons.conditionIcon] from the HA standard condition vocabulary
  * (clear-night, cloudy, fog, hail, lightning, partlycloudy, pouring,
- * rainy, snowy, snowy-rainy, sunny, windy, exceptional). The map
- * coerces anything unknown to a neutral '·' so a future HA condition
- * never breaks the layout.
+ * rainy, snowy, snowy-rainy, sunny, windy, exceptional). Anything
+ * unknown falls back to the neutral sun-behind-cloud glyph so a future
+ * HA condition never breaks the layout.
  */
 @Composable
 fun WeatherScreen(
@@ -116,7 +120,10 @@ fun WeatherScreen(
                 )
             }
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = ui.loading,
+                // Only the explicit refresh spinner here; the populated list
+                // stays put during auto-refresh ticks (initialLoading drives
+                // the full-screen spinner branch above instead).
+                isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -156,16 +163,15 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
             .padding(horizontal = R1.space.m, vertical = R1.space.m),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = conditionGlyph(w.condition),
-                style = R1.body,
-                color = conditionAccent(w.condition),
-                // The glyph is decorative shorthand for the condition label
-                // that follows; expose the readable condition to a11y so the
-                // symbol font doesn't get announced literally.
-                modifier = Modifier.semantics {
-                    contentDescription = conditionLabel(w.condition)
-                },
+            // In-house line vector for the condition (replaces the unicode
+            // glyph). Tinted by conditionAccent; the readable condition label
+            // is exposed to a11y here since the row's other text doesn't repeat
+            // it on this line.
+            Icon(
+                imageVector = R1Icons.conditionIcon(w.condition),
+                contentDescription = conditionLabel(w.condition),
+                tint = conditionAccent(w.condition),
+                modifier = Modifier.size(22.dp),
             )
             Spacer(Modifier.width(R1.space.s))
             Text(
@@ -174,6 +180,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 color = R1.Ink,
                 modifier = Modifier.weight(1f),
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (w.temperature != null) {
                 Text(
@@ -190,6 +197,8 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 style = R1.labelMicro,
                 color = conditionAccent(w.condition),
                 modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             // "Feels like" sits next to the condition: it qualifies the
             // headline temperature, so it reads better here than buried in
@@ -199,6 +208,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                     text = "FEELS ${formatTemp(w.apparentTemperature, w.temperatureUnit)}",
                     style = R1.labelMicro,
                     color = R1.InkSoft,
+                    maxLines = 1,
                 )
             }
         }
@@ -232,6 +242,8 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 text = parts.joinToString(" · "),
                 style = R1.labelMicro,
                 color = R1.InkSoft,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         // Forecast strip. The VM fills hourly/daily from the modern
@@ -292,11 +304,13 @@ private fun ForecastTile(
             text = formatForecastLabel(entry.whenIso, kind),
             style = R1.labelMicro,
             color = R1.InkMuted,
+            maxLines = 1,
         )
-        Text(
-            text = conditionGlyph(entry.condition),
-            style = R1.body,
-            color = conditionAccent(entry.condition),
+        Icon(
+            imageVector = R1Icons.conditionIcon(entry.condition),
+            contentDescription = conditionLabel(entry.condition),
+            tint = conditionAccent(entry.condition),
+            modifier = Modifier.size(20.dp),
         )
         val tempLine = buildString {
             if (entry.temperature != null) {
@@ -344,25 +358,6 @@ private fun formatTemp(t: Double, unit: String?): String =
 private fun formatNumber(d: Double): String =
     // One decimal for sub-100 values, integer for larger (pressure is usually 4 digits)
     if (kotlin.math.abs(d) < 100) "%.1f".format(java.util.Locale.US, d) else "%.0f".format(java.util.Locale.US, d)
-
-/** Map HA standard weather conditions to a single-glyph preview.
- *  Falls back to '·' for unknown / future conditions. */
-private fun conditionGlyph(condition: String): String = when (condition.lowercase()) {
-    "sunny", "clear" -> "☀"
-    "clear-night" -> "☾"
-    "partlycloudy" -> "⛅"
-    "cloudy" -> "☁"
-    "rainy" -> "☂"
-    "pouring" -> "☔"
-    "snowy", "snowy-rainy" -> "❄"
-    "fog" -> "≋"
-    "lightning", "lightning-rainy" -> "⚡"
-    "windy", "windy-variant" -> "🌬"
-    "hail" -> "•"
-    "exceptional" -> "!"
-    "unavailable", "unknown", "" -> "·"
-    else -> "·"
-}
 
 /** Human-readable condition label. Empty / missing states read as a
  *  clear word rather than a blank or a bare slug. */
