@@ -386,6 +386,7 @@ private fun PhoneNavSlideoutHost(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
+                                onClickLabel = "Close menu",
                                 onClick = { openState.value = false },
                             ),
                     )
