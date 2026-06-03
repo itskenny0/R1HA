@@ -620,6 +620,7 @@ fun AppNavGraph(
                 dashboardUrlPath = dashboardUrlPath,
                 viewPath = viewPath,
                 serverUrl = dashServerUrl,
+                settings = settings,
                 onBack = { navController.popBackStack() },
                 onOpenLovelace = {
                     navController.navigate(Routes.LOVELACE) { launchSingleTop = true }

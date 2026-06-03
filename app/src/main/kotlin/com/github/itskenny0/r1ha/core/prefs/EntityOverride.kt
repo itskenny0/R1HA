@@ -190,6 +190,18 @@ data class EntityOverride(
      * the deck-wide default. Inherit is the common case.
      */
     val valueBarLocation: ValueBarLocation? = null,
+    /**
+     * Per-card override for whether the ultra-detail "more info" sheet is
+     * OFFERED on this card / tile. Three-state:
+     *  - null: inherit the global [UiOptions.moreInfoEnabledDefault].
+     *  - true: the "MORE INFO" / "DETAILS" affordance is shown regardless of
+     *    the global default.
+     *  - false: the affordance is hidden on this card regardless of the
+     *    global default.
+     * The customize dialog surfaces this as Inherit / On / Off chips. The
+     * effective value is `moreInfoEnabled ?: settings.ui.moreInfoEnabledDefault`.
+     */
+    val moreInfoEnabled: Boolean? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */

@@ -1041,6 +1041,15 @@ private fun LazyListScope.appearanceCards(
     }
     item {
         SwitchRow(
+            label = "Ultra-detail view",
+            subtitle = "Offer the detailed more-info sheet on cards and tiles " +
+                "(per-card override available in Customize)",
+            checked = s.ui.moreInfoEnabledDefault,
+            onCheckedChange = { vm.setMoreInfoEnabledDefault(it) },
+        )
+    }
+    item {
+        SwitchRow(
             label = "Show 0% arc when entity is off",
             subtitle = "Off (default): arc shows whatever brightness HA reported, " +
                 "even if the entity is currently off. On: arc is always blank (0%) " +

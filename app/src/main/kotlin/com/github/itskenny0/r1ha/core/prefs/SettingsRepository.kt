@@ -205,6 +205,9 @@ class SettingsRepository private constructor(
         /** Card-stack scroll sensitivity as a 0..100 percentage; 80 is the
          *  default and reproduces the stock fling feel. Absent → 80. */
         val uiCardScrollSensitivity = intPreferencesKey("ui.card_scroll_sensitivity")
+        /** Deck-wide default for whether the ultra-detail more-info sheet is
+         *  offered. Absent → true (the affordance is shown). */
+        val uiMoreInfoEnabledDefault = booleanPreferencesKey("ui.more_info_enabled_default")
 
         val theme = stringPreferencesKey("theme")
         val autoThemeEnabled = booleanPreferencesKey("theme.auto_enabled")
@@ -307,6 +310,7 @@ class SettingsRepository private constructor(
                         ?.let { runCatching { CardPeekMode.valueOf(it) }.getOrNull() }
                         ?: CardPeekMode.AUTO,
                     cardScrollSensitivity = (p[K.uiCardScrollSensitivity] ?: 80).coerceIn(0, 100),
+                    moreInfoEnabledDefault = p[K.uiMoreInfoEnabledDefault] ?: true,
                 ),
                 behavior = Behavior(
                     haptics = p[K.behaviorHaptics] ?: true,
@@ -520,6 +524,7 @@ class SettingsRepository private constructor(
                 p[K.uiShowZeroPercentWhenOff] = next.ui.showZeroPercentWhenOff
                 p[K.uiCardPeekMode] = next.ui.cardPeekMode.name
                 p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
+                p[K.uiMoreInfoEnabledDefault] = next.ui.moreInfoEnabledDefault
                 p[K.theme] = next.theme.name
                 p[K.autoThemeEnabled] = next.autoThemeEnabled
                 p[K.nightTheme] = next.nightTheme.name
@@ -951,7 +956,10 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         // Per-card value-bar slot — single-char ValueBarLocation code,
         // "?" = inherit the global setting.
         val valueBarStr = o.valueBarLocation?.code?.toString() ?: "?"
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr"
+        // Per-card ultra-detail more-info slot. Tri-state same as the other
+        // booleans; "?" = inherit the global moreInfoEnabledDefault.
+        val moreInfoStr = when (o.moreInfoEnabled) { true -> "1"; false -> "0"; null -> "?" }
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr|$moreInfoStr"
     }
 }
 
@@ -1046,6 +1054,10 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             val valueBar = valueBarChar?.takeIf { it != '?' }?.let {
                 com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.fromCode(it)
             }
+            // Slot 19 — per-card ultra-detail more-info override. Tri-state
+            // boolean; "?" / blank / absent (older saves) = inherit the
+            // global moreInfoEnabledDefault.
+            val moreInfo = when (parts.getOrNull(19)) { "1" -> true; "0" -> false; else -> null }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -1066,6 +1078,7 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 actionOnTap = tapAction,
                 actionOnWheelPress = wheelPress,
                 valueBarLocation = valueBar,
+                moreInfoEnabled = moreInfo,
             )
         }.getOrNull()
     }.toMap()

@@ -242,6 +242,7 @@ class EntityOverrideCodecTest {
                 actionOnTap = TapAction.TOGGLE,
                 actionOnWheelPress = TapAction.FIRE,
                 valueBarLocation = ValueBarLocation.TOP,
+                moreInfoEnabled = false,
             ),
         )
         val encoded = encodeEntityOverrides_visibleForTesting(map)
@@ -277,6 +278,38 @@ class EntityOverrideCodecTest {
         val encoded = "light.kitchen=?|?|?||?|?|?||?|?|?||?||?||?|?|Z"
         val decoded = decodeEntityOverrides_visibleForTesting(encoded)
         assertThat(decoded["light.kitchen"]?.valueBarLocation).isNull()
+    }
+
+    @Test fun `more-info enabled override round-trips through codec`() {
+        val on = mapOf("light.kitchen" to EntityOverride(moreInfoEnabled = true))
+        val onEnc = encodeEntityOverrides_visibleForTesting(on)
+        // Codec slot 19 — the ultra-detail more-info tri-state. true = "1".
+        assertThat(onEnc.substringAfter('=').split('|').getOrNull(19)).isEqualTo("1")
+        assertThat(decodeEntityOverrides_visibleForTesting(onEnc)["light.kitchen"]?.moreInfoEnabled)
+            .isTrue()
+
+        val off = mapOf("light.kitchen" to EntityOverride(moreInfoEnabled = false))
+        val offEnc = encodeEntityOverrides_visibleForTesting(off)
+        assertThat(offEnc.substringAfter('=').split('|').getOrNull(19)).isEqualTo("0")
+        assertThat(decodeEntityOverrides_visibleForTesting(offEnc)["light.kitchen"]?.moreInfoEnabled)
+            .isFalse()
+    }
+
+    @Test fun `null more-info enabled encodes as inherit and round-trips as null`() {
+        val map = mapOf("light.kitchen" to EntityOverride(showOnOffPill = true))
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        assertThat(encoded.substringAfter('=').split('|').getOrNull(19)).isEqualTo("?")
+        assertThat(decodeEntityOverrides_visibleForTesting(encoded)["light.kitchen"]?.moreInfoEnabled)
+            .isNull()
+    }
+
+    @Test fun `older save without slot 19 decodes more-info as null`() {
+        // 19-slot save (no trailing more-info slot). The missing field should
+        // land as null (inherit the global default) rather than crashing.
+        val encoded = "light.kitchen=?|1|?||?|?|?||?|?|?||?||?||?|?|R"
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.moreInfoEnabled).isNull()
+        assertThat(decoded["light.kitchen"]?.showOnOffPill).isTrue()
     }
 
     @Test fun `older save without slot 18 still decodes value bar as null`() {

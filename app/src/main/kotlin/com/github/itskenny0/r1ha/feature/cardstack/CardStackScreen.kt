@@ -1297,6 +1297,12 @@ fun CardStackScreen(
         val cardContextMenuIdx = androidx.compose.runtime.remember {
             androidx.compose.runtime.mutableStateOf<Int?>(null)
         }
+        // Entity whose ultra-detail more-info sheet is open; null = closed.
+        // Opened from the card context menu's MORE INFO action and rendered
+        // as a screen-level overlay alongside the other pickers.
+        val moreInfoEntityId = androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf<String?>(null)
+        }
         if (jumpPickerOpen.value && cards.size > 1) {
             JumpToCardSheet(
                 cards = cards,
@@ -1353,9 +1359,35 @@ fun CardStackScreen(
                         }
                         cardContextMenuIdx.value = null
                     },
+                    onMoreInfo = run {
+                        // Effective per-entity flag = override ?: global default.
+                        val effective = appSettings.entityOverrides[ctxCard.id.value]?.moreInfoEnabled
+                            ?: appSettings.ui.moreInfoEnabledDefault
+                        if (effective) {
+                            {
+                                moreInfoEntityId.value = ctxCard.id.value
+                                cardContextMenuIdx.value = null
+                            }
+                        } else null
+                    },
                     onDismiss = { cardContextMenuIdx.value = null },
                 )
             }
+        }
+
+        // ── Ultra-detail more-info sheet ────────────────────────────────────────────
+        // Opened from the card context menu's MORE INFO action (which only
+        // offers itself when the effective per-entity moreInfoEnabled is true).
+        // Rendered at the outer full-screen Box level so it covers the chrome
+        // and card, matching the other picker overlays.
+        val moreInfoId = moreInfoEntityId.value
+        if (moreInfoId != null) {
+            com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoSheet(
+                haRepository = haRepository,
+                settings = settings,
+                entityId = moreInfoId,
+                onDismiss = { moreInfoEntityId.value = null },
+            )
         }
 
         // ── Tab manage modal ────────────────────────────────────────────────────────
@@ -2669,6 +2701,10 @@ private fun CardContextMenu(
     onMove: (targetPageId: String) -> Unit,
     onRemove: () -> Unit,
     onOpenInHa: (url: String) -> Unit,
+    /** Open the in-app ultra-detail more-info sheet for this card's entity.
+     *  Null when the effective per-entity `moreInfoEnabled` resolves to false
+     *  (or settings haven't loaded); the button is then hidden. */
+    onMoreInfo: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler(onBack = onDismiss)
@@ -2754,6 +2790,17 @@ private fun CardContextMenu(
                 }
             }
             Spacer(Modifier.height(14.dp))
+            // Ultra-detail more-info — opens the in-app attribute / history
+            // sheet for this entity. Hidden when the effective per-entity
+            // moreInfoEnabled resolved to false (onMoreInfo is then null).
+            if (onMoreInfo != null) {
+                R1Button(
+                    text = "MORE INFO",
+                    onClick = onMoreInfo,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             // Open in HA — deep-link to the entity's history page in the HA
             // web UI. Useful when the user wants to see HA's full sensor
             // history / device controls / configure automations. Hidden

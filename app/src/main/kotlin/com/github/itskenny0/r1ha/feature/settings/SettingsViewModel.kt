@@ -91,6 +91,8 @@ class SettingsViewModel(
     fun setTempUnit(u: com.github.itskenny0.r1ha.core.prefs.TemperatureUnit) =
         update { it.copy(ui = it.ui.copy(tempUnit = u)) }
     fun setInfiniteScroll(enabled: Boolean) = update { it.copy(ui = it.ui.copy(infiniteScroll = enabled)) }
+    fun setMoreInfoEnabledDefault(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(moreInfoEnabledDefault = enabled)) }
     fun setShowZeroPercentWhenOff(enabled: Boolean) =
         update { it.copy(ui = it.ui.copy(showZeroPercentWhenOff = enabled)) }
     fun setCardPeekMode(mode: com.github.itskenny0.r1ha.core.prefs.CardPeekMode) =

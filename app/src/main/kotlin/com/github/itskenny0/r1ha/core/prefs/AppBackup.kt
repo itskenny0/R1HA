@@ -79,6 +79,9 @@ data class AppBackup(
     /** Card-stack scroll sensitivity (0..100). Older backups without this field
      *  decode as 80, the default that reproduces the stock fling feel. */
     val uiCardScrollSensitivity: Int = 80,
+    /** Deck-wide default for whether the ultra-detail more-info sheet is offered.
+     *  Older backups without this field decode as true, the default. */
+    val uiMoreInfoEnabledDefault: Boolean = true,
 
     val behaviorHaptics: Boolean = true,
     val behaviorKeepScreenOn: Boolean = true,
@@ -157,6 +160,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiInfiniteScroll = ui.infiniteScroll,
     uiCardPeekMode = ui.cardPeekMode,
     uiCardScrollSensitivity = ui.cardScrollSensitivity,
+    uiMoreInfoEnabledDefault = ui.moreInfoEnabledDefault,
     behaviorHaptics = behavior.haptics,
     behaviorKeepScreenOn = behavior.keepScreenOn,
     behaviorTapToToggle = behavior.tapToToggle,
@@ -233,6 +237,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             infiniteScroll = uiInfiniteScroll,
             cardPeekMode = uiCardPeekMode,
             cardScrollSensitivity = uiCardScrollSensitivity,
+            moreInfoEnabledDefault = uiMoreInfoEnabledDefault,
         ),
         behavior = Behavior(
             haptics = behaviorHaptics,

@@ -193,6 +193,18 @@ data class UiOptions(
      * PageDeck for the consuming code. Coerced to 0..100 on load.
      */
     val cardScrollSensitivity: Int = 80,
+    /**
+     * Deck-wide default for whether the ultra-detail "more info" sheet is
+     * OFFERED on a card / dashboard tile. On by default — the richer
+     * attribute / history view is the natural deep-dive surface and most
+     * users want it reachable. Per-card overrides via
+     * [EntityOverride.moreInfoEnabled] win when set, so a card can opt out
+     * (or back in) without changing this deck-wide default. When the
+     * effective value is false, the "MORE INFO" / "DETAILS" affordance is
+     * simply not shown for that entity; the rest of the card behaves as
+     * before.
+     */
+    val moreInfoEnabledDefault: Boolean = true,
 )
 
 @Immutable

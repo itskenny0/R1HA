@@ -479,6 +479,12 @@ private fun LayoutSubscreen(
         value = override.showAreaLabel,
         onChange = { onChange(override.copy(showAreaLabel = it)) },
     )
+    Spacer(Modifier.height(R1.space.s))
+    TristateRow(
+        label = "Ultra-detail view",
+        value = override.moreInfoEnabled,
+        onChange = { onChange(override.copy(moreInfoEnabled = it)) },
+    )
 
     SectionHeader("TEXT SIZE")
     Text(
@@ -513,6 +519,7 @@ private fun LayoutSubscreen(
                     valueBarLocation = null,
                     showOnOffPill = null,
                     showAreaLabel = null,
+                    moreInfoEnabled = null,
                     textSizeSp = null,
                     maxDecimalPlaces = null,
                 )

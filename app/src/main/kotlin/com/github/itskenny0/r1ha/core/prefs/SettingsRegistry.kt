@@ -243,6 +243,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { if (it.ui.infiniteScroll) "ON" else "OFF" },
     ),
     SettingEntry(
+        id = "ui.moreInfoEnabledDefault",
+        category = SettingCategory.CARD_UI,
+        label = "Ultra-detail view",
+        description = "Offer the detailed more-info sheet on cards and tiles",
+        isDefault = { it.ui.moreInfoEnabledDefault == defaults.ui.moreInfoEnabledDefault },
+        currentDisplay = { if (it.ui.moreInfoEnabledDefault) "ON" else "OFF" },
+    ),
+    SettingEntry(
         id = "ui.showZeroPercentWhenOff",
         category = SettingCategory.CARD_UI,
         label = "Show 0% arc when entity is off",
