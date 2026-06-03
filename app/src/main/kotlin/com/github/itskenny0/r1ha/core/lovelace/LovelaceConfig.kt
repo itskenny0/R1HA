@@ -61,6 +61,12 @@ data class LovelaceView(
      */
     val cards: List<LovelaceCard>,
     /**
+     * The view's top-level `badges:` array (HA renders these as a row of
+     * chips above the cards). Empty when the view declares none. Each badge
+     * is an entity-state chip with an optional tap action; see [LovelaceBadge].
+     */
+    val badges: List<LovelaceBadge> = emptyList(),
+    /**
      * `true` when this view delegates its layout to an HA *strategy* (a
      * `strategy:` key on the view, or on every one of its sections) and so
      * carries no concrete cards we can render. The screen surfaces the
@@ -540,6 +546,38 @@ data class EntityRow(
      * subset that maps cleanly to data we already have.
      */
     val secondaryInfo: String?,
+)
+
+/**
+ * One badge chip from a view's top-level `badges:` array. HA renders these as
+ * a horizontal row of pills above the cards, each showing a leading icon, the
+ * entity's live state value, and (optionally) a name, with a configurable tap
+ * action.
+ *
+ * HA accepts either a bare entity-id string (`sensor.time`) or a richer object
+ * (`{type: entity, entity: ..., show_state: true, ...}`); both resolve to this
+ * same model. Defaults mirror HA's entity-badge: state shown, name hidden, icon
+ * shown. A badge with no resolvable entity (a `type: custom:*` badge we can't
+ * model) parses to one with a null [entityId] and renders a minimal text chip
+ * from its [name] rather than being dropped.
+ */
+@Immutable
+data class LovelaceBadge(
+    /** Target entity id (`domain.object_id`). Null for an entity-less badge. */
+    val entityId: String?,
+    /** Override label; null falls back to the entity's `friendly_name`. */
+    val name: String?,
+    /** Override icon string ("mdi:clock-time-eight-outline"). Null = derived
+     *  from the entity's domain / device_class. */
+    val icon: String?,
+    /** HA `color`: a theme colour name or `#rrggbb`. Null = state-derived accent. */
+    val color: String?,
+    val showName: Boolean,
+    val showState: Boolean,
+    val showIcon: Boolean,
+    /** Tap target. Null = the entity's domain-default action (more-info etc.),
+     *  resolved at dispatch time. */
+    val tapAction: LovelaceAction?,
 )
 
 /**

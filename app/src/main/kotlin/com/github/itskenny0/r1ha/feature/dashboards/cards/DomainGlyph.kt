@@ -1,6 +1,73 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
+
+/**
+ * Resolve the in-house [ImageVector] for a dashboard row/card. Prefers an
+ * explicit `icon: mdi:foo` config slug ([configIcon]) when it maps to a curated
+ * glyph, otherwise derives one from the entity id + live device-class / state.
+ * This is the icon-set replacement for the old text [domainGlyph]; cards keep
+ * the same accent/tint they already computed.
+ */
+internal fun cardEntityIcon(
+    entityId: String,
+    state: EntityState?,
+    configIcon: String? = null,
+): ImageVector =
+    R1Icons.forMdi(configIcon)
+        ?: R1Icons.forEntity(entityId, deviceClass = state?.deviceClass, state = state?.rawState)
+
+/**
+ * The round accent-tinted icon disc shared by the tile / button / entity / glance
+ * renderers. Centres a fixed-size [Icon] in a circle filled + outlined with the
+ * card's [accent]. [showBorder] is dropped for the lighter glance/entity discs.
+ */
+@Composable
+internal fun CardIconDisc(
+    icon: ImageVector,
+    accent: Color,
+    discSize: Dp,
+    iconSize: Dp = 22.dp,
+    showBorder: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(discSize)
+            .clip(CircleShape)
+            .background(accent.copy(alpha = 0.18f))
+            .then(
+                if (showBorder) {
+                    Modifier.border(1.dp, accent.copy(alpha = 0.4f), CircleShape)
+                } else {
+                    Modifier
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
 
 /**
  * A single unicode glyph standing in for an entity's domain (and, for a

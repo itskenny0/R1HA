@@ -90,6 +90,14 @@ fun DashboardViewScreen(
      *  strategy-dashboard fallback when R1HA can't resolve the layout
      *  natively. No-op default keeps the screen renderable in isolation. */
     onOpenLovelace: () -> Unit = {},
+    /** Navigate to another view in the same dashboard (a `navigate`
+     *  tap_action's `navigation_path`). Fired by cards and badges. No-op
+     *  default keeps the screen renderable in isolation. */
+    onOpenView: (String) -> Unit = {},
+    /** Open the more-info drill-in for an entity. Wired by a later wave (the
+     *  more-info sheet); badge / card more-info taps route through here so they
+     *  light up once it lands. No-op default for now. */
+    onMoreInfo: (String) -> Unit = {},
 ) {
     val vm: DashboardsViewModel = viewModel(
         factory = DashboardsViewModel.factory(haRepository, overrideStore),
@@ -185,6 +193,7 @@ fun DashboardViewScreen(
             )
             else -> ViewModeBody(
                 cards = renderedCards,
+                badges = view.badges,
                 stateMap = entities,
                 // The view model carries no masonry-vs-sections distinction, so
                 // express no column preference and let dashboardColumnCount()
@@ -201,9 +210,11 @@ fun DashboardViewScreen(
                                 else -> null
                             },
                             haRepository = haRepository,
-                            onNavigate = { /* navigation is dashboard-internal only today */ },
+                            // A `navigate` tap (cards or badges) targets another view
+                            // in the same dashboard; route it to the view opener.
+                            onNavigate = { path -> onOpenView(path) },
                             onOpenUrl = { url -> launchUrl(context, url) },
-                            onMoreInfo = { /* TODO: hook into card-stack drill-in */ },
+                            onMoreInfo = onMoreInfo,
                             // Live state lookup by raw id so a toggle flips the right
                             // direction (the dispatcher reads isOn to pick turn_on vs
                             // turn_off / open vs close).
@@ -259,6 +270,7 @@ private fun TopChip(text: String, accent: androidx.compose.ui.graphics.Color, on
 @Composable
 private fun ViewModeBody(
     cards: List<LovelaceCard>,
+    badges: List<com.github.itskenny0.r1ha.core.lovelace.LovelaceBadge>,
     stateMap: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
     onAction: (LovelaceAction) -> Unit,
     /** Column count the view config asks for (legacy masonry `columns`, or a
@@ -283,6 +295,17 @@ private fun ViewModeBody(
             .verticalScroll(scroll)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        // View badges ("chips on top"): a horizontal, scrollable row above the
+        // cards. Renders nothing (and adds no gap) when the view has none.
+        if (badges.isNotEmpty()) {
+            LovelaceBadgeRow(
+                badges = badges,
+                states = states,
+                onAction = onAction,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         if (columns <= 1) {
             // Single column: render cards in order, one per row. This is the
             // R1 / compact-phone path and must stay a plain vertical list so

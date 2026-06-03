@@ -2,14 +2,11 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -55,17 +52,8 @@ fun ButtonCard(
         // (an entity-bound button); a bare action button without an entity skips
         // the disc rather than drawing a meaningless placeholder.
         if (card.showIcon && card.entityId != null) {
-            val glyph = domainGlyph(card.entityId, state)
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.18f))
-                    .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = glyph, style = R1.numeralM, color = accent)
-            }
+            val icon = cardEntityIcon(card.entityId, state, card.icon)
+            CardIconDisc(icon = icon, accent = accent, discSize = 48.dp, iconSize = 24.dp)
             Spacer(Modifier.height(10.dp))
         }
         if (card.showName) {
@@ -83,12 +71,9 @@ fun ButtonCard(
                 text = compactStateText(state),
                 style = R1.labelMicro,
                 color = accent,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.height(6.dp))
-        // Always show a small action chip so a button-card with hidden
-        // name + state still reads as tappable. Mirrors HA's visual: even
-        // a bare button surface has a hint that something will happen.
-        StateChip(text = "tap", accent = accent)
     }
 }

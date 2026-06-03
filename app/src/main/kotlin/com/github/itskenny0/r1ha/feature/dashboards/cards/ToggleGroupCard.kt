@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -92,7 +94,12 @@ private fun ToggleSegment(
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text = domainGlyph(ref, state), style = R1.numeralS, color = accent)
+        Icon(
+            imageVector = cardEntityIcon(ref, state),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(20.dp),
+        )
         Spacer(Modifier.width(8.dp))
         Text(
             text = name,

@@ -107,6 +107,152 @@ object R1Icons {
     }
 
     /**
+     * Map an HA `icon:` config string to an in-house icon. Accepts the slug
+     * with or without the leading `mdi:` prefix (e.g. "mdi:lightbulb" or
+     * "lightbulb"). Returns null for any slug we don't curate so the caller can
+     * fall back to [forEntity] / [forDomain] (the domain-derived glyph). The
+     * curated set covers the common dashboard slugs; unknown slugs intentionally
+     * fall through rather than guessing.
+     */
+    fun forMdi(slug: String?): ImageVector? {
+        if (slug.isNullOrBlank()) return null
+        val s = slug.trim().removePrefix("mdi:").trim().lowercase()
+        if (s.isEmpty()) return null
+        return when (s) {
+            // Lighting
+            "lightbulb", "lightbulb-outline", "lightbulb-on", "lightbulb-on-outline",
+            "ceiling-light", "floor-lamp", "lamp", "led-strip", "track-light",
+            "spotlight", "spotlight-beam", "wall-sconce", "bulb",
+            -> R1IconSet.Light
+            // Switches / outlets / power
+            "toggle-switch", "toggle-switch-outline", "light-switch", "electric-switch",
+            -> R1IconSet.Switch
+            "power-plug", "power-plug-outline", "power-socket", "power-socket-eu",
+            "power-socket-us", "outlet",
+            -> R1IconSet.Outlet
+            "power", "power-standby", "power-on", "power-off", "flash", "flash-outline",
+            "lightning-bolt", "lightning-bolt-outline",
+            -> R1IconSet.Power
+            "transmission-tower", "meter-electric", "meter-electric-outline",
+            "home-lightning-bolt", "gauge", "gauge-low", "gauge-full", "speedometer",
+            -> R1IconSet.Power
+            // Climate / temperature / humidity
+            "thermostat", "thermostat-box", "hvac", "air-conditioner",
+            -> R1IconSet.Climate
+            "thermometer", "thermometer-lines", "temperature-celsius",
+            "temperature-fahrenheit", "home-thermometer", "coolant-temperature",
+            -> R1IconSet.Temperature
+            "water-percent", "water-percent-alert", "cloud-percent",
+            -> R1IconSet.Humidity
+            "air-humidifier", "air-humidifier-off",
+            -> R1IconSet.Humidifier
+            // Air / fans
+            "fan", "fan-off", "fan-speed-1", "fan-speed-2", "fan-speed-3", "ceiling-fan",
+            -> R1IconSet.Fan
+            // Covers / openings
+            "window-shutter", "window-shutter-open", "window-shutter-alert",
+            "blinds", "blinds-open", "roller-shade", "curtains", "window-shutter-cog",
+            -> R1IconSet.Cover
+            "garage", "garage-open", "garage-variant", "garage-alert",
+            -> R1IconSet.Garage
+            "door", "door-open", "door-closed", "door-closed-lock",
+            -> R1IconSet.Door
+            "window-open", "window-closed", "window-open-variant", "window-closed-variant",
+            -> R1IconSet.Window
+            // Security
+            "lock", "lock-outline", "lock-open", "lock-open-outline", "lock-smart",
+            -> R1IconSet.Lock
+            "shield-home", "shield-lock", "shield-check", "security",
+            "alarm-panel", "home-lock",
+            -> R1IconSet.AlarmControlPanel
+            "alarm-light", "bullhorn", "bell-ring", "bell-alert",
+            -> R1IconSet.Siren
+            // Sensors
+            "motion-sensor", "motion-sensor-off", "walk", "run", "run-fast",
+            -> R1IconSet.Motion
+            "account-eye", "cctv", "human-greeting",
+            -> R1IconSet.Occupancy
+            "smoke-detector", "smoke", "fire", "gas-cylinder", "molecule-co2",
+            -> R1IconSet.Smoke
+            "water", "water-alert", "water-outline", "cup-water", "waves",
+            -> R1IconSet.Moisture
+            "gauge-empty", "car-brake-low-pressure", "gas-burner",
+            -> R1IconSet.Pressure
+            "brightness-5", "brightness-6", "brightness-7", "white-balance-sunny",
+            "weather-sunny",
+            -> R1IconSet.Illuminance
+            "thermometer-water", "eye",
+            -> R1IconSet.Sensor
+            // Battery / energy
+            "battery", "battery-outline", "battery-charging", "battery-50",
+            "battery-high", "battery-medium", "battery-low", "battery-alert",
+            -> R1IconSet.Battery
+            "solar-power", "solar-panel", "solar-panel-large",
+            -> R1IconSet.Power
+            // Weather
+            "weather-cloudy", "weather-partly-cloudy", "weather-rainy",
+            "weather-pouring", "weather-snowy", "weather-fog", "weather-windy",
+            "weather-lightning", "weather-night", "cloud",
+            -> R1IconSet.Weather
+            "white-balance-sunny-alert", "sun-clock", "sun-thermometer", "weather-sunset",
+            -> R1IconSet.Sun
+            // Media
+            "play", "play-circle", "pause", "music", "music-note", "playlist-music",
+            -> R1IconSet.MediaPlayer
+            "speaker", "speaker-wireless", "cast-audio", "volume-high",
+            -> R1IconSet.Speaker
+            "television", "television-classic", "monitor", "remote-tv",
+            -> R1IconSet.Tv
+            "remote", "remote-control",
+            -> R1IconSet.Remote
+            "camera", "camera-outline", "video", "webcam",
+            -> R1IconSet.Camera
+            // People / places
+            "account", "account-outline", "account-circle", "human", "face-man",
+            -> R1IconSet.Person
+            "home", "home-outline", "home-variant", "house", "home-assistant",
+            -> R1IconSet.Generic
+            "map-marker", "map-marker-radius", "crosshairs-gps",
+            -> R1IconSet.Zone
+            // Helpers / logic
+            "robot", "robot-outline", "cog", "cog-outline", "auto-fix",
+            -> R1IconSet.Automation
+            "script-text", "script", "file-document",
+            -> R1IconSet.Script
+            "palette", "movie-roll", "movie-open", "star-four-points",
+            -> R1IconSet.Scene
+            "gesture-tap-button", "gesture-tap",
+            -> R1IconSet.Button
+            "toggle-switch-variant", "check-circle",
+            -> R1IconSet.InputBoolean
+            "form-textbox", "text", "text-box",
+            -> R1IconSet.Text
+            "format-list-bulleted", "menu", "arrow-down-drop-circle",
+            -> R1IconSet.Select
+            "numeric", "pound", "counter",
+            -> R1IconSet.Counter
+            "timer", "timer-outline", "timer-sand", "clock", "clock-outline",
+            -> R1IconSet.Timer
+            "calendar", "calendar-outline", "calendar-month", "calendar-clock",
+            -> R1IconSet.Calendar
+            "format-list-checks", "playlist-check", "check-all", "clipboard-list",
+            -> R1IconSet.Todo
+            "update", "package-up", "download", "cloud-download", "arrow-up-bold",
+            -> R1IconSet.Update
+            // Appliances
+            "robot-vacuum", "robot-vacuum-variant",
+            -> R1IconSet.Vacuum
+            "valve", "valve-open", "valve-closed", "pipe-valve",
+            -> R1IconSet.Valve
+            "water-boiler", "water-pump", "heating-coil",
+            -> R1IconSet.WaterHeater
+            "robot-mower", "robot-mower-outline", "mower",
+            -> R1IconSet.LawnMower
+            else -> null
+        }
+    }
+
+    /**
      * Map a HA sensor / binary_sensor `device_class` to an icon, or null when
      * the class is unknown / absent (caller then falls back to the generic
      * sensor glyph).

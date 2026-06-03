@@ -2,17 +2,13 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -53,7 +49,7 @@ fun TileCard(
         stateAccent
     }
     val name = resolveName(card.name, state, card.entityId)
-    val glyph = domainGlyph(card.entityId, state)
+    val icon = cardEntityIcon(card.entityId, state, card.icon)
     // Bind the card's entity to a config tap_action that omits one (toggle /
     // more-info / target-less call-service) so the dispatcher always has a target.
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
@@ -72,7 +68,7 @@ fun TileCard(
             modifier = modifier.then(tileSurface),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            IconDisc(accent = accent, size = 48.dp, glyph = glyph)
+            CardIconDisc(icon = icon, accent = accent, discSize = 48.dp, iconSize = 24.dp)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = name,
@@ -88,6 +84,9 @@ fun TileCard(
                     text = stateText,
                     style = R1.labelMicro,
                     color = accent,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }
@@ -96,7 +95,7 @@ fun TileCard(
             modifier = modifier.then(tileSurface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconDisc(accent = accent, size = 40.dp, glyph = glyph)
+            CardIconDisc(icon = icon, accent = accent, discSize = 40.dp, iconSize = 22.dp)
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -142,21 +141,3 @@ private fun isToggleableDomain(entityId: String): Boolean =
         "remote", "group" -> true
         else -> false
     }
-
-@Composable
-private fun IconDisc(
-    accent: androidx.compose.ui.graphics.Color,
-    size: androidx.compose.ui.unit.Dp,
-    glyph: String = "·",
-) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(accent.copy(alpha = 0.18f))
-            .border(1.dp, accent.copy(alpha = 0.4f), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = glyph, style = R1.numeralM, color = accent)
-    }
-}

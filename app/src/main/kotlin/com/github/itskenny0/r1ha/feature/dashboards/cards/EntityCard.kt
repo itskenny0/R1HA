@@ -2,16 +2,12 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -55,7 +51,8 @@ fun EntityCard(
     val nameOverride = card.raw["name"]?.let { (it as? JsonPrimitive)?.content }
     val name = resolveName(nameOverride, state, entityId)
     val accent = stateAccentFor(entityId, state)
-    val glyph = domainGlyph(entityId, state)
+    val configIcon = card.raw["icon"]?.let { (it as? JsonPrimitive)?.content }
+    val icon = cardEntityIcon(entityId, state, configIcon)
     // HA's entity card can pin the readout to a named attribute instead of the
     // entity state (`attribute:`). Resolve it from the live attributes when set.
     val attribute = card.raw["attribute"]?.let { (it as? JsonPrimitive)?.content }
@@ -78,15 +75,13 @@ fun EntityCard(
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(accent.copy(alpha = 0.18f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text = glyph, style = R1.numeralS, color = accent)
-        }
+        CardIconDisc(
+            icon = icon,
+            accent = accent,
+            discSize = 36.dp,
+            iconSize = 20.dp,
+            showBorder = false,
+        )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

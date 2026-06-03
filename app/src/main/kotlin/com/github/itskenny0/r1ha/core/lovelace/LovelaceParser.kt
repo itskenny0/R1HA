@@ -107,8 +107,58 @@ object LovelaceParser {
             icon = obj["icon"]?.asStringOrNull(),
             panel = obj["panel"]?.asBooleanOrNull() ?: false,
             cards = directCards + sectionCards,
+            badges = parseBadges(obj["badges"]),
             isStrategyGenerated = isStrategy,
         )
+    }
+
+    /**
+     * Parse a view's `badges:` array. HA accepts each entry as either a bare
+     * entity-id string (`sensor.time`) or a `type: entity` object carrying
+     * `show_name` / `show_state` / `show_icon` / `color` / `name` / `icon` /
+     * `tap_action`. Both shapes resolve to a [LovelaceBadge]; a badge type we
+     * don't model still yields a minimal chip (driven by its `entity` / `name`)
+     * rather than being dropped, and an entry with neither is skipped.
+     */
+    private fun parseBadges(el: JsonElement?): List<LovelaceBadge> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString && item.content.looksLikeEntityId()) {
+                    LovelaceBadge(
+                        entityId = item.content,
+                        name = null,
+                        icon = null,
+                        color = null,
+                        showName = false,
+                        showState = true,
+                        showIcon = true,
+                        tapAction = null,
+                    )
+                } else {
+                    null
+                }
+                is JsonObject -> {
+                    val entity = item["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
+                    val name = item["name"]?.asStringOrNull()
+                    // Need at least an entity to read state from, or a name to
+                    // label a static chip; an entry with neither has nothing to show.
+                    if (entity == null && name.isNullOrBlank()) return@mapNotNull null
+                    LovelaceBadge(
+                        entityId = entity,
+                        name = name,
+                        icon = item["icon"]?.asStringOrNull(),
+                        color = item["color"]?.asStringOrNull(),
+                        // HA's entity-badge defaults: state on, name off, icon on.
+                        showName = item["show_name"]?.asBooleanOrNull() ?: false,
+                        showState = item["show_state"]?.asBooleanOrNull() ?: true,
+                        showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
+                        tapAction = parseAction(item["tap_action"] as? JsonObject),
+                    )
+                }
+                else -> null
+            }
+        }
     }
 
     /** Cards inside one section of a "sections" view. Strategy sections carry

@@ -339,7 +339,7 @@ class DashboardsViewModel(
             _renderedEntities.value = emptySet()
             return
         }
-        _renderedEntities.value = collectRawEntityIds(view.cards)
+        _renderedEntities.value = collectRawEntityIds(view)
     }
 
     private fun refreshRenderedEntities() {
@@ -347,19 +347,22 @@ class DashboardsViewModel(
         val config = _state.value.configs[key ?: DEFAULT_KEY] ?: return
         val viewPath = _state.value.selectedViewPath
         val view = viewPath?.let { p -> config.views.firstOrNull { it.path == p } } ?: return
-        _renderedEntities.value = collectRawEntityIds(view.cards)
+        _renderedEntities.value = collectRawEntityIds(view)
     }
 
     /**
-     * Collect the raw entity ids referenced by [cards] (and descendants).
-     * Delegates to the renderer-layer traversal so the subscription set and
-     * the per-card slice can never drift apart.
+     * Collect the raw entity ids the [view] references: its cards (and their
+     * descendants) plus its top-level badges. Delegates the card walk to the
+     * renderer-layer traversal so the subscription set and the per-card slice
+     * can never drift apart; badge entities are unioned in so the badge row
+     * gets live state the same way cards do.
      */
     private fun collectRawEntityIds(
-        cards: List<com.github.itskenny0.r1ha.core.lovelace.LovelaceCard>,
+        view: com.github.itskenny0.r1ha.core.lovelace.LovelaceView,
     ): Set<String> {
         val out = LinkedHashSet<String>()
-        cards.forEach { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
+        view.cards.forEach { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
+        view.badges.forEach { badge -> badge.entityId?.let(out::add) }
         return out
     }
 

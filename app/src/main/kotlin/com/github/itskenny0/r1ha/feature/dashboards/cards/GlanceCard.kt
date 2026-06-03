@@ -2,15 +2,12 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -99,15 +96,13 @@ private fun GlanceTile(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (showIcon) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = domainGlyph(row.entityId, state), style = R1.numeralS, color = accent)
-            }
+            CardIconDisc(
+                icon = cardEntityIcon(row.entityId, state, row.icon),
+                accent = accent,
+                discSize = 28.dp,
+                iconSize = 18.dp,
+                showBorder = false,
+            )
             Spacer(Modifier.height(6.dp))
         }
         if (showName) {
@@ -130,6 +125,7 @@ private fun GlanceTile(
                 style = R1.labelMicro,
                 color = accent,
                 maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
     }

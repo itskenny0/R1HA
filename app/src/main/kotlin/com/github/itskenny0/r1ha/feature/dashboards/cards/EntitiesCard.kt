@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -161,13 +163,13 @@ private fun EntityRowItem(
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = domainGlyph(row.entityId, state),
-            style = R1.numeralS,
-            color = accent,
-            modifier = Modifier.width(22.dp),
+        Icon(
+            imageVector = cardEntityIcon(row.entityId, state, row.icon),
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(22.dp),
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = name,
