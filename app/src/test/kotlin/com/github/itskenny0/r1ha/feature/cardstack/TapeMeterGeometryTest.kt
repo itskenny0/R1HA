@@ -45,6 +45,35 @@ class TapeMeterGeometryTest {
         }
     }
 
+    @Test fun `fractional-spacing ticks round to nearest percent, not truncate`() {
+        // count = 4 spaces ticks at 100, 66.67, 33.33, 0. The middle ticks must round
+        // (67 / 33), not truncate (66 / 33): truncation biased the 66.67% tick low.
+        assertThat(TapeMeterGeometry.verticalTickPercent(idx = 0, count = 4)).isEqualTo(100)
+        assertThat(TapeMeterGeometry.verticalTickPercent(idx = 1, count = 4)).isEqualTo(67)
+        assertThat(TapeMeterGeometry.verticalTickPercent(idx = 2, count = 4)).isEqualTo(33)
+        assertThat(TapeMeterGeometry.verticalTickPercent(idx = 3, count = 4)).isEqualTo(0)
+        // count = 8 spaces ticks at multiples of 100/7 ≈ 14.29. Left→right rounded.
+        assertThat((0 until 8).map { TapeMeterGeometry.horizontalTickPercent(it, 8) })
+            .containsExactly(0, 14, 29, 43, 57, 71, 86, 100)
+            .inOrder()
+    }
+
+    @Test fun `every tick is the closest whole percent to its native fraction`() {
+        // Property: for any tick count, the returned percent is within half a percent of
+        // the tick's true fraction-of-range, for both orientations. This is what makes a
+        // tap land on (or nearest to) the label's own value.
+        for (count in 2..12) {
+            for (idx in 0 until count) {
+                val trueVPct = 100.0 * (count - 1 - idx) / (count - 1)
+                assertThat(TapeMeterGeometry.verticalTickPercent(idx, count).toDouble())
+                    .isWithin(0.5).of(trueVPct)
+                val trueHPct = 100.0 * idx / (count - 1)
+                assertThat(TapeMeterGeometry.horizontalTickPercent(idx, count).toDouble())
+                    .isWithin(0.5).of(trueHPct)
+            }
+        }
+    }
+
     @Test fun `degenerate single tick collapses to 100`() {
         assertThat(TapeMeterGeometry.verticalTickPercent(idx = 0, count = 1)).isEqualTo(100)
         assertThat(TapeMeterGeometry.horizontalTickPercent(idx = 0, count = 1)).isEqualTo(100)

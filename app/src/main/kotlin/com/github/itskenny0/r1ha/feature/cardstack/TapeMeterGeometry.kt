@@ -1,5 +1,7 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
+import kotlin.math.roundToInt
+
 /**
  * Pure layout/value math for the card tape meters (vertical + horizontal). Lifted out
  * of the composables so the index↔percent mapping the tick labels rely on can be unit
@@ -21,11 +23,15 @@ internal object TapeMeterGeometry {
      * generation, which lays the labels out at fractions 1.0, 0.75 … 0.0 of the
      * entity's min..max. Because the wheel/setter maps percent linearly onto that same
      * min..max, tapping the top label jumps to max, the bottom to min, and each middle
-     * label to its own native value: the round trip is exact for any number of ticks.
+     * label to its own native value: with the nearest-integer rounding below the round
+     * trip is exact whenever a tick's fraction lands on a whole percent, and within half
+     * a percent of the label's native value otherwise. (Truncating instead, as this once
+     * did, biased every fractional tick low: a count-4 meter's 66.67% tick became 66, so
+     * tapping it under-shot the label it sat on.)
      */
     fun verticalTickPercent(idx: Int, count: Int): Int =
         if (count <= 1) 100
-        else (100f * (count - 1 - idx) / (count - 1)).toInt()
+        else (100f * (count - 1 - idx) / (count - 1)).roundToInt()
 
     /**
      * Percent (0..100) for the tick at [idx] in a horizontal meter whose label list is
@@ -35,5 +41,5 @@ internal object TapeMeterGeometry {
      */
     fun horizontalTickPercent(idx: Int, count: Int): Int =
         if (count <= 1) 100
-        else (100f * idx / (count - 1)).toInt()
+        else (100f * idx / (count - 1)).roundToInt()
 }
