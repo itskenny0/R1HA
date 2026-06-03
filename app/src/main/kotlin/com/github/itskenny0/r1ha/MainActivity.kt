@@ -386,6 +386,7 @@ class MainActivity : ComponentActivity() {
                                 currentRoute = currentRoute,
                                 showChrome = showShellChrome,
                                 phoneNavStyle = navPanel.phoneNavStyle,
+                                wheelInput = graph.wheelInput,
                                 onConfigure = {
                                     navController.navigate(Routes.SIDEBAR_CONFIG) {
                                         launchSingleTop = true

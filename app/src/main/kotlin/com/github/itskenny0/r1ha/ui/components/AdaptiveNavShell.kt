@@ -110,6 +110,10 @@ fun AdaptiveNavShell(
      *  hamburger opens its QuickActions sheet instead. Ignored on MEDIUM+ tiers, which always
      *  render the permanent rail / drawer. */
     phoneNavStyle: PhoneNavStyle = PhoneNavStyle.SLIDEOUT,
+    /** The scroll-wheel source. When non-null and the portrait slide-out is open, the wheel
+     *  scrolls the slide-out's destination list (touch scrolling still works either way), so
+     *  the R1's primary input drives the menu it just opened. Null on hosts without a wheel. */
+    wheelInput: com.github.itskenny0.r1ha.core.input.WheelInput? = null,
     content: @Composable () -> Unit,
 ) {
     val window by androidx.compose.runtime.rememberUpdatedState(LocalWindowTier.current)
@@ -131,6 +135,7 @@ fun AdaptiveNavShell(
                 currentRoute = currentRoute,
                 onNavigate = onNavigate,
                 onConfigure = onConfigure,
+                wheelInput = wheelInput,
                 modifier = modifier,
                 content = content,
             )
@@ -349,11 +354,15 @@ private fun PhoneNavSlideoutHost(
     currentRoute: String?,
     onNavigate: (String) -> Unit,
     onConfigure: (() -> Unit)?,
+    wheelInput: com.github.itskenny0.r1ha.core.input.WheelInput? = null,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val openState = remember { mutableStateOf(false) }
     val controller = remember(enabled) { NavDrawerController(available = enabled, openState = openState) }
+    // Hoisted so the wheel scroller and the panel's verticalScroll share one state, and the
+    // scroll position survives a close/reopen.
+    val panelScroll = rememberScrollState()
     // If the panel becomes unavailable (style flip, panel disabled), force it shut so a stale
     // open-state can't resurface the overlay if the panel is re-enabled later. Done in an
     // effect rather than inline so we never write state during composition.
@@ -388,6 +397,12 @@ private fun PhoneNavSlideoutHost(
                     enter = slideInHorizontally(tween(220)) { -it },
                     exit = slideOutHorizontally(tween(200)) { -it },
                 ) {
+                    // While the panel is shown, route the scroll wheel to its list so the R1's
+                    // primary input scrolls the menu it just opened. Mounted inside the visible
+                    // content so the collector only runs while open; touch scroll works anyway.
+                    if (wheelInput != null) {
+                        WheelScrollForScrollState(wheelInput = wheelInput, scrollState = panelScroll)
+                    }
                     Row {
                         NavDrawerContent(
                             destinations = destinations,
@@ -408,7 +423,7 @@ private fun PhoneNavSlideoutHost(
                                 .fillMaxHeight()
                                 .background(R1.Surface)
                                 .systemBarsPadding()
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(panelScroll)
                                 .padding(vertical = R1.space.l, horizontal = R1.space.m),
                         )
                         // Trailing hairline, matching the permanent drawer's edge.
