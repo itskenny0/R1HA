@@ -154,6 +154,9 @@ fun AppNavGraph(
                 onOpenHistory = { eid ->
                     navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
                 },
+                onOpenDashboardRoute = { route ->
+                    navController.navigate(route) { launchSingleTop = true }
+                },
             )
         }
         composable(Routes.FAVORITES_PICKER) {
@@ -605,6 +608,7 @@ fun AppNavGraph(
                     }
                 },
                 onBack = { navController.popBackStack() },
+                settings = settings,
             )
         }
         composable(

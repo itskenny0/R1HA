@@ -758,6 +758,49 @@ class SettingsRepository private constructor(
     }
 
     /**
+     * Pin a Lovelace dashboard VIEW (a full [Routes.dashboardsViewRoute] string) to the
+     * side navigation rail / drawer + the phone card-stack drawer. Appends to the end of
+     * [NavPanelSettings.pinnedDashboards] so newly-pinned views land at the bottom of the
+     * pinned list. No-op when the same [route] is already pinned (keeps its position
+     * rather than bouncing it to the end on a redundant tap); when already present we DO
+     * refresh the stored title/icon so a renamed view's pin label stays current.
+     */
+    suspend fun pinDashboard(route: String, title: String, icon: String? = null) {
+        update { s ->
+            val current = s.navPanel.pinnedDashboards
+            val existingIdx = current.indexOfFirst { it.route == route }
+            val next = if (existingIdx >= 0) {
+                // Already pinned — refresh its label/icon in place.
+                current.toMutableList().also {
+                    it[existingIdx] = it[existingIdx].copy(title = title, icon = icon)
+                }
+            } else {
+                current + PinnedDashboard(route = route, title = title, icon = icon)
+            }
+            s.copy(navPanel = s.navPanel.copy(pinnedDashboards = next))
+        }
+    }
+
+    /** Remove a pinned dashboard view from the side panel / phone drawer. No-op when not pinned. */
+    suspend fun unpinDashboard(route: String) {
+        update { s ->
+            val current = s.navPanel.pinnedDashboards
+            if (current.none { it.route == route }) s
+            else s.copy(navPanel = s.navPanel.copy(pinnedDashboards = current.filterNot { it.route == route }))
+        }
+    }
+
+    /** Replace the whole pinned-dashboard list (used by a reorder / bulk-edit UI).
+     *  De-duplicates by route while preserving first-seen order so a drag-reorder that
+     *  momentarily double-lists an item can't persist a dupe. */
+    suspend fun setPinnedDashboards(dashboards: List<PinnedDashboard>) {
+        update { s ->
+            val deduped = dashboards.distinctBy { it.route }
+            s.copy(navPanel = s.navPanel.copy(pinnedDashboards = deduped))
+        }
+    }
+
+    /**
      * Atomically restore an [AppBackup] on top of the current settings. Wraps
      * [AppBackup.applyOnto] in a single [update] call so the favourites union
      * + activePageId clamp logic runs once on the merged result; no half-

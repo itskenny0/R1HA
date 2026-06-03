@@ -37,6 +37,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceView
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.coroutines.launch
 
 /**
  * Top-level dashboards-list surface. Opened from Settings → Appearance
@@ -62,11 +63,22 @@ fun DashboardsListScreen(
     overrideStore: LovelaceOverrideStore,
     onOpenView: (dashboardUrlPath: String?, viewPath: String) -> Unit,
     onBack: () -> Unit,
+    /** Settings repository, used to read + mutate the pinned-dashboard list so each
+     *  view row can carry a pin / unpin toggle. Null (the isolation-render default)
+     *  hides the per-row pin affordance entirely. */
+    settings: com.github.itskenny0.r1ha.core.prefs.SettingsRepository? = null,
 ) {
     val vm: DashboardsViewModel = viewModel(
         factory = DashboardsViewModel.factory(haRepository, overrideStore),
     )
     val state by vm.state.collectAsState()
+    // Live pinned-dashboard routes so each view row reflects its pinned state and a
+    // toggle updates immediately. Null settings (isolation render) leaves the set
+    // empty and the pin affordance hidden.
+    val appSettings = settings?.settings?.collectAsState(initial = null)?.value
+    val pinnedRoutes: Set<String> = appSettings?.navPanel?.pinnedDashboards
+        ?.map { it.route }?.toSet() ?: emptySet()
+    val pinScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) { vm.loadDashboards() }
     // Auto-fetch the config for each listed dashboard so the view counts
     // appear without a per-row tap. Cheap on small installs; bounded at
@@ -119,6 +131,24 @@ fun DashboardsListScreen(
                             config = state.configs[d.urlPath ?: DashboardsViewModel.DEFAULT_KEY],
                             onPickView = { viewPath -> onOpenView(d.urlPath, viewPath) },
                             onReload = { vm.loadConfig(d.urlPath, force = true) },
+                            // Pin affordance: only when settings is wired. routeFor builds the
+                            // concrete dashboards-view route the pin list keys on; the toggle
+                            // pins with the view's title + icon and unpins by route.
+                            showPin = settings != null,
+                            isPinned = { viewPath ->
+                                com.github.itskenny0.r1ha.nav.Routes
+                                    .dashboardsViewRoute(d.urlPath, viewPath) in pinnedRoutes
+                            },
+                            onTogglePin = { view ->
+                                val s = settings ?: return@DashboardRow
+                                val route = com.github.itskenny0.r1ha.nav.Routes
+                                    .dashboardsViewRoute(d.urlPath, view.path)
+                                val title = view.title?.takeUnless { it.isBlank() } ?: view.path
+                                pinScope.launch {
+                                    if (route in pinnedRoutes) s.unpinDashboard(route)
+                                    else s.pinDashboard(route, title, view.icon)
+                                }
+                            },
                         )
                     }
                     item { Spacer(Modifier.height(20.dp)) }
@@ -153,6 +183,12 @@ private fun DashboardRow(
     config: LovelaceConfig?,
     onPickView: (String) -> Unit,
     onReload: () -> Unit,
+    /** When true each view row sprouts a pin / unpin toggle. */
+    showPin: Boolean = false,
+    /** Is the view at [viewPath] within this dashboard currently pinned? */
+    isPinned: (viewPath: String) -> Boolean = { false },
+    /** Toggle the pinned state of [view] (pins with its title + icon, or unpins). */
+    onTogglePin: (LovelaceView) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -201,7 +237,13 @@ private fun DashboardRow(
             Spacer(Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 config.views.forEach { v ->
-                    ViewRow(view = v, onClick = { onPickView(v.path) })
+                    ViewRow(
+                        view = v,
+                        onClick = { onPickView(v.path) },
+                        showPin = showPin,
+                        pinned = isPinned(v.path),
+                        onTogglePin = { onTogglePin(v) },
+                    )
                 }
             }
         } else if (config != null && config.isStrategyGenerated) {
@@ -240,7 +282,13 @@ private fun DashboardRow(
 }
 
 @Composable
-private fun ViewRow(view: LovelaceView, onClick: () -> Unit) {
+private fun ViewRow(
+    view: LovelaceView,
+    onClick: () -> Unit,
+    showPin: Boolean = false,
+    pinned: Boolean = false,
+    onTogglePin: () -> Unit = {},
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -265,6 +313,16 @@ private fun ViewRow(view: LovelaceView, onClick: () -> Unit) {
                 style = R1.numeralS,
                 color = R1.InkMuted,
             )
+        }
+        // Pin / unpin this view. Drawn as its own tap target so a pin tap doesn't
+        // also fire the row's OPEN. Reuses the shared star affordance for parity
+        // with the dashboard view's top-bar toggle.
+        if (showPin) {
+            com.github.itskenny0.r1ha.ui.components.PinToggle(
+                pinned = pinned,
+                onClick = onTogglePin,
+            )
+            Spacer(Modifier.size(4.dp))
         }
         Text(text = "OPEN", style = R1.labelMicro, color = R1.AccentWarm)
     }

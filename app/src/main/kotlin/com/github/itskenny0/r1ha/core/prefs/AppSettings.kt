@@ -474,6 +474,20 @@ data class NavPanelSettings(
      * one. Default is a small sensible starter set covering the most-reached surfaces.
      */
     val pinnedSurfaces: List<String> = DEFAULT_PINNED_SURFACES,
+    /**
+     * User-pinned Lovelace dashboard VIEWS, shown in the side navigation rail /
+     * drawer (and the phone card-stack QuickActions drawer) BELOW the pinned
+     * surfaces. Unlike [pinnedSurfaces] these aren't fixed nav surfaces — each is
+     * a concrete dashboards-view route the user pinned from the dashboards list or
+     * a dashboard view's top bar, carrying its own title (and optional mdi icon
+     * slug) so the rail/drawer can label it without re-fetching the Lovelace config.
+     *
+     * Stored as a list so the user's pin order is the display order. Empty by
+     * default (a fresh install has no dashboards pinned). Forward-compatible: an
+     * unknown / future field on [PinnedDashboard] decodes cleanly via the
+     * ignore-unknown-keys JSON config used for the whole struct.
+     */
+    val pinnedDashboards: List<PinnedDashboard> = emptyList(),
 ) {
     companion object {
         /** Sensible starter pins: the surfaces users reach most. Route-id strings
@@ -485,6 +499,25 @@ data class NavPanelSettings(
         )
     }
 }
+
+/**
+ * One user-pinned Lovelace dashboard view (see [NavPanelSettings.pinnedDashboards]).
+ *
+ * [route] is the full concrete dashboards-view route built by
+ * [com.github.itskenny0.r1ha.nav.Routes.dashboardsViewRoute] (so the shell / drawer
+ * can navigate straight to it without re-deriving the path); it doubles as the stable
+ * id the pin/unpin mutators key on. [title] is the view (or dashboard) title shown in
+ * the rail / drawer / phone drawer. [icon] is an optional Material Design Icons slug
+ * (e.g. "mdi:view-dashboard") carried from the view config when present; null falls
+ * back to a generic dashboard glyph at render time.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class PinnedDashboard(
+    val route: String,
+    val title: String,
+    val icon: String? = null,
+)
 
 /**
  * Connection-hardening preferences surfaced under Settings → Connection & server. These tune the

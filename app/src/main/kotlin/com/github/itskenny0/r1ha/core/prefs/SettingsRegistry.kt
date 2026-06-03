@@ -150,6 +150,17 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             if (pinned.isEmpty()) "none" else "${pinned.size} pinned"
         },
     ),
+    SettingEntry(
+        id = "navpanel.pinnedDashboards",
+        category = SettingCategory.APPEARANCE,
+        label = "Pinned dashboards",
+        description = "Lovelace views pinned to the side panel / quick-actions drawer",
+        isDefault = { it.navPanel.pinnedDashboards == defaults.navPanel.pinnedDashboards },
+        currentDisplay = {
+            val pinned = it.navPanel.pinnedDashboards
+            if (pinned.isEmpty()) "none" else "${pinned.size} pinned"
+        },
+    ),
 
     // ── Scroll wheel ────────────────────────────────────────────────────
     SettingEntry(

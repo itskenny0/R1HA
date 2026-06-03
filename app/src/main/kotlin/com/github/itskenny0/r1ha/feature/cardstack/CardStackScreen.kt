@@ -120,6 +120,11 @@ fun CardStackScreen(
     onOpenWeather: () -> Unit = {},
     onOpenPersons: () -> Unit = {},
     onOpenHistory: (entityId: String) -> Unit = {},
+    /** Navigate to a pinned Lovelace dashboard VIEW by its full
+     *  [com.github.itskenny0.r1ha.nav.Routes.dashboardsViewRoute] string. Surfaced
+     *  in the QuickActions drawer's DASHBOARDS section so phone users (no nav rail)
+     *  can reach their pinned views. Default no-op keeps previews / tests cheap. */
+    onOpenDashboardRoute: (String) -> Unit = {},
 ) {
     val vm: CardStackViewModel = viewModel(
         factory = CardStackViewModel.factory(
@@ -1527,6 +1532,13 @@ fun CardStackScreen(
                 playingMediaCount = playingMediaCount,
                 focusedName = focused?.friendlyName,
                 contextJumps = contextJumps,
+                // Pinned Lovelace views — the phone's stand-in for the tablet nav rail's
+                // dashboard pins. Each closes the sheet then navigates to its route.
+                pinnedDashboards = appSettings.navPanel.pinnedDashboards,
+                onOpenDashboardRoute = { route ->
+                    quickActionsOpen.value = false
+                    onOpenDashboardRoute(route)
+                },
                 onOpenDashboard = {
                     quickActionsOpen.value = false
                     onOpenDashboard()
@@ -3012,6 +3024,13 @@ private fun QuickActionsSheet(
     /** Context-aware jumps tailored to the focused card's domain plus the
      *  always-available broad jumps. Empty list hides the GO TO row entirely. */
     contextJumps: List<QuickJump>,
+    /** User-pinned Lovelace dashboard views. Rendered as the DASHBOARDS section
+     *  (the phone surface for dashboard pins, since phones show no nav rail).
+     *  Empty list hides the section entirely. */
+    pinnedDashboards: List<com.github.itskenny0.r1ha.core.prefs.PinnedDashboard>,
+    /** Navigate to a pinned dashboard view by its full route. Already closes the
+     *  sheet before navigating. */
+    onOpenDashboardRoute: (String) -> Unit,
     onOpenDashboard: () -> Unit,
     onOpenAssist: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -3151,6 +3170,37 @@ private fun QuickActionsSheet(
                     repeat(4 - contextJumps.take(4).size) {
                         Spacer(Modifier.weight(1f))
                     }
+                }
+            }
+
+            // ── DASHBOARDS row — user-pinned Lovelace views ──
+            // The phone surface for dashboard pins (phones show no nav rail, so
+            // the rail's dashboard tier lives here instead). A clearly-labelled
+            // group of glyph tiles, laid out in rows of four to line up with the
+            // BROWSE grid. Each tile navigates straight to its pinned route. The
+            // generic ▤ glyph matches the rail's dashboard mark.
+            if (pinnedDashboards.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text(text = "DASHBOARDS", style = R1.labelMicro, color = R1.InkSoft)
+                Spacer(Modifier.height(6.dp))
+                pinnedDashboards.chunked(4).forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        rowItems.forEach { dash ->
+                            DrawerGlyph(
+                                modifier = Modifier.weight(1f),
+                                glyph = "▤",
+                                label = dash.title.uppercase(),
+                                onClick = { onOpenDashboardRoute(dash.route) },
+                            )
+                        }
+                        // Pad the last (possibly short) row to four columns so the
+                        // tiles keep the BROWSE grid's width.
+                        repeat(4 - rowItems.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
             }
             Spacer(Modifier.height(14.dp))

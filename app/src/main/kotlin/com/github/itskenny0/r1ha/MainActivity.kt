@@ -298,6 +298,7 @@ class MainActivity : ComponentActivity() {
                             val navDestinations = androidx.compose.runtime.remember(
                                 navPanel.hiddenNavItems,
                                 navPanel.pinnedSurfaces,
+                                navPanel.pinnedDashboards,
                             ) {
                                 val core = com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
                                     homeRoute = Routes.CARD_STACK,
@@ -324,7 +325,22 @@ class MainActivity : ComponentActivity() {
                                             glyph = surface.glyph,
                                         )
                                     }
-                                core + pins
+                                // User-pinned Lovelace dashboard VIEWS, appended after the
+                                // pinned surfaces as a second tier of one-tap shortcuts. Each
+                                // carries its own concrete dashboards-view route; the shell
+                                // navigates straight to it. A generic dashboard glyph keeps
+                                // them visually grouped (the rail/drawer render text glyphs,
+                                // so the optional mdi icon slug isn't used here). The route is
+                                // the stable id so two views with the same title don't collide.
+                                val dashboardPins = navPanel.pinnedDashboards.map { pinned ->
+                                    com.github.itskenny0.r1ha.ui.components.NavDestination(
+                                        route = pinned.route,
+                                        label = pinned.title,
+                                        glyph = "▤",
+                                        id = pinned.route,
+                                    )
+                                }
+                                core + pins + dashboardPins
                             }
                             // Suppress the rail / drawer on full-bleed flows where there's
                             // no app to navigate yet (onboarding, the long-lived-token

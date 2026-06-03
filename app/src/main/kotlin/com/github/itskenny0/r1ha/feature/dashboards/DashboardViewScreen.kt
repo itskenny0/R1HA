@@ -149,6 +149,15 @@ fun DashboardViewScreen(
     // settings (isolation render) leaves appSettings null and the sheet stays
     // suppressed; the onMoreInfo callback still fires.
     val appSettings = settings?.settings?.collectAsState(initial = null)?.value
+    // Pin-to-side-panel affordance state. The pinnable route is the concrete
+    // dashboards-view route for the view the user is currently looking at; its
+    // pinned state is read from the live nav-panel pin list. Both resolve only
+    // when settings is provided (real app, not isolation render).
+    val pinRoute = remember(dashboardUrlPath, viewPath) {
+        com.github.itskenny0.r1ha.nav.Routes.dashboardsViewRoute(dashboardUrlPath, viewPath)
+    }
+    val isPinned = appSettings?.navPanel?.pinnedDashboards?.any { it.route == pinRoute } == true
+    val pinScope = rememberCoroutineScope()
     // Entity whose ultra-detail sheet is currently open; null = none.
     var moreInfoEntityId by remember { mutableStateOf<String?>(null) }
     // Wrap the caller's more-info handler: always fire it (external nav still
@@ -188,6 +197,22 @@ fun DashboardViewScreen(
             onBack = onBack,
             action = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Pin / unpin THIS view to the side panel + phone drawer. Shown only
+                    // when settings is wired (real app) and not while editing the layout,
+                    // so the edit chips keep the bar uncluttered. Filled star = pinned.
+                    if (settings != null && !state.editMode) {
+                        com.github.itskenny0.r1ha.ui.components.PinToggle(
+                            pinned = isPinned,
+                            onClick = {
+                                val title = view?.title?.takeUnless { it.isBlank() } ?: viewPath
+                                pinScope.launch {
+                                    if (isPinned) settings.unpinDashboard(pinRoute)
+                                    else settings.pinDashboard(pinRoute, title, view?.icon)
+                                }
+                            },
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
                     if (viewOverride.operations.isNotEmpty() && !state.editMode) {
                         TopChip(
                             text = if (state.showOriginal) "OVERRIDES" else "HA LAYOUT",
