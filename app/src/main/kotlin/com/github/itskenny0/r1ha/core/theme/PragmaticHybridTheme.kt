@@ -39,6 +39,7 @@ import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.EntityOverride
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlin.math.roundToInt
 
 /**
  * "Mission Control" — the default theme. Heavy orange on near-black, monospace numerals,
@@ -357,6 +358,16 @@ object PragmaticHybridTheme : R1Theme {
  * [outer] is the theme's already-padded root modifier (background + padding); the
  * scaffold applies it to the outer Row/Column so each theme keeps its own backdrop.
  */
+
+/**
+ * Map a 0..1 drag fraction (finger position along the value bar) to a 0..100 percent
+ * setpoint. Rounds to the nearest percent rather than truncating, so dragging to the
+ * visual two-thirds mark sets 67, not 66: truncation biased every setpoint low by up to
+ * a full percent, leaving the value a hair under the finger.
+ */
+internal fun dragFractionToPercent(frac: Float): Int =
+    (frac * 100f).roundToInt().coerceIn(0, 100)
+
 @Composable
 internal fun CardValueBarScaffold(
     model: CardRenderModel,
@@ -645,7 +656,7 @@ internal fun VerticalTapeMeter(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val initial = (1f - down.position.y / trackHeightPx.floatValue)
                             .coerceIn(0f, 1f)
-                        onSetPercent?.invoke(entityId, (initial * 100f).toInt().coerceIn(0, 100))
+                        onSetPercent?.invoke(entityId, dragFractionToPercent(initial))
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
@@ -654,7 +665,7 @@ internal fun VerticalTapeMeter(
                             if (change.position != change.previousPosition) {
                                 val frac = (1f - change.position.y / trackHeightPx.floatValue)
                                     .coerceIn(0f, 1f)
-                                onSetPercent?.invoke(entityId, (frac * 100f).toInt().coerceIn(0, 100))
+                                onSetPercent?.invoke(entityId, dragFractionToPercent(frac))
                             }
                             change.consume()
                         }
@@ -767,7 +778,7 @@ internal fun HorizontalTapeMeter(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val initial = (down.position.x / trackWidthPx.floatValue)
                             .coerceIn(0f, 1f)
-                        onSetPercent?.invoke(entityId, (initial * 100f).toInt().coerceIn(0, 100))
+                        onSetPercent?.invoke(entityId, dragFractionToPercent(initial))
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
@@ -776,7 +787,7 @@ internal fun HorizontalTapeMeter(
                             if (change.position != change.previousPosition) {
                                 val frac = (change.position.x / trackWidthPx.floatValue)
                                     .coerceIn(0f, 1f)
-                                onSetPercent?.invoke(entityId, (frac * 100f).toInt().coerceIn(0, 100))
+                                onSetPercent?.invoke(entityId, dragFractionToPercent(frac))
                             }
                             change.consume()
                         }
