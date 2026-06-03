@@ -4,6 +4,7 @@ import android.content.Context
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -51,8 +52,13 @@ class EntityStateCachePersister(
     /**
      * Wire the persister to a live cache flow. Call once from [DefaultHaRepository.start].
      * Subsequent `cache.update` emissions will be debounced and persisted.
+     *
+     * Returns the [Job] of the debounce-write loop so the caller can cancel it on a
+     * stop()/start() cycle — otherwise each rebind would leak another collector onto the
+     * long-lived [scope], and every [markDirty] would fan out into one redundant disk write
+     * per leaked collector.
      */
-    fun bind() {
+    fun bind(): Job =
         scope.launch {
             dirtyTicks.collectLatest {
                 // collectLatest cancels the previous in-flight delay every time
@@ -62,7 +68,6 @@ class EntityStateCachePersister(
                 withContext(Dispatchers.IO) { writeBlocking(latest) }
             }
         }
-    }
 
     /** Tell the persister the in-memory cache changed. Cheap — only emits a token
      *  on the bounded flow, the actual write happens off the hot path. */

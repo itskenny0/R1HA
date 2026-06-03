@@ -496,6 +496,13 @@ class DefaultHaRepository(
      * subscribing on a subsequent start().
      */
     @Volatile private var persisterCollectorJob: Job? = null
+    /**
+     * Tracks the persister's debounce-write loop ([EntityStateCachePersister.bind]). Like
+     * [persisterCollectorJob] it lives on [scope] and must be cancelled on stop()/rebind —
+     * otherwise each start() after the first leaks another write loop onto [scope] and every
+     * cache change fans out into one redundant disk write per leaked loop.
+     */
+    @Volatile private var persisterBindJob: Job? = null
     /** Tracks the currently-scheduled reconnect-backoff job so [reconnectNow] can cancel it. */
     @Volatile private var pendingReconnect: Job? = null
 
@@ -617,7 +624,8 @@ class DefaultHaRepository(
             // same process doesn't end up with two collectors fighting over
             // the same persister.
             persisterCollectorJob?.cancel()
-            p.bind()
+            persisterBindJob?.cancel()
+            persisterBindJob = p.bind()
             // Mirror every cache change into the persister so the snapshot
             // stays current. Debouncing happens inside markDirty's flow.
             persisterCollectorJob = cache.onEach { p.markDirty(it) }.launchIn(scope)
@@ -949,6 +957,7 @@ class DefaultHaRepository(
         subscriptionId = null
         seedJob?.cancel(); seedJob = null
         persisterCollectorJob?.cancel(); persisterCollectorJob = null
+        persisterBindJob?.cancel(); persisterBindJob = null
         supervisorJob?.cancel(); supervisorJob = null
         ws.disconnect()
     }
