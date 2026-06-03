@@ -385,6 +385,11 @@ class MainActivity : ComponentActivity() {
                                 destinations = navDestinations,
                                 currentRoute = currentRoute,
                                 showChrome = showShellChrome,
+                                onConfigure = {
+                                    navController.navigate(Routes.SIDEBAR_CONFIG) {
+                                        launchSingleTop = true
+                                    }
+                                },
                                 onNavigate = { route ->
                                     navController.navigate(route) {
                                         // Top-level switch semantics: keep a single copy of

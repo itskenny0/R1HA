@@ -22,6 +22,11 @@ object Routes {
      *  one-shot publish surface. Top-level rather than nested under
      *  Advanced because more than one user-facing feature consumes it. */
     const val SETTINGS_MQTT = "settings/mqtt"
+    /** "Manage sidebar" config surface — choose which surfaces / core
+     *  destinations / dashboards appear in the side navigation rail / drawer
+     *  (and the phone QuickActions drawer). Reached in one tap from the
+     *  sidebar's own edit affordance and from the phone QuickActions sheet. */
+    const val SIDEBAR_CONFIG = "sidebar_config"
     const val THEME_PICKER = "theme_picker"
     const val ABOUT = "about"
     const val DEV_MENU = "dev_menu"

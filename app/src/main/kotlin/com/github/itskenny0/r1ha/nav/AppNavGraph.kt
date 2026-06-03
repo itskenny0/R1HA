@@ -186,6 +186,13 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.SIDEBAR_CONFIG) {
+            com.github.itskenny0.r1ha.feature.settings.SidebarConfigScreen(
+                settings = settings,
+                tokens = tokens,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.SETTINGS_SYNC) {
             com.github.itskenny0.r1ha.feature.settings.SyncSettingsScreen(
                 settings = settings,

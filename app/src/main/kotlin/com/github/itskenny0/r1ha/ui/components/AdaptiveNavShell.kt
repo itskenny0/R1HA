@@ -82,6 +82,11 @@ fun AdaptiveNavShell(
      *  host suppresses chrome on full-bleed flows where a rail / drawer makes no sense yet:
      *  onboarding (no server configured), the long-lived-token setup, etc. Defaults to true. */
     showChrome: Boolean = true,
+    /** Invoked by the always-present "Manage" edit affordance the rail / drawer render below
+     *  the destinations. The host wires it to navigate to the sidebar-config surface so the
+     *  user can change what the sidebar shows in one tap from the sidebar itself. Null hides
+     *  the affordance (e.g. previews / tests that don't supply a target). */
+    onConfigure: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     val window by androidx.compose.runtime.rememberUpdatedState(LocalWindowTier.current)
@@ -103,6 +108,7 @@ fun AdaptiveNavShell(
                     destinations = destinations,
                     currentRoute = currentRoute,
                     onNavigate = onNavigate,
+                    onConfigure = onConfigure,
                 )
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
             }
@@ -114,6 +120,7 @@ fun AdaptiveNavShell(
                     destinations = destinations,
                     currentRoute = currentRoute,
                     onNavigate = onNavigate,
+                    onConfigure = onConfigure,
                 )
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
             }
@@ -132,6 +139,7 @@ private fun NavRail(
     destinations: List<NavDestination>,
     currentRoute: String?,
     onNavigate: (String) -> Unit,
+    onConfigure: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -149,6 +157,16 @@ private fun NavRail(
                 dest = dest,
                 active = dest.isActive(currentRoute),
                 onClick = { onNavigate(dest.route) },
+            )
+        }
+        // Always-present edit affordance: opens the sidebar-config surface so the user
+        // can change what the sidebar shows without leaving it. Rendered as a quiet
+        // pencil glyph item below the destinations.
+        if (onConfigure != null) {
+            RailItem(
+                dest = NavDestination(route = "__configure__", label = "Manage", glyph = "✎"),
+                active = false,
+                onClick = onConfigure,
             )
         }
     }
@@ -192,6 +210,7 @@ private fun NavDrawer(
     destinations: List<NavDestination>,
     currentRoute: String?,
     onNavigate: (String) -> Unit,
+    onConfigure: (() -> Unit)?,
 ) {
     Row {
         Column(
@@ -205,17 +224,46 @@ private fun NavDrawer(
             verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
         ) {
             // Wordmark header — uses the accent so the drawer reads as branded chrome.
-            Text(
-                text = "R1·HA",
-                style = R1.screenTitle,
-                color = R1.AccentWarm,
-                modifier = Modifier.padding(start = R1.space.s, bottom = R1.space.m),
-            )
+            // A trailing edit glyph opens the sidebar-config surface in one tap.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = R1.space.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "R1·HA",
+                    style = R1.screenTitle,
+                    color = R1.AccentWarm,
+                    modifier = Modifier.padding(start = R1.space.s).weight(1f),
+                )
+                if (onConfigure != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeM)
+                            .r1Pressable(onClick = onConfigure, contentDescription = "Manage sidebar")
+                            .heightIn(min = R1.MinTarget)
+                            .width(R1.MinTarget),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "✎", style = R1.numeralM, color = R1.InkSoft, textAlign = TextAlign.Center)
+                    }
+                }
+            }
             for (dest in destinations) {
                 DrawerItem(
                     dest = dest,
                     active = dest.isActive(currentRoute),
                     onClick = { onNavigate(dest.route) },
+                )
+            }
+            // Always-present labelled edit row below the destinations — mirrors the rail's
+            // Manage affordance for users who don't spot the header glyph.
+            if (onConfigure != null) {
+                DrawerItem(
+                    dest = NavDestination(route = "__configure__", label = "Manage sidebar", glyph = "✎"),
+                    active = false,
+                    onClick = onConfigure,
                 )
             }
         }

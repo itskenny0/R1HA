@@ -3157,7 +3157,16 @@ private fun QuickActionsSheet(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 DrawerGlyph(modifier = Modifier.weight(1f), glyph = "!", label = "ALERTS", onClick = onOpenNotifications)
-                Spacer(Modifier.weight(3f))
+                // EDIT SIDEBAR — opens the sidebar-config surface so phone users (no nav
+                // rail) can manage the PINNED / DASHBOARDS sections of this very drawer.
+                // onOpenRoute already closes the sheet before navigating.
+                DrawerGlyph(
+                    modifier = Modifier.weight(1f),
+                    glyph = "✎",
+                    label = "EDIT SIDEBAR",
+                    onClick = { onOpenRoute(com.github.itskenny0.r1ha.nav.Routes.SIDEBAR_CONFIG) },
+                )
+                Spacer(Modifier.weight(2f))
             }
 
             // ── GO TO row — context-aware jumps for the focused card ──
