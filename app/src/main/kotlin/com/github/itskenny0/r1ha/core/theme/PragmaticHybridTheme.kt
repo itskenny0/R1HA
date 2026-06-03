@@ -106,6 +106,13 @@ object PragmaticHybridTheme : R1Theme {
                     area = model.area,
                     accent = accent,
                     showArea = ui.showAreaLabel,
+                    icon = if (model.showIcon) {
+                        com.github.itskenny0.r1ha.ui.icons.R1Icons.forEntity(
+                            model.entityIdText,
+                            deviceClass = model.entityState?.deviceClass,
+                            state = model.entityState?.rawState,
+                        )
+                    } else null,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -432,15 +439,26 @@ private fun DomainHeader(
     area: String?,
     accent: Color,
     showArea: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        // Accent chip
-        Box(
-            modifier = Modifier
-                .size(width = 14.dp, height = 4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(accent),
-        )
+        if (icon != null) {
+            // Domain icon in place of the accent chip when card icons are on.
+            androidx.compose.material3.Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accent,
+                modifier = Modifier.size(16.dp),
+            )
+        } else {
+            // Accent chip
+            Box(
+                modifier = Modifier
+                    .size(width = 14.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(accent),
+            )
+        }
         Spacer(Modifier.width(8.dp))
         Text(
             text = domainLabel,

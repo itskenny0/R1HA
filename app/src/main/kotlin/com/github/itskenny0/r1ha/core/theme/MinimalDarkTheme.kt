@@ -75,12 +75,26 @@ object MinimalDarkTheme : R1Theme {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header — monochrome tag instead of the accent dash.
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 14.dp, height = 2.dp)
-                            .background(R1.InkSoft),
-                    )
-                    Spacer(Modifier.width(8.dp))
+                    if (model.showIcon) {
+                        androidx.compose.material3.Icon(
+                            imageVector = com.github.itskenny0.r1ha.ui.icons.R1Icons.forEntity(
+                                model.entityIdText,
+                                deviceClass = model.entityState?.deviceClass,
+                                state = model.entityState?.rawState,
+                            ),
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 14.dp, height = 2.dp)
+                                .background(R1.InkSoft),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Text(
                         text = domainLabel(model.domainGlyph),
                         style = R1.labelMicro,

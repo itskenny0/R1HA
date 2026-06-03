@@ -110,6 +110,16 @@ fun CardStackScreen(
     onOpenNotifications: () -> Unit = {},
     onOpenZones: () -> Unit = {},
     onOpenDevice: () -> Unit = {},
+    /** Context-aware quick-jump targets surfaced in the QuickActions sheet's
+     *  GO TO row, which adapts to the focused card's domain (media_player →
+     *  Media Browse, person → Persons, weather → Weather, climate/sensor →
+     *  that entity's History). [onOpenHistory] takes the focused entity_id.
+     *  Default no-ops keep previews / tests cheap. */
+    onOpenCameras: () -> Unit = {},
+    onOpenMediaBrowse: () -> Unit = {},
+    onOpenWeather: () -> Unit = {},
+    onOpenPersons: () -> Unit = {},
+    onOpenHistory: (entityId: String) -> Unit = {},
 ) {
     val vm: CardStackViewModel = viewModel(
         factory = CardStackViewModel.factory(
@@ -273,6 +283,16 @@ fun CardStackScreen(
     val fanPresetPickerFor = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
     }
+    // Entity whose ultra-detail more-info sheet is open; null = closed. Opened
+    // from the card context menu's MORE INFO action AND from a wheel-spin on a
+    // read-only card (sensor / action / wheel-disabled) when the effective
+    // moreInfoEnabled flag is on — routing the otherwise-inert wheel to the
+    // detail view makes the ultra-detail surface discoverable from the deck.
+    // Hoisted to screen scope (alongside the other overlay-visibility flags) so
+    // the wheel handler below can both read it (modal gate) and set it (open).
+    val moreInfoEntityId = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
     // "Any pager mid-animation" gates wheel events. Two writers feed this:
     //   - the screen-level HorizontalPager (tab swipes) — wired below
     //     where the pager state itself is created
@@ -310,7 +330,8 @@ fun CardStackScreen(
                 customizingId.value != null ||
                 effectPickerFor.value != null ||
                 selectPickerFor.value != null ||
-                fanPresetPickerFor.value != null
+                fanPresetPickerFor.value != null ||
+                moreInfoEntityId.value != null
             ) {
                 return@collect
             }
@@ -381,23 +402,45 @@ fun CardStackScreen(
             val wheelEnabledHere = active?.let {
                 perCardOverride.resolvedWheelEnabled(it.id.domain.prefix)
             } ?: false
+            // What to do when the wheel has nothing to drive on this card
+            // (sensors, actions, non-scalar switches with the toggle off, or a
+            // per-card wheel-disabled override). Historically these spins only
+            // flashed a "wheel is inert here" hint. To make the ultra-detail
+            // more-info surface DISCOVERABLE from the deck, route that same
+            // otherwise-wasted spin to open MoreInfoSheet for the focused entity
+            // when the effective per-entity moreInfoEnabled flag is on
+            // (override ?: global default — same gate the '…' context menu uses).
+            // Setting moreInfoEntityId trips the modal gate above, so a sustained
+            // spin opens the sheet exactly once rather than re-firing per detent.
+            // When the flag is off we keep the old hint so the wheel still teaches
+            // the swipe-and-pip navigation vocabulary.
+            val inertWheel: () -> Unit = inert@{
+                val a = active ?: run { return@inert }
+                val effectiveMoreInfo = perCardOverride.moreInfoEnabled
+                    ?: appSettings.ui.moreInfoEnabledDefault
+                if (effectiveMoreInfo) {
+                    moreInfoEntityId.value = a.id.value
+                } else {
+                    wheelHintAt.longValue = now
+                }
+            }
             when {
                 active == null -> Unit
                 // Per-card wheel-disabled override (or per-domain default for
-                // select). Show the hint so the user understands the wheel
-                // is intentionally inert here.
+                // select). Open the detail sheet (or hint) so the wheel does
+                // something useful rather than being silently inert.
                 !wheelEnabledHere ->
-                    wheelHintAt.longValue = now
-                // Sensors / actions have nothing to drive — show the hint.
+                    inertWheel()
+                // Sensors / actions have nothing to drive — open detail (or hint).
                 active.id.domain.isSensor || active.id.domain.isAction ->
-                    wheelHintAt.longValue = now
+                    inertWheel()
                 // Non-scalar entities (locks, covers without position, vacuums, plain
                 // switches) — if the user hasn't opted into wheel-toggles-switches via
-                // Settings, the wheel is a no-op here too (and shows the hint). When
+                // Settings, the wheel is a no-op here too (open detail or hint). When
                 // the setting IS on, fall through to the scalar path's setSwitch via
                 // vm.onWheel for the actual toggle.
                 !active.supportsScalar && !appSettings.behavior.wheelTogglesSwitches ->
-                    wheelHintAt.longValue = now
+                    inertWheel()
                 // Select entities — wheel steps one option per accumulated
                 // pair of detents. Accumulator threshold mitigates the
                 // "too easy to trigger accidentally" feel: a brushing
@@ -1299,12 +1342,9 @@ fun CardStackScreen(
         val cardContextMenuIdx = androidx.compose.runtime.remember {
             androidx.compose.runtime.mutableStateOf<Int?>(null)
         }
-        // Entity whose ultra-detail more-info sheet is open; null = closed.
-        // Opened from the card context menu's MORE INFO action and rendered
-        // as a screen-level overlay alongside the other pickers.
-        val moreInfoEntityId = androidx.compose.runtime.remember {
-            androidx.compose.runtime.mutableStateOf<String?>(null)
-        }
+        // moreInfoEntityId is hoisted to screen scope above (so the wheel
+        // handler can both gate on and open it). Opened from the card context
+        // menu's MORE INFO action and from a wheel-spin on a read-only card.
         if (jumpPickerOpen.value && cards.size > 1) {
             JumpToCardSheet(
                 cards = cards,
@@ -1442,11 +1482,51 @@ fun CardStackScreen(
                 ent.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.MEDIA_PLAYER &&
                     ent.rawState?.equals("playing", ignoreCase = true) == true
             }
+            // ── Context-aware GO TO jumps ────────────────────────────────────
+            // Build a short list of quick-jumps tailored to the focused card's
+            // domain so the user can hop straight to the surface that makes
+            // sense for what they're looking at (a media_player → Media Browse,
+            // a person → Persons, weather → Weather, climate/sensor → that
+            // entity's History). Always-available broad jumps (Cameras, History
+            // for the focused entity) round out the row. Each closes the sheet
+            // first, then navigates — same pattern as the BROWSE shortcuts.
+            val focused = state.activeState
+            val close: (() -> Unit) -> Unit = { nav -> quickActionsOpen.value = false; nav() }
+            val contextJumps = buildList {
+                if (focused != null) {
+                    when (focused.id.domain) {
+                        com.github.itskenny0.r1ha.core.ha.Domain.MEDIA_PLAYER ->
+                            add(QuickJump("♫", "MEDIA") { close(onOpenMediaBrowse) })
+                        com.github.itskenny0.r1ha.core.ha.Domain.PERSON ->
+                            add(QuickJump("☻", "PERSONS") { close(onOpenPersons) })
+                        com.github.itskenny0.r1ha.core.ha.Domain.WEATHER ->
+                            add(QuickJump("☀", "WEATHER") { close(onOpenWeather) })
+                        else -> Unit
+                    }
+                    // History for the focused entity — most useful on the
+                    // numeric/stateful domains (climate, sensors, binary
+                    // sensors, person presence) where a trend matters.
+                    val d = focused.id.domain
+                    val historyWorthwhile = d.isSensor ||
+                        d == com.github.itskenny0.r1ha.core.ha.Domain.CLIMATE ||
+                        d == com.github.itskenny0.r1ha.core.ha.Domain.MEDIA_PLAYER
+                    if (historyWorthwhile) {
+                        val eid = focused.id.value
+                        add(QuickJump("◷", "HISTORY") { close { onOpenHistory(eid) } })
+                    }
+                }
+                // Always-available broad jump: Cameras isn't a card archetype,
+                // so it never appears as a focused domain — surface it here so
+                // the deck can still reach the camera wall.
+                add(QuickJump("▣", "CAMERAS") { close(onOpenCameras) })
+            }
             QuickActionsSheet(
                 activePageName = appSettings.pages.firstOrNull { it.id == appSettings.activePageId }?.name
                     ?: "this page",
                 cardCount = state.cards.size,
                 playingMediaCount = playingMediaCount,
+                focusedName = focused?.friendlyName,
+                contextJumps = contextJumps,
                 onOpenDashboard = {
                     quickActionsOpen.value = false
                     onOpenDashboard()
@@ -2909,11 +2989,29 @@ private fun DrawerGlyph(
  *   - ACTIONS list of one-tap operations against the active page
  *     (Turn All On, Pause N media, Turn All Off with confirm)
  */
+/**
+ * One context-aware quick-jump tile in the QuickActions sheet's GO TO row.
+ * [glyph] is a single monochrome codepoint matching the BROWSE grid aesthetic;
+ * [onClick] already closes the sheet before navigating.
+ */
+private data class QuickJump(
+    val glyph: String,
+    val label: String,
+    val onClick: () -> Unit,
+)
+
 @Composable
 private fun QuickActionsSheet(
     activePageName: String,
     cardCount: Int,
     playingMediaCount: Int,
+    /** Friendly name of the focused card, shown as the GO TO row's subtitle so
+     *  the context-aware jumps read as "for THIS card". Null hides the row's
+     *  per-entity framing. */
+    focusedName: String?,
+    /** Context-aware jumps tailored to the focused card's domain plus the
+     *  always-available broad jumps. Empty list hides the GO TO row entirely. */
+    contextJumps: List<QuickJump>,
     onOpenDashboard: () -> Unit,
     onOpenAssist: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -3012,6 +3110,48 @@ private fun QuickActionsSheet(
             ) {
                 DrawerGlyph(modifier = Modifier.weight(1f), glyph = "!", label = "ALERTS", onClick = onOpenNotifications)
                 Spacer(Modifier.weight(3f))
+            }
+
+            // ── GO TO row — context-aware jumps for the focused card ──
+            // Adapts to the focused card's domain: a media_player offers a
+            // jump to Media Browse, a person to Persons, weather to Weather,
+            // and stateful/numeric domains to that entity's History. Cameras
+            // is always offered (it has no card archetype). Laid out as a
+            // single row of up-to-four weighted tiles padded to a constant
+            // four columns so the glyphs line up with the BROWSE grid above.
+            if (contextJumps.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text(text = "GO TO", style = R1.labelMicro, color = R1.InkSoft)
+                if (focusedName != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = focusedName.uppercase(),
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    contextJumps.take(4).forEach { jump ->
+                        DrawerGlyph(
+                            modifier = Modifier.weight(1f),
+                            glyph = jump.glyph,
+                            label = jump.label,
+                            onClick = jump.onClick,
+                        )
+                    }
+                    // Pad to four columns so a one- or two-jump row keeps the
+                    // tiles the same width as the BROWSE grid rather than
+                    // stretching edge-to-edge.
+                    repeat(4 - contextJumps.take(4).size) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
             }
             Spacer(Modifier.height(14.dp))
             // 'Turn all on' — one-tap fire. Lights/switches/fans coming on

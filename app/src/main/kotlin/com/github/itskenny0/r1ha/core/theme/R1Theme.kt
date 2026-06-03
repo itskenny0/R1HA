@@ -129,6 +129,13 @@ data class CardRenderModel(
      */
     val valueBarLocation: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation =
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT,
+    /**
+     * Whether to draw the entity's domain icon on the card, resolved from
+     * [com.github.itskenny0.r1ha.core.prefs.UiOptions.cardStackIcons] at the
+     * model build site. Themes render [com.github.itskenny0.r1ha.ui.icons.R1Icons]
+     * tinted with the card accent when true. Default ON.
+     */
+    val showIcon: Boolean = true,
 ) {
     enum class Glyph {
         LIGHT, FAN, COVER, MEDIA_PLAYER,

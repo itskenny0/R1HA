@@ -1038,6 +1038,7 @@ private fun LazyListScope.appearanceCards(
     }
     item { SwitchRow(label = "Show on/off pill", checked = s.ui.showOnOffPill, onCheckedChange = { vm.setShowOnOffPill(it) }) }
     item { SwitchRow(label = "Show area label", checked = s.ui.showAreaLabel, onCheckedChange = { vm.setShowAreaLabel(it) }) }
+    item { SwitchRow(label = "Card icons", subtitle = "Show the entity's domain icon on each card", checked = s.ui.cardStackIcons, onCheckedChange = { vm.setCardStackIcons(it) }) }
     item {
         SwitchRow(
             label = "Hide card hint above current",

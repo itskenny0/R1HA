@@ -93,6 +93,9 @@ data class UiOptions(
     val displayMode: DisplayMode = DisplayMode.PERCENT,
     val showOnOffPill: Boolean = true,
     val showAreaLabel: Boolean = true,
+    /** Draw the entity's domain icon on each card-stack card, tinted with the card
+     *  accent. Default ON. */
+    val cardStackIcons: Boolean = true,
     /**
      * Where the "you are here" position pip and counter sit on the card
      * deck. Default TOP_CENTER matches the historical chrome-row layout;

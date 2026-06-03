@@ -82,6 +82,7 @@ class SettingsViewModel(
     fun setDisplayMode(mode: DisplayMode) = update { it.copy(ui = it.ui.copy(displayMode = mode)) }
     fun setShowOnOffPill(show: Boolean) = update { it.copy(ui = it.ui.copy(showOnOffPill = show)) }
     fun setShowAreaLabel(show: Boolean) = update { it.copy(ui = it.ui.copy(showAreaLabel = show)) }
+    fun setCardStackIcons(show: Boolean) = update { it.copy(ui = it.ui.copy(cardStackIcons = show)) }
     fun setPositionDotLocation(loc: com.github.itskenny0.r1ha.core.prefs.PositionDotLocation) =
         update { it.copy(ui = it.ui.copy(positionDotLocation = loc)) }
     fun setValueBarLocation(loc: com.github.itskenny0.r1ha.core.prefs.ValueBarLocation) =

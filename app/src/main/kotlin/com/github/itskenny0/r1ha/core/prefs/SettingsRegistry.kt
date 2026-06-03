@@ -211,6 +211,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { if (it.ui.showAreaLabel) "ON" else "OFF" },
     ),
     SettingEntry(
+        id = "ui.cardStackIcons",
+        category = SettingCategory.CARD_UI,
+        label = "Card icons",
+        description = "Show the entity's domain icon on each card",
+        isDefault = { it.ui.cardStackIcons == defaults.ui.cardStackIcons },
+        currentDisplay = { if (it.ui.cardStackIcons) "ON" else "OFF" },
+    ),
+    SettingEntry(
         id = "ui.positionDotLocation",
         category = SettingCategory.CARD_UI,
         label = "Position pip location",

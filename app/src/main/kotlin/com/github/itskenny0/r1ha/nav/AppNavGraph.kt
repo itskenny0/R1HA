@@ -139,6 +139,21 @@ fun AppNavGraph(
                 onOpenDevice = {
                     navController.navigate(Routes.DEVICE) { launchSingleTop = true }
                 },
+                onOpenCameras = {
+                    navController.navigate(Routes.CAMERAS) { launchSingleTop = true }
+                },
+                onOpenMediaBrowse = {
+                    navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true }
+                },
+                onOpenWeather = {
+                    navController.navigate(Routes.WEATHER) { launchSingleTop = true }
+                },
+                onOpenPersons = {
+                    navController.navigate(Routes.PERSONS) { launchSingleTop = true }
+                },
+                onOpenHistory = { eid ->
+                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                },
             )
         }
         composable(Routes.FAVORITES_PICKER) {

@@ -96,12 +96,28 @@ object ColorfulCardsTheme : R1Theme {
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(width = 14.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(Color.White.copy(alpha = 0.9f)),
-                    )
+                    if (model.showIcon) {
+                        // The gradient background needs a high-contrast tint, so
+                        // use the per-card override accent when present and fall
+                        // back to soft-white (matching the chip) otherwise.
+                        androidx.compose.material3.Icon(
+                            imageVector = com.github.itskenny0.r1ha.ui.icons.R1Icons.forEntity(
+                                model.entityIdText,
+                                deviceClass = model.entityState?.deviceClass,
+                                state = model.entityState?.rawState,
+                            ),
+                            contentDescription = null,
+                            tint = model.accentOverride ?: Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(16.dp),
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 14.dp, height = 4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.9f)),
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = domainLabel(model.domainGlyph),

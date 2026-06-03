@@ -128,6 +128,7 @@ class SettingsRepository private constructor(
         val uiDisplayMode = stringPreferencesKey("ui.display_mode")
         val uiShowPill = booleanPreferencesKey("ui.show_pill")
         val uiShowArea = booleanPreferencesKey("ui.show_area")
+        val uiCardStackIcons = booleanPreferencesKey("ui.card_stack_icons")
         /** Legacy boolean for the position pip — preserved for back-compat
          *  reads only. Writes go to [uiPositionDotLocation] now. true →
          *  TOP_CENTER, false → HIDDEN at the migration site. */
@@ -280,6 +281,7 @@ class SettingsRepository private constructor(
                     displayMode = p[K.uiDisplayMode]?.let { runCatching { DisplayMode.valueOf(it) }.getOrNull() } ?: DisplayMode.PERCENT,
                     showOnOffPill = p[K.uiShowPill] ?: true,
                     showAreaLabel = p[K.uiShowArea] ?: true,
+                    cardStackIcons = p[K.uiCardStackIcons] ?: true,
                     // New enum slot wins; legacy boolean is consulted only as
                     // a migration path. true → TOP_CENTER (the historical
                     // chrome-row position), false → HIDDEN.
@@ -485,6 +487,7 @@ class SettingsRepository private constructor(
                 p[K.uiDisplayMode] = next.ui.displayMode.name
                 p[K.uiShowPill] = next.ui.showOnOffPill
                 p[K.uiShowArea] = next.ui.showAreaLabel
+                p[K.uiCardStackIcons] = next.ui.cardStackIcons
                 // Write the new enum slot; also mirror to the legacy
                 // boolean so an older build that ever rolls back can still
                 // read a sane "show / hide" intent. true = anything except

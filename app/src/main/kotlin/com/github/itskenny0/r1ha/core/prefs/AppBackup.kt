@@ -56,6 +56,7 @@ data class AppBackup(
     val uiDisplayMode: DisplayMode = DisplayMode.PERCENT,
     val uiShowOnOffPill: Boolean = true,
     val uiShowAreaLabel: Boolean = true,
+    val uiCardStackIcons: Boolean = true,
     /** Legacy boolean kept for back-compat reads of older backup files. New
      *  writes round-trip via [uiPositionDotLocation] below; this field is
      *  materialised on backup as `location != HIDDEN` so an older build can
@@ -150,6 +151,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiDisplayMode = ui.displayMode,
     uiShowOnOffPill = ui.showOnOffPill,
     uiShowAreaLabel = ui.showAreaLabel,
+    uiCardStackIcons = ui.cardStackIcons,
     uiShowPositionDots = ui.positionDotLocation != PositionDotLocation.HIDDEN,
     uiPositionDotLocation = ui.positionDotLocation,
     uiValueBarLocation = ui.valueBarLocation,
@@ -222,6 +224,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             displayMode = uiDisplayMode,
             showOnOffPill = uiShowOnOffPill,
             showAreaLabel = uiShowAreaLabel,
+            cardStackIcons = uiCardStackIcons,
             // Prefer the explicit enum slot when present; fall back to the
             // legacy boolean for backups produced before the enum landed
             // (true → TOP_CENTER, false → HIDDEN).

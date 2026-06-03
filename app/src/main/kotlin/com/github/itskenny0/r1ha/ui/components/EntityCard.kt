@@ -383,6 +383,7 @@ fun EntityCard(
                     // historical layout) when neither is set.
                     valueBarLocation = perCardOverride.valueBarLocation
                         ?: baseUi.valueBarLocation,
+                    showIcon = mergedUi.cardStackIcons,
                 ),
                 modifier = Modifier
                     .fillMaxSize()
