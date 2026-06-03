@@ -63,6 +63,8 @@ fun R1TopBar(
                 title,
                 style = R1.screenTitle,
                 color = R1.Ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (action != null) {

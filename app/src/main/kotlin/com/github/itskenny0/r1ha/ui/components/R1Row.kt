@@ -83,19 +83,32 @@ fun R1Row(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
         ) {
-            Text(text = label, style = R1.bodyEmph, color = labelColor, maxLines = 2)
+            Text(
+                text = label,
+                style = R1.bodyEmph,
+                color = labelColor,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             if (description != null) {
                 Text(
                     text = description,
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                     maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
         if (value != null) {
             Spacer(Modifier.width(R1.space.m))
-            Text(text = value, style = R1.bodyEmph, color = R1.AccentWarm, maxLines = 1)
+            Text(
+                text = value,
+                style = R1.bodyEmph,
+                color = R1.AccentWarm,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
         if (trailing != null) {
             Spacer(Modifier.width(R1.space.s))
