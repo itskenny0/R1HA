@@ -8,35 +8,34 @@ import java.time.Instant
 import kotlin.math.abs
 
 /**
- * Format an [Instant] as a short human-readable relative-time string like
- * 'just now', '5m ago', '12h ago', '3d ago'. Drives the small freshness
- * label on cards that surfaces state age without forcing the user to read
- * a full timestamp.
+ * Format an [Instant] as a short human-readable relative-time string. Past instants read
+ * 'just now', '5m ago', '12h ago', '3d ago'; future instants read 'in 5m', 'in 2h', 'in 3d'.
+ * Drives both the freshness label on cards (state age, always past) and forward-looking
+ * labels like the sun card's next rise/set, a running timer's finish, and the next calendar
+ * event (all future) — which previously all collapsed to 'just now' because the future side
+ * was clamped.
  *
- * Rules:
+ * Magnitude buckets (same in both directions, sign decides the prefix/suffix):
  *  * < 30 s → 'just now'
- *  * < 60 s → '<seconds>s ago'
- *  * < 60 min → '<minutes>m ago'
- *  * < 24 h → '<hours>h ago'
- *  * < 7 d → '<days>d ago'
- *  * older → '<weeks>w ago'
- *
- * Future timestamps (rare but possible if the device clock drifts vs HA's)
- * fall back to 'just now' rather than 'in 5m' — a future-time label on a
- * card would read as a bug.
+ *  * < 60 s → '<seconds>s'
+ *  * < 60 min → '<minutes>m'
+ *  * < 24 h → '<hours>h'
+ *  * < 7 d → '<days>d'
+ *  * older → '<weeks>w'
  */
 internal fun formatRelativeTime(at: Instant, now: Instant): String {
     val deltaMs = now.toEpochMilli() - at.toEpochMilli()
-    if (deltaMs < 0) return "just now"
-    val deltaSec = deltaMs / 1000
-    return when {
-        deltaSec < 30 -> "just now"
-        deltaSec < 60 -> "${deltaSec}s ago"
-        deltaSec < 3600 -> "${deltaSec / 60}m ago"
-        deltaSec < 86_400 -> "${deltaSec / 3600}h ago"
-        deltaSec < 7 * 86_400 -> "${deltaSec / 86_400}d ago"
-        else -> "${deltaSec / (7 * 86_400)}w ago"
+    val past = deltaMs >= 0
+    val sec = abs(deltaMs) / 1000
+    if (sec < 30) return "just now"
+    val mag = when {
+        sec < 60 -> "${sec}s"
+        sec < 3600 -> "${sec / 60}m"
+        sec < 86_400 -> "${sec / 3600}h"
+        sec < 7 * 86_400 -> "${sec / 86_400}d"
+        else -> "${sec / (7 * 86_400)}w"
     }
+    return if (past) "$mag ago" else "in $mag"
 }
 
 /**
