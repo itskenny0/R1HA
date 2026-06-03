@@ -35,6 +35,18 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
+ * Vertical plot position (0 = bottom edge, 1 = top edge) for [value] within the chart's
+ * [min]..[max] band. A degenerate (flat) band centres the line at 0.5 rather than pinning
+ * it to the bottom: a constant reading should read as "steady, mid-chart", not "at the
+ * floor". Clamped to 0..1 so a stray out-of-band point can't draw outside the plot.
+ */
+internal fun chartYFraction(value: Double, min: Double, max: Double): Float {
+    val range = max - min
+    if (range <= 1e-9) return 0.5f
+    return ((value - min) / range).toFloat().coerceIn(0f, 1f)
+}
+
+/**
  * Mini line chart for a numeric sensor's history. Pure Canvas — no charting library —
  * because the rendering is dead simple (one line, one min/max pair) and pulling in a
  * library would bloat the APK by ~500 KB for this single use case.
@@ -63,9 +75,6 @@ fun SensorHistoryChart(
     val ys = numeric.map { it.second }
     val yMin = ys.min()
     val yMax = ys.max()
-    // If the line is dead flat the chart degenerates into a horizontal stripe; fake a
-    // tiny range so the line still shows in the middle of the chart area.
-    val yRange = (yMax - yMin).takeIf { it > 1e-9 } ?: 1.0
     val tStart = numeric.first().first
     val tEnd = numeric.last().first
     val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
@@ -115,7 +124,7 @@ fun SensorHistoryChart(
             numeric.forEachIndexed { idx, (instant, value) ->
                 val elapsed = Duration.between(tStart, instant).toMillis().toFloat()
                 val x = (elapsed / tSpan) * w
-                val yFrac = ((value - yMin) / yRange).toFloat()
+                val yFrac = chartYFraction(value, yMin, yMax)
                 val y = h - (yFrac * h)
                 if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
@@ -131,7 +140,7 @@ fun SensorHistoryChart(
             // Latest-value dot — gives the eye an anchor for "where the reading is right
             // now" without having to mentally trace the line all the way to the right edge.
             val (_, lastVal) = numeric.last()
-            val lastYFrac = ((lastVal - yMin) / yRange).toFloat()
+            val lastYFrac = chartYFraction(lastVal, yMin, yMax)
             drawCircle(
                 color = accent,
                 radius = 2.dp.toPx(),
