@@ -790,4 +790,74 @@ class LovelaceParserTest {
         )
         assertThat(card).isInstanceOf(LovelaceCard.Tile::class.java)
     }
+
+    @Test
+    fun `parses tile features into typed feature list`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"tile","entity":"climate.living",
+                 "features":[
+                   {"type":"climate-hvac-modes","hvac_modes":["heat","off"]},
+                   {"type":"target-temperature"},
+                   {"type":"light-brightness"},
+                   {"type":"cover-open-close"},
+                   {"type":"toggle"},
+                   {"type":"select-options","options":["a","b"]},
+                   {"type":"alarm-modes","modes":["armed_home"]},
+                   {"type":"some-unknown-feature"}
+                 ]}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Tile
+        assertEquals(8, card.features.size)
+        val hvac = card.features[0] as LovelaceTileFeature.ClimateHvacModes
+        assertThat(hvac.modes).containsExactly("heat", "off").inOrder()
+        assertThat(card.features[1]).isInstanceOf(LovelaceTileFeature.TargetTemperature::class.java)
+        assertThat(card.features[2]).isInstanceOf(LovelaceTileFeature.LightBrightness::class.java)
+        assertThat(card.features[3]).isInstanceOf(LovelaceTileFeature.CoverOpenClose::class.java)
+        assertThat(card.features[4]).isInstanceOf(LovelaceTileFeature.Toggle::class.java)
+        val select = card.features[5] as LovelaceTileFeature.SelectOptions
+        assertThat(select.options).containsExactly("a", "b").inOrder()
+        val alarm = card.features[6] as LovelaceTileFeature.AlarmModes
+        assertThat(alarm.modes).containsExactly("armed_home")
+        val unknown = card.features[7] as LovelaceTileFeature.Unsupported
+        assertEquals("some-unknown-feature", unknown.type)
+    }
+
+    @Test
+    fun `tile without features parses to an empty feature list`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"tile","entity":"light.k"}"""),
+        ) as LovelaceCard.Tile
+        assertThat(card.features).isEmpty()
+    }
+
+    @Test
+    fun `parses gauge segments sorted ascending by from`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"gauge","entity":"sensor.power","needle":true,
+                 "segments":[
+                   {"from":50,"color":"red"},
+                   {"from":0,"color":"green"},
+                   {"from":25,"color":"#ffaa00"}
+                 ]}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Gauge
+        assertTrue(card.needle)
+        assertThat(card.segments.map { it.from }).containsExactly(0.0, 25.0, 50.0).inOrder()
+        assertThat(card.segments.map { it.color }).containsExactly("green", "#ffaa00", "red").inOrder()
+    }
+
+    @Test
+    fun `gauge severity still parses alongside no segments`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"gauge","entity":"sensor.x","severity":{"green":0,"yellow":50,"red":80}}"""),
+        ) as LovelaceCard.Gauge
+        assertThat(card.segments).isEmpty()
+        assertThat(card.severity?.yellow).isEqualTo(50.0)
+    }
 }

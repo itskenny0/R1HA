@@ -48,6 +48,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides
 import com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.AlarmPanel
 import com.github.itskenny0.r1ha.ui.components.ClimatePanel
 import com.github.itskenny0.r1ha.ui.components.CoverPanel
 import com.github.itskenny0.r1ha.ui.components.CustomActionsPanel
@@ -58,6 +59,7 @@ import com.github.itskenny0.r1ha.ui.components.LockPanel
 import com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel
 import com.github.itskenny0.r1ha.ui.components.RemotePanel
 import com.github.itskenny0.r1ha.ui.components.SensorHistoryChart
+import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.VacuumPanel
 import com.github.itskenny0.r1ha.ui.components.ValvePanel
 import com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel
@@ -235,6 +237,20 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(text = "UNAVAILABLE", style = R1.labelMicro, color = R1.StatusAmber)
             }
+            // Last-changed line — HA's more-info state-header shows a relative
+            // "changed N ago" beneath the state. Mirrors that with the app's own
+            // live-ticking relative-time formatter.
+            val changedAgo = rememberRelativeTime(entity.lastChanged)
+            if (changedAgo.isNotEmpty()) {
+                Spacer(Modifier.height(R1.space.xxs))
+                Text(
+                    text = "CHANGED ${changedAgo.uppercase()}",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(R1.space.s))
         CloseButton(onDismiss)
@@ -346,6 +362,11 @@ private fun PrimaryControl(
         }
         Domain.LAWN_MOWER -> LawnMowerPanel(state = entity, accent = accent)
         Domain.REMOTE -> RemotePanel(state = entity, accent = accent)
+        // Alarm panels previously fell through to the no-control branch. The
+        // AlarmPanel renders the disarm + arm-mode keypad section (PIN-gated when
+        // the integration sets code_format), bringing parity with HA's
+        // more-info-alarm_control_panel.
+        Domain.ALARM_CONTROL_PANEL -> AlarmPanel(state = entity, accent = accent)
         Domain.SCENE, Domain.SCRIPT -> ActionButton("ACTIVATE", accent) {
             dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap())))
         }
@@ -395,6 +416,56 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                 )
                 Spacer(Modifier.width(R1.space.s))
                 Text(text = "${pos.toInt()}K", style = R1.labelMicro, color = accent)
+            }
+        }
+        // Colour swatches — HA's more-info exposes an RGB/HS picker plus favorite
+        // colours. The favourite list lives in the entity-registry options (not the
+        // state attributes the sheet can see), so we surface a fixed palette of useful
+        // hues plus a small white-reset, dispatching via hs_color. Shown only when the
+        // bulb advertises a colour mode beyond on/off + colour-temp.
+        val colorModes = entity.supportedColorModes.map { it.lowercase() }
+        val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
+        if (supportsColor) {
+            Text(text = "COLOR", style = R1.labelMicro, color = R1.InkMuted)
+            val currentRgb = entity.attrIntList("rgb_color")
+            ChipStrip {
+                COLOR_SWATCHES.forEach { (label, hue) ->
+                    val sel = currentRgb != null && hueMatches(currentRgb, hue)
+                    ColorSwatch(
+                        color = hueToColor(hue),
+                        selected = sel,
+                        description = label,
+                        onClick = {
+                            dispatch(
+                                ServiceCall.setLightHue(entity.id, hue.toDouble()),
+                            )
+                        },
+                    )
+                }
+                // White reset — drives the bulb back to a neutral white via hs_color
+                // saturation 0 (rendered as a separate swatch so it reads distinct).
+                ColorSwatch(
+                    color = Color.White,
+                    selected = false,
+                    description = "White",
+                    onClick = {
+                        dispatch(
+                            ServiceCall(
+                                entity.id,
+                                "turn_on",
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put(
+                                        "hs_color",
+                                        kotlinx.serialization.json.buildJsonArray {
+                                            add(kotlinx.serialization.json.JsonPrimitive(0))
+                                            add(kotlinx.serialization.json.JsonPrimitive(0))
+                                        },
+                                    )
+                                },
+                            ),
+                        )
+                    },
+                )
             }
         }
         // Effects — reuse the wire-level setter; chips so the user can pick by name.
@@ -506,37 +577,107 @@ private fun CoverControl(entity: EntityState, accent: Color, dispatch: (ServiceC
 
 @Composable
 private fun ClimateStepper(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
-    val target = entity.climateTargetTemperature
     val step = entity.climateTempStep ?: 0.5
     val minT = entity.climateMinTemp
     val maxT = entity.climateMaxTemp
     val unit = entity.temperatureUnit ?: entity.unit ?: ""
+    // heat_cool / auto thermostats report a low+high band instead of a single
+    // setpoint (TARGET_TEMPERATURE_RANGE). When both bounds are present we render a
+    // pair of steppers and fire climate.set_temperature with target_temp_low/high —
+    // matching HA's more-info-climate range control.
+    val low = entity.climateTargetTempLow
+    val high = entity.climateTargetTempHigh
+    val isRange = low != null && high != null
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-        Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
+        if (isRange) {
+            TempStepperRow(
+                label = "LOW",
+                value = low,
+                unit = unit,
+                accent = accent,
+                onLower = {
+                    val next = (low!! - step).let { v -> minT?.let { maxOf(v, it) } ?: v }
+                    dispatch(ServiceCall.setTemperatureRange(entity.id, next, high!!))
+                },
+                onRaise = {
+                    val next = (low!! + step).coerceAtMost(high!!)
+                    dispatch(ServiceCall.setTemperatureRange(entity.id, next, high!!))
+                },
+            )
+            TempStepperRow(
+                label = "HIGH",
+                value = high,
+                unit = unit,
+                accent = accent,
+                onLower = {
+                    val next = (high!! - step).coerceAtLeast(low!!)
+                    dispatch(ServiceCall.setTemperatureRange(entity.id, low!!, next))
+                },
+                onRaise = {
+                    val next = (high!! + step).let { v -> maxT?.let { minOf(v, it) } ?: v }
+                    dispatch(ServiceCall.setTemperatureRange(entity.id, low!!, next))
+                },
+            )
+        } else {
+            val target = entity.climateTargetTemperature
+            TempStepperRow(
+                label = "TARGET",
+                value = target,
+                unit = unit,
+                accent = accent,
+                onLower = {
+                    if (target != null) {
+                        val next = (target - step).let { v -> minT?.let { maxOf(v, it) } ?: v }
+                        dispatch(ServiceCall.setTemperature(entity.id, next))
+                    }
+                },
+                onRaise = {
+                    if (target != null) {
+                        val next = (target + step).let { v -> maxT?.let { minOf(v, it) } ?: v }
+                        dispatch(ServiceCall.setTemperature(entity.id, next))
+                    }
+                },
+            )
+        }
+        // hvac_action ("heating" / "cooling" / "idle" / ...) is the live operating
+        // status HA shows beside the mode; current temp + humidity round out the
+        // "current" block from more-info-climate.
+        val action = entity.attrStr("hvac_action")
+        val nowTemp = entity.climateCurrentTemperature
+        val nowHum = entity.attrDouble("current_humidity")
+        val parts = buildList {
+            if (action != null) add(action.replace('_', ' ').uppercase())
+            if (nowTemp != null) add("NOW ${formatNumber(nowTemp)}$unit")
+            if (nowHum != null) add("RH ${formatNumber(nowHum)}%")
+        }
+        if (parts.isNotEmpty()) {
+            Text(text = parts.joinToString("  ·  "), style = R1.labelMicro, color = R1.InkSoft)
+        }
+    }
+}
+
+@Composable
+private fun TempStepperRow(
+    label: String,
+    value: Double?,
+    unit: String,
+    accent: Color,
+    onLower: () -> Unit,
+    onRaise: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            StepperButton("−", "Lower target temperature", accent, enabled = target != null) {
-                if (target != null) {
-                    val next = (target - step).let { v -> minT?.let { maxOf(v, it) } ?: v }
-                    dispatch(ServiceCall.setTemperature(entity.id, next))
-                }
-            }
+            StepperButton("−", "Lower $label", accent, enabled = value != null, onClick = onLower)
             Spacer(Modifier.width(R1.space.m))
             Text(
-                text = target?.let { formatNumber(it) + unit } ?: "—",
+                text = value?.let { formatNumber(it) + unit } ?: "—",
                 style = R1.numeralM,
                 color = accent,
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(R1.space.m))
-            StepperButton("+", "Raise target temperature", accent, enabled = target != null) {
-                if (target != null) {
-                    val next = (target + step).let { v -> maxT?.let { minOf(v, it) } ?: v }
-                    dispatch(ServiceCall.setTemperature(entity.id, next))
-                }
-            }
-        }
-        entity.climateCurrentTemperature?.let {
-            Text(text = "NOW ${formatNumber(it)}$unit", style = R1.labelMicro, color = R1.InkSoft)
+            StepperButton("+", "Raise $label", accent, enabled = value != null, onClick = onRaise)
         }
     }
 }
@@ -821,6 +962,27 @@ private fun DetailChip(
     }
 }
 
+@Composable
+private fun ColorSwatch(
+    color: Color,
+    selected: Boolean,
+    description: String,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(R1.MinTarget)
+            .clip(R1.ShapeS)
+            .background(color)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) R1.Ink else R1.Hairline,
+                shape = R1.ShapeS,
+            )
+            .r1Pressable(onClick = onClick, contentDescription = description),
+    )
+}
+
 /** Wrap that drops a section when its content renders nothing measurable. Compose can't
  *  cheaply detect an empty subtree, so we just render the content directly — the
  *  individual controls already early-return for unsupported domains. */
@@ -897,3 +1059,73 @@ private fun formatNumber(v: Double): String {
 
 private fun kotlinx.serialization.json.JsonObject?.isNullOrEmptyJson(): Boolean =
     this == null || this.isEmpty()
+
+// Raw-attribute readers for fields the repository doesn't parse into typed EntityState
+// columns (hvac_action, current_humidity, rgb_color, ...). attributesJson is the verbatim
+// HA attributes object, so these mirror HA's own attribute names exactly.
+private fun EntityState.attrStr(key: String): String? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)
+        ?.content?.takeIf { it.isNotBlank() && it != "null" }
+
+private fun EntityState.attrDouble(key: String): Double? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toDoubleOrNull()
+
+private fun EntityState.attrIntList(key: String): List<Int>? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
+        ?.takeIf { it.isNotEmpty() }
+
+// Light colour-mode names that imply true colour control (as opposed to brightness-only
+// or colour-temperature-only). Mirrors HA's ColorMode enum members that carry chromaticity.
+private val COLOR_CAPABLE_MODES = setOf("hs", "rgb", "rgbw", "rgbww", "xy")
+
+// Fixed palette surfaced as colour swatches when favourite colours aren't reachable.
+// Each entry is a label + a hue in degrees; saturation is pinned at 100% by setLightHue.
+private val COLOR_SWATCHES = listOf(
+    "Red" to 0,
+    "Orange" to 30,
+    "Yellow" to 60,
+    "Green" to 120,
+    "Cyan" to 180,
+    "Blue" to 240,
+    "Purple" to 280,
+    "Pink" to 320,
+)
+
+/** Render a hue (degrees, full saturation + value) as an opaque Compose [Color] for the
+ *  swatch fill. Simple HSV→RGB at S=V=1. */
+private fun hueToColor(hue: Int): Color {
+    val h = ((hue % 360) + 360) % 360 / 60.0
+    val x = 1.0 - Math.abs(h % 2.0 - 1.0)
+    val (r, g, b) = when (h.toInt()) {
+        0 -> Triple(1.0, x, 0.0)
+        1 -> Triple(x, 1.0, 0.0)
+        2 -> Triple(0.0, 1.0, x)
+        3 -> Triple(0.0, x, 1.0)
+        4 -> Triple(x, 0.0, 1.0)
+        else -> Triple(1.0, 0.0, x)
+    }
+    return Color(r.toFloat(), g.toFloat(), b.toFloat())
+}
+
+/** True when an `rgb_color` triple is close (within a coarse tolerance) to [hue]'s
+ *  fully-saturated colour, so the matching swatch reads as selected. Converts the RGB to
+ *  a hue and compares within ±18°, ignoring near-white / near-black readings where hue is
+ *  meaningless. */
+private fun hueMatches(rgb: List<Int>, hue: Int): Boolean {
+    if (rgb.size < 3) return false
+    val r = rgb[0] / 255.0
+    val g = rgb[1] / 255.0
+    val b = rgb[2] / 255.0
+    val max = maxOf(r, g, b)
+    val min = minOf(r, g, b)
+    val delta = max - min
+    if (delta < 0.12) return false // grey / white — no meaningful hue
+    val h = when (max) {
+        r -> 60.0 * (((g - b) / delta) % 6.0)
+        g -> 60.0 * (((b - r) / delta) + 2.0)
+        else -> 60.0 * (((r - g) / delta) + 4.0)
+    }.let { ((it % 360.0) + 360.0) % 360.0 }
+    val diff = Math.abs(h - hue).let { minOf(it, 360.0 - it) }
+    return diff <= 18.0
+}

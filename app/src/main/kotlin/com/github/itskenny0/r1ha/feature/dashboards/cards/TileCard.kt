@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -55,17 +56,71 @@ fun TileCard(
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
     val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() }
 
-    val tileSurface = Modifier
+    // HA's tile renders its `features:` as a control row below the body. We
+    // keep it OUTSIDE the body's tap-to-act pressable (so tapping a feature
+    // chip doesn't also fire the tile's tap action) but inside the same card
+    // surface, separated by a hairline. Only renders when the entity supports
+    // at least one configured feature.
+    val hasFeatures = card.features.any { it !is com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature.Unsupported }
+
+    val cardSurface = Modifier
         .fillMaxWidth()
         .clip(R1.ShapeM)
         .background(R1.Surface)
         .border(1.dp, accent.copy(alpha = 0.25f), R1.ShapeM)
+
+    val bodyTap = Modifier
+        .fillMaxWidth()
         .r1Pressable(onClick = { onAction(action) })
         .padding(horizontal = 14.dp, vertical = 12.dp)
 
+    Column(modifier = modifier.then(cardSurface)) {
+        TileBody(
+            card = card,
+            state = state,
+            accent = accent,
+            name = name,
+            icon = icon,
+            stateText = stateText,
+            modifier = bodyTap,
+        )
+        if (hasFeatures && state != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(R1.Hairline),
+            )
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                TileFeatureRows(
+                    features = card.features,
+                    entityId = card.entityId,
+                    state = state,
+                    accent = accent,
+                    onAction = onAction,
+                )
+            }
+        }
+    }
+}
+
+/** The tile's tappable body: icon disc + name + state, in either the compact
+ *  horizontal layout or the vertical (icon-on-top) layout. Factored out of
+ *  [TileCard] so the feature row can sit below it without inheriting its
+ *  tap-to-act gesture. */
+@Composable
+private fun TileBody(
+    card: LovelaceCard.Tile,
+    state: com.github.itskenny0.r1ha.core.ha.EntityState?,
+    accent: androidx.compose.ui.graphics.Color,
+    name: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    stateText: String?,
+    modifier: Modifier,
+) {
     if (card.vertical) {
         Column(
-            modifier = modifier.then(tileSurface),
+            modifier = modifier,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             CardIconDisc(icon = icon, accent = accent, discSize = 48.dp, iconSize = 24.dp)
@@ -92,7 +147,7 @@ fun TileCard(
         }
     } else {
         Row(
-            modifier = modifier.then(tileSurface),
+            modifier = modifier,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CardIconDisc(icon = icon, accent = accent, discSize = 40.dp, iconSize = 22.dp)

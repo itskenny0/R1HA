@@ -238,6 +238,7 @@ object LovelaceParser {
                     vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
                     color = obj["color"]?.asStringOrNull(),
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    features = parseTileFeatures(obj["features"]),
                 )
             }
             "light" -> {
@@ -266,6 +267,7 @@ object LovelaceParser {
                             red = sev["red"]?.asDoubleOrNull(),
                         )
                     },
+                    segments = parseGaugeSegments(obj["segments"]),
                 )
             }
             "weather-forecast" -> {
@@ -654,6 +656,59 @@ object LovelaceParser {
     private fun parseChildCards(el: JsonElement?): List<LovelaceCard> =
         (el as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let(::parseCard) }
             ?: emptyList()
+
+    /**
+     * Parse a tile card's `features:` array. Each entry is a `{type: ...}`
+     * object (src/panels/lovelace/card-features/types.ts). We map the
+     * high-value feature types onto the typed [LovelaceTileFeature] hierarchy
+     * and keep an [LovelaceTileFeature.Unsupported] placeholder for the rest so
+     * a future renderer can grow into them without a parser change. A bare
+     * string or an entry without a `type` is dropped.
+     */
+    private fun parseTileFeatures(el: JsonElement?): List<LovelaceTileFeature> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val type = obj["type"]?.asStringOrNull()?.lowercase() ?: return@mapNotNull null
+            when (type) {
+                "cover-open-close" -> LovelaceTileFeature.CoverOpenClose
+                "cover-position" -> LovelaceTileFeature.CoverPosition
+                "light-brightness" -> LovelaceTileFeature.LightBrightness
+                "fan-speed" -> LovelaceTileFeature.FanSpeed
+                "climate-hvac-modes" -> LovelaceTileFeature.ClimateHvacModes(parseStringList(obj["hvac_modes"]))
+                "alarm-modes" -> LovelaceTileFeature.AlarmModes(parseStringList(obj["modes"]))
+                "lock-commands" -> LovelaceTileFeature.LockCommands
+                "toggle" -> LovelaceTileFeature.Toggle
+                "target-temperature" -> LovelaceTileFeature.TargetTemperature
+                "select-options" -> LovelaceTileFeature.SelectOptions(parseStringList(obj["options"]))
+                else -> LovelaceTileFeature.Unsupported(type)
+            }
+        }
+    }
+
+    /**
+     * Parse a gauge card's `segments:` array (HA's modern band format). Each
+     * entry carries `from` (the lower bound the band starts at) and `color`
+     * (a theme-colour name or `#rrggbb`). Entries missing either are dropped;
+     * the list is sorted ascending by `from` so the renderer can fill each band
+     * up to the next band's start, matching hui-gauge-card's `_severityLevels`.
+     */
+    private fun parseGaugeSegments(el: JsonElement?): List<GaugeSegment> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val from = obj["from"]?.asDoubleOrNull() ?: return@mapNotNull null
+            val color = obj["color"]?.asStringOrNull()?.takeUnless { it.isBlank() } ?: return@mapNotNull null
+            GaugeSegment(from = from, color = color)
+        }.sortedBy { it.from }
+    }
+
+    /** Pull a list of plain strings out of a JSON array (filter feature configs
+     *  like `hvac_modes:` / `modes:` / `options:`). Non-string entries dropped. */
+    private fun parseStringList(el: JsonElement?): List<String> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { (it as? JsonPrimitive)?.let { p -> if (p.isString) p.content else null } }
+    }
 
     private fun parseEntityRows(el: JsonElement?): List<EntityRow> {
         val arr = el as? JsonArray ?: return emptyList()

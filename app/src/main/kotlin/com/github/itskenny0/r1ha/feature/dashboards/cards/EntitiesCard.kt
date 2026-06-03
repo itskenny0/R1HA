@@ -107,7 +107,6 @@ private fun HeaderToggleRow(
     onAction: (LovelaceAction) -> Unit,
 ) {
     val anyOn = toggleableIds.any { stateMap.byRaw(it)?.isOn == true }
-    val accent = if (anyOn) R1.AccentWarm else R1.InkSoft
     val service = if (anyOn) "homeassistant.turn_off" else "homeassistant.turn_on"
     val data = JsonObject(
         mapOf("entity_id" to JsonArray(toggleableIds.map { JsonPrimitive(it) })),
@@ -126,16 +125,42 @@ private fun HeaderToggleRow(
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        Box(
-            modifier = Modifier
-                .r1Pressable(onClick = { onAction(LovelaceAction.CallService(service, null, data)) })
-                .background(accent.copy(alpha = 0.16f), shape = R1.ShapeM)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Text(text = if (anyOn) "ALL OFF" else "ALL ON", style = R1.labelMicro, color = accent)
-        }
+        // HA's header control is a real toggle switch, not a labelled pill: it
+        // reads "on" when ANY toggleable entity is on, and flipping it turns the
+        // whole set on / off in one call. We render an actual switch track + thumb
+        // so it reads like the frontend's control.
+        ToggleSwitch(
+            checked = anyOn,
+            onClick = { onAction(LovelaceAction.CallService(service, null, data)) },
+        )
     }
     Spacer(Modifier.height(2.dp))
+}
+
+/**
+ * A compact on/off switch in the R1 idiom: a pill track whose fill + thumb
+ * slide between off (muted, thumb left) and on (warm accent, thumb right).
+ * Mirrors HA's entities-card header toggle, which is a real `ha-switch` rather
+ * than a text button.
+ */
+@Composable
+internal fun ToggleSwitch(checked: Boolean, onClick: () -> Unit) {
+    val trackColor = if (checked) R1.AccentWarm.copy(alpha = 0.5f) else R1.SurfaceMuted
+    val thumbColor = if (checked) R1.AccentWarm else R1.InkSoft
+    Box(
+        modifier = Modifier
+            .r1Pressable(onClick = onClick)
+            .size(width = 40.dp, height = 24.dp)
+            .background(trackColor, shape = androidx.compose.foundation.shape.CircleShape)
+            .padding(2.dp),
+        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .background(thumbColor, shape = androidx.compose.foundation.shape.CircleShape),
+        )
+    }
 }
 
 @Composable

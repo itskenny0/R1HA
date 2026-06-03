@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +51,15 @@ fun GaugeCard(
     val rawValue: Double? = state?.raw?.toDouble() ?: state?.rawState?.toDoubleOrNull()
     val name = resolveName(card.name, state, card.entityId)
     val unit = card.unit ?: state?.unit
-    val severityColor = severityBandFor(rawValue, card.severity)
+    // Resolve the severity/segment bands once: with `needle: true` HA paints the
+    // whole arc into coloured bands behind the needle (segments take precedence
+    // over severity, matching hui-gauge-card's `_severityLevels`). Without a
+    // needle the gauge keeps the single accent fill, recoloured to the band the
+    // value currently sits in.
+    val bands = remember(card.segments, card.severity, card.min, card.max) {
+        gaugeBands(card.segments, card.severity, card.min, card.max)
+    }
+    val severityColor = bandColorFor(rawValue, bands)
 
     Column(
         modifier = modifier
@@ -71,6 +80,12 @@ fun GaugeCard(
                 fraction = computeFraction(rawValue, card.min, card.max),
                 accent = severityColor ?: R1.AccentWarm,
                 needle = card.needle,
+                // Bands paint behind the needle only in needle mode (HA's
+                // behaviour). In the plain fill mode the single accent arc already
+                // carries the band colour via [severityColor], so no segments.
+                bands = if (card.needle) bands else emptyList(),
+                min = card.min,
+                max = card.max,
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Spacer(Modifier.height(28.dp))
@@ -108,7 +123,14 @@ fun GaugeCard(
 }
 
 @Composable
-private fun GaugeArc(fraction: Float, accent: Color, needle: Boolean) {
+private fun GaugeArc(
+    fraction: Float,
+    accent: Color,
+    needle: Boolean,
+    bands: List<GaugeBand> = emptyList(),
+    min: Double = 0.0,
+    max: Double = 100.0,
+) {
     val safeFraction = fraction.coerceIn(0f, 1f)
     Canvas(modifier = Modifier.size(200.dp, 100.dp)) {
         val strokeWidth = 14.dp.toPx()
@@ -124,16 +146,39 @@ private fun GaugeArc(fraction: Float, accent: Color, needle: Boolean) {
             size = arcSize,
             style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
         )
-        // Value arc. fills clockwise from the left edge.
-        drawArc(
-            color = accent,
-            startAngle = 180f,
-            sweepAngle = 180f * safeFraction,
-            useCenter = false,
-            topLeft = arcOffset,
-            size = arcSize,
-            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-        )
+        if (bands.isNotEmpty() && max > min) {
+            // Needle mode: paint the whole arc into coloured severity/segment
+            // bands behind the needle. Each band spans from its `from` to the
+            // next band's `from` (or `max` for the last), mapped onto the 180°
+            // arc. Butt caps so adjacent bands meet cleanly without overlap.
+            bands.forEachIndexed { i, band ->
+                val startVal = band.from.coerceIn(min, max)
+                val endVal = (if (i + 1 < bands.size) bands[i + 1].from else max).coerceIn(min, max)
+                if (endVal <= startVal) return@forEachIndexed
+                val startFrac = ((startVal - min) / (max - min)).toFloat()
+                val endFrac = ((endVal - min) / (max - min)).toFloat()
+                drawArc(
+                    color = band.color,
+                    startAngle = 180f + 180f * startFrac,
+                    sweepAngle = 180f * (endFrac - startFrac),
+                    useCenter = false,
+                    topLeft = arcOffset,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
+                )
+            }
+        } else {
+            // Plain fill mode: a single value arc filling clockwise from the left.
+            drawArc(
+                color = accent,
+                startAngle = 180f,
+                sweepAngle = 180f * safeFraction,
+                useCenter = false,
+                topLeft = arcOffset,
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+        }
         if (needle) {
             // Needle line from the centre to the arc at the current angle.
             val angleRad = Math.toRadians((180.0 + 180.0 * safeFraction))
@@ -158,13 +203,62 @@ internal fun computeFraction(value: Double?, min: Double, max: Double): Float {
     return ((value - min) / (max - min)).coerceIn(0.0, 1.0).toFloat()
 }
 
-internal fun severityBandFor(value: Double?, severity: com.github.itskenny0.r1ha.core.lovelace.GaugeSeverity?): Color? {
-    if (value == null || severity == null) return null
-    // Pick the colour for the highest band the value passes. red > yellow > green.
-    severity.red?.let { if (value >= it) return R1.StatusRed }
-    severity.yellow?.let { if (value >= it) return R1.StatusAmber }
-    severity.green?.let { if (value >= it) return R1.AccentGreen }
-    return null
+/** One resolved gauge band: the value it starts at and the colour it paints. */
+internal data class GaugeBand(val from: Double, val color: Color)
+
+/**
+ * Resolve a gauge's severity/segment config into an ascending list of bands.
+ * Segments take precedence over severity (HA's `_severityLevels`): each
+ * `{from, color}` becomes a band, colour mapped via [haColorAccent] / the
+ * severity palette. The old `severity: {green, yellow, red}` form becomes three
+ * bands starting at their thresholds. Returns empty when neither is configured.
+ */
+internal fun gaugeBands(
+    segments: List<com.github.itskenny0.r1ha.core.lovelace.GaugeSegment>,
+    severity: com.github.itskenny0.r1ha.core.lovelace.GaugeSeverity?,
+    min: Double,
+    max: Double,
+): List<GaugeBand> {
+    if (segments.isNotEmpty()) {
+        return segments
+            .map { GaugeBand(from = it.from, color = haColorAccent(it.color) ?: severityColor(it.color)) }
+            .sortedBy { it.from }
+    }
+    if (severity != null) {
+        val out = mutableListOf<GaugeBand>()
+        severity.green?.let { out.add(GaugeBand(it, R1.AccentGreen)) }
+        severity.yellow?.let { out.add(GaugeBand(it, R1.StatusAmber)) }
+        severity.red?.let { out.add(GaugeBand(it, R1.StatusRed)) }
+        out.sortBy { it.from }
+        // HA fills the arc from `min` upward; if the lowest band starts above the
+        // gauge minimum, prepend a neutral band so the gap before it isn't blank.
+        if (out.isNotEmpty() && out.first().from > min) {
+            out.add(0, GaugeBand(min, R1.AccentNeutral))
+        }
+        return out
+    }
+    return emptyList()
+}
+
+/** The colour the [value] falls into for the plain-fill (no-needle) gauge:
+ *  the highest band whose `from` the value has reached. Null = no bands. */
+internal fun bandColorFor(value: Double?, bands: List<GaugeBand>): Color? {
+    if (value == null || bands.isEmpty()) return null
+    var picked: Color? = null
+    for (band in bands) {
+        if (value >= band.from) picked = band.color else break
+    }
+    return picked
+}
+
+/** Map HA's severity colour names (`red` / `green` / `yellow` / `normal`) to the
+ *  R1 palette. Used for `segments[].color` values that aren't a theme-colour
+ *  name [haColorAccent] handles or a hex literal. */
+private fun severityColor(name: String): Color = when (name.trim().lowercase()) {
+    "red", "error" -> R1.StatusRed
+    "yellow", "warning" -> R1.StatusAmber
+    "green", "success" -> R1.AccentGreen
+    else -> R1.AccentCool
 }
 
 /**

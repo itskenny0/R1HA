@@ -476,6 +476,46 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
                 }
             }
         }
+        // Swing mode — HA's more-info-climate surfaces `swing_modes` whenever the
+        // thermostat advertises the SWING_MODE feature. The repository doesn't parse
+        // swing into a typed field, so we read `swing_modes` / `swing_mode` from the
+        // raw attribute map (same approach the cover/humidifier panels use) and fire
+        // climate.set_swing_mode directly.
+        val swingModes = state.attrStringList("swing_modes")
+        if (swingModes.isNotEmpty()) {
+            val currentSwing = state.attrString("swing_mode")
+            Spacer(Modifier.height(8.dp))
+            Text(text = "SWING", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                swingModes.forEach { swing ->
+                    PanelChip(
+                        label = swing.replace('_', ' ').uppercase(),
+                        accent = accent,
+                        selected = currentSwing.equals(swing, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(
+                                ServiceCall(
+                                    state.id,
+                                    "set_swing_mode",
+                                    kotlinx.serialization.json.buildJsonObject {
+                                        put(
+                                            "swing_mode",
+                                            kotlinx.serialization.json.JsonPrimitive(swing),
+                                        )
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+        }
         val current = state.climateCurrentTemperature
         if (current != null) {
             // Convert to the user's chosen temperature unit so the panel
@@ -915,7 +955,16 @@ fun MediaExtrasPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
     val hasRepeat = state.hasMediaFeature(EntityState.MediaPlayerFeature.REPEAT_SET)
     val hasSource = state.hasMediaFeature(EntityState.MediaPlayerFeature.SELECT_SOURCE) &&
         state.mediaSourceList.isNotEmpty()
-    if (!hasShuffle && !hasRepeat && !hasSource) return
+    // Sound mode + group members aren't parsed into typed EntityState fields, so we
+    // read them straight off the raw attribute map (mirroring HA's more-info names).
+    val soundModes = state.attrStringList("sound_mode_list")
+    val currentSound = state.attrString("sound_mode")
+    val hasSound = state.hasMediaFeature(EntityState.MediaPlayerFeature.SELECT_SOUND_MODE) &&
+        soundModes.isNotEmpty()
+    val groupMembers = state.attrStringList("group_members")
+    val hasGroup = state.hasMediaFeature(EntityState.MediaPlayerFeature.GROUPING) &&
+        groupMembers.size > 1
+    if (!hasShuffle && !hasRepeat && !hasSource && !hasSound && !hasGroup) return
     Column(modifier = modifier.fillMaxWidth()) {
         if (hasShuffle || hasRepeat) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -967,6 +1016,62 @@ fun MediaExtrasPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
                         onClick = {
                             dispatch?.invoke(ServiceCall.mediaSelectSource(state.id, source))
                         },
+                    )
+                }
+            }
+        }
+        if (hasSound) {
+            Spacer(Modifier.height(6.dp))
+            Text(text = "SOUND MODE", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                soundModes.forEach { mode ->
+                    PanelChip(
+                        label = mode.uppercase(),
+                        accent = accent,
+                        selected = currentSound.equals(mode, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(
+                                ServiceCall(
+                                    state.id,
+                                    "select_sound_mode",
+                                    kotlinx.serialization.json.buildJsonObject {
+                                        put(
+                                            "sound_mode",
+                                            kotlinx.serialization.json.JsonPrimitive(mode),
+                                        )
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+        }
+        if (hasGroup) {
+            // Read-only readout of the active group. HA's more-info offers a full
+            // join/unjoin dialog; on the R1's screen a count plus an UNGROUP action
+            // (media_player.unjoin on this member) is the high-value slice.
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "GROUPED", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.width(6.dp))
+                Text(text = "${groupMembers.size}", style = R1.labelMicro, color = accent)
+            }
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PanelChip("UNGROUP", accent) {
+                    dispatch?.invoke(
+                        ServiceCall(
+                            state.id,
+                            "unjoin",
+                            kotlinx.serialization.json.JsonObject(emptyMap()),
+                        ),
                     )
                 }
             }

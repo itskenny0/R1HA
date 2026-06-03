@@ -147,6 +147,12 @@ sealed class LovelaceCard {
         val vertical: Boolean,
         val color: String?,
         val tapAction: LovelaceAction?,
+        // HA's `features:` array. Each entry renders as a control row below the
+        // tile body (cover open/close, light brightness, fan speed, climate HVAC
+        // modes, alarm modes, lock commands, toggle, target temperature, select
+        // options). A feature type R1HA doesn't model parses to
+        // LovelaceTileFeature.Unsupported and is skipped at render time.
+        val features: List<LovelaceTileFeature> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "tile"
     }
@@ -174,6 +180,11 @@ sealed class LovelaceCard {
         val max: Double,
         val needle: Boolean,
         val severity: GaugeSeverity?,
+        // HA's modern `segments:` band format (takes precedence over severity
+        // when both are set, matching hui-gauge-card). Each segment colours the
+        // arc from its `from` to the next segment's `from`. Empty when the gauge
+        // uses severity or a single fill.
+        val segments: List<GaugeSegment> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "gauge"
     }
@@ -618,6 +629,78 @@ data class GaugeSeverity(
     val yellow: Double?,
     val red: Double?,
 )
+
+// One segment of a gauge's `segments:` array (HA's modern band format). A
+// segment colours the arc from `from` up to the next segment's `from` (or max
+// for the last) with `color` (an HA theme-colour name or a literal #rrggbb).
+@Immutable
+data class GaugeSegment(
+    val from: Double,
+    val color: String,
+)
+
+// One entry of a `tile` card's `features:` array. HA renders each below the
+// tile body as a control row (cards/tile-features). R1HA models the high-value
+// subset; anything else parses to Unsupported and is skipped. The feature is
+// scoped to the tile's entity, so the renderer gates each control on that
+// entity's domain and advertised features.
+@Immutable
+sealed class LovelaceTileFeature {
+    abstract val type: String
+
+    @Immutable
+    data object CoverOpenClose : LovelaceTileFeature() {
+        override val type: String = "cover-open-close"
+    }
+
+    @Immutable
+    data object CoverPosition : LovelaceTileFeature() {
+        override val type: String = "cover-position"
+    }
+
+    @Immutable
+    data object LightBrightness : LovelaceTileFeature() {
+        override val type: String = "light-brightness"
+    }
+
+    @Immutable
+    data object FanSpeed : LovelaceTileFeature() {
+        override val type: String = "fan-speed"
+    }
+
+    @Immutable
+    data class ClimateHvacModes(val modes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "climate-hvac-modes"
+    }
+
+    @Immutable
+    data class AlarmModes(val modes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "alarm-modes"
+    }
+
+    @Immutable
+    data object LockCommands : LovelaceTileFeature() {
+        override val type: String = "lock-commands"
+    }
+
+    @Immutable
+    data object Toggle : LovelaceTileFeature() {
+        override val type: String = "toggle"
+    }
+
+    @Immutable
+    data object TargetTemperature : LovelaceTileFeature() {
+        override val type: String = "target-temperature"
+    }
+
+    @Immutable
+    data class SelectOptions(val options: List<String>) : LovelaceTileFeature() {
+        override val type: String = "select-options"
+    }
+
+    @Immutable
+    data class Unsupported(override val type: String) : LovelaceTileFeature()
+}
 
 /**
  * Condition for [LovelaceCard.Conditional] and per-card `visibility:`. Mirrors
