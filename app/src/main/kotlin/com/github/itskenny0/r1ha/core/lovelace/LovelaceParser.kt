@@ -162,11 +162,29 @@ object LovelaceParser {
     }
 
     /** Cards inside one section of a "sections" view. Strategy sections carry
-     *  no concrete `cards` array and resolve to an empty list. */
-    private fun parseSectionCards(section: JsonObject): List<LovelaceCard> =
-        (section["cards"] as? JsonArray)
+     *  no concrete `cards` array and resolve to an empty list.
+     *
+     *  A section can carry its OWN `visibility:` conditions (HA gates the whole
+     *  section on them). Because we flatten sections into the view's flat card
+     *  list, that section-level gate would otherwise be lost and the section's
+     *  cards would always show. Push the gate down onto every card in the
+     *  section, wrapping each in a [LovelaceCard.Conditional]; this composes
+     *  with any per-card `visibility:` (already applied by [parseCard]). */
+    private fun parseSectionCards(section: JsonObject): List<LovelaceCard> {
+        val cards = (section["cards"] as? JsonArray)
             ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) }
             ?: emptyList()
+        val visibility = section["visibility"]
+        if (visibility is JsonArray && visibility.isNotEmpty()) {
+            val conditions = parseConditions(visibility)
+            if (conditions.isNotEmpty()) {
+                return cards.map { c ->
+                    LovelaceCard.Conditional(raw = section, conditions = conditions, card = c)
+                }
+            }
+        }
+        return cards
+    }
 
     /**
      * Recursive: stack and conditional cards re-enter the parser for
