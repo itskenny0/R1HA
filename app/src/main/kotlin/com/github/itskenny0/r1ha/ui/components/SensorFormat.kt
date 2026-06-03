@@ -8,6 +8,10 @@ import java.util.Locale
  * → "21.7", and "21.00" → "21". Non-numeric states (e.g. an enum sensor reporting
  * "Heating" or a binary sensor reporting "on") pass through unchanged.
  *
+ * A value that rounds to zero from below (e.g. -0.002 at two decimals, or -0.4 at zero)
+ * is emitted as "0", not "-0": the "%f" formatter keeps the sign even when the magnitude
+ * rounds away, and a "-0" readout on a sensor hovering just under zero reads as a glitch.
+ *
  * Locale-pinned to US so we always parse and emit dot-separated decimals; HA's REST
  * surface uses dot separators regardless of the server's display locale, and the R1
  * device locale isn't always reliable.
@@ -24,5 +28,11 @@ fun formatSensorValue(raw: String?, maxDecimals: Int = 2): String {
     if (num.isNaN() || num.isInfinite()) return "—"
     val places = maxDecimals.coerceIn(0, 6)
     val rounded = "%.${places}f".format(Locale.US, num)
-    return if (places == 0) rounded else rounded.trimEnd('0').trimEnd('.')
+    val trimmed = if (places == 0) rounded else rounded.trimEnd('0').trimEnd('.')
+    // Drop a leading minus when the rounded magnitude is zero, so "-0" / "-0.0" → "0".
+    return if (trimmed.startsWith("-") && trimmed.drop(1).all { it == '0' || it == '.' }) {
+        trimmed.drop(1)
+    } else {
+        trimmed
+    }
 }
