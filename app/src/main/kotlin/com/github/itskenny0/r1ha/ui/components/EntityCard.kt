@@ -324,6 +324,11 @@ fun EntityCard(
                     val value = state.minRaw + (state.percent / 100.0) * (state.maxRaw - state.minRaw)
                     formatSensorValue(value.toString(), maxDecimals = mergedUi.maxDecimalPlaces) to state.unit
                 }
+                // Covers / valves read CLOSED / OPEN / OPENING / CLOSING instead of a bare
+                // "0%" / "100%"; partial positions still fall through to the percent readout.
+                state.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.COVER ||
+                    state.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.VALVE ->
+                    coverStateLabel(state.rawState, state.percent) to null
                 else -> null to null
             }
             // For light cards we also re-compute display from the wheel mode (overrides
@@ -544,6 +549,17 @@ private fun sensorDomainLabel(domain: Domain): String = when (domain) {
     Domain.PERSON -> "PRESENCE"
     Domain.WEATHER -> "WEATHER"
     else -> domain.prefix.uppercase()
+}
+
+/** A human state word for a cover / valve readout: CLOSED / OPEN at the extremes, and
+ *  OPENING / CLOSING while in transit (from the raw state). Returns null for a partial
+ *  position so the caller falls back to the "N%" percent readout. Pure + unit-tested. */
+internal fun coverStateLabel(rawState: String?, percent: Int?): String? = when {
+    rawState.equals("opening", ignoreCase = true) -> "OPENING"
+    rawState.equals("closing", ignoreCase = true) -> "CLOSING"
+    percent == 0 -> "CLOSED"
+    percent == 100 -> "OPEN"
+    else -> null
 }
 
 /** Map a thermostat's HVAC mode to an accent so the card colour answers "heating or
