@@ -269,6 +269,19 @@ fun SensorCard(
                 color = triggeredColor,
                 softWrap = true,
             )
+            // How long it's been in this state ("3h ago"): last_changed flips when the
+            // contact opens / motion clears, so a door that's been OPEN for hours or motion
+            // that just cleared reads at a glance. Matches the person card's freshness line.
+            val binarySince = rememberRelativeTime(state.lastChanged)
+            if (binarySince.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = binarySince,
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                )
+            }
         } else if (timestampSensorInstant(state.deviceClass, state.rawState) != null) {
             // Timestamp sensors — render the instant as a live relative readout
             // ("in 2h" / "3d ago") plus a small absolute line, rather than a raw ISO string.
