@@ -26,6 +26,13 @@ class SensorFormatTest {
         assertThat(formatSensorValue("on")).isEqualTo("on")
     }
 
+    @Test fun `unknown and unavailable sentinels render as a dash`() {
+        assertThat(formatSensorValue("unknown")).isEqualTo("—")
+        assertThat(formatSensorValue("unavailable")).isEqualTo("—")
+        assertThat(formatSensorValue("Unknown")).isEqualTo("—")
+        assertThat(formatSensorValue(" unavailable ")).isEqualTo("—")
+    }
+
     @Test fun `NaN and Infinity render as a dash`() {
         assertThat(formatSensorValue("NaN")).isEqualTo("—")
         assertThat(formatSensorValue("Infinity")).isEqualTo("—")
