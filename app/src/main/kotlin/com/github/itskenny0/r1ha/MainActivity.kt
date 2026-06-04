@@ -323,6 +323,7 @@ class MainActivity : ComponentActivity() {
                                             route = surface.route,
                                             label = surface.label,
                                             glyph = surface.glyph,
+                                            group = com.github.itskenny0.r1ha.ui.components.NavGroup.PINNED,
                                         )
                                     }
                                 // User-pinned Lovelace dashboard VIEWS, appended after the
@@ -338,6 +339,7 @@ class MainActivity : ComponentActivity() {
                                         label = pinned.title,
                                         glyph = "▤",
                                         id = pinned.route,
+                                        group = com.github.itskenny0.r1ha.ui.components.NavGroup.DASHBOARD,
                                     )
                                 }
                                 core + pins + dashboardPins

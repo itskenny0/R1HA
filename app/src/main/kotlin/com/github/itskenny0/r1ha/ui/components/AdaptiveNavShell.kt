@@ -45,6 +45,14 @@ import com.github.itskenny0.r1ha.core.prefs.PhoneNavStyle
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
+ * The logical section a [NavDestination] belongs to. The rail / drawer draw a divider
+ * wherever consecutive destinations cross a group boundary, so the panel reads as grouped
+ * sections (core app destinations, then user-pinned surfaces, then pinned dashboards)
+ * rather than one undifferentiated list. Order matches the on-screen order.
+ */
+enum class NavGroup { PRIMARY, PINNED, DASHBOARD }
+
+/**
  * One top-level navigation target shown by [AdaptiveNavShell]. [route] is the navigation
  * route to push when tapped; [label] is the human title; [glyph] is a 1-2 char monospace
  * mark drawn in the rail / drawer (kept text so the shell has zero coupling to the per-glyph
@@ -62,6 +70,10 @@ data class NavDestination(
      *  Defaults to [route] so call sites that don't set it (Home, Settings) keep a
      *  unique, never-hidden id. */
     val id: String = route,
+    /** Which section this destination sits in; drives the grouping dividers. Defaults to
+     *  [NavGroup.PRIMARY] so callers that don't group (previews, the default set) render
+     *  as a single undivided section. */
+    val group: NavGroup = NavGroup.PRIMARY,
 )
 
 /**
@@ -191,7 +203,9 @@ private fun NavRail(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
     ) {
-        for (dest in destinations) {
+        destinations.forEachIndexed { i, dest ->
+            // Divider where the section changes (core → pinned → dashboards).
+            if (i > 0 && dest.group != destinations[i - 1].group) RailDivider()
             RailItem(
                 dest = dest,
                 active = dest.isActive(currentRoute),
@@ -200,8 +214,9 @@ private fun NavRail(
         }
         // Always-present edit affordance: opens the sidebar-config surface so the user
         // can change what the sidebar shows without leaving it. Rendered as a quiet
-        // pencil glyph item below the destinations.
+        // pencil glyph item below the destinations, set off by its own divider.
         if (onConfigure != null) {
+            if (destinations.isNotEmpty()) RailDivider()
             RailItem(
                 dest = NavDestination(route = "__configure__", label = "Manage", glyph = "✎"),
                 active = false,
@@ -209,6 +224,18 @@ private fun NavRail(
             )
         }
     }
+}
+
+/** A short centred hairline separating sections in the rail. */
+@Composable
+private fun RailDivider() {
+    Box(
+        modifier = Modifier
+            .padding(vertical = R1.space.xs)
+            .width(28.dp)
+            .height(1.dp)
+            .background(R1.Hairline),
+    )
 }
 
 @Composable
@@ -318,7 +345,9 @@ private fun NavDrawerContent(
                 }
             }
         }
-        for (dest in destinations) {
+        destinations.forEachIndexed { i, dest ->
+            // Divider where the section changes (core → pinned surfaces → pinned dashboards).
+            if (i > 0 && dest.group != destinations[i - 1].group) DrawerDivider()
             DrawerItem(
                 dest = dest,
                 active = dest.isActive(currentRoute),
@@ -326,8 +355,9 @@ private fun NavDrawerContent(
             )
         }
         // Always-present labelled edit row below the destinations — mirrors the rail's
-        // Manage affordance for users who don't spot the header glyph.
+        // Manage affordance for users who don't spot the header glyph, set off by a divider.
         if (onConfigure != null) {
+            if (destinations.isNotEmpty()) DrawerDivider()
             DrawerItem(
                 dest = NavDestination(route = "__configure__", label = "Manage sidebar", glyph = "✎"),
                 active = false,
@@ -335,6 +365,18 @@ private fun NavDrawerContent(
             )
         }
     }
+}
+
+/** A full-width hairline separating sections in the drawer / slide-out. */
+@Composable
+private fun DrawerDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = R1.space.xs)
+            .height(1.dp)
+            .background(R1.Hairline),
+    )
 }
 
 /**
