@@ -107,10 +107,9 @@ fun EntityCard(
         Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION -> CardRenderModel.AccentRole.WARM
         Domain.LOCK -> CardRenderModel.AccentRole.NEUTRAL
         Domain.HUMIDIFIER -> CardRenderModel.AccentRole.COOL
-        // Thermostats run hot most of the time on a Rabbit — warm reads right for "this
-        // controls temperature". Cooler accents can come back if/when a heat/cool sub-mode
-        // colour pass lands alongside scalar target-temperature support.
-        Domain.CLIMATE -> CardRenderModel.AccentRole.WARM
+        // Thermostat accent follows the HVAC mode so the colour answers "is it heating or
+        // cooling?" at a glance: heat reads warm, cool reads cool, off reads neutral.
+        Domain.CLIMATE -> climateAccentRole(state.climateHvacMode)
         // Action entities — scenes get green (one-shot "go" energy), scripts cool, buttons
         // warm. Picked to keep the deck visually varied so the action tiles don't all look
         // identical when the user has a mix.
@@ -546,6 +545,16 @@ private fun sensorDomainLabel(domain: Domain): String = when (domain) {
     Domain.WEATHER -> "WEATHER"
     else -> domain.prefix.uppercase()
 }
+
+/** Map a thermostat's HVAC mode to an accent so the card colour answers "heating or
+ *  cooling?" at a glance. Cool modes read cool, heat reads warm, off reads neutral; auto /
+ *  heat_cool and an absent mode keep the warm default. Pure + unit-tested. */
+internal fun climateAccentRole(hvacMode: String?): CardRenderModel.AccentRole =
+    when (hvacMode?.trim()?.lowercase()) {
+        "cool", "dry", "fan_only" -> CardRenderModel.AccentRole.COOL
+        "off" -> CardRenderModel.AccentRole.NEUTRAL
+        else -> CardRenderModel.AccentRole.WARM
+    }
 
 /** Map a plain sensor's device_class to an accent colour. Read on the picker UI's
  *  domainAccentFor too so the picker chip and the card agree. */
