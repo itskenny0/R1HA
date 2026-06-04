@@ -37,6 +37,24 @@ import com.github.itskenny0.r1ha.core.theme.R1
  * is the state word itself (CLOSED, OPEN, MOTION, CLEAR, etc.) coloured by accent vs
  * muted depending on isOn.
  */
+
+/**
+ * Status tint for a battery sensor's readout: red at or below 10%, amber at or below 20%,
+ * null otherwise (and for non-battery or non-numeric sensors). A localised take on the
+ * dashboards' value-driven severity colouring, applied to the one sensor class whose
+ * "low = bad" meaning is universal and needs no per-card threshold config, so a dying
+ * battery reads as urgent at a glance instead of a calm grey number.
+ */
+internal fun batteryReadoutColor(deviceClass: String?, rawState: String?): Color? {
+    if (!deviceClass.equals("battery", ignoreCase = true)) return null
+    val pct = rawState?.trim()?.toDoubleOrNull() ?: return null
+    return when {
+        pct <= 10.0 -> R1.StatusRed
+        pct <= 20.0 -> R1.StatusAmber
+        else -> null
+    }
+}
+
 @Composable
 fun SensorCard(
     state: EntityState,
@@ -187,6 +205,8 @@ fun SensorCard(
             val maxDecimals = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.maxDecimalPlaces
             val value = formatSensorValue(state.rawState, maxDecimals = maxDecimals)
             val (bodyStyle, suffixStyle) = sensorReadoutStyle(value, textSizeSp)
+            // Tint the readout amber/red when a battery sensor is running low.
+            val battColor = batteryReadoutColor(state.deviceClass, state.rawState)
             // Row when there's a unit suffix (it sits inline with the bottom of the
             // value, R1's "21 °C" idiom); for unitless long-text sensors we drop the
             // Row entirely so the wrapping Text gets the full container width without
@@ -196,7 +216,7 @@ fun SensorCard(
                     Text(
                         text = value,
                         style = bodyStyle,
-                        color = R1.Ink,
+                        color = battColor ?: R1.Ink,
                         softWrap = true,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -204,7 +224,7 @@ fun SensorCard(
                     Text(
                         text = state.unit,
                         style = suffixStyle,
-                        color = accent,
+                        color = battColor ?: accent,
                         modifier = Modifier.padding(bottom = 6.dp),
                     )
                 }
@@ -212,7 +232,7 @@ fun SensorCard(
                 Text(
                     text = value,
                     style = bodyStyle,
-                    color = R1.Ink,
+                    color = battColor ?: R1.Ink,
                     softWrap = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
