@@ -129,7 +129,6 @@ private fun MultiLineChart(series: List<EntitySeries>) {
     if (allValues.size < 2) return
     val yMin = allValues.min()
     val yMax = allValues.max()
-    val yRange = (yMax - yMin).takeIf { it > 1e-9 } ?: 1.0
     val allTimes = numeric.flatten().map { it.first }
     val tStart = allTimes.min()
     val tEnd = allTimes.max()
@@ -160,7 +159,7 @@ private fun MultiLineChart(series: List<EntitySeries>) {
             pts.forEachIndexed { i, (instant, value) ->
                 val elapsed = Duration.between(tStart, instant).toMillis().toFloat()
                 val x = (elapsed / tSpan) * w
-                val yFrac = ((value - yMin) / yRange).toFloat()
+                val yFrac = com.github.itskenny0.r1ha.ui.components.chartYFraction(value, yMin, yMax)
                 val y = h - (yFrac * h)
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
