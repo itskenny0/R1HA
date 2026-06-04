@@ -222,4 +222,13 @@ class StatisticsHelpersTest {
         // Locale.US decimal point even where the platform default would differ.
         assertThat(formatStatNum(1234.5)).isEqualTo("1234.50")
     }
+
+    @Test
+    fun `format never shows a rounded-to-zero negative as minus zero`() {
+        assertThat(formatStatNum(-0.002)).isEqualTo("0")
+        assertThat(formatStatNum(-0.0)).isEqualTo("0")
+        // Genuine negatives keep their sign and two decimals.
+        assertThat(formatStatNum(-0.5)).isEqualTo("-0.50")
+        assertThat(formatStatNum(-12.34)).isEqualTo("-12.34")
+    }
 }

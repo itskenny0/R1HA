@@ -1038,10 +1038,14 @@ private fun SummaryRow(
 
 /** Drop unhelpful trailing decimals: 23.0 -> "23", 23.45 -> "23.45".
  *  Locale.US so the decimal separator is a point in every locale, matching
- *  the rest of the app's numeric formatting (and the shared snapshots). */
-private fun formatNum(v: Double): String =
-    if (kotlin.math.abs(v - v.toLong()) < 1e-9) "${v.toLong()}"
-    else "%.2f".format(java.util.Locale.US, v)
+ *  the rest of the app's numeric formatting (and the shared snapshots). Kept in lockstep
+ *  with StatisticsViewModel.formatStatNum, including the -0 normalisation: a value that
+ *  rounds to zero from below renders "0", not "-0.00". */
+private fun formatNum(v: Double): String {
+    if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
+    val s = "%.2f".format(java.util.Locale.US, v)
+    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) s.drop(1) else s
+}
 
 /**
  * One overlaid series, pre-projected into [0..1] space. x is normalized to the

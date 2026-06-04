@@ -426,10 +426,11 @@ fun windowSummary(
 }
 
 /** Drop unhelpful trailing decimals: 23.0 -> "23", 23.45 -> "23.45".
- *  Mirrors HistoryScreen's formatter so the surfaces print identically. */
-fun formatStatNum(v: Double): String =
-    if (kotlin.math.abs(v - v.toLong()) < 1e-9) {
-        "${v.toLong()}"
-    } else {
-        java.lang.String.format(java.util.Locale.US, "%.2f", v)
-    }
+ *  Mirrors HistoryScreen's formatter so the surfaces print identically. A value that
+ *  rounds to zero from below (-0.002 -> "-0.00") is emitted as "0", not "-0.00": "%f"
+ *  keeps the sign even when the magnitude rounds away, and "-0" reads as a glitch. */
+fun formatStatNum(v: Double): String {
+    if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
+    val s = java.lang.String.format(java.util.Locale.US, "%.2f", v)
+    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) s.drop(1) else s
+}
