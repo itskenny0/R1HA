@@ -419,7 +419,6 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
                 if (b.min < yMin0) yMin0 = b.min
                 if (b.max > yMax0) yMax0 = b.max
             }
-            val yRange0 = (yMax0 - yMin0).takeIf { it > 1e-9 } ?: 1.0
             val tStart0 = points.first().timestamp
             val tEnd0 = points.last().timestamp
             val tSpan0 = Duration.between(tStart0, tEnd0).toMillis().coerceAtLeast(1L)
@@ -428,7 +427,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             for (i in points.indices) {
                 val p = points[i]
                 xs[i] = Duration.between(tStart0, p.timestamp).toMillis().toFloat() / tSpan0
-                ysn[i] = 1f - (((p.value - yMin0) / yRange0).toFloat())
+                ysn[i] = 1f - com.github.itskenny0.r1ha.ui.components.chartYFraction(p.value, yMin0, yMax0)
             }
             val bandXs = FloatArray(band.size)
             val bandLo = FloatArray(band.size)
@@ -436,8 +435,8 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
             for (i in band.indices) {
                 val b = band[i]
                 bandXs[i] = Duration.between(tStart0, b.timestamp).toMillis().toFloat() / tSpan0
-                bandHi[i] = 1f - (((b.max - yMin0) / yRange0).toFloat())
-                bandLo[i] = 1f - (((b.min - yMin0) / yRange0).toFloat())
+                bandHi[i] = 1f - com.github.itskenny0.r1ha.ui.components.chartYFraction(b.max, yMin0, yMax0)
+                bandLo[i] = 1f - com.github.itskenny0.r1ha.ui.components.chartYFraction(b.min, yMin0, yMax0)
             }
             ChartProjection(xs, ysn, yMin0, yMax0, tStart0, tEnd0, tSpan0, bandXs, bandLo, bandHi)
         }
