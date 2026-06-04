@@ -95,8 +95,15 @@ fun SwitchCard(
         // word out while the new one fades in — quicker than the default 220 ms because
         // the user has already seen the thumb move on the switch track and the readout
         // should land before the eye drifts away.
+        // Alarming states (a jammed lock, an errored vacuum / mower, a triggered alarm)
+        // read red so they stand out from an ordinary on/off rather than sitting muted.
+        val alarmingState = isAlarmingSwitchState(state.rawState)
         val labelColor by androidx.compose.animation.animateColorAsState(
-            targetValue = if (state.isOn) accent else R1.InkSoft,
+            targetValue = when {
+                alarmingState -> R1.StatusRed
+                state.isOn -> accent
+                else -> R1.InkSoft
+            },
             label = "switch-label-color",
         )
         // State word — domain-aware. Covers in motion show OPENING/CLOSING (not ON/OFF
@@ -406,6 +413,13 @@ private fun MediaNowPlayingInline(state: EntityState, accent: Color) {
  * UNLOCKED / LOCKED; climate reads its HVAC mode (HEAT / COOL / etc.) when on. Falls
  * back to ON / OFF for everything else.
  */
+/** Raw HA states that warrant a red readout on a switch-style card: a stuck lock, an
+ *  errored vacuum / mower, a tripped alarm. Pure + unit-tested. */
+private val ALARMING_SWITCH_STATES = setOf("jammed", "error", "triggered")
+
+internal fun isAlarmingSwitchState(rawState: String?): Boolean =
+    rawState?.trim()?.lowercase() in ALARMING_SWITCH_STATES
+
 private fun friendlySwitchStateWord(state: EntityState): String {
     val raw = state.rawState?.lowercase() ?: return if (state.isOn) "ON" else "OFF"
     return when (state.id.domain) {
