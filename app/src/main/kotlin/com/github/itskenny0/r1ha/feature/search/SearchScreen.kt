@@ -561,6 +561,22 @@ private fun BucketChips(
     }
 }
 
+/** The secondary line under a search result's name: `entity_id · state · area`, with the
+ *  unit appended to a numeric state ("21.5" → "21.5 °C") since search rows otherwise drop
+ *  it. Non-numeric states (on/off, enum words) and missing parts are left out cleanly.
+ *  Pure + unit-tested. */
+internal fun searchStateLine(entityId: String, rawState: String?, unit: String?, area: String?): String =
+    buildString {
+        append(entityId)
+        rawState?.let { rs ->
+            append("  ·  ").append(rs)
+            if (rs.trim().toDoubleOrNull() != null && !unit.isNullOrBlank()) {
+                append(" ").append(unit)
+            }
+        }
+        area?.let { append("  ·  ").append(it) }
+    }
+
 @Composable
 private fun SearchResultRow(
     entity: EntityState,
@@ -623,12 +639,8 @@ private fun SearchResultRow(
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = entity.friendlyName, style = R1.bodyEmph, color = R1.Ink, maxLines = 1)
-            val stateLine = remember(entity.id.value, entity.rawState, entity.area) {
-                buildString {
-                    append(entity.id.value)
-                    entity.rawState?.let { append("  ·  ").append(it) }
-                    entity.area?.let { append("  ·  ").append(it) }
-                }
+            val stateLine = remember(entity.id.value, entity.rawState, entity.area, entity.unit) {
+                searchStateLine(entity.id.value, entity.rawState, entity.unit, entity.area)
             }
             Text(text = stateLine, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         }
