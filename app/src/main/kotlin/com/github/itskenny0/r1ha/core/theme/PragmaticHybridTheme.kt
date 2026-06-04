@@ -91,6 +91,13 @@ object PragmaticHybridTheme : R1Theme {
             ?: LocalThemeAccentOverride.current
             ?: accentColor(model.accent)
         val ui = LocalUiOptions.current
+        // On a short landscape viewport (a phone turned sideways) the fixed-height card body
+        // overflows and clips its bottom controls. There we trim the outer padding and the
+        // big pre-readout gap, and drop the secondary "last changed" line, so the controls
+        // stay on screen. Gated on landscape + short height, so portrait and the
+        // always-portrait R1 render byte-for-byte unchanged.
+        val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
+        val compact = window.isLandscape && window.heightDp in 1..479
 
         CardValueBarScaffold(
             model = model,
@@ -98,7 +105,12 @@ object PragmaticHybridTheme : R1Theme {
             outer = modifier
                 .fillMaxSize()
                 .background(R1.Bg)
-                .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
+                .padding(
+                    start = 22.dp,
+                    top = if (compact) 8.dp else 18.dp,
+                    bottom = if (compact) 8.dp else 18.dp,
+                    end = 18.dp,
+                ),
         ) {
             // ── Main content column ─────────────────────────────────────────────────
             Column(modifier = Modifier.fillMaxSize()) {
@@ -129,7 +141,7 @@ object PragmaticHybridTheme : R1Theme {
                 // with its BigReadout, light controls, tape meter, and
                 // brightness chips. Spacer-then-label so the spacer also
                 // disappears when the label renders empty (no lastChangedAt).
-                if (model.lastChangedAt != null) {
+                if (!compact && model.lastChangedAt != null) {
                     Spacer(Modifier.height(2.dp))
                     com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel(
                         at = model.lastChangedAt,
@@ -137,7 +149,7 @@ object PragmaticHybridTheme : R1Theme {
                         style = R1.labelMicro,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
                 // Hide the giant percent readout on every media_player card —
                 // the right-side volume meter already conveys the volume %
                 // and the now-playing block (always rendered for media,
