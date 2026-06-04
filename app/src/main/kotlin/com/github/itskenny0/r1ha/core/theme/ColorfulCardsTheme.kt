@@ -215,6 +215,7 @@ object ColorfulCardsTheme : R1Theme {
                         positionUpdatedAt = model.mediaPositionUpdatedAt,
                         isPlaying = model.mediaIsPlaying,
                         accent = accent,
+                        source = model.mediaSource,
                     )
                     Spacer(Modifier.height(8.dp))
                     MediaControlsRow(

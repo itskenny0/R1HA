@@ -376,6 +376,7 @@ fun EntityCard(
                     mediaPositionSec = state.mediaPosition,
                     mediaPositionUpdatedAt = state.mediaPositionUpdatedAt,
                     mediaPicture = state.mediaPicture,
+                    mediaSource = if (state.id.domain == Domain.MEDIA_PLAYER) state.mediaSource else null,
                     mediaIsPlaying = state.id.domain == Domain.MEDIA_PLAYER &&
                         state.rawState.equals("playing", ignoreCase = true),
                     mediaIsMuted = state.id.domain == Domain.MEDIA_PLAYER && state.isVolumeMuted,

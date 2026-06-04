@@ -115,6 +115,7 @@ fun MediaNowPlayingCompact(
     positionUpdatedAt: Instant?,
     isPlaying: Boolean,
     accent: Color,
+    source: String? = null,
     tier: WindowTier = LocalWindowTier.current.tier,
 ) {
     val layout = mediaHeaderLayoutFor(tier)
@@ -146,6 +147,8 @@ fun MediaNowPlayingCompact(
                 title = title,
                 artist = artist,
                 album = album,
+                source = source,
+                accent = accent,
                 lineSpacing = layout.metadataSpacing,
                 modifier = Modifier.weight(1f),
             )
@@ -179,19 +182,32 @@ fun MediaNowPlayingCompact(
 }
 
 /**
- * The metadata column: title, then artist, then album, each clamped to a single
- * line and ellipsized so long strings never reflow the card. Blank fields are
- * skipped so the block collapses to exactly the lines it has.
+ * The metadata column: an optional source eyebrow ("SPOTIFY", "HDMI 1") on top, then
+ * title, artist, and album, each clamped to a single line and ellipsized so long strings
+ * never reflow the card. Blank fields are skipped so the block collapses to exactly the
+ * lines it has.
  */
 @Composable
 private fun MediaMetadata(
     title: String?,
     artist: String?,
     album: String?,
+    source: String?,
+    accent: Color,
     lineSpacing: Dp,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
+        if (!source.isNullOrBlank()) {
+            Text(
+                text = source.uppercase(),
+                style = R1.labelMicro,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (lineSpacing > 0.dp) Spacer(Modifier.height(lineSpacing))
+        }
         if (!title.isNullOrBlank()) {
             Text(
                 text = title,

@@ -385,6 +385,15 @@ private fun MediaNowPlayingInline(state: EntityState, accent: Color) {
             Spacer(Modifier.width(10.dp))
         }
         Column(modifier = Modifier.fillMaxWidth()) {
+            if (!state.mediaSource.isNullOrBlank()) {
+                Text(
+                    text = state.mediaSource.uppercase(),
+                    style = R1.labelMicro,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
             if (!state.mediaTitle.isNullOrBlank()) {
                 Text(
                     text = state.mediaTitle,

@@ -85,6 +85,12 @@ data class CardRenderModel(
     val mediaPositionUpdatedAt: java.time.Instant? = null,
     val mediaPicture: String? = null,
     val mediaIsPlaying: Boolean = false,
+    /** Mirrors [com.github.itskenny0.r1ha.core.ha.EntityState.mediaSource] — the
+     *  currently-selected input source (e.g. "Spotify", "HDMI 1"). Surfaced as a small
+     *  eyebrow above the track metadata so the user can tell where the audio is coming
+     *  from at a glance, matching HA's own media cards. Null when the integration
+     *  doesn't report a source (HA omits it when the player is off). */
+    val mediaSource: String? = null,
     /** Mirrors [com.github.itskenny0.r1ha.core.ha.EntityState.isVolumeMuted] —
      *  surfaces the muted state to the media controls so the mute button can
      *  render its 'currently muted' visual (filled background + slashed speaker
