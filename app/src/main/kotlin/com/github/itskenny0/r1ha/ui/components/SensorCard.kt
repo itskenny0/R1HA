@@ -180,6 +180,19 @@ fun SensorCard(
                 color = if (PersonWeatherCardModel.personIsHome(state.rawState)) accent else R1.InkSoft,
                 softWrap = true,
             )
+            // Freshness of the presence state ("2h ago" / "just now"): last_changed flips
+            // when the person enters or leaves a zone, so this answers "since when?" at a
+            // glance. Bare relative time matches the lastChanged convention used elsewhere.
+            val since = rememberRelativeTime(state.lastChanged)
+            if (since.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = since,
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                )
+            }
         } else if (isWeather) {
             // Weather — current temperature as the headline number with a condition
             // glyph + label beside it. Temperature lives in the `temperature` attribute
