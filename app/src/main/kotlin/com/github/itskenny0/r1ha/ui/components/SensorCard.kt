@@ -47,12 +47,20 @@ import com.github.itskenny0.r1ha.core.theme.R1
  */
 internal fun batteryReadoutColor(deviceClass: String?, rawState: String?): Color? {
     if (!deviceClass.equals("battery", ignoreCase = true)) return null
-    val pct = rawState?.trim()?.toDoubleOrNull() ?: return null
-    return when {
-        pct <= 10.0 -> R1.StatusRed
-        pct <= 20.0 -> R1.StatusAmber
-        else -> null
-    }
+    return batteryLevelColor(rawState?.trim()?.toDoubleOrNull())
+}
+
+/**
+ * Severity tint for a 0..100 battery level, independent of how it's reported: red at or
+ * below 10%, amber at or below 20%, null above (and for a null level). Shared by the
+ * battery sensor readout and any other surface with a battery percentage (e.g. a vacuum's
+ * charge) so a low battery reads as urgent identically everywhere. Pure + unit-tested.
+ */
+internal fun batteryLevelColor(pct: Double?): Color? = when {
+    pct == null -> null
+    pct <= 10.0 -> R1.StatusRed
+    pct <= 20.0 -> R1.StatusAmber
+    else -> null
 }
 
 /**

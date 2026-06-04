@@ -38,4 +38,12 @@ class BatteryReadoutColorTest {
         assertThat(batteryReadoutColor("battery", null)).isNull()
         assertThat(batteryReadoutColor("battery", "unknown")).isNull()
     }
+
+    @Test fun `level-based helper applies the same thresholds for any battery source`() {
+        assertThat(batteryLevelColor(10.0)).isEqualTo(R1.StatusRed)
+        assertThat(batteryLevelColor(20.0)).isEqualTo(R1.StatusAmber)
+        assertThat(batteryLevelColor(21.0)).isNull()
+        assertThat(batteryLevelColor(100.0)).isNull()
+        assertThat(batteryLevelColor(null)).isNull()
+    }
 }

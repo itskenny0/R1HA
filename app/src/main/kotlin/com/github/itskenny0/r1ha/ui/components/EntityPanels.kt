@@ -157,7 +157,13 @@ fun VacuumPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "BATTERY", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.width(6.dp))
-                Text(text = "$battery%", style = R1.labelMicro, color = accent)
+                // Low charge reads amber / red so a vacuum that needs docking stands out,
+                // matching the battery-sensor severity colours.
+                Text(
+                    text = "$battery%",
+                    style = R1.labelMicro,
+                    color = batteryLevelColor(battery.toDouble()) ?: accent,
+                )
             }
         }
     }
