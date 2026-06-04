@@ -1422,7 +1422,10 @@ private fun EffectRow(label: String, isActive: Boolean, accent: Color, onClick: 
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = label.uppercase(),
+                // Display only — underscores in HA option / effect ids ("eco_mode",
+                // "color_loop") read as spaces so the row is human-legible; the raw value
+                // is still what the caller's onClick dispatches to the service.
+                text = label.replace('_', ' ').uppercase(),
                 style = R1.body,
                 color = if (isActive) R1.Bg else R1.Ink,
             )

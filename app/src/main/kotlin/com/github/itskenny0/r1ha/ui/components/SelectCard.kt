@@ -60,7 +60,9 @@ fun SelectCard(
 ) {
     val onOpenPicker = com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker.current
     val current = state.currentOption ?: state.rawState?.takeIf { it != "unknown" && it != "unavailable" }
-    val display = current?.uppercase() ?: "—"
+    // Underscores in option ids ("eco_mode") read as spaces so the big readout is legible;
+    // matches the picker rows. The raw `current` is still used for the active-row match.
+    val display = current?.replace('_', ' ')?.uppercase() ?: "—"
     val (bodyStyle, _) = selectReadoutStyle(display, textSizeSp)
     Column(
         modifier = modifier
