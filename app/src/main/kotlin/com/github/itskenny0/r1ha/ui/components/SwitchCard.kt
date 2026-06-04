@@ -420,6 +420,21 @@ private val ALARMING_SWITCH_STATES = setOf("jammed", "error", "triggered")
 internal fun isAlarmingSwitchState(rawState: String?): Boolean =
     rawState?.trim()?.lowercase() in ALARMING_SWITCH_STATES
 
+/** Humanise a climate / water_heater HVAC mode for the card readout: the multi-word HA
+ *  modes carry underscores ("heat_cool", "fan_only") that read poorly uppercased as-is.
+ *  Maps the known modes to clean labels and falls back to underscore-stripped uppercase
+ *  for anything unrecognised. Pure + unit-tested. */
+internal fun hvacModeLabel(rawState: String?): String = when (rawState?.trim()?.lowercase()) {
+    "heat" -> "HEAT"
+    "cool" -> "COOL"
+    "heat_cool" -> "HEAT/COOL"
+    "auto" -> "AUTO"
+    "dry" -> "DRY"
+    "fan_only" -> "FAN ONLY"
+    "off" -> "OFF"
+    else -> (rawState ?: "").trim().replace('_', ' ').uppercase()
+}
+
 private fun friendlySwitchStateWord(state: EntityState): String {
     val raw = state.rawState?.lowercase() ?: return if (state.isOn) "ON" else "OFF"
     return when (state.id.domain) {
@@ -469,7 +484,7 @@ private fun friendlySwitchStateWord(state: EntityState): String {
             else -> raw.uppercase()
         }
         com.github.itskenny0.r1ha.core.ha.Domain.CLIMATE,
-        com.github.itskenny0.r1ha.core.ha.Domain.WATER_HEATER -> raw.uppercase()
+        com.github.itskenny0.r1ha.core.ha.Domain.WATER_HEATER -> hvacModeLabel(raw)
         com.github.itskenny0.r1ha.core.ha.Domain.MEDIA_PLAYER -> when (raw) {
             "playing" -> "PLAYING"
             "paused" -> "PAUSED"
