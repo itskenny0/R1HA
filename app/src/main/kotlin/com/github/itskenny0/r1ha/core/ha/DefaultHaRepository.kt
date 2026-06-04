@@ -1260,6 +1260,8 @@ class DefaultHaRepository(
                 raw.attributes["preset_mode"].asString() else null,
             climatePresetModes = if (domain == Domain.CLIMATE)
                 extractStringList(raw.attributes["preset_modes"]) else emptyList(),
+            climateHvacAction = if (domain == Domain.CLIMATE)
+                raw.attributes["hvac_action"].asString() else null,
             climateCurrentTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                 raw.attributes["current_temperature"].asDouble() else null,
             climateTargetTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
@@ -2647,6 +2649,8 @@ class DefaultHaRepository(
                         attrs["preset_mode"].asString() else null,
                     climatePresetModes = if (domain == Domain.CLIMATE)
                         extractStringList(attrs["preset_modes"]) else emptyList(),
+                    climateHvacAction = if (domain == Domain.CLIMATE)
+                        attrs["hvac_action"].asString() else null,
                     climateCurrentTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)
                         attrs["current_temperature"].asDouble() else null,
                     climateTargetTemperature = if (domain == Domain.CLIMATE || domain == Domain.WATER_HEATER)

@@ -238,6 +238,14 @@ data class EntityState(
      */
     val climatePresetModes: List<String> = emptyList(),
     /**
+     * Climate-only: HA's `hvac_action` attribute (heating / cooling / idle / off /
+     * drying / fan). This is what the equipment is ACTIVELY doing right now, distinct
+     * from the hvac mode (the setpoint mode) — so the card can answer "is the boiler
+     * running?" rather than just "what's it set to?". Null when the integration doesn't
+     * report it.
+     */
+    val climateHvacAction: String? = null,
+    /**
      * Lock-only: `code_format` attribute — a regex pattern (e.g. "^\\d{4}$") that
      * specifies the accepted PIN shape. Non-null means the lock requires a code on
      * lock/unlock; null means tap toggles directly.

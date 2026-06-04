@@ -444,6 +444,22 @@ internal fun hvacModeLabel(rawState: String?): String = when (rawState?.trim()?.
     else -> (rawState ?: "").trim().replace('_', ' ').uppercase()
 }
 
+/** Humanise a thermostat's `hvac_action` (what the equipment is actively doing right now)
+ *  for a compact status chip: heating / cooling / idle / etc. Returns null for a blank or
+ *  absent action so the card omits the chip entirely. Pure + unit-tested. */
+internal fun hvacActionLabel(hvacAction: String?): String? = when (val a = hvacAction?.trim()?.lowercase()) {
+    null, "" -> null
+    "heating" -> "HEATING"
+    "cooling" -> "COOLING"
+    "drying" -> "DRYING"
+    "idle" -> "IDLE"
+    "fan" -> "FAN"
+    "off" -> "OFF"
+    "preheating" -> "PREHEATING"
+    "defrosting" -> "DEFROSTING"
+    else -> a.replace('_', ' ').uppercase()
+}
+
 private fun friendlySwitchStateWord(state: EntityState): String {
     val raw = state.rawState?.lowercase() ?: return if (state.isOn) "ON" else "OFF"
     return when (state.id.domain) {
