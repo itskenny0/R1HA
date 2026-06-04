@@ -26,6 +26,12 @@ data class CardRenderModel(
     /** Optional per-card override colour from [EntityOverride.accentColor]. Themes
      *  consult this before falling back to their role→colour mapping. */
     val accentOverride: Color? = null,
+    /** A colour-capable light's CURRENT reported colour, so the card visually echoes the
+     *  bulb (HA's own UI does this). Set by the EntityCard wrapper for lights that are on
+     *  and reporting an hs / colour-temp value; null otherwise. Themes consult it after the
+     *  explicit accent overrides but before the domain role colour, so an on bulb glows its
+     *  real colour by default while any user-chosen accent still wins. */
+    val liveLightColor: Color? = null,
     /**
      * For entities where the percent abstraction would hide the actual interesting
      * value (climate showing "21 °C" rather than "60 %"), the EntityCard wrapper sets

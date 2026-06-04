@@ -63,6 +63,7 @@ object MinimalDarkTheme : R1Theme {
         // Per-card override > global theme-accent override > theme native accent.
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
+            ?: model.liveLightColor
             ?: themeAccent
         // Short landscape viewport: trim vertical chrome so the card's bottom controls don't
         // clip. Portrait and the always-portrait R1 are byte-for-byte unchanged. Mirrors the

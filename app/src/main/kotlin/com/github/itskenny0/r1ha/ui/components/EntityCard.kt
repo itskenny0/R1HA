@@ -357,6 +357,15 @@ fun EntityCard(
                     accent = accentRole,
                     isAvailable = state.isAvailable,
                     accentOverride = overrideAccent,
+                    liveLightColor = if (state.id.domain == Domain.LIGHT) {
+                        lightAccentArgb(
+                            isOn = state.isOn,
+                            hueDeg = state.hue,
+                            colorTempK = state.colorTempK,
+                            minColorTempK = state.minColorTempK,
+                            maxColorTempK = state.maxColorTempK,
+                        )?.let { androidx.compose.ui.graphics.Color(it) }
+                    } else null,
                     displayValue = lightDisplay ?: displayValue,
                     displayUnit = lightDisplayUnit ?: displayUnit,
                     textSizeSp = perCardOverride.textSizeSp,
@@ -438,6 +447,70 @@ private fun resolveAccentColor(role: CardRenderModel.AccentRole) = when (role) {
     CardRenderModel.AccentRole.GREEN -> com.github.itskenny0.r1ha.core.theme.R1.AccentGreen
     CardRenderModel.AccentRole.NEUTRAL -> com.github.itskenny0.r1ha.core.theme.R1.AccentNeutral
 }
+
+// Anchor whites for the colour-temperature ramp, as 0xRRGGBB (no alpha).
+private const val WARM_WHITE_RGB = 0xFFB46A // ~2000 K incandescent amber
+private const val COOL_WHITE_RGB = 0xCFE0FF // ~6500 K daylight blue-white
+
+/**
+ * The card accent for a colour-capable light, derived from the bulb's CURRENT reported
+ * colour so the card visually echoes the light (HA's own UI does this). Returns a packed
+ * 0xAARRGGBB int, or null when there's no live colour to show (bulb off, or a plain
+ * on/off / brightness-only bulb) so the caller falls back to the domain role colour.
+ *
+ * HS colour mode wins and renders the hue at full saturation: saturation isn't plumbed
+ * through, and a vivid chrome accent reads better on the card than a washed-out one.
+ * Colour-temp mode maps the kelvin value across a warm-amber..cool-white ramp using the
+ * bulb's own min/max kelvin (or sane 2000..6500 defaults). Pure + unit-tested.
+ */
+internal fun lightAccentArgb(
+    isOn: Boolean,
+    hueDeg: Double?,
+    colorTempK: Int?,
+    minColorTempK: Int?,
+    maxColorTempK: Int?,
+): Int? {
+    if (!isOn) return null
+    if (hueDeg != null) return hsvFullToArgb(hueDeg)
+    if (colorTempK != null) {
+        val minK = minColorTempK ?: 2000
+        val maxK = maxColorTempK ?: 6500
+        val span = (maxK - minK).coerceAtLeast(1)
+        val t = ((colorTempK - minK).toDouble() / span).coerceIn(0.0, 1.0)
+        return lerpRgbToArgb(WARM_WHITE_RGB, COOL_WHITE_RGB, t)
+    }
+    return null
+}
+
+/** HSV→ARGB at full saturation and value; [hueDeg] in degrees, wrapped into 0..360. */
+private fun hsvFullToArgb(hueDeg: Double): Int {
+    val h = ((hueDeg % 360.0) + 360.0) % 360.0
+    val x = 1.0 - kotlin.math.abs((h / 60.0) % 2.0 - 1.0)
+    val (r, g, b) = when {
+        h < 60.0 -> Triple(1.0, x, 0.0)
+        h < 120.0 -> Triple(x, 1.0, 0.0)
+        h < 180.0 -> Triple(0.0, 1.0, x)
+        h < 240.0 -> Triple(0.0, x, 1.0)
+        h < 300.0 -> Triple(x, 0.0, 1.0)
+        else -> Triple(1.0, 0.0, x)
+    }
+    return packArgb(
+        kotlin.math.round(r * 255).toInt(),
+        kotlin.math.round(g * 255).toInt(),
+        kotlin.math.round(b * 255).toInt(),
+    )
+}
+
+private fun lerpRgbToArgb(from: Int, to: Int, t: Double): Int {
+    fun lerp(a: Int, b: Int) = kotlin.math.round(a + (b - a) * t).toInt()
+    val r = lerp((from shr 16) and 0xFF, (to shr 16) and 0xFF)
+    val g = lerp((from shr 8) and 0xFF, (to shr 8) and 0xFF)
+    val b = lerp(from and 0xFF, to and 0xFF)
+    return packArgb(r, g, b)
+}
+
+private fun packArgb(r: Int, g: Int, b: Int): Int =
+    (0xFF shl 24) or ((r and 0xFF) shl 16) or ((g and 0xFF) shl 8) or (b and 0xFF)
 
 private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
     CardRenderModel.Glyph.LIGHT -> "LIGHT"

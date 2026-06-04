@@ -89,6 +89,7 @@ object PragmaticHybridTheme : R1Theme {
         //   3. Domain-derived role colour for this theme.
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
+            ?: model.liveLightColor
             ?: accentColor(model.accent)
         val ui = LocalUiOptions.current
         // On a short landscape viewport (a phone turned sideways) the fixed-height card body

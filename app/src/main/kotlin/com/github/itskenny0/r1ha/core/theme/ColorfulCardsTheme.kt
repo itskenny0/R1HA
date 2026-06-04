@@ -80,6 +80,7 @@ object ColorfulCardsTheme : R1Theme {
         // (the readable default on every gradient backdrop).
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
+            ?: model.liveLightColor
             ?: Color.White
         // Short landscape viewport: trim vertical chrome so the card's bottom controls don't
         // clip. Portrait and the always-portrait R1 are byte-for-byte unchanged. Mirrors the
