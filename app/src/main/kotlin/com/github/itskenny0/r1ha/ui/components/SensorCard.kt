@@ -226,6 +226,17 @@ fun SensorCard(
                 Spacer(Modifier.width(8.dp))
                 Text(text = conditionLabel, style = R1.titleCard, color = R1.InkSoft, maxLines = 1)
             }
+            // Humidity + wind as a compact secondary line when the integration reports
+            // them, so the card answers "how humid / how windy?" without opening more-info.
+            val weatherDetail = weatherDetailLine(
+                humidity = weatherAttrNumber(state, "humidity"),
+                windSpeed = weatherAttrNumber(state, "wind_speed"),
+                windUnit = weatherAttrText(state, "wind_speed_unit"),
+            )
+            if (weatherDetail != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(text = weatherDetail, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+            }
         } else if (isBinary) {
             // Binary sensors — render the state word itself (sized like our numeric
             // readouts so the visual weight matches a temperature display). We map a few
@@ -452,6 +463,20 @@ private fun weatherAttrNumber(state: EntityState, key: String): Double? =
  *  attributes JSON. Null when absent. */
 private fun weatherAttrText(state: EntityState, key: String): String? =
     (state.attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+/** Compact secondary line for the weather card: humidity and wind, each included only
+ *  when the integration reports it. Wind appends its unit when one is given. Returns null
+ *  when neither attribute is present so the card omits the line entirely. Pure +
+ *  unit-tested. */
+internal fun weatherDetailLine(humidity: Double?, windSpeed: Double?, windUnit: String?): String? {
+    val parts = mutableListOf<String>()
+    if (humidity != null) parts += "Humidity ${"%.0f".format(humidity)}%"
+    if (windSpeed != null) {
+        val unit = windUnit?.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
+        parts += "Wind ${"%.0f".format(windSpeed)}$unit"
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+}
 
 private fun friendlyBinaryWord(state: EntityState): String {
     val on = state.isOn
