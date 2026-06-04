@@ -64,13 +64,23 @@ object MinimalDarkTheme : R1Theme {
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
             ?: themeAccent
+        // Short landscape viewport: trim vertical chrome so the card's bottom controls don't
+        // clip. Portrait and the always-portrait R1 are byte-for-byte unchanged. Mirrors the
+        // compact mode in PragmaticHybridTheme.
+        val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
+        val compact = window.isLandscape && window.heightDp in 1..479
         CardValueBarScaffold(
             model = model,
             accent = accent,
             outer = modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
+                .padding(
+                    start = 22.dp,
+                    top = if (compact) 8.dp else 18.dp,
+                    bottom = if (compact) 8.dp else 18.dp,
+                    end = 18.dp,
+                ),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 // Header — monochrome tag instead of the accent dash.
@@ -122,7 +132,7 @@ object MinimalDarkTheme : R1Theme {
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised into its own composable so
                 // the 5 s ticker doesn't recompose the whole card.
-                if (model.lastChangedAt != null) {
+                if (!compact && model.lastChangedAt != null) {
                     Spacer(Modifier.height(2.dp))
                     com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel(
                         at = model.lastChangedAt,
@@ -130,7 +140,7 @@ object MinimalDarkTheme : R1Theme {
                         style = R1.labelMicro,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
                 // Hide the giant percent readout on media_player cards that are
                 // currently playing — same logic as PragmaticHybridTheme. The
                 // now-playing block + the right-side meter already convey

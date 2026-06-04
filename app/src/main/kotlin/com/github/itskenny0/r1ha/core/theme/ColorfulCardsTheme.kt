@@ -81,6 +81,11 @@ object ColorfulCardsTheme : R1Theme {
         val accent = model.accentOverride
             ?: LocalThemeAccentOverride.current
             ?: Color.White
+        // Short landscape viewport: trim vertical chrome so the card's bottom controls don't
+        // clip. Portrait and the always-portrait R1 are byte-for-byte unchanged. Mirrors the
+        // compact mode in PragmaticHybridTheme.
+        val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
+        val compact = window.isLandscape && window.heightDp in 1..479
 
         CardValueBarScaffold(
             model = model,
@@ -88,7 +93,12 @@ object ColorfulCardsTheme : R1Theme {
             outer = modifier
                 .fillMaxSize()
                 .background(bgBrush)
-                .padding(start = 22.dp, top = 18.dp, bottom = 18.dp, end = 18.dp),
+                .padding(
+                    start = 22.dp,
+                    top = if (compact) 8.dp else 18.dp,
+                    bottom = if (compact) 8.dp else 18.dp,
+                    end = 18.dp,
+                ),
             // Default tick colour (R1.InkMuted) is invisible against the
             // colourful gradient; force a soft-white that reads on every
             // palette in the theme.
@@ -146,7 +156,7 @@ object ColorfulCardsTheme : R1Theme {
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised composable so the ticker
                 // doesn't recompose the whole card on every interval.
-                if (model.lastChangedAt != null) {
+                if (!compact && model.lastChangedAt != null) {
                     Spacer(Modifier.height(2.dp))
                     com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel(
                         at = model.lastChangedAt,
@@ -154,7 +164,7 @@ object ColorfulCardsTheme : R1Theme {
                         style = R1.labelMicro,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
                 // Hide the giant percent readout on media_player cards with
                 // active now-playing — same parity rule as PragmaticHybridTheme
                 // and MinimalDarkTheme. The cover + title strip already
