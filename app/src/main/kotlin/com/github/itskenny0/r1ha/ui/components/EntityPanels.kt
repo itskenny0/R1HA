@@ -1228,26 +1228,39 @@ fun HumidifierPanel(state: EntityState, accent: Color, modifier: Modifier = Modi
     val modes = state.attrStringList("available_modes")
     val hasModes = modes.isNotEmpty() &&
         state.rawHasFeature(EntityState.HumidifierFeature.MODES)
-    if (!hasModes) return
-    val current = state.attrString("mode")
+    // The actual measured room humidity, distinct from the target the wheel sets — the
+    // BigReadout shows the setpoint, this shows what the sensor is reading right now.
+    val currentHumidity = state.attrInt("current_humidity")
+    if (!hasModes && currentHumidity == null) return
+    val currentMode = state.attrString("mode")
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(text = "MODE", style = R1.labelMicro, color = R1.InkMuted)
-        Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            modes.forEach { mode ->
-                PanelChip(
-                    label = mode.replace('_', ' ').uppercase(),
-                    accent = accent,
-                    selected = current.equals(mode, ignoreCase = true),
-                    onClick = {
-                        dispatch?.invoke(ServiceCall.humidifierSetMode(state.id, mode))
-                    },
-                )
+        if (currentHumidity != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "NOW", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.width(6.dp))
+                Text(text = "$currentHumidity %", style = R1.labelMicro, color = accent)
+            }
+            if (hasModes) Spacer(Modifier.height(8.dp))
+        }
+        if (hasModes) {
+            Text(text = "MODE", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                modes.forEach { mode ->
+                    PanelChip(
+                        label = mode.replace('_', ' ').uppercase(),
+                        accent = accent,
+                        selected = currentMode.equals(mode, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(ServiceCall.humidifierSetMode(state.id, mode))
+                        },
+                    )
+                }
             }
         }
     }
