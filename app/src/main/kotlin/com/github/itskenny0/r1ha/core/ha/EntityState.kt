@@ -25,6 +25,13 @@ data class EntityState(
     /** Domain-native raw value (brightness 0..255, percentage 0..100, volume_level 0..1 ×100, position 0..100). */
     val raw: Number?,
     val lastChanged: Instant,
+    /**
+     * Automation / script: HA's `last_triggered` attribute — when the rule last actually
+     * ran. Distinct from [lastChanged] (which flips when the automation is enabled /
+     * disabled), so the card can read "ran 2h ago" rather than "enabled 3d ago". Null for
+     * other domains, or when the rule has never fired.
+     */
+    val lastTriggered: Instant? = null,
     val isAvailable: Boolean,
     /**
      * Does HA expose a settable scalar for this entity? `false` for an on/off-only light

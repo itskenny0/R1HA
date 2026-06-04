@@ -1165,6 +1165,8 @@ class DefaultHaRepository(
             percent = if (available) pct else null,
             raw = rawNum,
             lastChanged = (parseHaInstant(raw.lastChanged) ?: Instant.now()),
+            lastTriggered = if (domain == Domain.AUTOMATION || domain == Domain.SCRIPT)
+                raw.attributes["last_triggered"].asString()?.let { parseHaInstant(it) } else null,
             isAvailable = available,
             supportsScalar = supportsScalar(domain, raw.attributes),
             rawState = stateStr,
@@ -2562,6 +2564,8 @@ class DefaultHaRepository(
                     percent = pct,
                     raw = rawNum,
                     lastChanged = (parseHaInstant(row.last_changed) ?: Instant.now()),
+                    lastTriggered = if (domain == Domain.AUTOMATION || domain == Domain.SCRIPT)
+                        attrs["last_triggered"].asString()?.let { parseHaInstant(it) } else null,
                     isAvailable = available,
                     supportsScalar = supportsScalar(domain, attrs),
                     rawState = stateStr,

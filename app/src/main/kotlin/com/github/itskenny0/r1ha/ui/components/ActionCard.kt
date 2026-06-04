@@ -103,6 +103,13 @@ fun ActionCard(
             color = R1.Ink,
             maxLines = 2,
         )
+        // When the script last ran ("ran 2h ago"). last_triggered, not last_changed, so it
+        // reflects the actual fire rather than a config reload. Hidden until it has fired.
+        val ran = rememberRelativeTime(state.lastTriggered)
+        if (ran.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text(text = "ran $ran", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+        }
 
         Spacer(Modifier.weight(1f))
 

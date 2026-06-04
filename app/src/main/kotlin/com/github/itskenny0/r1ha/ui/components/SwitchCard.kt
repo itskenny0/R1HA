@@ -127,6 +127,14 @@ fun SwitchCard(
                 color = labelColor,
             )
         }
+        // For automations: when the rule last actually ran ("ran 2h ago"). last_triggered
+        // is distinct from the enabled/disabled toggle, so it answers "did this fire?" at a
+        // glance. Hidden until the automation has fired at least once.
+        val lastRan = rememberRelativeTime(state.lastTriggered)
+        if (lastRan.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text(text = "ran $lastRan", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+        }
 
         Spacer(Modifier.height(14.dp))
 
