@@ -536,12 +536,17 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
                     color = accent,
                 )
                 // What the equipment is actively doing right now (HEATING / IDLE / etc.),
-                // distinct from the mode: answers "is the boiler running?" at a glance.
+                // distinct from the mode: answers "is the boiler running?" at a glance. The
+                // colour reinforces it: accent when actively running, muted when idle / off.
                 hvacActionLabel(state.climateHvacAction)?.let { action ->
                     Spacer(Modifier.width(6.dp))
                     Text(text = "·", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.width(6.dp))
-                    Text(text = action, style = R1.labelMicro, color = accent)
+                    Text(
+                        text = action,
+                        style = R1.labelMicro,
+                        color = if (hvacActionIsActive(state.climateHvacAction)) accent else R1.InkMuted,
+                    )
                 }
             }
         }

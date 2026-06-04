@@ -33,4 +33,20 @@ class HvacActionLabelTest {
         assertThat(hvacActionLabel("defrosting")).isEqualTo("DEFROSTING")
         assertThat(hvacActionLabel("some_new_action")).isEqualTo("SOME NEW ACTION")
     }
+
+    @Test fun `idle and off count as not active`() {
+        assertThat(hvacActionIsActive("idle")).isFalse()
+        assertThat(hvacActionIsActive("off")).isFalse()
+        assertThat(hvacActionIsActive(null)).isFalse()
+        assertThat(hvacActionIsActive("")).isFalse()
+        assertThat(hvacActionIsActive("  IDLE ")).isFalse()
+    }
+
+    @Test fun `running states count as active`() {
+        assertThat(hvacActionIsActive("heating")).isTrue()
+        assertThat(hvacActionIsActive("cooling")).isTrue()
+        assertThat(hvacActionIsActive("drying")).isTrue()
+        assertThat(hvacActionIsActive("fan")).isTrue()
+        assertThat(hvacActionIsActive("preheating")).isTrue()
+    }
 }

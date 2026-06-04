@@ -460,6 +460,16 @@ internal fun hvacActionLabel(hvacAction: String?): String? = when (val a = hvacA
     else -> a.replace('_', ' ').uppercase()
 }
 
+/** Whether an `hvac_action` means the equipment is actively running (vs idle / off), so
+ *  the status chip can read in the accent colour when working and muted when not. `idle`
+ *  and `off` are the only standing-by states; everything else (heating / cooling / drying
+ *  / fan / preheating / defrosting / unknown) counts as active. Pure + unit-tested. */
+internal fun hvacActionIsActive(hvacAction: String?): Boolean =
+    when (hvacAction?.trim()?.lowercase()) {
+        null, "", "idle", "off" -> false
+        else -> true
+    }
+
 private fun friendlySwitchStateWord(state: EntityState): String {
     val raw = state.rawState?.lowercase() ?: return if (state.isOn) "ON" else "OFF"
     return when (state.id.domain) {
