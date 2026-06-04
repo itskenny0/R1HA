@@ -55,6 +55,19 @@ internal fun batteryReadoutColor(deviceClass: String?, rawState: String?): Color
     }
 }
 
+/**
+ * Binary-sensor device classes whose "on" state means something is wrong / dangerous,
+ * so a triggered card should read red rather than the neutral accent. Matches HA's
+ * binary_sensor device_class names.
+ */
+private val DANGER_BINARY_CLASSES = setOf(
+    "smoke", "gas", "carbon_monoxide", "moisture", "safety", "problem", "tamper",
+)
+
+/** True when [deviceClass] is a danger class and the sensor is currently triggered ([isOn]). */
+internal fun dangerBinaryTriggered(deviceClass: String?, isOn: Boolean): Boolean =
+    isOn && deviceClass?.lowercase()?.let { it in DANGER_BINARY_CLASSES } == true
+
 @Composable
 fun SensorCard(
     state: EntityState,
@@ -187,10 +200,16 @@ fun SensorCard(
             // to the raw state text uppercased.
             val word = friendlyBinaryWord(state)
             val (bodyStyle, _) = sensorReadoutStyle(word, textSizeSp)
+            // A triggered danger-class binary sensor (smoke / gas / CO / leak / safety /
+            // problem / tamper) reads red so an active alarm is unmistakable; ordinary
+            // binary sensors keep the accent-when-on / muted-when-off treatment.
+            val triggeredColor = if (dangerBinaryTriggered(state.deviceClass, state.isOn)) {
+                R1.StatusRed
+            } else if (state.isOn) accent else R1.InkSoft
             Text(
                 text = word,
                 style = bodyStyle,
-                color = if (state.isOn) accent else R1.InkSoft,
+                color = triggeredColor,
                 softWrap = true,
             )
         } else {
