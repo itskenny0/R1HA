@@ -68,6 +68,14 @@ private val DANGER_BINARY_CLASSES = setOf(
 internal fun dangerBinaryTriggered(deviceClass: String?, isOn: Boolean): Boolean =
     isOn && deviceClass?.lowercase()?.let { it in DANGER_BINARY_CLASSES } == true
 
+/** The parsed instant for a `device_class: timestamp` sensor, or null when the sensor isn't
+ *  a timestamp or its state isn't a parseable HA timestamp. Lets the card render a live
+ *  relative readout ("in 2h" / "3d ago") instead of a raw ISO string. */
+internal fun timestampSensorInstant(deviceClass: String?, rawState: String?): java.time.Instant? {
+    if (!deviceClass.equals("timestamp", ignoreCase = true)) return null
+    return com.github.itskenny0.r1ha.core.ha.parseHaInstant(rawState)
+}
+
 private val DURATION_SECOND_UNITS = setOf("s", "sec", "secs", "second", "seconds")
 
 /**
@@ -237,6 +245,22 @@ fun SensorCard(
                 color = triggeredColor,
                 softWrap = true,
             )
+        } else if (timestampSensorInstant(state.deviceClass, state.rawState) != null) {
+            // Timestamp sensors — render the instant as a live relative readout
+            // ("in 2h" / "3d ago") plus a small absolute line, rather than a raw ISO string.
+            val tsInstant = timestampSensorInstant(state.deviceClass, state.rawState)!!
+            val rel = rememberRelativeTime(tsInstant).ifEmpty { "—" }
+            val (tsBodyStyle, _) = sensorReadoutStyle(rel, textSizeSp)
+            Text(text = rel, style = tsBodyStyle, color = R1.Ink, softWrap = true)
+            val absText = androidx.compose.runtime.remember(tsInstant) {
+                tsInstant.atZone(java.time.ZoneId.systemDefault())
+                    .format(
+                        java.time.format.DateTimeFormatter
+                            .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT),
+                    )
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(text = absText, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
         } else {
             // Plain sensors — render the rawState as the body. A sensor's value can be
             // anything from "21" (temperature) to a 240-char weather summary or an
