@@ -432,5 +432,7 @@ fun windowSummary(
 fun formatStatNum(v: Double): String {
     if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
     val s = java.lang.String.format(java.util.Locale.US, "%.2f", v)
-    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) s.drop(1) else s
+    // "-0.00" -> "0" (not "0.00": this formatter keeps two fixed decimals, so dropping
+    // only the sign would leave a bare ".00"; collapse a zero magnitude to plain "0").
+    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
 }

@@ -1044,7 +1044,8 @@ private fun SummaryRow(
 private fun formatNum(v: Double): String {
     if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
     val s = "%.2f".format(java.util.Locale.US, v)
-    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) s.drop(1) else s
+    // "-0.00" -> "0" (two fixed decimals here, so dropping just the sign would leave ".00").
+    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
 }
 
 /**
