@@ -50,7 +50,11 @@ import com.github.itskenny0.r1ha.core.theme.R1
  * sections (core app destinations, then user-pinned surfaces, then pinned dashboards)
  * rather than one undifferentiated list. Order matches the on-screen order.
  */
-enum class NavGroup { PRIMARY, PINNED, DASHBOARD }
+enum class NavGroup(val header: String?) {
+    PRIMARY(null),
+    PINNED("PINNED"),
+    DASHBOARD("DASHBOARDS"),
+}
 
 /**
  * One top-level navigation target shown by [AdaptiveNavShell]. [route] is the navigation
@@ -346,8 +350,11 @@ private fun NavDrawerContent(
             }
         }
         destinations.forEachIndexed { i, dest ->
-            // Divider where the section changes (core → pinned surfaces → pinned dashboards).
-            if (i > 0 && dest.group != destinations[i - 1].group) DrawerDivider()
+            // Section boundary (core → pinned surfaces → pinned dashboards): a divider, then
+            // the section's label so each group reads as a titled section.
+            val sectionStart = i == 0 || dest.group != destinations[i - 1].group
+            if (sectionStart && i > 0) DrawerDivider()
+            if (sectionStart) dest.group.header?.let { DrawerSectionLabel(it) }
             DrawerItem(
                 dest = dest,
                 active = dest.isActive(currentRoute),
@@ -365,6 +372,19 @@ private fun NavDrawerContent(
             )
         }
     }
+}
+
+/** A small uppercase section title for a drawer / slide-out group (PINNED, DASHBOARDS). */
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = R1.labelMicro,
+        color = R1.InkSoft,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = R1.space.s, bottom = R1.space.xxs),
+    )
 }
 
 /** A full-width hairline separating sections in the drawer / slide-out. */
