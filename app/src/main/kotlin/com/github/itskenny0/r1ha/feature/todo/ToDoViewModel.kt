@@ -352,10 +352,28 @@ class ToDoViewModel(
                 dueDate.isEqual(today) -> "TODAY"
                 dueDate.isEqual(today.plusDays(1)) -> "TOMORROW"
                 dueDate.isEqual(today.minusDays(1)) -> "YESTERDAY"
-                else -> dueDate.toString() // ISO yyyy-MM-dd
+                // Within the coming week the weekday name is the quickest read ("FRI").
+                dueDate.isAfter(today) && dueDate.isBefore(today.plusDays(7)) ->
+                    dueDate.dayOfWeek.name.take(3)
+                // Anything further out (or overdue beyond yesterday) reads as a short
+                // "MON DD" date, with the year appended only when it differs from now —
+                // far friendlier than the raw ISO "yyyy-MM-dd" it used to show.
+                else -> shortDate(dueDate, today)
             }
             val label = if (clock != null) "$dayLabel $clock" else dayLabel
             return DueDisplay(label, urgency)
+        }
+
+        private val MONTH_ABBR = listOf(
+            "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+            "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+        )
+
+        /** Compact "MON DD" (e.g. "JUL 12"); appends the year only when it differs from
+         *  [today]'s, so a same-year due date stays short on the R1's narrow row. */
+        private fun shortDate(date: java.time.LocalDate, today: java.time.LocalDate): String {
+            val md = "${MONTH_ABBR[date.monthValue - 1]} ${date.dayOfMonth}"
+            return if (date.year != today.year) "$md ${date.year}" else md
         }
 
         /**

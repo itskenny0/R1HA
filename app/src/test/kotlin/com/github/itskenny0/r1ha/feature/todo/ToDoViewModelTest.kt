@@ -153,10 +153,10 @@ class ToDoViewModelTest {
         assertThat(ToDoViewModel.formatDue("   ", today)).isNull()
     }
 
-    @Test fun `formatDue flags a past bare date as overdue`() {
+    @Test fun `formatDue flags a past bare date as overdue with a short date`() {
         val d = ToDoViewModel.formatDue("2026-05-30", today)!!
         assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.OVERDUE)
-        assertThat(d.label).isEqualTo("2026-05-30")
+        assertThat(d.label).isEqualTo("MAY 30")
     }
 
     @Test fun `formatDue labels today`() {
@@ -172,10 +172,19 @@ class ToDoViewModelTest {
         assertThat(y.urgency).isEqualTo(ToDoViewModel.DueUrgency.OVERDUE)
     }
 
-    @Test fun `formatDue keeps a future date as upcoming with the ISO label`() {
+    @Test fun `formatDue shows a far future date as a short month-day`() {
         val d = ToDoViewModel.formatDue("2026-12-25", today)!!
         assertThat(d.urgency).isEqualTo(ToDoViewModel.DueUrgency.UPCOMING)
-        assertThat(d.label).isEqualTo("2026-12-25")
+        assertThat(d.label).isEqualTo("DEC 25")
+    }
+
+    @Test fun `formatDue shows a weekday for a date within the coming week`() {
+        // today is Tue 2026-06-02; three days out is Fri.
+        assertThat(ToDoViewModel.formatDue("2026-06-05", today)!!.label).isEqualTo("FRI")
+    }
+
+    @Test fun `formatDue appends the year only when it differs from today`() {
+        assertThat(ToDoViewModel.formatDue("2027-01-15", today)!!.label).isEqualTo("JAN 15 2027")
     }
 
     @Test fun `formatDue appends the clock for a datetime due`() {
