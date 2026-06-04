@@ -552,13 +552,20 @@ private fun sensorDomainLabel(domain: Domain): String = when (domain) {
 }
 
 /** A human state word for a cover / valve readout: CLOSED / OPEN at the extremes, and
- *  OPENING / CLOSING while in transit (from the raw state). Returns null for a partial
- *  position so the caller falls back to the "N%" percent readout. Pure + unit-tested. */
+ *  OPENING / CLOSING while in transit (from the raw state). A partial position returns
+ *  null so the caller falls back to the "N%" percent readout. A positionless cover (no
+ *  current_position, so percent is null) reads its plain open/closed raw state instead of
+ *  collapsing to a misleading "0%" / CLOSED. Pure + unit-tested. */
 internal fun coverStateLabel(rawState: String?, percent: Int?): String? = when {
     rawState.equals("opening", ignoreCase = true) -> "OPENING"
     rawState.equals("closing", ignoreCase = true) -> "CLOSING"
     percent == 0 -> "CLOSED"
     percent == 100 -> "OPEN"
+    // Partial position (1..99): let the caller show the precise "N%" readout.
+    percent != null -> null
+    // Positionless cover/valve: fall back to the raw open/closed state word.
+    rawState.equals("open", ignoreCase = true) -> "OPEN"
+    rawState.equals("closed", ignoreCase = true) -> "CLOSED"
     else -> null
 }
 

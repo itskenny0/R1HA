@@ -27,6 +27,17 @@ class CoverStateLabelTest {
     @Test fun `partial position falls through to percent`() {
         assertThat(coverStateLabel("open", 42)).isNull()
         assertThat(coverStateLabel(null, 50)).isNull()
+    }
+
+    @Test fun `positionless cover reads its raw open closed state`() {
+        // No current_position attribute, so percent is null: a positionless garage door
+        // or tilt-only blind must read its plain raw state instead of collapsing to a
+        // misleading CLOSED/0% readout.
+        assertThat(coverStateLabel("open", null)).isEqualTo("OPEN")
+        assertThat(coverStateLabel("closed", null)).isEqualTo("CLOSED")
+        assertThat(coverStateLabel("OPEN", null)).isEqualTo("OPEN")
+        // An unknown raw word with no position still falls through to null.
         assertThat(coverStateLabel(null, null)).isNull()
+        assertThat(coverStateLabel("jammed", null)).isNull()
     }
 }
