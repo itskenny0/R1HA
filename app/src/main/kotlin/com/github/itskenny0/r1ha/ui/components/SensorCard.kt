@@ -68,6 +68,31 @@ private val DANGER_BINARY_CLASSES = setOf(
 internal fun dangerBinaryTriggered(deviceClass: String?, isOn: Boolean): Boolean =
     isOn && deviceClass?.lowercase()?.let { it in DANGER_BINARY_CLASSES } == true
 
+private val DURATION_SECOND_UNITS = setOf("s", "sec", "secs", "second", "seconds")
+
+/**
+ * Condense a seconds-based duration sensor into a compact "1d 3h" / "2h 5m" / "3m 20s"
+ * readout instead of a raw "11000 s". Scoped to device_class=duration with a seconds unit
+ * and values of at least a minute, so already-readable forms ("45 s", a sensor reported in
+ * minutes/hours) are left to the default formatter. Returns null when it doesn't apply, so
+ * the caller falls back to the normal value + unit rendering.
+ */
+internal fun formatDurationReadout(deviceClass: String?, rawState: String?, unit: String?): String? {
+    if (!deviceClass.equals("duration", ignoreCase = true)) return null
+    if (unit?.trim()?.lowercase() !in DURATION_SECOND_UNITS) return null
+    val total = rawState?.trim()?.toDoubleOrNull()?.toLong() ?: return null
+    if (total < 60L) return null
+    val days = total / 86_400L
+    val hours = (total % 86_400L) / 3_600L
+    val mins = (total % 3_600L) / 60L
+    val secs = total % 60L
+    return when {
+        days > 0L -> "${days}d ${hours}h"
+        hours > 0L -> "${hours}h ${mins}m"
+        else -> "${mins}m ${secs}s"
+    }
+}
+
 @Composable
 fun SensorCard(
     state: EntityState,
@@ -222,7 +247,10 @@ fun SensorCard(
             // enabled so long text just keeps wrapping; the surrounding Column gives
             // it the full card width to consume.
             val maxDecimals = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.maxDecimalPlaces
-            val value = formatSensorValue(state.rawState, maxDecimals = maxDecimals)
+            // Seconds-based duration sensors condense to "2h 5m"; the formatted string
+            // already carries its units, so suppress the separate unit suffix for them.
+            val durationText = formatDurationReadout(state.deviceClass, state.rawState, state.unit)
+            val value = durationText ?: formatSensorValue(state.rawState, maxDecimals = maxDecimals)
             val (bodyStyle, suffixStyle) = sensorReadoutStyle(value, textSizeSp)
             // Tint the readout amber/red when a battery sensor is running low.
             val battColor = batteryReadoutColor(state.deviceClass, state.rawState)
@@ -230,7 +258,7 @@ fun SensorCard(
             // value, R1's "21 °C" idiom); for unitless long-text sensors we drop the
             // Row entirely so the wrapping Text gets the full container width without
             // any horizontal-row layout overhead.
-            if (!state.unit.isNullOrBlank()) {
+            if (durationText == null && !state.unit.isNullOrBlank()) {
                 Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
                     Text(
                         text = value,
