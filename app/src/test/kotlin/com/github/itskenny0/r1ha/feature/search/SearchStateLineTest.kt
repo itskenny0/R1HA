@@ -26,4 +26,15 @@ class SearchStateLineTest {
         assertThat(searchStateLine("sensor.x", "5", null, null)).isEqualTo("sensor.x  ·  5")
         assertThat(searchStateLine("sensor.x", "5", "W", null)).isEqualTo("sensor.x  ·  5 W")
     }
+
+    @Test fun `large numeric state is grouped without losing precision`() {
+        assertThat(searchStateLine("sensor.power", "1234567", "W", "Garage"))
+            .isEqualTo("sensor.power  ·  1,234,567 W  ·  Garage")
+        // Decimals are preserved exactly; only the integer part groups.
+        assertThat(searchStateLine("sensor.energy", "1234567.890", "Wh", null))
+            .isEqualTo("sensor.energy  ·  1,234,567.890 Wh")
+        // Four-digit values stay ungrouped.
+        assertThat(searchStateLine("sensor.lux", "2026", "lx", null))
+            .isEqualTo("sensor.lux  ·  2026 lx")
+    }
 }

@@ -563,14 +563,21 @@ private fun BucketChips(
 
 /** The secondary line under a search result's name: `entity_id · state · area`, with the
  *  unit appended to a numeric state ("21.5" → "21.5 °C") since search rows otherwise drop
- *  it. Non-numeric states (on/off, enum words) and missing parts are left out cleanly.
- *  Pure + unit-tested. */
+ *  it, and thousands grouped on a large numeric state ("1234567" → "1,234,567") to match
+ *  the cards. Precision is preserved (no rounding). Non-numeric states (on/off, enum words)
+ *  and missing parts are left out cleanly. Pure + unit-tested. */
 internal fun searchStateLine(entityId: String, rawState: String?, unit: String?, area: String?): String =
     buildString {
         append(entityId)
         rawState?.let { rs ->
-            append("  ·  ").append(rs)
-            if (rs.trim().toDoubleOrNull() != null && !unit.isNullOrBlank()) {
+            val isNumeric = rs.trim().toDoubleOrNull() != null
+            val shown = if (isNumeric) {
+                com.github.itskenny0.r1ha.ui.components.groupThousands(rs.trim())
+            } else {
+                rs
+            }
+            append("  ·  ").append(shown)
+            if (isNumeric && !unit.isNullOrBlank()) {
                 append(" ").append(unit)
             }
         }
