@@ -358,13 +358,20 @@ private fun numericAttr(state: EntityState, attr: String): Double? {
     return el.content.trim().toDoubleOrNull()
 }
 
-private fun relativeTimeShort(t: java.time.Instant): String {
-    val now = java.time.Instant.now()
+internal fun relativeTimeShort(
+    t: java.time.Instant,
+    now: java.time.Instant = java.time.Instant.now(),
+): String {
     val secs = java.time.Duration.between(t, now).seconds.coerceAtLeast(0)
+    // Same magnitude buckets as the shared RelativeTime component (minus its
+    // ago/in affix), so a long-idle entity reads "1y", not "365d".
     return when {
         secs < 60 -> "${secs}s"
         secs < 3600 -> "${secs / 60}m"
         secs < 86_400 -> "${secs / 3600}h"
-        else -> "${secs / 86_400}d"
+        secs < 7 * 86_400 -> "${secs / 86_400}d"
+        secs < 30 * 86_400 -> "${secs / (7 * 86_400)}w"
+        secs < 365 * 86_400 -> "${secs / (30 * 86_400)}mo"
+        else -> "${secs / (365 * 86_400)}y"
     }
 }
