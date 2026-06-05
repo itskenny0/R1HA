@@ -77,7 +77,9 @@ object BackupsLogic {
             deltaSec < 3600 -> "${deltaSec / 60}m ago"
             deltaSec < 86_400 -> "${deltaSec / 3600}h ago"
             deltaSec < 7 * 86_400 -> "${deltaSec / 86_400}d ago"
-            else -> "${deltaSec / (7 * 86_400)}w ago"
+            deltaSec < 30 * 86_400 -> "${deltaSec / (7 * 86_400)}w ago"
+            deltaSec < 365 * 86_400 -> "${deltaSec / (30 * 86_400)}mo ago"
+            else -> "${deltaSec / (365 * 86_400)}y ago"
         }
     }
 

@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.backups
 import com.github.itskenny0.r1ha.core.ha.BackupInfo
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
+import java.time.Instant
 
 /**
  * Unit tests for the pure Backups helpers in BackupsLogic.kt: byte-size and
@@ -120,5 +121,28 @@ class BackupsLogicTest {
         )
         val sorted = BackupsLogic.sortBackups(list, BackupsLogic.Sort.SIZE_DESC)
         assertThat(sorted.map { it.backupId }).containsExactly("c", "a", "b").inOrder()
+    }
+
+    // --- relativeCreatedAt ---
+
+    @Test
+    fun relativeCreatedAt_extends_to_months_and_years() {
+        val now = Instant.parse("2024-06-01T00:00:00Z")
+        fun ago(days: Long) =
+            BackupsLogic.relativeCreatedAt(now.minusSeconds(days * 86_400).toString(), now)
+        assertThat(ago(3)).isEqualTo("3d ago")
+        assertThat(ago(20)).isEqualTo("2w ago")
+        // Past 30 days it rolls to months / years, matching the shared RelativeTime
+        // component (which previously diverged: this capped at weeks -> "29w ago").
+        assertThat(ago(45)).isEqualTo("1mo ago")
+        assertThat(ago(200)).isEqualTo("6mo ago")
+        assertThat(ago(400)).isEqualTo("1y ago")
+    }
+
+    @Test
+    fun relativeCreatedAt_null_for_missing_or_unparseable() {
+        val now = Instant.parse("2024-06-01T00:00:00Z")
+        assertThat(BackupsLogic.relativeCreatedAt(null, now)).isNull()
+        assertThat(BackupsLogic.relativeCreatedAt("not-a-date", now)).isNull()
     }
 }
