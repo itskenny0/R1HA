@@ -57,7 +57,9 @@ fun R1Section(
                 .padding(horizontal = R1.space.l),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(title.uppercase(), style = R1.sectionHeader, color = R1.AccentWarm)
+            // US-pinned so a section title with an 'i' upper-cases to "I", not a dotted
+            // "İ", on Turkish / Azeri locales. One chokepoint for every screen's headers.
+            Text(title.uppercase(java.util.Locale.US), style = R1.sectionHeader, color = R1.AccentWarm)
             if (count != null) {
                 Spacer(Modifier.width(R1.space.s))
                 R1Chip(text = count.toString(), variant = R1ChipVariant.Pill)

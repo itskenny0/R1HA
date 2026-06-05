@@ -262,7 +262,7 @@ private fun RailItem(
     ) {
         Text(text = dest.glyph, style = R1.numeralM, color = accent, textAlign = TextAlign.Center)
         Text(
-            text = dest.label.uppercase(),
+            text = dest.label.uppercase(java.util.Locale.US),
             style = R1.labelMicro,
             color = accent,
             textAlign = TextAlign.Center,
