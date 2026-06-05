@@ -143,7 +143,7 @@ fun VacuumPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier
             ) {
                 fanSpeeds.forEach { speed ->
                     PanelChip(
-                        label = speed.uppercase(),
+                        label = speed.uppercase(java.util.Locale.US),
                         accent = accent,
                         selected = state.vacuumFanSpeed.equals(speed, ignoreCase = true),
                         onClick = {
@@ -243,7 +243,7 @@ fun LockPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) 
         if (!state.lockChangedBy.isNullOrBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "BY ${state.lockChangedBy.uppercase()}",
+                text = "BY ${state.lockChangedBy.uppercase(java.util.Locale.US)}",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
@@ -683,7 +683,7 @@ fun RemotePanel(state: EntityState, accent: Color, modifier: Modifier = Modifier
             ) {
                 state.remoteActivityList.forEach { activity ->
                     PanelChip(
-                        label = activity.uppercase(),
+                        label = activity.uppercase(java.util.Locale.US),
                         accent = accent,
                         selected = state.remoteCurrentActivity.equals(activity, ignoreCase = true),
                         onClick = {
@@ -736,7 +736,7 @@ fun CustomActionsPanel(state: EntityState, accent: Color, modifier: Modifier = M
         ) {
             actions.forEach { action ->
                 PanelChip(
-                    label = action.label.uppercase(),
+                    label = action.label.uppercase(java.util.Locale.US),
                     accent = accent,
                     selected = false,
                     onClick = {
@@ -929,7 +929,7 @@ fun AlarmPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
         if (!state.alarmChangedBy.isNullOrBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "BY ${state.alarmChangedBy.uppercase()}",
+                text = "BY ${state.alarmChangedBy.uppercase(java.util.Locale.US)}",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
@@ -1008,7 +1008,7 @@ fun MediaExtrasPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
                         else -> "off"
                     }
                     PanelChip(
-                        label = "REPEAT ${current.uppercase()}",
+                        label = "REPEAT ${current.uppercase(java.util.Locale.US)}",
                         accent = accent,
                         selected = current != "off",
                         onClick = {
@@ -1030,7 +1030,7 @@ fun MediaExtrasPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
             ) {
                 state.mediaSourceList.forEach { source ->
                     PanelChip(
-                        label = source.uppercase(),
+                        label = source.uppercase(java.util.Locale.US),
                         accent = accent,
                         selected = state.mediaSource.equals(source, ignoreCase = true),
                         onClick = {
@@ -1052,7 +1052,7 @@ fun MediaExtrasPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
             ) {
                 soundModes.forEach { mode ->
                     PanelChip(
-                        label = mode.uppercase(),
+                        label = mode.uppercase(java.util.Locale.US),
                         accent = accent,
                         selected = currentSound.equals(mode, ignoreCase = true),
                         onClick = {
