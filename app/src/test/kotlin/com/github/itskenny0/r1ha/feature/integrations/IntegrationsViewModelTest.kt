@@ -205,4 +205,25 @@ class IntegrationsViewModelTest {
         )
         assertThat(counts["shelly"]).isEqualTo(DomainCounts(devices = 1, entities = 0))
     }
+
+    @Test fun `domainCountsSpoken pluralises a single device or entity`() {
+        assertThat(IntegrationsViewModel.domainCountsSpoken(DomainCounts(devices = 1, entities = 1)))
+            .isEqualTo(", 1 device, 1 entity")
+    }
+
+    @Test fun `domainCountsSpoken pluralises multiples`() {
+        assertThat(IntegrationsViewModel.domainCountsSpoken(DomainCounts(devices = 3, entities = 12)))
+            .isEqualTo(", 3 devices, 12 entities")
+    }
+
+    @Test fun `domainCountsSpoken keeps a zero side legible alongside a non-zero one`() {
+        assertThat(IntegrationsViewModel.domainCountsSpoken(DomainCounts(devices = 0, entities = 5)))
+            .isEqualTo(", 0 devices, 5 entities")
+    }
+
+    @Test fun `domainCountsSpoken is empty for null or all-zero counts`() {
+        assertThat(IntegrationsViewModel.domainCountsSpoken(null)).isEmpty()
+        assertThat(IntegrationsViewModel.domainCountsSpoken(DomainCounts(devices = 0, entities = 0)))
+            .isEmpty()
+    }
 }

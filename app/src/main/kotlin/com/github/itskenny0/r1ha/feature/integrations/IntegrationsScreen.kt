@@ -264,13 +264,7 @@ private fun DomainHeader(
     // count rendered as an R1Chip Pill at the right edge. When the registries have
     // resolved counts for this domain, a compact "Nd / Ne" tally precedes the entry
     // count so the user can gauge how much the integration brings in.
-    val countSuffix = remember(counts) {
-        if (counts != null && (counts.devices > 0 || counts.entities > 0)) {
-            ", ${counts.devices} devices, ${counts.entities} entities"
-        } else {
-            ""
-        }
-    }
+    val countSuffix = remember(counts) { IntegrationsViewModel.domainCountsSpoken(counts) }
     Row(
         modifier = Modifier
             .fillMaxWidth()

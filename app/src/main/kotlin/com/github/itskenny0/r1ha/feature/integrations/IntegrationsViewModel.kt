@@ -221,6 +221,19 @@ class IntegrationsViewModel(
             return "BY ${cause.uppercase(Locale.US)}"
         }
 
+        /** Spoken count tally appended to a domain header's accessibility
+         *  label, e.g. ", 1 device, 12 entities". Pluralised so a single-item
+         *  integration reads "1 device" rather than "1 devices"; the visible
+         *  header uses the compact "1d / 12e" form where plurals don't apply.
+         *  Empty when the registries haven't resolved any counts for the
+         *  domain, matching the suppressed visual tally. */
+        fun domainCountsSpoken(counts: DomainCounts?): String {
+            if (counts == null || (counts.devices <= 0 && counts.entities <= 0)) return ""
+            val d = if (counts.devices == 1) "1 device" else "${counts.devices} devices"
+            val e = if (counts.entities == 1) "1 entity" else "${counts.entities} entities"
+            return ", $d, $e"
+        }
+
         /** True when [entry] belongs in [filter]. */
         fun matchesFilter(entry: ConfigEntry, filter: Filter): Boolean = when (filter) {
             Filter.ALL -> true
