@@ -210,12 +210,16 @@ private fun SizeHint(ui: LogsViewModel.UiState) {
         ui.truncated -> "showing last ${humanBytes(shown)} of ${humanBytes(total)}"
         else -> "${humanBytes(total)} total"
     }
-    val freshness = if (ui.fetchedAtMillis > 0L) {
-        val deltaSec = (System.currentTimeMillis() - ui.fetchedAtMillis) / 1000
-        " · ${deltaSec}s ago"
+    // Bucketed, live-ticking relative time ("just now" / "5m ago" / "1h ago") via the
+    // app-wide formatter, rather than a raw seconds delta that read absurdly once the fetch
+    // aged past a minute ("3600s ago" instead of "1h ago").
+    val fetchedInstant = if (ui.fetchedAtMillis > 0L) {
+        java.time.Instant.ofEpochMilli(ui.fetchedAtMillis)
     } else {
-        ""
+        null
     }
+    val rel = com.github.itskenny0.r1ha.ui.components.rememberRelativeTime(fetchedInstant)
+    val freshness = if (rel.isNotEmpty()) " · $rel" else ""
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "/api/error_log · $pretty$freshness",
