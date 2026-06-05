@@ -21,7 +21,14 @@ import kotlin.math.abs
  *  * < 60 min → '<minutes>m'
  *  * < 24 h → '<hours>h'
  *  * < 7 d → '<days>d'
- *  * older → '<weeks>w'
+ *  * < 30 d → '<weeks>w'
+ *  * < 365 d → '<months>mo'
+ *  * older → '<years>y'
+ *
+ * Months use 'mo' (not 'm', which is already minutes) and approximate a month as 30 days /
+ * a year as 365 days — these are coarse labels, not a calendar, so the rounding is fine. The
+ * cap used to be weeks, which turned a long-stale reading (an automation that last ran months
+ * ago, a sensor unavailable for a season) into an unreadable '13w ago'.
  */
 internal fun formatRelativeTime(at: Instant, now: Instant): String {
     val deltaMs = now.toEpochMilli() - at.toEpochMilli()
@@ -33,7 +40,9 @@ internal fun formatRelativeTime(at: Instant, now: Instant): String {
         sec < 3600 -> "${sec / 60}m"
         sec < 86_400 -> "${sec / 3600}h"
         sec < 7 * 86_400 -> "${sec / 86_400}d"
-        else -> "${sec / (7 * 86_400)}w"
+        sec < 30 * 86_400 -> "${sec / (7 * 86_400)}w"
+        sec < 365 * 86_400 -> "${sec / (30 * 86_400)}mo"
+        else -> "${sec / (365 * 86_400)}y"
     }
     return if (past) "$mag ago" else "in $mag"
 }

@@ -36,4 +36,18 @@ class RelativeTimeTest {
         assertThat(future(3 * 86_400)).isEqualTo("in 3d")
         assertThat(future(14 * 86_400)).isEqualTo("in 2w")
     }
+
+    @Test fun `weeks hold until a month then switch to months`() {
+        assertThat(past(21 * 86_400)).isEqualTo("3w ago")
+        assertThat(past(29 * 86_400)).isEqualTo("4w ago")
+        assertThat(past(30 * 86_400)).isEqualTo("1mo ago")
+        assertThat(past(75 * 86_400)).isEqualTo("2mo ago")
+        assertThat(past(200 * 86_400)).isEqualTo("6mo ago")
+    }
+
+    @Test fun `a year or more reads in years`() {
+        assertThat(past(365 * 86_400)).isEqualTo("1y ago")
+        assertThat(past(800 * 86_400)).isEqualTo("2y ago")
+        assertThat(future(400 * 86_400)).isEqualTo("in 1y")
+    }
 }
