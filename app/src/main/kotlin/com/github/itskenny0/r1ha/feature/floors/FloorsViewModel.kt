@@ -165,5 +165,15 @@ class FloorsViewModel(
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { FloorsViewModel(haRepository) }
         }
+
+        /** Pluralised "N areas{sep}M entities" tally for a floor row, so a
+         *  floor with one area reads "1 area" rather than "1 areas". [separator]
+         *  is the only thing that differs between the visible label (" · ") and
+         *  the spoken accessibility label (", "). */
+        fun floorTally(areaCount: Int, entityCount: Int, separator: String): String {
+            val a = if (areaCount == 1) "1 area" else "$areaCount areas"
+            val e = if (entityCount == 1) "1 entity" else "$entityCount entities"
+            return "$a$separator$e"
+        }
     }
 }

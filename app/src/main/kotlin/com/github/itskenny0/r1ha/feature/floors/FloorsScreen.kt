@@ -178,7 +178,8 @@ private fun FloorRow(
                 contentDescription = buildString {
                     append(floor.name)
                     floor.level?.let { append(", level ${levelLabel(it).lowercase()}") }
-                    append(", ${floor.areas.size} areas, $totalEntities entities")
+                    append(", ")
+                    append(FloorsViewModel.floorTally(floor.areas.size, totalEntities, ", "))
                     append(if (expanded) ". Expanded." else ". Tap to expand.")
                 }
             }
@@ -220,7 +221,7 @@ private fun FloorRow(
             )
             Spacer(Modifier.width(R1.space.s))
             Text(
-                text = "${floor.areas.size} areas · $totalEntities entities",
+                text = FloorsViewModel.floorTally(floor.areas.size, totalEntities, " · "),
                 style = responsiveType(R1.labelMicro),
                 color = R1.AccentWarm,
                 maxLines = 1,
