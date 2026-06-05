@@ -430,9 +430,15 @@ fun windowSummary(
  *  rounds to zero from below (-0.002 -> "-0.00") is emitted as "0", not "-0.00": "%f"
  *  keeps the sign even when the magnitude rounds away, and "-0" reads as a glitch. */
 fun formatStatNum(v: Double): String {
-    if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
-    val s = java.lang.String.format(java.util.Locale.US, "%.2f", v)
+    val s = if (kotlin.math.abs(v - v.toLong()) < 1e-9) {
+        "${v.toLong()}"
+    } else {
+        java.lang.String.format(java.util.Locale.US, "%.2f", v)
+    }
     // "-0.00" -> "0" (not "0.00": this formatter keeps two fixed decimals, so dropping
     // only the sign would leave a bare ".00"; collapse a zero magnitude to plain "0").
-    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
+    val collapsed = if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
+    // Group thousands so a large total ("12345" kWh) reads the same here as on the sensor
+    // cards; the shared helper only groups 5+ integer digits, leaving years / short codes.
+    return com.github.itskenny0.r1ha.ui.components.groupThousands(collapsed)
 }

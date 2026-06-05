@@ -231,4 +231,14 @@ class StatisticsHelpersTest {
         assertThat(formatStatNum(-0.5)).isEqualTo("-0.50")
         assertThat(formatStatNum(-12.34)).isEqualTo("-12.34")
     }
+
+    @Test
+    fun `format groups thousands on large totals, in lockstep with the cards`() {
+        assertThat(formatStatNum(12345.0)).isEqualTo("12,345")
+        assertThat(formatStatNum(1234567.0)).isEqualTo("1,234,567")
+        assertThat(formatStatNum(12345.6)).isEqualTo("12,345.60")
+        assertThat(formatStatNum(-123456.0)).isEqualTo("-123,456")
+        // Four-digit totals stay ungrouped (years / short codes).
+        assertThat(formatStatNum(2026.0)).isEqualTo("2026")
+    }
 }

@@ -1042,10 +1042,16 @@ private fun SummaryRow(
  *  with StatisticsViewModel.formatStatNum, including the -0 normalisation: a value that
  *  rounds to zero from below renders "0", not "-0.00". */
 private fun formatNum(v: Double): String {
-    if (kotlin.math.abs(v - v.toLong()) < 1e-9) return "${v.toLong()}"
-    val s = "%.2f".format(java.util.Locale.US, v)
+    val s = if (kotlin.math.abs(v - v.toLong()) < 1e-9) {
+        "${v.toLong()}"
+    } else {
+        "%.2f".format(java.util.Locale.US, v)
+    }
     // "-0.00" -> "0" (two fixed decimals here, so dropping just the sign would leave ".00").
-    return if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
+    val collapsed = if (s.startsWith("-") && s.drop(1).all { it == '0' || it == '.' }) "0" else s
+    // Group thousands so large history values read in lockstep with the sensor cards and
+    // statistics; the shared helper only groups 5+ integer digits.
+    return com.github.itskenny0.r1ha.ui.components.groupThousands(collapsed)
 }
 
 /**
