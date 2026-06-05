@@ -396,7 +396,7 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
         val fmt = if (tSpan < Duration.ofHours(36).toMillis()) {
             DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
         } else {
-            DateTimeFormatter.ofPattern("d MMM").withZone(zone)
+            DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
         }
         // Tap-to-scrub: store the scrubbed x as a fraction [0..1] of the
         // shared time axis. Per-series nearest-sample lookup happens at
@@ -605,7 +605,7 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
     val fmt = if (span < Duration.ofHours(36).toMillis()) {
         DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
     } else {
-        DateTimeFormatter.ofPattern("d MMM").withZone(zone)
+        DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
     }
     val scrubX = androidx.compose.runtime.remember(timeline) {
         androidx.compose.runtime.mutableStateOf<Float?>(null)
@@ -724,7 +724,7 @@ private fun SingleValuePanel(
     height: androidx.compose.ui.unit.Dp = 180.dp,
 ) {
     val zone = ZoneId.systemDefault()
-    val fmt = remember { DateTimeFormatter.ofPattern("d MMM HH:mm").withZone(zone) }
+    val fmt = remember { DateTimeFormatter.ofPattern("d MMM HH:mm", java.util.Locale.US).withZone(zone) }
     Box(
         modifier = Modifier.fillMaxWidth().height(height),
         contentAlignment = Alignment.Center,

@@ -452,7 +452,7 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
         val fmt = if (tSpan < Duration.ofHours(36).toMillis()) {
             DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
         } else {
-            DateTimeFormatter.ofPattern("d MMM").withZone(zone)
+            DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
         }
         // Tap-to-scrub state: nullable Int index into proj.xsNorm. Press &
         // hold reveals the precise bucket value; release clears it. Same

@@ -488,7 +488,7 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
     val fmt = if (spanMs < java.time.Duration.ofHours(36).toMillis()) {
         DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
     } else {
-        DateTimeFormatter.ofPattern("d MMM").withZone(zone)
+        DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
     }
     val scrubIdx = remember(proj) { mutableStateOf<Int?>(null) }
     // Text alternative announced by TalkBack in place of the invisible Canvas.
