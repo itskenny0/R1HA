@@ -489,7 +489,7 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
             ChipStrip {
                 entity.effectList.forEach { fx ->
                     DetailChip(
-                        label = fx.uppercase(),
+                        label = optionLabel(fx),
                         accent = accent,
                         selected = entity.effect.equals(fx, ignoreCase = true),
                         onClick = { dispatch(ServiceCall.setLightEffect(entity.id, fx)) },
@@ -743,7 +743,7 @@ private fun SelectControl(entity: EntityState, accent: Color, dispatch: (Service
         ChipStrip(wrap = true) {
             entity.selectOptions.forEach { opt ->
                 DetailChip(
-                    label = opt.uppercase(),
+                    label = optionLabel(opt),
                     accent = accent,
                     selected = entity.currentOption.equals(opt, ignoreCase = true),
                     onClick = { dispatch(ServiceCall.setSelectOption(entity.id, opt)) },

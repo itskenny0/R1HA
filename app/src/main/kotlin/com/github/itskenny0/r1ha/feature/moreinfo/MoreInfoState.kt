@@ -152,6 +152,14 @@ fun humanizeKey(key: String): String {
 }
 
 /**
+ * Chip label for an HA option / mode / effect id: underscores read as spaces and the whole
+ * thing upper-cases, so "color_loop" -> "COLOR LOOP" and "eco_mode" -> "ECO MODE" scan as
+ * words rather than code. The raw id is still what the caller's service call dispatches.
+ * Mirrors the SelectCard / picker-row treatment so every option surface reads the same.
+ */
+fun optionLabel(raw: String): String = raw.replace('_', ' ').uppercase(Locale.US)
+
+/**
  * Format an arbitrary JSON attribute value for a single-line readout. Lists and objects
  * collapse to a compact comma-joined / `{n fields}` summary so a sprawling `forecast`
  * array doesn't blow the row height; the row ellipsizes whatever this returns.
