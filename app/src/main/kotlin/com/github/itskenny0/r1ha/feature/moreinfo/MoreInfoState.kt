@@ -10,6 +10,7 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.groupThousands
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
@@ -154,17 +155,22 @@ fun humanizeKey(key: String): String {
  * Format an arbitrary JSON attribute value for a single-line readout. Lists and objects
  * collapse to a compact comma-joined / `{n fields}` summary so a sprawling `forecast`
  * array doesn't blow the row height; the row ellipsizes whatever this returns.
+ *
+ * Large bare numbers are run through [groupThousands] so an attribute reading like
+ * "1234567" shows as "1,234,567", matching the sensor cards and HA's own frontend. The
+ * grouping is precision-preserving: it only touches the integer part of a 5+ digit number
+ * and leaves decimals, version strings, IDs with separators, and timestamps untouched.
  */
 fun formatAttributeValue(value: kotlinx.serialization.json.JsonElement): String = when (value) {
     is JsonNull -> "—"
-    is JsonPrimitive -> value.content.ifBlank { "—" }
+    is JsonPrimitive -> groupThousands(value.content).ifBlank { "—" }
     is JsonArray -> {
         if (value.isEmpty()) {
             "[]"
         } else {
             val flat = value.joinToString(", ") { el ->
                 when (el) {
-                    is JsonPrimitive -> el.content
+                    is JsonPrimitive -> groupThousands(el.content)
                     is JsonArray -> "[${el.size}]"
                     is JsonObject -> "{${el.size}}"
                     else -> el.toString()
