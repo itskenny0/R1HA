@@ -189,6 +189,17 @@ class NotificationsViewModel(
             }
         }
 
+        /**
+         * Accessibility label for the two-tap bulk-dismiss button. Pluralised so a single
+         * notification reads "Dismiss all 1 notification" rather than "...1 notifications";
+         * [armed] is the confirm (second-tap) state.
+         */
+        fun dismissAllDescription(count: Int, armed: Boolean): String {
+            val verb = if (armed) "Confirm dismiss all" else "Dismiss all"
+            val noun = if (count == 1) "notification" else "notifications"
+            return "$verb $count $noun"
+        }
+
         fun factory(haRepository: HaRepository) = viewModelFactory {
             initializer { NotificationsViewModel(haRepository) }
         }

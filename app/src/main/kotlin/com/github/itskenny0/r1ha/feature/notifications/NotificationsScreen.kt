@@ -142,11 +142,10 @@ fun NotificationsScreen(
                                     armed.value = true
                                 }
                             },
-                            contentDescription = if (armed.value) {
-                                "Confirm dismiss all ${ui.notifications.size} notifications"
-                            } else {
-                                "Dismiss all ${ui.notifications.size} notifications"
-                            },
+                            contentDescription = NotificationsViewModel.dismissAllDescription(
+                                ui.notifications.size,
+                                armed.value,
+                            ),
                         )
                         .padding(horizontal = R1.space.m, vertical = R1.space.s),
                     contentAlignment = Alignment.Center,
