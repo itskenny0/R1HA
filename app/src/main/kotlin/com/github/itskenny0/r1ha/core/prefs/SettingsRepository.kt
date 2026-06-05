@@ -13,6 +13,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
@@ -621,7 +622,7 @@ class SettingsRepository private constructor(
             val newId = "p" + java.util.UUID.randomUUID().toString().replace("-", "").take(8)
             FavoritePage(
                 id = newId,
-                name = area.replace('_', ' ').uppercase().take(20),
+                name = areaLabel(area).take(20),
                 favorites = entityIds,
             )
         }

@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
+import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.prefs.EntityOverride
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -495,7 +496,7 @@ private fun DomainHeader(
             Text(text = "·", style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.width(8.dp))
             Text(
-                text = area.replace('_', ' ').uppercase(),
+                text = areaLabel(area),
                 style = R1.labelMicro,
                 color = R1.InkSoft,
             )

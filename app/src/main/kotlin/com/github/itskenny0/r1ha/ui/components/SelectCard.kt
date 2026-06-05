@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -87,7 +88,7 @@ fun SelectCard(
                 Text("·", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = state.area.replace('_', ' ').uppercase(),
+                    text = areaLabel(state.area),
                     style = R1.labelMicro,
                     color = R1.InkSoft,
                 )

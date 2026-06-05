@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
+import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 
 /**
@@ -140,7 +141,7 @@ object ColorfulCardsTheme : R1Theme {
                         Text("·", style = R1.labelMicro, color = Color.White.copy(alpha = 0.7f))
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = model.area.replace('_', ' ').uppercase(),
+                            text = areaLabel(model.area),
                             style = R1.labelMicro,
                             color = Color.White.copy(alpha = 0.85f),
                         )

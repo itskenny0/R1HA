@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
+import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 
 /**
@@ -116,7 +117,7 @@ object MinimalDarkTheme : R1Theme {
                         Text("·", style = R1.labelMicro, color = R1.InkMuted)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = model.area.replace('_', ' ').uppercase(),
+                            text = areaLabel(model.area),
                             style = R1.labelMicro,
                             color = R1.InkMuted,
                         )
