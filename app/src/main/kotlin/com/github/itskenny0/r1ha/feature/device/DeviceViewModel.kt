@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.App
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.brightness255ToPct
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -302,7 +303,7 @@ class DeviceViewModel(app: App) : AndroidViewModel(app) {
                 context.contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS,
             )
-            (raw * 100f / 255f).toInt().coerceIn(0, 100)
+            brightness255ToPct(raw)
         }.getOrDefault(0)
     }
 

@@ -30,6 +30,7 @@ import com.github.itskenny0.r1ha.MainActivity
 import com.github.itskenny0.r1ha.R
 import com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.brightness255ToPct
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -592,7 +593,7 @@ class IotSensorsService : Service() {
     private fun currentBrightnessPct(): Int {
         return runCatching {
             val raw = Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-            (raw * 100f / 255f).toInt().coerceIn(0, 100)
+            brightness255ToPct(raw)
         }.getOrDefault(0)
     }
 
