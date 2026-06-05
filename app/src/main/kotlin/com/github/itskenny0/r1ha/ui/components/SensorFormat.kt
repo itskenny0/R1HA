@@ -38,9 +38,28 @@ fun formatSensorValue(raw: String?, maxDecimals: Int = 2): String {
     val rounded = "%.${places}f".format(Locale.US, num)
     val trimmed = if (places == 0) rounded else rounded.trimEnd('0').trimEnd('.')
     // Drop a leading minus when the rounded magnitude is zero, so "-0" / "-0.0" → "0".
-    return if (trimmed.startsWith("-") && trimmed.drop(1).all { it == '0' || it == '.' }) {
+    val signed = if (trimmed.startsWith("-") && trimmed.drop(1).all { it == '0' || it == '.' }) {
         trimmed.drop(1)
     } else {
         trimmed
     }
+    return groupThousands(signed)
+}
+
+/**
+ * Insert thousands separators into the integer part of an already-formatted numeric string
+ * so a large measurement ("1234567" → "1,234,567") is legible on the R1's narrow readout,
+ * matching HA's own frontend. Only kicks in at 5+ integer digits, so four-digit values that
+ * are usually years or short codes ("2026") stay untouched. The sign and any decimal part
+ * are preserved; a non-numeric integer part (shouldn't happen post-format) is returned as-is.
+ */
+internal fun groupThousands(s: String): String {
+    val neg = s.startsWith("-")
+    val body = if (neg) s.substring(1) else s
+    val dot = body.indexOf('.')
+    val intPart = if (dot >= 0) body.substring(0, dot) else body
+    val fracPart = if (dot >= 0) body.substring(dot) else ""
+    if (intPart.length < 5 || !intPart.all { it.isDigit() }) return s
+    val grouped = intPart.reversed().chunked(3).joinToString(",").reversed()
+    return (if (neg) "-" else "") + grouped + fracPart
 }

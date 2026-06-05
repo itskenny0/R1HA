@@ -58,4 +58,18 @@ class SensorFormatTest {
         assertThat(formatSensorValue("-1", maxDecimals = 0)).isEqualTo("-1")
         assertThat(formatSensorValue("-12.30")).isEqualTo("-12.3")
     }
+
+    @Test fun `large values get thousands separators`() {
+        assertThat(formatSensorValue("12345")).isEqualTo("12,345")
+        assertThat(formatSensorValue("1234567")).isEqualTo("1,234,567")
+        assertThat(formatSensorValue("1234567.5")).isEqualTo("1,234,567.5")
+        assertThat(formatSensorValue("-123456")).isEqualTo("-123,456")
+        assertThat(formatSensorValue("10000")).isEqualTo("10,000")
+    }
+
+    @Test fun `four-digit values stay ungrouped so years and short codes are intact`() {
+        assertThat(formatSensorValue("2026")).isEqualTo("2026")
+        assertThat(formatSensorValue("9999")).isEqualTo("9999")
+        assertThat(formatSensorValue("1234.5")).isEqualTo("1234.5")
+    }
 }
