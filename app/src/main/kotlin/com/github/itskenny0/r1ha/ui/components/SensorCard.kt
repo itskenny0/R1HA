@@ -84,19 +84,30 @@ internal fun timestampSensorInstant(deviceClass: String?, rawState: String?): ja
     return com.github.itskenny0.r1ha.core.ha.parseHaInstant(rawState)
 }
 
-private val DURATION_SECOND_UNITS = setOf("s", "sec", "secs", "second", "seconds")
+// Maps a duration sensor's reported unit to its length in seconds, so a duration given in
+// minutes / hours / days gets the same compact "2h 5m" treatment as a seconds-based one
+// (previously only seconds were condensed; a "125 min" sensor showed raw). Any other / no
+// unit leaves the value to the default formatter.
+private val DURATION_UNIT_SECONDS: Map<String, Long> = mapOf(
+    "s" to 1L, "sec" to 1L, "secs" to 1L, "second" to 1L, "seconds" to 1L,
+    "min" to 60L, "mins" to 60L, "minute" to 60L, "minutes" to 60L,
+    "h" to 3_600L, "hr" to 3_600L, "hrs" to 3_600L, "hour" to 3_600L, "hours" to 3_600L,
+    "d" to 86_400L, "day" to 86_400L, "days" to 86_400L,
+)
 
 /**
- * Condense a seconds-based duration sensor into a compact "1d 3h" / "2h 5m" / "3m 20s"
- * readout instead of a raw "11000 s". Scoped to device_class=duration with a seconds unit
- * and values of at least a minute, so already-readable forms ("45 s", a sensor reported in
- * minutes/hours) are left to the default formatter. Returns null when it doesn't apply, so
- * the caller falls back to the normal value + unit rendering.
+ * Condense a duration sensor into a compact "1d 3h" / "2h 5m" / "3m 20s" readout instead
+ * of a raw "11000 s" / "125 min". Scoped to device_class=duration with a recognised time
+ * unit (seconds / minutes / hours / days), normalising the value to seconds first so the
+ * sensor's native unit doesn't matter. Sub-minute totals ("45 s") and unrecognised units
+ * are left to the default formatter. Returns null when it doesn't apply, so the caller
+ * falls back to the normal value + unit rendering. Pure + unit-tested.
  */
 internal fun formatDurationReadout(deviceClass: String?, rawState: String?, unit: String?): String? {
     if (!deviceClass.equals("duration", ignoreCase = true)) return null
-    if (unit?.trim()?.lowercase() !in DURATION_SECOND_UNITS) return null
-    val total = rawState?.trim()?.toDoubleOrNull()?.toLong() ?: return null
+    val unitSeconds = DURATION_UNIT_SECONDS[unit?.trim()?.lowercase()] ?: return null
+    val value = rawState?.trim()?.toDoubleOrNull() ?: return null
+    val total = (value * unitSeconds).toLong()
     if (total < 60L) return null
     val days = total / 86_400L
     val hours = (total % 86_400L) / 3_600L

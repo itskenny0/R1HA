@@ -4,9 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * Locks in [formatDurationReadout]: seconds-based duration sensors condense to a compact
- * d/h/m/s readout; sub-minute values, non-second units, and non-duration sensors fall
- * through to the default formatter (null).
+ * Locks in [formatDurationReadout]: a duration sensor in any recognised time unit condenses
+ * to a compact d/h/m/s readout; sub-minute values, unrecognised / missing units, and
+ * non-duration sensors fall through to the default formatter (null).
  */
 class FormatDurationReadoutTest {
     @Test fun `seconds condense to the two most significant units`() {
@@ -17,10 +17,22 @@ class FormatDurationReadoutTest {
         assertThat(formatDurationReadout("duration", "120", "seconds")).isEqualTo("2m 0s")
     }
 
-    @Test fun `sub-minute and non-second units are left to the default formatter`() {
+    @Test fun `minutes hours and days are normalised to seconds first`() {
+        assertThat(formatDurationReadout("duration", "5", "min")).isEqualTo("5m 0s")
+        assertThat(formatDurationReadout("duration", "125", "min")).isEqualTo("2h 5m")
+        assertThat(formatDurationReadout("duration", "2", "h")).isEqualTo("2h 0m")
+        assertThat(formatDurationReadout("duration", "2", "d")).isEqualTo("2d 0h")
+    }
+
+    @Test fun `fractional values in larger units work`() {
+        assertThat(formatDurationReadout("duration", "1.5", "h")).isEqualTo("1h 30m")
+        // Sub-minute even after conversion still defers to the default formatter.
+        assertThat(formatDurationReadout("duration", "0.5", "min")).isNull()
+    }
+
+    @Test fun `sub-minute, unrecognised, and missing units are left to the default formatter`() {
         assertThat(formatDurationReadout("duration", "45", "s")).isNull()
-        assertThat(formatDurationReadout("duration", "5", "min")).isNull()
-        assertThat(formatDurationReadout("duration", "2", "h")).isNull()
+        assertThat(formatDurationReadout("duration", "5", "weeks")).isNull()
         assertThat(formatDurationReadout("duration", "300", null)).isNull()
     }
 
