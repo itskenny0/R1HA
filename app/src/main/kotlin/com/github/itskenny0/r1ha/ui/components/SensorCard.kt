@@ -523,9 +523,14 @@ internal fun weatherDetailLine(humidity: Double?, windSpeed: Double?, windUnit: 
     return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 }
 
-private fun friendlyBinaryWord(state: EntityState): String {
-    val on = state.isOn
-    return when (state.deviceClass) {
+private fun friendlyBinaryWord(state: EntityState): String =
+    binaryWord(state.deviceClass, state.isOn)
+
+/** Map a binary_sensor's device class + on/off to the short all-caps word shown on its
+ *  card, e.g. door -> OPEN/CLOSED, motion -> MOTION/CLEAR. Covers HA's binary_sensor
+ *  device classes; an unknown or absent class falls back to ON/OFF. Pure + unit-tested. */
+internal fun binaryWord(deviceClass: String?, on: Boolean): String {
+    return when (deviceClass) {
         "door", "garage_door", "window", "opening" -> if (on) "OPEN" else "CLOSED"
         "motion", "occupancy", "presence" -> if (on) "MOTION" else "CLEAR"
         // Moisture sensors trip on any wetness, not just leaks — a damp basement
@@ -554,6 +559,8 @@ private fun friendlyBinaryWord(state: EntityState): String {
         "sound" -> if (on) "SOUND" else "QUIET"
         // Motor / appliance running indicators (washing machine state, etc.).
         "running" -> if (on) "RUNNING" else "IDLE"
+        // Movement detectors (HA's `moving` class, e.g. a device-tracker beacon).
+        "moving" -> if (on) "MOVING" else "STOPPED"
         // 'Update available' binary sensors (HA's `update` integration).
         "update" -> if (on) "AVAILABLE" else "UP TO DATE"
         else -> if (on) "ON" else "OFF"
