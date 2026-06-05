@@ -43,6 +43,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
@@ -663,7 +664,7 @@ private fun NumberStepperRow(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
-                text = "${"%.2f".format(value).trimEnd('0').trimEnd('.')} $unit",
+                text = "${formatFixed(value.toDouble(), 2).trimEnd('0').trimEnd('.')} $unit",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )

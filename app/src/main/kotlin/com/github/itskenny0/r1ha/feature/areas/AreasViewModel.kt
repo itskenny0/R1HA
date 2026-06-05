@@ -8,6 +8,7 @@ import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
@@ -498,7 +499,7 @@ class AreasViewModel(
                 val unit = matching.firstNotNullOfOrNull { it.unit }
                 val values = matching.mapNotNull { it.rawState?.trim()?.toDoubleOrNull() }
                 val m = median(values) ?: return null
-                val num = if (m == m.toLong().toDouble()) m.toLong().toString() else "%.1f".format(m)
+                val num = if (m == m.toLong().toDouble()) m.toLong().toString() else formatFixed(m, 1)
                 return if (unit.isNullOrBlank()) num else "$num$unit"
             }
             val parts = listOfNotNull(reading("temperature"), reading("humidity"))

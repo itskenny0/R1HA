@@ -6,6 +6,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.os.Build
 import android.util.Size
+import java.util.Locale
 
 /**
  * Walks every Camera2 id the device exposes and produces user-pickable
@@ -121,8 +122,8 @@ object CameraEnumerator {
         // gives a friendlier hint than millimetres alone.
         val focalLabel = when {
             focalLengths.isEmpty() -> "id $id"
-            focalLengths.size == 1 -> "${"%.1f".format(focalLengths[0])}mm"
-            else -> focalLengths.joinToString(separator = " / ") { "%.1f".format(it) } + "mm"
+            focalLengths.size == 1 -> "${"%.1f".format(Locale.US, focalLengths[0])}mm"
+            else -> focalLengths.joinToString(separator = " / ") { "%.1f".format(Locale.US, it) } + "mm"
         }
         // Synthesize a sortable "physical sensor" hint from the focal
         // length — under 4mm tends to be ultrawide, 4-7mm wide, 7+ tele.

@@ -64,6 +64,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonBlock
+import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -631,14 +632,14 @@ private fun formatBitrate(bps: Long): String = when {
     bps <= 0L -> "0 bps"
     bps < 1_000L -> "$bps bps"
     bps < 1_000_000L -> "${bps / 1_000L} kbps"
-    else -> "${"%.2f".format(bps / 1_000_000.0)} Mbps"
+    else -> "${formatFixed(bps / 1_000_000.0, 2)} Mbps"
 }
 
 private fun formatByteCount(bytes: Long): String = when {
     bytes < 1024L -> "$bytes B"
-    bytes < 1024L * 1024L -> "${"%.1f".format(bytes / 1024.0)} KiB"
-    bytes < 1024L * 1024L * 1024L -> "${"%.2f".format(bytes / (1024.0 * 1024.0))} MiB"
-    else -> "${"%.2f".format(bytes / (1024.0 * 1024.0 * 1024.0))} GiB"
+    bytes < 1024L * 1024L -> "${formatFixed(bytes / 1024.0, 1)} KiB"
+    bytes < 1024L * 1024L * 1024L -> "${formatFixed(bytes / (1024.0 * 1024.0), 2)} MiB"
+    else -> "${formatFixed(bytes / (1024.0 * 1024.0 * 1024.0), 2)} GiB"
 }
 
 private fun sinkTint(state: IotCameraStatus.SinkState): Color = when (state) {

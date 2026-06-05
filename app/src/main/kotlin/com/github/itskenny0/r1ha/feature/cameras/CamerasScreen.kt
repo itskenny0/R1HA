@@ -55,6 +55,7 @@ import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 
@@ -759,6 +760,6 @@ private fun nextRefreshStep(current: Long, faster: Boolean, floorMillis: Long = 
 
 private fun formatPollInterval(millis: Long): String = when {
     millis < 1000 -> "${millis} ms"
-    millis < 10_000 -> "${"%.1f".format(millis / 1000f)} s"
+    millis < 10_000 -> "${formatFixed(millis / 1000.0, 1)} s"
     else -> "${millis / 1000} s"
 }
