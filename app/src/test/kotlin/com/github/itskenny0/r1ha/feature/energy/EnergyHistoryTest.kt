@@ -99,4 +99,27 @@ class EnergyHistoryTest {
     @Test fun `aggregateConsumption on empty map yields no bars`() {
         assertThat(EnergyViewModel.aggregateConsumption(emptyMap())).isEmpty()
     }
+
+    @Test fun `energyUnitToKwh converts each recorder unit`() {
+        assertThat(EnergyViewModel.energyUnitToKwh("kWh")).isEqualTo(1.0)
+        assertThat(EnergyViewModel.energyUnitToKwh("Wh")).isEqualTo(0.001)
+        assertThat(EnergyViewModel.energyUnitToKwh("MWh")).isEqualTo(1_000.0)
+        assertThat(EnergyViewModel.energyUnitToKwh("GWh")).isEqualTo(1_000_000.0)
+        // Case-insensitive / trimmed, and unknown or absent defaults to kWh (1.0).
+        assertThat(EnergyViewModel.energyUnitToKwh(" wh ")).isEqualTo(0.001)
+        assertThat(EnergyViewModel.energyUnitToKwh(null)).isEqualTo(1.0)
+        assertThat(EnergyViewModel.energyUnitToKwh("bogus")).isEqualTo(1.0)
+    }
+
+    @Test fun `aggregateConsumption normalises mixed-unit meters to kWh`() {
+        val t0 = Instant.parse("2024-01-01T00:00:00Z")
+        val byId = mapOf(
+            "sensor.kwh_meter" to listOf(bucket(t0, 1.0)),    // 1 kWh
+            "sensor.wh_plug" to listOf(bucket(t0, 500.0)),    // 500 Wh = 0.5 kWh
+        )
+        val units = mapOf("sensor.kwh_meter" to "kWh", "sensor.wh_plug" to "Wh")
+        val bars = EnergyViewModel.aggregateConsumption(byId, units)
+        assertThat(bars).hasSize(1)
+        assertThat(bars[0].kwh).isWithin(1e-9).of(1.5) // 1.0 + 0.5, not 501
+    }
 }

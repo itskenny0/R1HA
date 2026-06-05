@@ -220,7 +220,10 @@ class EnergyViewModel(
                 // Lazily resolve (and cache) the energy meter ids from the
                 // recorder catalogue the first time history is requested.
                 val resolved = haRepository.listStatisticIds().fold(
-                    onSuccess = { rows -> selectEnergyStatisticIds(rows) },
+                    onSuccess = { rows ->
+                        energyStatisticUnits = rows.associate { it.statisticId to it.unitOfMeasurement }
+                        selectEnergyStatisticIds(rows)
+                    },
                     onFailure = { t ->
                         R1Log.w("Energy", "statistic catalogue load failed: ${t.message}")
                         _ui.value = _ui.value.copy(
@@ -251,7 +254,7 @@ class EnergyViewModel(
                 period = window.period(),
             ).fold(
                 onSuccess = { byId ->
-                    val bars = aggregateConsumption(byId)
+                    val bars = aggregateConsumption(byId, energyStatisticUnits)
                     // Sum the consumption of buckets that fall on or after
                     // local midnight: every window we request runs up to now,
                     // so it always contains today's buckets. This is the
@@ -292,6 +295,11 @@ class EnergyViewModel(
     /** Cached energy-meter statistic ids, resolved from the recorder
      *  catalogue on first history load and reused across window flips. */
     private var energyStatisticIds: List<String> = emptyList()
+
+    /** Recorder unit per statistic id (e.g. "kWh", "Wh"), captured alongside
+     *  [energyStatisticIds] so [aggregateConsumption] can normalise meters that
+     *  report in Wh / MWh / GWh into the kWh figure the chart labels. */
+    private var energyStatisticUnits: Map<String, String?> = emptyMap()
 
     /** Parse the JSON array of [entity_id, name, watts] triples that
      *  the TOP_CONSUMERS_JSON template emits. Robust to malformed
@@ -434,15 +442,33 @@ class EnergyViewModel(
          *  gaps) contribute nothing. Returns bars only for instants where
          *  at least one meter reported, so single- and multi-meter installs
          *  both read cleanly. */
-        fun aggregateConsumption(byId: Map<String, List<StatisticsBucket>>): List<HistoryBar> {
+        fun aggregateConsumption(
+            byId: Map<String, List<StatisticsBucket>>,
+            unitsById: Map<String, String?> = emptyMap(),
+        ): List<HistoryBar> {
             val sums = sortedMapOf<Instant, Double>()
-            for (buckets in byId.values) {
+            for ((id, buckets) in byId) {
+                // Normalise each meter to kWh: a Wh meter's `change` is 1000x the
+                // kWh figure the chart labels, so summing raw across mixed units
+                // (or a pure-Wh install) would be wildly off. Unknown unit -> 1.0.
+                val factor = energyUnitToKwh(unitsById[id])
                 for (b in buckets) {
                     val c = b.change?.takeIf { it.isFinite() } ?: continue
-                    sums[b.start] = (sums[b.start] ?: 0.0) + c
+                    sums[b.start] = (sums[b.start] ?: 0.0) + c * factor
                 }
             }
             return sums.map { (start, kwh) -> HistoryBar(start, kwh) }
+        }
+
+        /** Multiplier converting a recorder energy unit to kWh, so meters
+         *  reporting in Wh / MWh / GWh aggregate into the kWh figure the chart
+         *  and TODAY tile label. An absent or unrecognised unit defaults to 1.0
+         *  (treated as already kWh, matching the common case). */
+        fun energyUnitToKwh(unit: String?): Double = when (unit?.trim()?.lowercase()) {
+            "wh" -> 0.001
+            "mwh" -> 1_000.0
+            "gwh" -> 1_000_000.0
+            else -> 1.0
         }
 
         /** Pick the energy-meter statistic ids from the recorder catalogue:
