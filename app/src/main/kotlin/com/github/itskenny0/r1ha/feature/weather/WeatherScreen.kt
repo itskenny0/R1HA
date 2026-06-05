@@ -201,7 +201,7 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
         Spacer(Modifier.size(R1.space.xs))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = conditionLabel(w.condition).uppercase(),
+                text = conditionDisplayLabel(w.condition),
                 style = responsiveType(R1.labelMicro),
                 color = conditionAccent(w.condition),
                 modifier = Modifier.weight(1f),
@@ -385,16 +385,23 @@ private fun formatNumber(d: Double): String =
     // One decimal for sub-100 values, integer for larger (pressure is usually 4 digits)
     if (kotlin.math.abs(d) < 100) "%.1f".format(java.util.Locale.US, d) else "%.0f".format(java.util.Locale.US, d)
 
-/** Human-readable condition label. Empty / missing states read as a
- *  clear word rather than a blank or a bare slug. */
-private fun conditionLabel(condition: String): String = when (condition.lowercase()) {
+/** Human-readable condition label (lower-case, used for the spoken accessibility
+ *  description). Empty / missing states read as a clear word rather than a blank or a
+ *  bare slug. */
+private fun conditionLabel(condition: String): String = when (condition.lowercase(java.util.Locale.US)) {
     "", "unknown" -> "unknown"
     "unavailable" -> "unavailable"
     else -> condition.replace('-', ' ')
 }
 
+/** Upper-case display form of [conditionLabel], pinned to US so a condition with an
+ *  'i' ("rainy", "lightning", "windy") doesn't render with a dotted "İ" on Turkish /
+ *  Azeri locales. Matches the US pin already used for this screen's temperatures. */
+internal fun conditionDisplayLabel(condition: String): String =
+    conditionLabel(condition).uppercase(java.util.Locale.US)
+
 private fun conditionAccent(condition: String): androidx.compose.ui.graphics.Color =
-    when (condition.lowercase()) {
+    when (condition.lowercase(java.util.Locale.US)) {
         "sunny", "clear" -> R1.AccentWarm
         "rainy", "pouring", "snowy", "snowy-rainy", "fog" -> R1.AccentCool
         "lightning", "lightning-rainy" -> R1.StatusAmber
