@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.github.itskenny0.r1ha.core.ha.AlarmAction
+import com.github.itskenny0.r1ha.core.util.optionLabel
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.LawnMowerAction
@@ -428,7 +429,7 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
             ) {
                 state.climateHvacModes.forEach { mode ->
                     PanelChip(
-                        label = mode.replace('_', ' ').uppercase(),
+                        label = optionLabel(mode),
                         accent = accent,
                         selected = state.climateHvacMode.equals(mode, ignoreCase = true),
                         onClick = {
@@ -450,7 +451,7 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
             ) {
                 state.climatePresetModes.forEach { preset ->
                     PanelChip(
-                        label = preset.replace('_', ' ').uppercase(),
+                        label = optionLabel(preset),
                         accent = accent,
                         selected = state.climatePresetMode.equals(preset, ignoreCase = true),
                         onClick = {
@@ -472,7 +473,7 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
             ) {
                 state.climateFanModes.forEach { fan ->
                     PanelChip(
-                        label = fan.replace('_', ' ').uppercase(),
+                        label = optionLabel(fan),
                         accent = accent,
                         selected = state.climateFanMode.equals(fan, ignoreCase = true),
                         onClick = {
@@ -501,7 +502,7 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
             ) {
                 swingModes.forEach { swing ->
                     PanelChip(
-                        label = swing.replace('_', ' ').uppercase(),
+                        label = optionLabel(swing),
                         accent = accent,
                         selected = currentSwing.equals(swing, ignoreCase = true),
                         onClick = {
@@ -589,7 +590,7 @@ fun FanPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
             // the same pattern the light FX button uses (LocalOnOpenEffectPicker)
             // so users only learn one popup shape.
             val openPicker = com.github.itskenny0.r1ha.core.theme.LocalOnOpenFanPresetPicker.current
-            val currentLabel = state.fanPresetMode?.replace('_', ' ')?.uppercase() ?: "—"
+            val currentLabel = state.fanPresetMode?.let { optionLabel(it) } ?: "—"
             Text(text = "PRESET", style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.height(4.dp))
             Row(
@@ -821,7 +822,7 @@ fun WaterHeaterPanel(state: EntityState, accent: Color, modifier: Modifier = Mod
         ) {
             modes.forEach { mode ->
                 PanelChip(
-                    label = mode.replace('_', ' ').uppercase(),
+                    label = optionLabel(mode),
                     accent = accent,
                     selected = active.equals(mode, ignoreCase = true),
                     onClick = {
@@ -1259,7 +1260,7 @@ fun HumidifierPanel(state: EntityState, accent: Color, modifier: Modifier = Modi
             ) {
                 modes.forEach { mode ->
                     PanelChip(
-                        label = mode.replace('_', ' ').uppercase(),
+                        label = optionLabel(mode),
                         accent = accent,
                         selected = currentMode.equals(mode, ignoreCase = true),
                         onClick = {

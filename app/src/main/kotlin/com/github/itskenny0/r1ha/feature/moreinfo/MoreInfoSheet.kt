@@ -66,6 +66,8 @@ import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.VacuumPanel
 import com.github.itskenny0.r1ha.ui.components.ValvePanel
 import com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel
+import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.util.optionLabel
 import com.github.itskenny0.r1ha.ui.components.formatSensorValue
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
@@ -214,7 +216,7 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
         Spacer(Modifier.width(R1.space.m))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "${domainLabel(entity.id.domain)}${entity.area?.takeIf { it.isNotBlank() }?.let { " · ${it.replace('_', ' ').uppercase()}" } ?: ""}",
+                text = "${domainLabel(entity.id.domain)}${entity.area?.takeIf { it.isNotBlank() }?.let { " · ${areaLabel(it)}" } ?: ""}",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 maxLines = 1,
@@ -661,7 +663,7 @@ private fun ClimateStepper(entity: EntityState, accent: Color, dispatch: (Servic
         val nowTemp = entity.climateCurrentTemperature
         val nowHum = entity.attrDouble("current_humidity")
         val parts = buildList {
-            if (action != null) add(action.replace('_', ' ').uppercase())
+            if (action != null) add(optionLabel(action))
             if (nowTemp != null) add("NOW ${formatNumber(nowTemp)}$unit")
             if (nowHum != null) add("RH ${formatNumber(nowHum)}%")
         }
@@ -1049,7 +1051,7 @@ private fun sliderColors(accent: Color) = SliderDefaults.colors(
 // ── Local helpers ─────────────────────────────────────────────────────────────────────
 
 private fun domainLabel(domain: Domain): String =
-    domain.prefix.ifBlank { "ENTITY" }.replace('_', ' ').uppercase()
+    optionLabel(domain.prefix.ifBlank { "ENTITY" })
 
 /**
  * The big header readout + unit. Sensor-family entities show their reading; on/off
@@ -1063,7 +1065,7 @@ private fun headerValueAndUnit(entity: EntityState): Pair<String, String?> {
         Domain.CLIMATE, Domain.WATER_HEATER -> {
             val t = entity.climateTargetTemperature
             if (t != null) formatNumber(t) to (entity.temperatureUnit ?: entity.unit)
-            else (raw?.replace('_', ' ')?.uppercase() ?: "—") to null
+            else (raw?.let { optionLabel(it) } ?: "—") to null
         }
         Domain.SELECT, Domain.INPUT_SELECT ->
             (entity.currentOption ?: raw ?: "—") to null
@@ -1071,7 +1073,7 @@ private fun headerValueAndUnit(entity: EntityState): Pair<String, String?> {
         else -> {
             // On/off + everything else: show the raw state word; if it's a bare on/off
             // collapse to ON/OFF, otherwise show HA's word verbatim (OPEN, LOCKED, ...).
-            val word = raw?.replace('_', ' ')?.uppercase()
+            val word = raw?.let { optionLabel(it) }
                 ?: if (entity.isOn) "ON" else "OFF"
             word to null
         }

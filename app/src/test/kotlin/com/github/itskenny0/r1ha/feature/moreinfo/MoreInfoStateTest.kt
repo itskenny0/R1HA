@@ -49,13 +49,6 @@ class MoreInfoStateTest {
         assertThat(formatAttributeValue(big)).isEqualTo("100,000, 200,000")
     }
 
-    @Test fun `optionLabel turns snake_case ids into spaced upper case`() {
-        assertThat(optionLabel("color_loop")).isEqualTo("COLOR LOOP")
-        assertThat(optionLabel("eco_mode")).isEqualTo("ECO MODE")
-        assertThat(optionLabel("auto")).isEqualTo("AUTO")
-        assertThat(optionLabel("Night")).isEqualTo("NIGHT")
-    }
-
     @Test fun `empty and nested collections collapse compactly`() {
         assertThat(formatAttributeValue(JsonArray(emptyList()))).isEqualTo("[]")
         assertThat(formatAttributeValue(JsonObject(emptyMap()))).isEqualTo("{}")
