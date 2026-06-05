@@ -48,6 +48,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
@@ -525,7 +526,7 @@ private fun NumberControl(
         val formatted = when {
             value == null -> entry.state
             step % 1.0 == 0.0 -> "${value.toInt()}"
-            else -> "%.1f".format(value)
+            else -> formatFixed(value, 1)
         }
         val withUnit = if (entry.unit.isNullOrBlank()) formatted else "$formatted ${entry.unit}"
         Text(

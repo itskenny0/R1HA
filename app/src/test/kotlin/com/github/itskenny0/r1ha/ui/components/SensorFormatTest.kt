@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.ui.components
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
+import java.util.Locale
 
 /**
  * Locks in [formatSensorValue]'s numeric rendering: decimal rounding, trailing-zero
@@ -71,5 +72,25 @@ class SensorFormatTest {
         assertThat(formatSensorValue("2026")).isEqualTo("2026")
         assertThat(formatSensorValue("9999")).isEqualTo("9999")
         assertThat(formatSensorValue("1234.5")).isEqualTo("1234.5")
+    }
+
+    @Test fun `formatFixed rounds to the requested decimal places`() {
+        assertThat(formatFixed(21.45, 1)).isEqualTo("21.5")
+        assertThat(formatFixed(21.0, 1)).isEqualTo("21.0")
+        assertThat(formatFixed(21.456, 2)).isEqualTo("21.46")
+        assertThat(formatFixed(21.6, 0)).isEqualTo("22")
+    }
+
+    @Test fun `formatFixed uses a dot separator even under a comma-decimal locale`() {
+        val previous = Locale.getDefault()
+        try {
+            // Germany formats decimals with a comma; the platform formatter would emit
+            // "21,5" without the US pin, clashing with HA's dot-based numbers.
+            Locale.setDefault(Locale.GERMANY)
+            assertThat(formatFixed(21.5, 1)).isEqualTo("21.5")
+            assertThat(formatSensorValue("21.5")).isEqualTo("21.5")
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 }

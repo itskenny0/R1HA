@@ -53,6 +53,16 @@ fun formatSensorValue(raw: String?, maxDecimals: Int = 2): String {
  * are usually years or short codes ("2026") stay untouched. The sign and any decimal part
  * are preserved; a non-numeric integer part (shouldn't happen post-format) is returned as-is.
  */
+/**
+ * Format [value] to [decimals] fixed decimal places with a dot separator regardless of
+ * the device locale. The platform `"%.1f".format(x)` honours the default locale, so on a
+ * comma-decimal device (de, fr, ...) it emits "21,5" — which clashes with HA's dot-based
+ * numbers and the rest of this app's US-pinned readouts. Pin US here so every fixed-decimal
+ * readout (meter tick labels, helper values, ...) stays consistent.
+ */
+internal fun formatFixed(value: Double, decimals: Int): String =
+    "%.${decimals.coerceAtLeast(0)}f".format(Locale.US, value)
+
 internal fun groupThousands(s: String): String {
     val neg = s.startsWith("-")
     val body = if (neg) s.substring(1) else s

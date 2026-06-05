@@ -607,7 +607,7 @@ private fun computeMeterLabels(
             // Avoids "0.0" / "100.0" on power switches while keeping precision when
             // the entity's range is e.g. 0..1.5.
             val integer = min == kotlin.math.floor(min) && max == kotlin.math.floor(max)
-            if (integer) nativeValue.toInt().toString() else "%.1f".format(nativeValue)
+            if (integer) nativeValue.toInt().toString() else formatFixed(nativeValue, 1)
         }
     }
 }
