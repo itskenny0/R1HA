@@ -85,7 +85,7 @@ object DevicesA11y {
             if (charging) parts += "charging"
         }
         if (unavailableCount > 0) {
-            parts += "$unavailableCount of $liveCount entities unavailable"
+            parts += "$unavailableCount of ${entityCountPhrase(liveCount)} unavailable"
         }
         return if (parts.isEmpty()) null else parts.joinToString(", ")
     }
