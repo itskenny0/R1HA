@@ -105,10 +105,10 @@ The oldest version the developer has actually tested on is **Android 9 (Pie)**. 
 
 ## Install
 
-Download the latest `r1ha-YYYY.MM.DD.apk` from the [Releases](../../releases) page and install:
+Download the latest `r1ha-YYYY.MM.DD.HHmm.apk` from the [Releases](../../releases) page and install:
 
 ```bash
-adb install r1ha-YYYY.MM.DD.apk
+adb install r1ha-YYYY.MM.DD.HHmm.apk
 ```
 
 Or copy the APK to the device and open it with a file manager.
@@ -128,14 +128,14 @@ The local build uses today's date as the version (`YYYYMMDD` for `versionCode`, 
 
 ## Releasing
 
-Releases are date-tagged. Push a tag in the form `r1ha-YYYYMMDD`:
+Releases are date-tagged. Push a tag in the form `r1ha-YYYYMMDD-HHmm` (UTC), so same-day reships get distinct version names:
 
 ```bash
-git tag "r1ha-$(date +%Y%m%d)"
-git push origin "r1ha-$(date +%Y%m%d)"
+git tag "r1ha-$(date -u +%Y%m%d-%H%M)"
+git push origin "r1ha-$(date -u +%Y%m%d-%H%M)"
 ```
 
-The release workflow builds the APK, renames it to `r1ha-YYYY.MM.DD.apk`, generates release notes from `git log` since the previous tag, and attaches the APK to a stable GitHub Release; no keystore management or repository secrets required.
+The release workflow builds the APK, renames it to `r1ha-YYYY.MM.DD.HHmm.apk`, generates release notes from `git log` since the previous tag, and attaches the APK to a stable GitHub Release; no keystore management or repository secrets required. The legacy date-only `r1ha-YYYYMMDD` tag form is still accepted (its time defaults to `0000`).
 
 ## License
 
