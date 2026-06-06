@@ -89,7 +89,7 @@ fun MapCard(
                             modifier = Modifier.weight(1f),
                         )
                         Text(
-                            text = "%.4f, %.4f".format(p.lat, p.lon),
+                            text = "%.4f, %.4f".format(java.util.Locale.US, p.lat, p.lon),
                             style = R1.labelMicro,
                             color = R1.InkMuted,
                         )

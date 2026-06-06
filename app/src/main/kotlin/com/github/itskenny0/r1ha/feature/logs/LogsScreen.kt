@@ -417,6 +417,6 @@ private fun LogLineRow(
 /** Compact byte-count formatter — "5.3 KB", "412 KB", "1.1 MB". */
 private fun humanBytes(n: Long): String = when {
     n < 1024 -> "$n B"
-    n < 1024L * 1024L -> "%.1f KB".format(n / 1024.0)
-    else -> "%.1f MB".format(n / (1024.0 * 1024.0))
+    n < 1024L * 1024L -> "%.1f KB".format(java.util.Locale.US, n / 1024.0)
+    else -> "%.1f MB".format(java.util.Locale.US, n / (1024.0 * 1024.0))
 }
