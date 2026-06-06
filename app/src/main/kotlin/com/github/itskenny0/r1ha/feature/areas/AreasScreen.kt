@@ -282,9 +282,11 @@ private fun AreaRow(
                 .semantics {
                     contentDescription = buildString {
                         append(area.name)
-                        append(", ${area.entityIds.size} entities")
+                        val n = area.entityIds.size
+                        append(if (n == 1) ", 1 entity" else ", $n entities")
                         area.summary?.let { append(", $it") }
-                        if (area.activeAlerts > 0) append(", ${area.activeAlerts} active alerts")
+                        if (area.activeAlerts == 1) append(", 1 active alert")
+                        else if (area.activeAlerts > 1) append(", ${area.activeAlerts} active alerts")
                         append(". Opens controls.")
                     }
                 }
