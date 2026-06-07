@@ -24,7 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -212,13 +212,13 @@ fun SettingsScreen(
     }
     BackHandler(onBack = popOne)
 
-    // One LazyList state shared across nodes; reset to the top whenever the node
-    // changes so each freshly-entered subpage reads top-down and the wheel scrolls
-    // the page the user is actually looking at.
-    val listState = rememberLazyListState()
-    androidx.compose.runtime.LaunchedEffect(node) {
-        runCatching { listState.scrollToItem(0) }
-    }
+    // One LazyList state per node, keyed by the node's stable enum name. A
+    // freshly-entered subpage gets a brand-new state (so it reads top-down), but
+    // popping back to a parent restores the scroll position the user left it at
+    // rather than snapping to the top. The map is screen-scoped and bounded by
+    // the (small, fixed) SettingsNode enum.
+    val listStates = androidx.compose.runtime.remember { mutableMapOf<String, LazyListState>() }
+    val listState = listStates.getOrPut(node.name) { LazyListState() }
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
 
     val matchedEntries = androidx.compose.runtime.remember(settingsQuery) {
