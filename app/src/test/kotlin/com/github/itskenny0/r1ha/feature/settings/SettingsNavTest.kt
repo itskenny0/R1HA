@@ -88,6 +88,31 @@ class SettingsNavTest {
         }
     }
 
+    // ── Saved-state round trip ────────────────────────────────────────────
+
+    @Test
+    fun `back-stack survives an encode-decode round trip`() {
+        // The exact path the reported bug walked: Browse -> Power tools.
+        val stack = SettingsBackStack()
+            .push(SettingsNode.BROWSE)
+            .push(SettingsNode.BROWSE_POWER)
+        assertThat(decodeBackStack(encodeBackStack(stack)).path).isEqualTo(stack.path)
+    }
+
+    @Test
+    fun `decoding empty or junk falls back to ROOT`() {
+        assertThat(decodeBackStack("").path).isEqualTo(listOf(SettingsNode.ROOT))
+        assertThat(decodeBackStack("NOT_A_NODE,ALSO_BAD").path)
+            .isEqualTo(listOf(SettingsNode.ROOT))
+    }
+
+    @Test
+    fun `decoding an unrooted path is repaired to start at ROOT`() {
+        val decoded = decodeBackStack("APPEARANCE,APPEARANCE_CARDS")
+        assertThat(decoded.path.first()).isEqualTo(SettingsNode.ROOT)
+        assertThat(decoded.current).isEqualTo(SettingsNode.APPEARANCE_CARDS)
+    }
+
     // ── Focus deep-link mapping ───────────────────────────────────────────
 
     @Test

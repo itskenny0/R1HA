@@ -125,6 +125,33 @@ data class SettingsBackStack(
         }
 }
 
+/**
+ * Serialise a back-stack to a compact comma-joined string of node names. Paired
+ * with [decodeBackStack] for `rememberSaveable`, so the Settings drill-in
+ * survives navigating out to a standalone sub-route (e.g. Power tools ->
+ * Templates) and back: without persistence the composition-scoped back-stack is
+ * rebuilt at ROOT on return, dropping the user at the top level.
+ */
+fun encodeBackStack(stack: SettingsBackStack): String =
+    stack.path.joinToString(",") { it.name }
+
+/**
+ * Inverse of [encodeBackStack]. Unknown / malformed entries are dropped and the
+ * result is always a valid stack rooted at [SettingsNode.ROOT] (ROOT is
+ * prepended when missing; an empty parse falls back to ROOT alone) so stale or
+ * corrupt saved state can never violate the [SettingsBackStack] invariants.
+ */
+fun decodeBackStack(encoded: String): SettingsBackStack {
+    val parsed = encoded.split(",")
+        .mapNotNull { runCatching { SettingsNode.valueOf(it.trim()) }.getOrNull() }
+    val rooted = when {
+        parsed.isEmpty() -> listOf(SettingsNode.ROOT)
+        parsed.first() != SettingsNode.ROOT -> listOf(SettingsNode.ROOT) + parsed
+        else -> parsed
+    }
+    return SettingsBackStack(rooted)
+}
+
 /** Outcome of [SettingsBackStack.pop]. */
 sealed interface PopResult {
     /** Popped one level inside Settings; [stack] is the new state. */

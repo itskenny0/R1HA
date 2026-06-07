@@ -115,6 +115,16 @@ private fun pathTo(node: SettingsNode): List<SettingsNode> {
     return chain.toList()
 }
 
+/** Persists the drill-in back-stack across the composable leaving and re-entering
+ *  composition (navigating out to a standalone sub-route and back). Stored as the
+ *  comma-joined node-name string [encodeBackStack] produces, which is trivially
+ *  Bundle-saveable. */
+private val SettingsBackStackSaver: androidx.compose.runtime.saveable.Saver<SettingsBackStack, String> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { encodeBackStack(it) },
+        restore = { decodeBackStack(it) },
+    )
+
 @Composable
 fun SettingsScreen(
     settings: SettingsRepository,
@@ -184,7 +194,15 @@ fun SettingsScreen(
     // Internal drill-in back-stack. Seeded from the legacy nav-graph category so
     // an external deep link still lands on the right subpage; ordinarily the nav
     // graph passes ROOT and every deeper level is pushed in-process.
-    var backStack by androidx.compose.runtime.remember {
+    //
+    // Saved (not just remembered) so the path survives navigating out to a
+    // standalone sub-route that has no in-tree node (Power tools -> Templates,
+    // Service caller, etc.) and back: those routes tear down this composable, and
+    // a plain remember would rebuild the stack at the seed (ROOT) on return,
+    // stranding the user at the top level instead of the page they left from.
+    var backStack by androidx.compose.runtime.saveable.rememberSaveable(
+        stateSaver = SettingsBackStackSaver,
+    ) {
         androidx.compose.runtime.mutableStateOf(
             SettingsBackStack(pathTo(seedNodeFor(currentCategory))),
         )
