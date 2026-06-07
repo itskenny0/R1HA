@@ -3721,15 +3721,18 @@ class DefaultHaRepository(
 
     override suspend fun listBlueprints(domain: String): Result<List<BlueprintInfo>> =
         withContext(Dispatchers.IO) {
-            // HA exposes a separate `blueprint/list/<domain>` command per
-            // blueprint kind. We only support the two HA Core ships today
-            // (automation, script). Validate up front so a typo here turns
-            // into a clear failure rather than a vague "unknown_command"
-            // reply from the server.
+            // HA's WS command is `blueprint/list` with the blueprint kind passed
+            // as a `domain` field (NOT a `blueprint/list/<domain>` command type,
+            // which HA rejects with "unknown_command"). We only support the two
+            // HA Core ships today (automation, script); validate up front so a
+            // typo here is a clear failure rather than a vague server reply.
             require(domain == "automation" || domain == "script") {
                 "Unsupported blueprint domain '$domain'"
             }
-            callWsExpectingPayload("blueprint/list/$domain").mapCatching { payload ->
+            val extras = kotlinx.serialization.json.buildJsonObject {
+                put("domain", JsonPrimitive(domain))
+            }
+            callWsExpectingPayload("blueprint/list", extras).mapCatching { payload ->
                 val root = payload as? kotlinx.serialization.json.JsonObject
                     ?: return@mapCatching emptyList()
                 // HA's reply shape: { "<path>": { metadata: {...}, ... }, ... }.
