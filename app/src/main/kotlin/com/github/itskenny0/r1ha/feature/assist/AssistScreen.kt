@@ -490,6 +490,17 @@ fun AssistScreen(
                 com.github.itskenny0.r1ha.core.util.Toaster.show("No speech captured")
             }
         }
+        // Whether any system speech recognizer can service ACTION_RECOGNIZE_SPEECH.
+        // resolveActivity is the exact predicate for voiceLauncher.launch below, and
+        // the manifest <queries> entry lets it see the recognizer on Android 11+.
+        // Some R1 ROMs (CipherOS) ship none; when so we hide the mic button entirely
+        // rather than offer a tap that can only ever toast a failure. Computed once
+        // per screen: a recognizer can't appear/vanish mid-session.
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val speechRecognizerAvailable = androidx.compose.runtime.remember {
+            android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .resolveActivity(context.packageManager) != null
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -550,44 +561,48 @@ fun AssistScreen(
                     color = if (saveActive) R1.AccentWarm else R1.InkMuted,
                 )
             }
-            Spacer(Modifier.width(R1.space.xs))
-            // Voice button: fires the system speech recognizer. Disabled
-            // while a send is in flight so a quick voice tap doesn't queue a
-            // second prompt over the first. Same hand-drawn AssistMicGlyph as
-            // the chrome-row mic so the two surfaces agree on the iconography.
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(R1.MinTarget)
-                    .clip(R1.ShapeS)
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(
-                        contentDescription = AssistA11y.micControlLabel(),
-                        onClick = {
-                        if (ui.inFlight) return@r1Pressable
-                        val intent = android.content.Intent(
-                            android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH,
-                        ).apply {
-                            putExtra(
-                                android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
-                            )
-                            putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Ask HA…")
-                            putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-                        }
-                        // Some R1 ROMs (CipherOS especially) might not have a
-                        // speech-recognition service installed: surface a toast
-                        // rather than crashing on ActivityNotFoundException.
-                        runCatching { voiceLauncher.launch(intent) }
-                            .onFailure {
-                                com.github.itskenny0.r1ha.core.util.Toaster.error(
-                                    "No speech recognizer on this device",
+            // Voice button: fires the system speech recognizer. Shown only when a
+            // recognizer is actually installed (see speechRecognizerAvailable);
+            // hidden outright on ROMs without one so the row doesn't offer a
+            // dead-end control. Disabled while a send is in flight so a quick voice
+            // tap doesn't queue a second prompt over the first. Same hand-drawn
+            // AssistMicGlyph as the chrome-row mic so the two surfaces agree.
+            if (speechRecognizerAvailable) {
+                Spacer(Modifier.width(R1.space.xs))
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(R1.MinTarget)
+                        .clip(R1.ShapeS)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .r1Pressable(
+                            contentDescription = AssistA11y.micControlLabel(),
+                            onClick = {
+                            if (ui.inFlight) return@r1Pressable
+                            val intent = android.content.Intent(
+                                android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH,
+                            ).apply {
+                                putExtra(
+                                    android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
                                 )
+                                putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Ask HA…")
+                                putExtra(android.speech.RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                             }
-                    })
-                    .padding(horizontal = R1.space.s, vertical = R1.space.s),
-            ) {
-                com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 14.dp)
+                            // Belt-and-braces: even with the button gated on
+                            // resolveActivity, surface a toast rather than crashing
+                            // on a late ActivityNotFoundException.
+                            runCatching { voiceLauncher.launch(intent) }
+                                .onFailure {
+                                    com.github.itskenny0.r1ha.core.util.Toaster.error(
+                                        "No speech recognizer on this device",
+                                    )
+                                }
+                        })
+                        .padding(horizontal = R1.space.s, vertical = R1.space.s),
+                ) {
+                    com.github.itskenny0.r1ha.ui.components.AssistMicGlyph(size = 14.dp)
+                }
             }
             Spacer(Modifier.width(R1.space.xs))
             Box(modifier = Modifier.weight(1f)) {

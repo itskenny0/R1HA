@@ -93,6 +93,13 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
+        <!-- Resolve a system speech recognizer so the Assist mic button can hide
+             itself when none is installed (some R1 ROMs ship no recognizer). On
+             Android 11+ this declaration is required before resolveActivity sees
+             the recognition app. -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH"/>
+        </intent>
     </queries>
 
     <!-- Declare support for all screen sizes so OEM tablet shells (Samsung DeX,
