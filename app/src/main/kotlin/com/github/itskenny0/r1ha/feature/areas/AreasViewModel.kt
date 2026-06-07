@@ -35,7 +35,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * ```
  * {% set out = namespace(items=[]) %}
  * {% for area in areas() %}
- *   {% set _ = out.items.append({"name": area_name(area), "entities": area_entities(area)}) %}
+ *   {% set out.items = out.items + [{"name": area_name(area), "entities": area_entities(area)}] %}
  * {% endfor %}
  * {{ out.items | tojson }}
  * ```
@@ -174,7 +174,7 @@ class AreasViewModel(
             val tpl = """
                 {%- set out = namespace(items=[]) -%}
                 {%- for area in areas() -%}
-                  {%- set _ = out.items.append({"id": area, "name": area_name(area), "entities": area_entities(area)}) -%}
+                  {%- set out.items = out.items + [{"id": area, "name": area_name(area), "entities": area_entities(area)}] -%}
                 {%- endfor -%}
                 {{ out.items | tojson }}
             """.trimIndent()

@@ -428,7 +428,7 @@ class EnergyViewModel(
             "| sort(attribute='state', reverse=True))[:8] -%}" +
             "{%- set w = s.state | float(0) -%}" +
             "{%- if w > 0 -%}" +
-            "{%- set _ = out.items.append([s.entity_id, s.name, w]) -%}" +
+            "{%- set out.items = out.items + [[s.entity_id, s.name, w]] -%}" +
             "{%- endif -%}" +
             "{%- endfor -%}" +
             "{{ out.items | tojson }}"

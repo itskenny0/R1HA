@@ -119,17 +119,17 @@ class LabelsViewModel(
                 {%- for label in labels() -%}
                   {%- set ents = namespace(m={}) -%}
                   {%- for e in label_entities(label) -%}
-                    {%- set _ = ents.m.update({e: states[e].name | default(e)}) -%}
+                    {%- set ents.m = ents.m | combine({e: states[e].name | default(e)}) -%}
                   {%- endfor -%}
                   {%- set devs = namespace(m={}) -%}
                   {%- for d in label_devices(label) -%}
-                    {%- set _ = devs.m.update({d: device_attr(d, 'name_by_user') or device_attr(d, 'name') or d}) -%}
+                    {%- set devs.m = devs.m | combine({d: device_attr(d, 'name_by_user') or device_attr(d, 'name') or d}) -%}
                   {%- endfor -%}
                   {%- set ars = namespace(m={}) -%}
                   {%- for a in label_areas(label) -%}
-                    {%- set _ = ars.m.update({a: area_name(a) | default(a)}) -%}
+                    {%- set ars.m = ars.m | combine({a: area_name(a) | default(a)}) -%}
                   {%- endfor -%}
-                  {%- set _ = out.items.append({
+                  {%- set out.items = out.items + [{
                     "id": label,
                     "name": label_name(label),
                     "color": label_color(label) | default(none, true),
@@ -138,7 +138,7 @@ class LabelsViewModel(
                     "entities": ents.m,
                     "devices": devs.m,
                     "areas": ars.m
-                  }) -%}
+                  }] -%}
                 {%- endfor -%}
                 {{ out.items | tojson }}
             """.trimIndent()

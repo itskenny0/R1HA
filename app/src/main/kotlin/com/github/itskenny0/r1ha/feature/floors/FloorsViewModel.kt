@@ -92,9 +92,9 @@ class FloorsViewModel(
                 {%- for floor in floors() -%}
                   {%- set areas_list = namespace(items=[]) -%}
                   {%- for a in floor_areas(floor) -%}
-                    {%- set _ = areas_list.items.append({"id": a, "name": area_name(a), "count": area_entities(a) | length}) -%}
+                    {%- set areas_list.items = areas_list.items + [{"id": a, "name": area_name(a), "count": area_entities(a) | length}] -%}
                   {%- endfor -%}
-                  {%- set _ = out.items.append({"id": floor, "name": floor_name(floor), "level": floor_attr(floor, "level"), "icon": floor_attr(floor, "icon"), "areas": areas_list.items}) -%}
+                  {%- set out.items = out.items + [{"id": floor, "name": floor_name(floor), "level": floor_attr(floor, "level"), "icon": floor_attr(floor, "icon"), "areas": areas_list.items}] -%}
                 {%- endfor -%}
                 {{ out.items | tojson }}
             """.trimIndent()

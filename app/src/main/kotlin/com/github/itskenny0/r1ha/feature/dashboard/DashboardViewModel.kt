@@ -219,10 +219,10 @@ class DashboardViewModel(
                             "| rejectattr('state','in',['unavailable','unknown']) -%}" +
                             "{%- set pct = s.state | float(101) -%}" +
                             "{%- if pct < $lowBatteryPct -%}" +
-                            "{%- set _ = out.items.append({" +
+                            "{%- set out.items = out.items + [{" +
                             "'id': s.entity_id, " +
                             "'name': s.name, " +
-                            "'pct': (pct | int)}) -%}" +
+                            "'pct': (pct | int)}] -%}" +
                             "{%- endif -%}" +
                             "{%- endfor -%}" +
                             "{{ out.items | tojson }}",
