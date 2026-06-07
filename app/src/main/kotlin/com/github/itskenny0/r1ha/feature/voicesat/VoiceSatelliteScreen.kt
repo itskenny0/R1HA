@@ -19,19 +19,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,6 +90,27 @@ fun VoiceSatelliteScreen(
         onDispose { engine.release() }
     }
     val state by engine.state.collectAsStateWithLifecycle()
+    val appSettings by settings.settings.collectAsState(
+        initial = com.github.itskenny0.r1ha.core.prefs.AppSettings(),
+    )
+    // Which pipeline the satellite runs against. Null = HA's default. Persisted so
+    // a user whose default pipeline lacks STT can point the satellite at one that
+    // has it (otherwise every run errors "the pipeline does not support
+    // speech-to-text").
+    val selectedPipelineId = appSettings.behavior.voiceSatellitePipelineId
+    val scope = rememberCoroutineScope()
+    var pickerOpen by remember { mutableStateOf(false) }
+    // Loaded lazily for the picker (and to resolve the selected pipeline's name on
+    // the top-bar chip). Null = not yet fetched; a failed fetch leaves it null and
+    // the picker shows a retry-friendly empty state.
+    var pipelines by remember {
+        mutableStateOf<com.github.itskenny0.r1ha.core.ha.HaRepository.AssistPipelines?>(null)
+    }
+    LaunchedEffect(pickerOpen) {
+        if (pickerOpen && pipelines == null) {
+            haRepository.listAssistPipelines().onSuccess { pipelines = it }
+        }
+    }
     var hasMicPerm by remember {
         mutableStateOf(
             androidx.core.content.ContextCompat.checkSelfPermission(
@@ -103,7 +130,7 @@ fun VoiceSatelliteScreen(
         hasMicPerm = granted
         permDenied = !granted
         if (granted) {
-            engine.start(pipelineId = null, conversationId = null, appContext = context)
+            engine.start(pipelineId = selectedPipelineId, conversationId = null, appContext = context)
         }
     }
 
@@ -126,7 +153,7 @@ fun VoiceSatelliteScreen(
                     permLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                 } else {
                     engine.start(
-                        pipelineId = null,
+                        pipelineId = selectedPipelineId,
                         conversationId = null,
                         appContext = context,
                     )
@@ -141,7 +168,54 @@ fun VoiceSatelliteScreen(
             .background(R1.Bg)
             .systemBarsPadding(),
     ) {
-        R1TopBar(title = "VOICE SATELLITE", onBack = onBack)
+        R1TopBar(
+            title = "VOICE SATELLITE",
+            onBack = onBack,
+            action = {
+                // Pipeline picker entry point. Shows the selected pipeline's name
+                // (or DEFAULT) and opens the chooser so a user whose default
+                // pipeline lacks STT can switch to one that has it.
+                val chipLabel = when {
+                    selectedPipelineId == null -> "DEFAULT"
+                    else -> pipelines?.pipelines
+                        ?.firstOrNull { it.id == selectedPipelineId }?.name
+                        ?.uppercase()?.take(12)
+                        ?: "CUSTOM"
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .r1Pressable(
+                            onClick = { pickerOpen = true },
+                            contentDescription = "Pick assist pipeline",
+                        )
+                        .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+                ) {
+                    Text(
+                        text = "PIPE: $chipLabel",
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                    )
+                }
+            },
+        )
+        if (pickerOpen) {
+            PipelinePickerDialog(
+                pipelines = pipelines,
+                selectedId = selectedPipelineId,
+                onDismiss = { pickerOpen = false },
+                onSelect = { id ->
+                    pickerOpen = false
+                    scope.launch {
+                        settings.update { s ->
+                            s.copy(behavior = s.behavior.copy(voiceSatellitePipelineId = id))
+                        }
+                    }
+                },
+            )
+        }
         AdaptiveContent(modifier = Modifier.weight(1f)) {
             Column(
                 modifier = Modifier
@@ -234,7 +308,7 @@ fun VoiceSatelliteScreen(
                                 permLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                             } else {
                                 engine.start(
-                                    pipelineId = null,
+                                    pipelineId = selectedPipelineId,
                                     conversationId = null,
                                     appContext = context,
                                 )
@@ -260,6 +334,127 @@ fun VoiceSatelliteScreen(
                             .padding(horizontal = R1.space.s),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Pipeline chooser. Lists HA's configured Assist pipelines (fetched via
+ * `assist_pipeline/pipeline/list`) plus a "Default" entry for HA's preferred
+ * pipeline. Pipelines with no speech-to-text engine are shown but disabled,
+ * since selecting one only reproduces HA's "does not support speech-to-text"
+ * error; this teaches the user which of their pipelines can actually drive the
+ * satellite.
+ */
+@Composable
+private fun PipelinePickerDialog(
+    pipelines: HaRepository.AssistPipelines?,
+    selectedId: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String?) -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = R1.Bg,
+        title = { Text(text = "ASSIST PIPELINE", style = R1.sectionHeader, color = R1.Ink) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    text = "Pipeline the satellite streams audio to. It needs a " +
+                        "speech-to-text engine; pipelines without one are disabled.",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(R1.space.s))
+                // Default (null) = HA's preferred pipeline, the original behaviour.
+                val preferredName = pipelines?.preferredId?.let { pref ->
+                    pipelines.pipelines.firstOrNull { it.id == pref }?.name
+                }
+                PipelineRow(
+                    name = "Default (HA preferred)",
+                    subtitle = preferredName?.let { "= $it" },
+                    enabled = true,
+                    selected = selectedId == null,
+                    onClick = { onSelect(null) },
+                )
+                when {
+                    pipelines == null -> {
+                        Spacer(Modifier.height(R1.space.s))
+                        Text(
+                            text = "Loading pipelines...",
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                        )
+                    }
+                    pipelines.pipelines.isEmpty() -> {
+                        Spacer(Modifier.height(R1.space.s))
+                        Text(
+                            text = "No pipelines reported by Home Assistant.",
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                        )
+                    }
+                    else -> pipelines.pipelines.forEach { p ->
+                        val hasStt = p.sttEngine != null
+                        Spacer(Modifier.height(R1.space.xs))
+                        PipelineRow(
+                            name = p.name,
+                            subtitle = if (hasStt) "STT: ${p.sttEngine}" else "no speech-to-text",
+                            enabled = hasStt,
+                            selected = selectedId == p.id,
+                            onClick = { if (hasStt) onSelect(p.id) },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            R1Button(text = "CLOSE", onClick = onDismiss)
+        },
+    )
+}
+
+@Composable
+private fun PipelineRow(
+    name: String,
+    subtitle: String?,
+    enabled: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(if (selected) R1.SurfaceMuted else R1.Bg)
+            .border(1.dp, if (selected) R1.AccentWarm else R1.Hairline, R1.ShapeS)
+            .then(
+                if (enabled) {
+                    Modifier.r1Pressable(onClick = onClick, contentDescription = name)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = R1.space.s, vertical = R1.space.s),
+    ) {
+        Column {
+            Text(
+                text = name,
+                style = R1.body,
+                color = if (enabled) R1.Ink else R1.InkMuted,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = R1.labelMicro,
+                    color = if (enabled) R1.InkSoft else R1.InkMuted,
+                )
             }
         }
     }

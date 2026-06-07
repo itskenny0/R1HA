@@ -3222,6 +3222,30 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun listAssistPipelines(): Result<HaRepository.AssistPipelines> =
+        withContext(Dispatchers.IO) {
+            callWsExpectingPayload("assist_pipeline/pipeline/list").mapCatching { payload ->
+                val obj = payload as? kotlinx.serialization.json.JsonObject
+                    ?: return@mapCatching HaRepository.AssistPipelines(emptyList(), null)
+                val arr = obj["pipelines"] as? kotlinx.serialization.json.JsonArray
+                val preferred = (obj["preferred_pipeline"] as? JsonPrimitive)?.content
+                val pipelines = arr.orEmpty().mapNotNull { el ->
+                    val p = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                    val id = (p["id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                    val name = (p["name"] as? JsonPrimitive)?.content ?: id
+                    // stt_engine is null/absent when the pipeline has no speech-to-text
+                    // configured; surface that so the picker can flag it as unusable
+                    // for the satellite's audio run.
+                    val stt = (p["stt_engine"] as? JsonPrimitive)?.content
+                        ?.takeUnless { it.isBlank() }
+                    HaRepository.AssistPipelineInfo(id = id, name = name, sttEngine = stt)
+                }
+                HaRepository.AssistPipelines(pipelines = pipelines, preferredId = preferred)
+            }.onFailure { t ->
+                R1Log.w("HaRepo.pipeline", "list failed: ${t.message}")
+            }
+        }
+
     override suspend fun subscribeTemplate(
         template: String,
         onResult: (String) -> Unit,

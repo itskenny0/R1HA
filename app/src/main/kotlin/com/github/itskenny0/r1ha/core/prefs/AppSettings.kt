@@ -326,6 +326,14 @@ data class Behavior(
      */
     val assistAgentId: String? = null,
     /**
+     * Assist pipeline id the Voice Satellite runs against. Null = HA's default
+     * (preferred) pipeline, the original behaviour. Set via the satellite's
+     * pipeline picker so a user whose default pipeline has no speech-to-text
+     * engine can point the satellite at one that does, rather than hitting HA's
+     * "the pipeline does not support speech-to-text" error every run.
+     */
+    val voiceSatellitePipelineId: String? = null,
+    /**
      * User-saved Assist prompt macros — quick-fire chips above the Assist input
      * that send the saved text on a single tap. Useful for repeat queries
      * ("what's the temperature?", "lock everything", "turn off all lights")

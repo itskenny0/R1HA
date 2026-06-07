@@ -162,6 +162,8 @@ class SettingsRepository private constructor(
         val behaviorQuickTileEntityIdD = stringPreferencesKey("behavior.quick_tile_entity_id_d")
         val behaviorAssistAutoOpenKeyboard = booleanPreferencesKey("behavior.assist_auto_open_keyboard")
         val behaviorAssistAgentId = stringPreferencesKey("behavior.assist_agent_id")
+        val behaviorVoiceSatellitePipelineId =
+            stringPreferencesKey("behavior.voice_satellite_pipeline_id")
         val behaviorAssistMacros = stringPreferencesKey("behavior.assist_macros")
         val behaviorOrientationMode = stringPreferencesKey("behavior.orientation_mode")
         val advancedJson = stringPreferencesKey("advanced.json")
@@ -333,6 +335,8 @@ class SettingsRepository private constructor(
                     quickTileEntityIdD = p[K.behaviorQuickTileEntityIdD]?.takeIf { it.isNotBlank() },
                     assistAutoOpenKeyboard = p[K.behaviorAssistAutoOpenKeyboard] ?: false,
                     assistAgentId = p[K.behaviorAssistAgentId]?.takeIf { it.isNotBlank() },
+                    voiceSatellitePipelineId =
+                        p[K.behaviorVoiceSatellitePipelineId]?.takeIf { it.isNotBlank() },
                     assistMacros = p[K.behaviorAssistMacros]
                         ?.split('\n')
                         ?.mapNotNull { line ->
@@ -511,6 +515,8 @@ class SettingsRepository private constructor(
                 p[K.behaviorQuickTileEntityIdD] = next.behavior.quickTileEntityIdD.orEmpty()
                 p[K.behaviorAssistAutoOpenKeyboard] = next.behavior.assistAutoOpenKeyboard
                 p[K.behaviorAssistAgentId] = next.behavior.assistAgentId.orEmpty()
+                p[K.behaviorVoiceSatellitePipelineId] =
+                    next.behavior.voiceSatellitePipelineId.orEmpty()
                 p[K.behaviorAssistMacros] = next.behavior.assistMacros
                     .filter { it.isNotBlank() }
                     .joinToString("\n") { line ->

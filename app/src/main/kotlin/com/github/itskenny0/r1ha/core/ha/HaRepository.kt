@@ -405,6 +405,36 @@ interface HaRepository {
     ): Result<PipelineRun>
 
     /**
+     * One configured Assist pipeline as reported by `assist_pipeline/pipeline/list`.
+     * [sttEngine] is null when the pipeline has no speech-to-text engine wired up;
+     * such a pipeline can't service a Voice Satellite run (HA rejects it with
+     * "the pipeline does not support speech-to-text"), so the picker uses this to
+     * flag / filter STT-capable pipelines.
+     */
+    data class AssistPipelineInfo(
+        val id: String,
+        val name: String,
+        val sttEngine: String?,
+    )
+
+    /**
+     * The full pipeline list plus HA's preferred (default) pipeline id, so the UI
+     * can mark which entry HA would otherwise pick. [preferredId] may be null on
+     * installs that don't report one.
+     */
+    data class AssistPipelines(
+        val pipelines: List<AssistPipelineInfo>,
+        val preferredId: String?,
+    )
+
+    /**
+     * Enumerate the configured Assist pipelines (`assist_pipeline/pipeline/list`).
+     * Lets the Voice Satellite surface a picker so the user can choose a
+     * STT-capable pipeline rather than always running HA's default.
+     */
+    suspend fun listAssistPipelines(): Result<AssistPipelines>
+
+    /**
      * Subscribe to HA's event bus for events of [eventType]. Each event is delivered
      * to [onEvent] with the full event payload (entity_id, data, time_fired, etc.).
      *
