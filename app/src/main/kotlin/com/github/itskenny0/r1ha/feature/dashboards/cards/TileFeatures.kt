@@ -257,6 +257,422 @@ private fun renderFeature(
                 showLabels = feature.showLabels,
             )
         }
+        // ── Climate mode-pickers ─────────────────────────────────────────────
+        is LovelaceTileFeature.ClimateFanModes -> {
+            if (domain != "climate") return false
+            val modes = filterModes(state.climateFanModes, feature.fanModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.climateFanMode, accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "climate.set_fan_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("fan_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.ClimatePresetModes -> {
+            if (domain != "climate") return false
+            val modes = filterModes(state.climatePresetModes, feature.presetModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.climatePresetMode, accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "climate.set_preset_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("preset_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.ClimateSwingModes -> {
+            if (domain != "climate" || !state.hasClimateFeature(EntityState.ClimateFeature.SWING_MODE)) return false
+            val available = state.attrStringList("swing_modes")
+            val modes = filterModes(available, feature.swingModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.attrString("swing_mode"), accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "climate.set_swing_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("swing_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.ClimateSwingHorizontalModes -> {
+            if (domain != "climate") return false
+            val available = state.attrStringList("swing_horizontal_modes")
+            val modes = filterModes(available, feature.swingModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.attrString("swing_horizontal_mode"), accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "climate.set_swing_horizontal_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("swing_horizontal_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        // ── Fan mode-pickers and toggles ──────────────────────────────────────
+        is LovelaceTileFeature.FanPresetModes -> {
+            if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.PRESET_MODE)) return false
+            val modes = filterModes(state.fanPresetModes, feature.presetModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.fanPresetMode, accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "fan.set_preset_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("preset_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.FanDirection -> {
+            if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.DIRECTION)) return false
+            val current = state.fanDirection?.lowercase()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FeatureButton(label = "FORWARD", accent = accent, selected = current == "forward", modifier = Modifier.weight(1f)) {
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "fan.set_direction",
+                            entityId = entityId,
+                            data = buildJsonObject { put("direction", JsonPrimitive("forward")) },
+                        ),
+                    )
+                }
+                FeatureButton(label = "REVERSE", accent = accent, selected = current == "reverse", modifier = Modifier.weight(1f)) {
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "fan.set_direction",
+                            entityId = entityId,
+                            data = buildJsonObject { put("direction", JsonPrimitive("reverse")) },
+                        ),
+                    )
+                }
+            }
+        }
+        is LovelaceTileFeature.FanOscillate -> {
+            if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.OSCILLATE)) return false
+            val on = state.fanOscillating == true
+            FeatureButton(
+                label = if (on) "OSCILLATING" else "OSCILLATE",
+                accent = accent,
+                selected = on,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "fan.oscillate",
+                        entityId = entityId,
+                        data = buildJsonObject { put("oscillating", JsonPrimitive(!on)) },
+                    ),
+                )
+            }
+        }
+        // ── Humidifier ────────────────────────────────────────────────────────
+        is LovelaceTileFeature.HumidifierModes -> {
+            if (domain != "humidifier") return false
+            val available = state.attrStringList("available_modes")
+            val modes = filterModes(available, feature.modes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.attrString("mode"), accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "humidifier.set_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.HumidifierToggle -> {
+            if (domain != "humidifier") return false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FeatureButton(label = "ON", accent = accent, selected = state.isOn, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("homeassistant.turn_on", entityId, null))
+                }
+                FeatureButton(label = "OFF", accent = accent, selected = !state.isOn, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("homeassistant.turn_off", entityId, null))
+                }
+            }
+        }
+        // ── Water heater ──────────────────────────────────────────────────────
+        is LovelaceTileFeature.WaterHeaterOperationModes -> {
+            if (domain != "water_heater") return false
+            // HA's repository stores operation_list / operation_mode in
+            // climateHvacModes / climateHvacMode for water_heater (same parser branch).
+            val modes = filterModes(state.climateHvacModes, feature.operationModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.climateHvacMode, accent) { m ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "water_heater.set_operation_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("operation_mode", JsonPrimitive(m)) },
+                    ),
+                )
+            }
+        }
+        // ── Lawn-mower commands ───────────────────────────────────────────────
+        is LovelaceTileFeature.LawnMowerCommands -> {
+            if (domain != "lawn_mower") return false
+            val showStart = state.hasFeature(EntityState.LawnMowerFeature.START_MOWING)
+            val showPause = state.hasFeature(EntityState.LawnMowerFeature.PAUSE)
+            val showDock = state.hasFeature(EntityState.LawnMowerFeature.DOCK)
+            if (!showStart && !showPause && !showDock) return false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (showStart) FeatureButton(label = "START", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("lawn_mower.start_mowing", entityId, null))
+                }
+                if (showPause) FeatureButton(label = "PAUSE", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("lawn_mower.pause", entityId, null))
+                }
+                if (showDock) FeatureButton(label = "DOCK", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("lawn_mower.dock", entityId, null))
+                }
+            }
+        }
+        // ── Vacuum commands ───────────────────────────────────────────────────
+        is LovelaceTileFeature.VacuumCommands -> {
+            if (domain != "vacuum") return false
+            VacuumCommandsFeature(entityId, state, feature.commands, accent, onAction)
+        }
+        // ── Cover tilt ────────────────────────────────────────────────────────
+        is LovelaceTileFeature.CoverTilt -> {
+            if (domain != "cover") return false
+            val sf = state.supportedFeatures
+            val anyTiltBit = sf == 0 || (sf and (
+                EntityState.CoverFeature.OPEN_TILT or
+                    EntityState.CoverFeature.CLOSE_TILT or
+                    EntityState.CoverFeature.STOP_TILT
+                )) != 0
+            if (!anyTiltBit) return false
+            val showOpen = state.hasFeature(EntityState.CoverFeature.OPEN_TILT)
+            val showClose = state.hasFeature(EntityState.CoverFeature.CLOSE_TILT)
+            val showStop = state.hasFeature(EntityState.CoverFeature.STOP_TILT)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (showOpen) FeatureButton(label = "OPEN TILT", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("cover.open_cover_tilt", entityId, null))
+                }
+                if (showStop) FeatureButton(label = "STOP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("cover.stop_cover_tilt", entityId, null))
+                }
+                if (showClose) FeatureButton(label = "CLOSE TILT", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("cover.close_cover_tilt", entityId, null))
+                }
+            }
+        }
+        // ── Valve open/close ──────────────────────────────────────────────────
+        is LovelaceTileFeature.ValveOpenClose -> {
+            if (domain != "valve") return false
+            val canOpen = state.hasFeature(EntityState.ValveFeature.OPEN)
+            val canClose = state.hasFeature(EntityState.ValveFeature.CLOSE)
+            val canStop = state.hasFeature(EntityState.ValveFeature.STOP)
+            if (!canOpen && !canClose) return false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (canOpen) FeatureButton(label = "OPEN", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("valve.open_valve", entityId, null))
+                }
+                if (canStop) FeatureButton(label = "STOP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("valve.stop_valve", entityId, null))
+                }
+                if (canClose) FeatureButton(label = "CLOSE", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("valve.close_valve", entityId, null))
+                }
+            }
+        }
+        // ── Lock open-door ────────────────────────────────────────────────────
+        is LovelaceTileFeature.LockOpenDoor -> {
+            if (domain != "lock") return false
+            // HA's lock domain doesn't expose a typed supported_features bitmask
+            // for the OPEN action in EntityState, so we show the button unconditionally
+            // and let HA reject the call if the integration doesn't support it.
+            FeatureButton(label = "OPEN", accent = accent, selected = false, modifier = Modifier.fillMaxWidth()) {
+                onAction(LovelaceAction.CallService("lock.open", entityId, null))
+            }
+        }
+        // ── Counter actions ───────────────────────────────────────────────────
+        is LovelaceTileFeature.CounterActions -> {
+            if (domain != "counter") return false
+            val allActions = listOf("increment", "decrement", "reset")
+            val wanted = if (feature.actions.isEmpty()) allActions else feature.actions.filter { it in allActions }
+            if (wanted.isEmpty()) return false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                wanted.forEach { action ->
+                    val label = when (action) {
+                        "increment" -> "+1"
+                        "decrement" -> "-1"
+                        else -> action.uppercase()
+                    }
+                    FeatureButton(label = label, accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                        onAction(LovelaceAction.CallService("counter.$action", entityId, null))
+                    }
+                }
+            }
+        }
+        // ── Update actions ────────────────────────────────────────────────────
+        is LovelaceTileFeature.UpdateActions -> {
+            if (domain != "update") return false
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FeatureButton(label = "INSTALL", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "update.install",
+                            entityId = entityId,
+                            data = if (feature.backup) buildJsonObject { put("backup", JsonPrimitive(true)) } else null,
+                        ),
+                    )
+                }
+                FeatureButton(label = "SKIP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                    onAction(LovelaceAction.CallService("update.skip", entityId, null))
+                }
+            }
+        }
+        // ── Cover tilt-position scalar ────────────────────────────────────────
+        is LovelaceTileFeature.CoverTiltPosition -> {
+            if (domain != "cover" || !state.hasFeature(EntityState.CoverFeature.SET_TILT_POSITION)) return false
+            val tiltPos = state.attrInt("current_tilt_position") ?: 0
+            ScalarStepperFeature(
+                label = "TILT",
+                percent = tiltPos,
+                accent = accent,
+                onSet = { pct ->
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "cover.set_cover_tilt_position",
+                            entityId = entityId,
+                            data = buildJsonObject { put("tilt_position", JsonPrimitive(pct)) },
+                        ),
+                    )
+                },
+            )
+        }
+        // ── Valve position scalar ─────────────────────────────────────────────
+        is LovelaceTileFeature.ValvePosition -> {
+            if (domain != "valve" || !state.hasFeature(EntityState.ValveFeature.SET_POSITION)) return false
+            ScalarStepperFeature(
+                label = "POSITION",
+                percent = state.percent ?: 0,
+                accent = accent,
+                onSet = { pct ->
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "valve.set_valve_position",
+                            entityId = entityId,
+                            data = buildJsonObject { put("position", JsonPrimitive(pct)) },
+                        ),
+                    )
+                },
+            )
+        }
+        // ── Target humidity scalar ────────────────────────────────────────────
+        is LovelaceTileFeature.TargetHumidity -> {
+            if (domain != "humidifier") return false
+            val humidity = state.attrInt("humidity") ?: return false
+            val minH = state.attrInt("min_humidity") ?: 0
+            val maxH = state.attrInt("max_humidity") ?: 100
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "HUMIDITY", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(text = "$humidity%", style = R1.numeralM, color = accent)
+                }
+                StepperButton(label = "−", accent = accent, enabled = true) {
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "humidifier.set_humidity",
+                            entityId = entityId,
+                            data = buildJsonObject { put("humidity", JsonPrimitive((humidity - 1).coerceIn(minH, maxH))) },
+                        ),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                StepperButton(label = "+", accent = accent, enabled = true) {
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "humidifier.set_humidity",
+                            entityId = entityId,
+                            data = buildJsonObject { put("humidity", JsonPrimitive((humidity + 1).coerceIn(minH, maxH))) },
+                        ),
+                    )
+                }
+            }
+        }
+        // ── Numeric input (number / input_number) ─────────────────────────────
+        is LovelaceTileFeature.NumericInput -> {
+            if (domain != "number" && domain != "input_number") return false
+            val current = state.rawState?.toDoubleOrNull() ?: return false
+            val min = state.minRaw
+            val max = state.maxRaw
+            val step = state.step?.takeIf { it > 0 } ?: 1.0
+            NumericStepperFeature(
+                label = "VALUE",
+                value = current,
+                step = step,
+                accent = accent,
+                onSet = { next ->
+                    val clamped = if (min != null && max != null) next.coerceIn(min, max) else next
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "$domain.set_value",
+                            entityId = entityId,
+                            data = buildJsonObject { put("value", JsonPrimitive(clamped)) },
+                        ),
+                    )
+                },
+            )
+        }
+        // ── Light colour temperature ──────────────────────────────────────────
+        is LovelaceTileFeature.LightColorTemp -> {
+            if (domain != "light") return false
+            if (!state.supportedColorModes.any { it.equals("color_temp", ignoreCase = true) }) return false
+            val currentK = state.colorTempK ?: return false
+            val minK = state.minColorTempK ?: 2000
+            val maxK = state.maxColorTempK ?: 6500
+            val step = ((maxK - minK) / 20.0).let { kotlin.math.round(it).toDouble().coerceAtLeast(1.0) }
+            NumericStepperFeature(
+                label = "COLOR TEMP",
+                value = currentK.toDouble(),
+                step = step,
+                unit = "K",
+                accent = accent,
+                onSet = { next ->
+                    val clamped = next.coerceIn(minK.toDouble(), maxK.toDouble())
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "light.turn_on",
+                            entityId = entityId,
+                            data = buildJsonObject { put("color_temp_kelvin", JsonPrimitive(clamped.toInt())) },
+                        ),
+                    )
+                },
+            )
+        }
         is LovelaceTileFeature.Unsupported -> return false
     }
     return true
@@ -671,4 +1087,94 @@ private fun nextRepeat(current: String?): String = when (current) {
     "all" -> "one"
     else -> "off"
 }
+
+/**
+ * Vacuum command row. Renders one button per requested command, each gated on
+ * the vacuum's advertised supported_features. An empty commands list shows all
+ * applicable buttons. Mirrors the VacuumPanel idiom.
+ */
+@Composable
+private fun VacuumCommandsFeature(
+    entityId: String,
+    state: EntityState,
+    commands: List<String>,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val all = listOf("start", "pause", "stop", "return_to_base", "clean_spot", "locate")
+    val wanted = if (commands.isEmpty()) all else commands.filter { it in all }
+    val applicable = wanted.filter { vacuumCommandSupported(it, state) }
+    if (applicable.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        applicable.forEach { cmd ->
+            FeatureButton(
+                label = vacuumCommandLabel(cmd),
+                accent = accent,
+                selected = false,
+                modifier = Modifier.weight(1f),
+            ) {
+                onAction(LovelaceAction.CallService("vacuum.$cmd", entityId, null))
+            }
+        }
+    }
+}
+
+private fun vacuumCommandSupported(cmd: String, state: EntityState): Boolean = when (cmd) {
+    "start" -> state.hasVacuumFeature(EntityState.VacuumFeature.START)
+    "pause" -> state.hasVacuumFeature(EntityState.VacuumFeature.PAUSE)
+    "stop" -> state.hasVacuumFeature(EntityState.VacuumFeature.STOP)
+    "return_to_base" -> state.hasVacuumFeature(EntityState.VacuumFeature.RETURN_HOME)
+    "clean_spot" -> state.hasVacuumFeature(EntityState.VacuumFeature.CLEAN_SPOT)
+    "locate" -> state.hasVacuumFeature(EntityState.VacuumFeature.LOCATE)
+    else -> false
+}
+
+private fun vacuumCommandLabel(cmd: String): String = when (cmd) {
+    "start" -> "START"
+    "pause" -> "PAUSE"
+    "stop" -> "STOP"
+    "return_to_base" -> "DOCK"
+    "clean_spot" -> "SPOT"
+    "locate" -> "LOCATE"
+    else -> cmd.uppercase()
+}
+
+/**
+ * Generic numeric stepper with an arbitrary value, step, and optional unit.
+ * Mirrors [TargetTemperatureFeature] for non-temperature domains (number,
+ * input_number, light colour temperature).
+ */
+@Composable
+private fun NumericStepperFeature(
+    label: String,
+    value: Double,
+    step: Double,
+    accent: Color,
+    unit: String = "",
+    onSet: (Double) -> Unit,
+) {
+    val display = if (value == kotlin.math.floor(value)) value.toLong().toString() else
+        (kotlin.math.round(value * 100.0) / 100.0).toString()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(2.dp))
+            Text(text = "$display$unit", style = R1.numeralM, color = accent)
+        }
+        StepperButton(label = "−", accent = accent, enabled = true) {
+            onSet(kotlin.math.round((value - step) * 1000.0) / 1000.0)
+        }
+        Spacer(Modifier.width(10.dp))
+        StepperButton(label = "+", accent = accent, enabled = true) {
+            onSet(kotlin.math.round((value + step) * 1000.0) / 1000.0)
+        }
+    }
+}
+
+/** Read an integer attribute directly from the raw attributes JSON. */
+private fun EntityState.attrInt(key: String): Int? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
 

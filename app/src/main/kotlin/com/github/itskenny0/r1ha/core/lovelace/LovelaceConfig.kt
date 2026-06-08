@@ -803,6 +803,174 @@ sealed class LovelaceTileFeature {
         override val type: String = "precipitation-forecast"
     }
 
+    // ── Climate mode-pickers ─────────────────────────────────────────────────
+
+    /** climate: fan_modes / fan_mode -> climate.set_fan_mode {fan_mode}. */
+    @Immutable
+    data class ClimateFanModes(val fanModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "climate-fan-modes"
+    }
+
+    /** climate: preset_modes / preset_mode -> climate.set_preset_mode {preset_mode}. */
+    @Immutable
+    data class ClimatePresetModes(val presetModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "climate-preset-modes"
+    }
+
+    /** climate: swing_modes / swing_mode -> climate.set_swing_mode {swing_mode}. */
+    @Immutable
+    data class ClimateSwingModes(val swingModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "climate-swing-modes"
+    }
+
+    /** climate: swing_horizontal_modes / swing_horizontal_mode ->
+     *  climate.set_swing_horizontal_mode {swing_horizontal_mode}. */
+    @Immutable
+    data class ClimateSwingHorizontalModes(val swingModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "climate-swing-horizontal-modes"
+    }
+
+    // ── Fan mode-pickers ─────────────────────────────────────────────────────
+
+    /** fan: preset_modes / preset_mode -> fan.set_preset_mode {preset_mode}. */
+    @Immutable
+    data class FanPresetModes(val presetModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "fan-preset-modes"
+    }
+
+    // ── Humidifier mode-picker ───────────────────────────────────────────────
+
+    /** humidifier: available_modes / mode -> humidifier.set_mode {mode}. */
+    @Immutable
+    data class HumidifierModes(val modes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "humidifier-modes"
+    }
+
+    // ── Water-heater mode-picker ─────────────────────────────────────────────
+
+    /** water_heater: operation_list / operation_mode ->
+     *  water_heater.set_operation_mode {operation_mode}. */
+    @Immutable
+    data class WaterHeaterOperationModes(val operationModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "water-heater-operation-modes"
+    }
+
+    // ── Fan toggle/button-row features ──────────────────────────────────────
+
+    /** fan: FORWARD/REVERSE chips from direction attr -> fan.set_direction. */
+    @Immutable
+    data object FanDirection : LovelaceTileFeature() {
+        override val type: String = "fan-direction"
+    }
+
+    /** fan: oscillating toggle chip -> fan.oscillate. */
+    @Immutable
+    data object FanOscillate : LovelaceTileFeature() {
+        override val type: String = "fan-oscillate"
+    }
+
+    // ── Humidifier toggle ────────────────────────────────────────────────────
+
+    /** humidifier: ON/OFF pair via homeassistant.turn_on / turn_off. */
+    @Immutable
+    data object HumidifierToggle : LovelaceTileFeature() {
+        override val type: String = "humidifier-toggle"
+    }
+
+    // ── Lawn-mower commands ──────────────────────────────────────────────────
+
+    /** lawn_mower: START / PAUSE / DOCK buttons gated on LawnMowerFeature bits. */
+    @Immutable
+    data object LawnMowerCommands : LovelaceTileFeature() {
+        override val type: String = "lawn-mower-commands"
+    }
+
+    // ── Vacuum commands ──────────────────────────────────────────────────────
+
+    /** vacuum: command buttons gated on VacuumFeature bits.
+     *  [commands] optionally filters which buttons show; empty = all applicable. */
+    @Immutable
+    data class VacuumCommands(val commands: List<String>) : LovelaceTileFeature() {
+        override val type: String = "vacuum-commands"
+    }
+
+    // ── Cover tilt commands ──────────────────────────────────────────────────
+
+    /** cover: OPEN/CLOSE/STOP tilt buttons gated on CoverFeature tilt bits. */
+    @Immutable
+    data object CoverTilt : LovelaceTileFeature() {
+        override val type: String = "cover-tilt"
+    }
+
+    // ── Valve open/close ─────────────────────────────────────────────────────
+
+    /** valve: OPEN/CLOSE/STOP buttons gated on ValveFeature bits. */
+    @Immutable
+    data object ValveOpenClose : LovelaceTileFeature() {
+        override val type: String = "valve-open-close"
+    }
+
+    // ── Lock open-door ───────────────────────────────────────────────────────
+
+    /** lock: single OPEN button (lock.open). No feature-bit gate needed since
+     *  HA's lock domain doesn't expose a typed supported_features bitmask for OPEN. */
+    @Immutable
+    data object LockOpenDoor : LovelaceTileFeature() {
+        override val type: String = "lock-open-door"
+    }
+
+    // ── Counter actions ──────────────────────────────────────────────────────
+
+    /** counter: +1 / -1 / RESET buttons. [actions] optionally filters. */
+    @Immutable
+    data class CounterActions(val actions: List<String>) : LovelaceTileFeature() {
+        override val type: String = "counter-actions"
+    }
+
+    // ── Update actions ───────────────────────────────────────────────────────
+
+    /** update: INSTALL / SKIP buttons. [backup] adds {backup: true} to install. */
+    @Immutable
+    data class UpdateActions(val backup: Boolean) : LovelaceTileFeature() {
+        override val type: String = "update-actions"
+    }
+
+    // ── Scalar-stepper features ──────────────────────────────────────────────
+
+    /** cover: tilt-position 0..100 stepper gated on SET_TILT_POSITION bit. */
+    @Immutable
+    data object CoverTiltPosition : LovelaceTileFeature() {
+        override val type: String = "cover-tilt-position"
+    }
+
+    /** valve: position 0..100 stepper gated on SET_POSITION bit. */
+    @Immutable
+    data object ValvePosition : LovelaceTileFeature() {
+        override val type: String = "valve-position"
+    }
+
+    /** humidifier: target-humidity 0..100 stepper -> humidifier.set_humidity. */
+    @Immutable
+    data object TargetHumidity : LovelaceTileFeature() {
+        override val type: String = "target-humidity"
+    }
+
+    // ── Arbitrary-range stepper features ────────────────────────────────────
+
+    /** number / input_number: numeric value with min/max/step from attrs ->
+     *  {domain}.set_value {value}. */
+    @Immutable
+    data object NumericInput : LovelaceTileFeature() {
+        override val type: String = "numeric-input"
+    }
+
+    /** light: colour-temperature stepper in kelvin (min/max/step from attrs) ->
+     *  light.turn_on {color_temp_kelvin}. Gated on color_temp in supported_color_modes. */
+    @Immutable
+    data object LightColorTemp : LovelaceTileFeature() {
+        override val type: String = "light-color-temp"
+    }
+
     @Immutable
     data class Unsupported(override val type: String) : LovelaceTileFeature()
 }

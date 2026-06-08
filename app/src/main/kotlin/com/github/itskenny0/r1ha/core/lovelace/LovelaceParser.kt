@@ -747,6 +747,41 @@ object LovelaceParser {
                     color = obj["color"]?.asStringOrNull(),
                     showLabels = obj["show_labels"]?.asBooleanOrNull() ?: false,
                 )
+                // Climate mode-pickers
+                "climate-fan-modes" -> LovelaceTileFeature.ClimateFanModes(parseStringList(obj["fan_modes"]))
+                "climate-preset-modes" -> LovelaceTileFeature.ClimatePresetModes(parseStringList(obj["preset_modes"]))
+                "climate-swing-modes" -> LovelaceTileFeature.ClimateSwingModes(parseStringList(obj["swing_modes"]))
+                "climate-swing-horizontal-modes" -> LovelaceTileFeature.ClimateSwingHorizontalModes(parseStringList(obj["swing_modes"]))
+                // Fan mode-pickers and toggles
+                "fan-preset-modes" -> LovelaceTileFeature.FanPresetModes(parseStringList(obj["preset_modes"]))
+                "fan-direction" -> LovelaceTileFeature.FanDirection
+                "fan-oscillate" -> LovelaceTileFeature.FanOscillate
+                // Humidifier
+                "humidifier-modes" -> LovelaceTileFeature.HumidifierModes(parseStringList(obj["modes"]))
+                "humidifier-toggle" -> LovelaceTileFeature.HumidifierToggle
+                // Water heater
+                "water-heater-operation-modes" -> LovelaceTileFeature.WaterHeaterOperationModes(parseStringList(obj["operation_modes"]))
+                // Lawn mower and vacuum
+                "lawn-mower-commands" -> LovelaceTileFeature.LawnMowerCommands
+                "vacuum-commands" -> LovelaceTileFeature.VacuumCommands(parseStringList(obj["commands"]))
+                // Cover tilt
+                "cover-tilt" -> LovelaceTileFeature.CoverTilt
+                "cover-tilt-position" -> LovelaceTileFeature.CoverTiltPosition
+                // Valve
+                "valve-open-close" -> LovelaceTileFeature.ValveOpenClose
+                "valve-position" -> LovelaceTileFeature.ValvePosition
+                // Lock
+                "lock-open-door" -> LovelaceTileFeature.LockOpenDoor
+                // Counter
+                "counter-actions" -> LovelaceTileFeature.CounterActions(parseStringList(obj["actions"]))
+                // Update
+                "update-actions" -> LovelaceTileFeature.UpdateActions(backup = obj["backup"]?.asBooleanOrNull() ?: false)
+                // Humidifier target humidity
+                "target-humidity" -> LovelaceTileFeature.TargetHumidity
+                // Number / input_number
+                "numeric-input" -> LovelaceTileFeature.NumericInput
+                // Light colour temperature
+                "light-color-temp" -> LovelaceTileFeature.LightColorTemp
                 else -> LovelaceTileFeature.Unsupported(type)
             }
         }
