@@ -39,7 +39,7 @@ fun DistributionCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val values = card.entries.map { stateMap.byRaw(it.entityId)?.raw?.toDouble() }
+    val values = card.entries.map { distributionValueOf(stateMap.byRaw(it.entityId)) }
     val weights = distributionWeights(values)
     val colors = card.entries.map { e ->
         haColorAccent(e.color) ?: stateAccentFor(e.entityId, stateMap.byRaw(e.entityId))
@@ -101,6 +101,11 @@ fun DistributionCard(
         }
     }
 }
+
+/** Numeric value a distribution segment uses: the entity's state parsed as a
+ *  number, or null when the entity is absent or its state is non-numeric. */
+internal fun distributionValueOf(state: com.github.itskenny0.r1ha.core.ha.EntityState?): Double? =
+    state?.rawState?.toDoubleOrNull()
 
 /**
  * Pure helper: turn raw per-entity values into proportional weights summing to
