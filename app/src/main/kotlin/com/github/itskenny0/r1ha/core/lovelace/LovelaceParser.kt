@@ -325,6 +325,7 @@ object LovelaceParser {
                 heading = obj["heading"]?.asStringOrNull().orEmpty(),
                 headingStyle = obj["heading_style"]?.asStringOrNull() ?: "title",
                 icon = obj["icon"]?.asStringOrNull(),
+                badges = parseBadges(obj["badges"]),
             )
             "vertical-stack" -> LovelaceCard.VerticalStack(
                 raw = obj,

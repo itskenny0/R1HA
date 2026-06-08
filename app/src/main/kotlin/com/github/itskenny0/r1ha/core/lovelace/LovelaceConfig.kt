@@ -235,13 +235,14 @@ sealed class LovelaceCard {
         override val type: String = "markdown"
     }
 
-    /** Static section heading inside a view. */
+    /** Static section heading inside a view. May carry action badges (2026.2). */
     @Immutable
     data class Heading(
         override val raw: JsonObject,
         val heading: String,
         val headingStyle: String,
         val icon: String?,
+        val badges: List<LovelaceBadge> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "heading"
     }
