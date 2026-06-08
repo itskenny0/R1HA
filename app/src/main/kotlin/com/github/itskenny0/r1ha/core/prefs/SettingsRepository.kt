@@ -1042,7 +1042,11 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         // Per-card ultra-detail more-info slot. Tri-state same as the other
         // booleans; "?" = inherit the global moreInfoEnabledDefault.
         val moreInfoStr = when (o.moreInfoEnabled) { true -> "1"; false -> "0"; null -> "?" }
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr|$moreInfoStr"
+        // Slots 20 / 21 — favourite light colours (ARGB ints) and favourite
+        // cover/valve positions (0..100). Comma-joined; empty = "".
+        val favColorsStr = o.favoriteColors.joinToString(",") { it.toString() }
+        val favPosStr = o.favoritePositions.joinToString(",") { it.toString() }
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr|$moreInfoStr|$favColorsStr|$favPosStr"
     }
 }
 
@@ -1141,6 +1145,15 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             // boolean; "?" / blank / absent (older saves) = inherit the
             // global moreInfoEnabledDefault.
             val moreInfo = when (parts.getOrNull(19)) { "1" -> true; "0" -> false; else -> null }
+            // Slots 20 / 21 — favourite colours / positions. Comma-joined ints;
+            // absent (older saves) or blank decode to empty. Unparseable entries
+            // are skipped so one bad token doesn't drop the whole list.
+            val favColors = parts.getOrNull(20)?.takeIf { it.isNotBlank() }
+                ?.split(',')?.mapNotNull { it.toIntOrNull() }
+                ?: emptyList()
+            val favPositions = parts.getOrNull(21)?.takeIf { it.isNotBlank() }
+                ?.split(',')?.mapNotNull { it.toIntOrNull()?.coerceIn(0, 100) }
+                ?: emptyList()
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -1162,6 +1175,8 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 actionOnWheelPress = wheelPress,
                 valueBarLocation = valueBar,
                 moreInfoEnabled = moreInfo,
+                favoriteColors = favColors,
+                favoritePositions = favPositions,
             )
         }.getOrNull()
     }.toMap()

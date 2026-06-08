@@ -202,6 +202,20 @@ data class EntityOverride(
      * effective value is `moreInfoEnabled ?: settings.ui.moreInfoEnabledDefault`.
      */
     val moreInfoEnabled: Boolean? = null,
+    /**
+     * Per-entity favourite light colours (HA 2026.4): packed ARGB ints rendered
+     * as one-tap swatches on the light control surface; tapping fires
+     * `light.turn_on` with the colour's `rgb_color`. Empty = no swatches shown.
+     * Local to R1HA (HA stores its own favourites in frontend user data, which
+     * isn't exposed over a stable API).
+     */
+    val favoriteColors: List<Int> = emptyList(),
+    /**
+     * Per-entity favourite cover/valve positions (HA 2026.4): 0..100 values
+     * rendered as one-tap chips on the cover/valve control surface; tapping sets
+     * that position. Empty = no chips shown.
+     */
+    val favoritePositions: List<Int> = emptyList(),
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
