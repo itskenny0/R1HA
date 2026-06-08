@@ -1114,10 +1114,10 @@ private fun formatTemperature(value: Double): String {
 private fun EntityState.attrInt(key: String): Int? =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
 
-private fun EntityState.attrString(key: String): String? =
+internal fun EntityState.attrString(key: String): String? =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
 
-private fun EntityState.attrStringList(key: String): List<String> =
+internal fun EntityState.attrStringList(key: String): List<String> =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
         ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
         ?: emptyList()

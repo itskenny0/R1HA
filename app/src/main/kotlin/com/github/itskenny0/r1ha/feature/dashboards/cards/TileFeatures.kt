@@ -24,6 +24,8 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.attrString
+import com.github.itskenny0.r1ha.ui.components.attrStringList
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -593,7 +595,7 @@ private fun MediaVolumeFeature(
             }
             Spacer(Modifier.width(10.dp))
         }
-        StepperButton(label = "-", accent = accent, enabled = true) {
+        StepperButton(label = "−", accent = accent, enabled = true) {
             onAction(volumeSetAction(entityId, (pct - step).coerceIn(0, 100)))
         }
         Spacer(Modifier.width(10.dp))
@@ -639,7 +641,7 @@ private fun mediaControlLabel(control: String, playing: Boolean, state: EntitySt
     "media_previous_track" -> "⏮"
     "media_next_track" -> "⏭"
     "volume_up" -> "VOL +"
-    "volume_down" -> "VOL -"
+    "volume_down" -> "VOL −"
     "volume_mute" -> if (state.isVolumeMuted) "UNMUTE" else "MUTE"
     "shuffle" -> "SHUFFLE"
     "repeat" -> "REPEAT"
@@ -670,12 +672,3 @@ private fun nextRepeat(current: String?): String = when (current) {
     else -> "off"
 }
 
-/** Read a string attribute from this entity's raw attributes JSON. */
-private fun EntityState.attrString(key: String): String? =
-    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
-
-/** Read a string-list attribute from this entity's raw attributes JSON. */
-private fun EntityState.attrStringList(key: String): List<String> =
-    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
-        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-        ?: emptyList()
