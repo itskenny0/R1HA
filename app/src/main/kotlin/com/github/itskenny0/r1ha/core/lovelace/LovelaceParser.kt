@@ -726,6 +726,17 @@ object LovelaceParser {
                 "media-player-volume-slider" -> LovelaceTileFeature.MediaVolumeSlider(
                     showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: false,
                 )
+                "temperature-forecast" -> LovelaceTileFeature.TemperatureForecast(
+                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase() ?: "daily",
+                    color = obj["color"]?.asStringOrNull(),
+                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: false,
+                )
+                "precipitation-forecast" -> LovelaceTileFeature.PrecipitationForecast(
+                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase() ?: "daily",
+                    precipitationType = obj["precipitation_type"]?.asStringOrNull()?.lowercase() ?: "amount",
+                    color = obj["color"]?.asStringOrNull(),
+                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: false,
+                )
                 else -> LovelaceTileFeature.Unsupported(type)
             }
         }

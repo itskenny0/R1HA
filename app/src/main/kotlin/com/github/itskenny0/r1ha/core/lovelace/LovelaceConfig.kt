@@ -774,6 +774,30 @@ sealed class LovelaceTileFeature {
         override val type: String = "media-player-volume-slider"
     }
 
+    /** Weather temperature-forecast bar strip. [forecastType] is daily /
+     *  twice_daily / hourly; [showLabels] toggles the axis labels; [color] is
+     *  an optional theme colour / hex override. */
+    @Immutable
+    data class TemperatureForecast(
+        val forecastType: String,
+        val color: String?,
+        val showLabels: Boolean,
+    ) : LovelaceTileFeature() {
+        override val type: String = "temperature-forecast"
+    }
+
+    /** Weather precipitation-forecast bar strip. [precipitationType] is amount /
+     *  probability. */
+    @Immutable
+    data class PrecipitationForecast(
+        val forecastType: String,
+        val precipitationType: String,
+        val color: String?,
+        val showLabels: Boolean,
+    ) : LovelaceTileFeature() {
+        override val type: String = "precipitation-forecast"
+    }
+
     @Immutable
     data class Unsupported(override val type: String) : LovelaceTileFeature()
 }

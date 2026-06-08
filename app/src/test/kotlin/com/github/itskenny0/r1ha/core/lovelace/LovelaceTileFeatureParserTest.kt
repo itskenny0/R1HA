@@ -42,4 +42,21 @@ class LovelaceTileFeatureParserTest {
         val vs = t.features[3] as LovelaceTileFeature.MediaVolumeSlider
         assertThat(vs.showMute).isFalse()
     }
+
+    @Test fun `parses weather forecast features with options`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"weather.home","features":[
+              {"type":"temperature-forecast","forecast_type":"daily","show_labels":true},
+              {"type":"precipitation-forecast","forecast_type":"hourly","precipitation_type":"probability"}
+            ]}
+            """.trimIndent(),
+        )
+        val tf = t.features[0] as LovelaceTileFeature.TemperatureForecast
+        assertThat(tf.forecastType).isEqualTo("daily")
+        assertThat(tf.showLabels).isTrue()
+        val pf = t.features[1] as LovelaceTileFeature.PrecipitationForecast
+        assertThat(pf.forecastType).isEqualTo("hourly")
+        assertThat(pf.precipitationType).isEqualTo("probability")
+    }
 }
