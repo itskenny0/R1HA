@@ -75,6 +75,13 @@ data class LovelaceView(
      * keeps the concrete cards and is NOT flagged.
      */
     val isStrategyGenerated: Boolean = false,
+    /**
+     * `true` when this is a sub-view (HA 2022.10). Sub-views are navigated
+     * to via `navigate` actions rather than shown as top-level tabs, so they
+     * are filtered out of the dashboard's view list. They remain fully
+     * renderable when navigated directly.
+     */
+    val subview: Boolean = false,
 )
 
 /**
@@ -171,6 +178,13 @@ sealed class LovelaceCard {
         // options). A feature type R1HA doesn't model parses to
         // LovelaceTileFeature.Unsupported and is skipped at render time.
         val features: List<LovelaceTileFeature> = emptyList(),
+        /**
+         * HA 2023.11: ordered list of tokens that build the state line. Each
+         * token is one of the reserved strings "state", "last_changed",
+         * "last_updated" or an attribute key. Empty = use the default
+         * [compactStateText] path.
+         */
+        val stateContent: List<String> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "tile"
     }
@@ -235,7 +249,7 @@ sealed class LovelaceCard {
         override val type: String = "markdown"
     }
 
-    /** Static section heading inside a view. May carry action badges (2026.2). */
+    /** Static section heading inside a view. May carry action badges (2026.2) and a tap action (2024.10). */
     @Immutable
     data class Heading(
         override val raw: JsonObject,
@@ -243,6 +257,8 @@ sealed class LovelaceCard {
         val headingStyle: String,
         val icon: String?,
         val badges: List<LovelaceBadge> = emptyList(),
+        /** Whole-heading tap action (HA 2024.10). When set the heading row is tappable. */
+        val tapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "heading"
     }
@@ -326,6 +342,8 @@ sealed class LovelaceCard {
         val cameraImage: String?,
         val entities: List<EntityRow>,
         val tapAction: LovelaceAction?,
+        /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
+        val fitMode: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-glance"
     }
@@ -344,6 +362,8 @@ sealed class LovelaceCard {
         val showName: Boolean,
         val showState: Boolean,
         val tapAction: LovelaceAction?,
+        /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
+        val fitMode: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-entity"
     }
@@ -406,6 +426,15 @@ sealed class LovelaceCard {
         val title: String?,
         val entities: List<EntityRow>,
         val hoursToShow: Int?,
+        /** HA 2023.10: "state" labels markers with entity state instead of name. Null = name. */
+        val labelMode: String? = null,
+        /**
+         * HA 2023.10: entity ids that drive the bounding-box auto-fit. When
+         * non-empty, only these entities are used to compute the viewport
+         * centre/zoom; other entities are still plotted but don't influence
+         * framing. Empty = all entities drive the bounding box.
+         */
+        val focusEntities: Set<String> = emptySet(),
     ) : LovelaceCard() {
         override val type: String = "map"
     }
@@ -422,6 +451,17 @@ sealed class LovelaceCard {
         override val raw: JsonObject,
         val entityId: String,
         val name: String?,
+        /**
+         * HA 2024.1: when false, render the target setpoint as the primary
+         * large value and hide the current temperature reading.
+         */
+        val showCurrentTemperature: Boolean = true,
+        /**
+         * HA 2023.12: tile features rendered below the card body (e.g.
+         * climate-hvac-modes, target-temperature). Parsed via the shared
+         * [parseTileFeatures] path.
+         */
+        val features: List<LovelaceTileFeature> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "thermostat"
     }
@@ -453,6 +493,11 @@ sealed class LovelaceCard {
         override val raw: JsonObject,
         val entityId: String,
         val name: String?,
+        /**
+         * HA 2024.1: when false, render the target humidity as the primary
+         * large value and hide the current humidity reading.
+         */
+        val showCurrentTemperature: Boolean = true,
     ) : LovelaceCard() {
         override val type: String = "humidifier"
     }
@@ -522,6 +567,8 @@ sealed class LovelaceCard {
      * Clock card: a self-contained local-time display. Carries no entities;
      * the renderer ticks a local clock. [showSeconds] mirrors HA's option;
      * [analog] selects the analog face over the default digital readout.
+     * [clockSize] (HA 2025.4) maps to text size (small/medium/large).
+     * [timeFormat] (HA 2025.4) selects 12h vs 24h display ("12" / "24").
      */
     @Immutable
     data class Clock(
@@ -529,6 +576,10 @@ sealed class LovelaceCard {
         val title: String?,
         val showSeconds: Boolean,
         val analog: Boolean,
+        /** HA 2025.4: "small" / "medium" / "large". Null = medium (current sizing). */
+        val clockSize: String? = null,
+        /** HA 2025.4: "12" for 12-hour AM/PM format; anything else = 24h. Null = 24h. */
+        val timeFormat: String? = null,
     ) : LovelaceCard() {
         override val type: String = "clock"
     }
@@ -636,6 +687,8 @@ data class LovelaceBadge(
     /** Tap target. Null = the entity's domain-default action (more-info etc.),
      *  resolved at dispatch time. */
     val tapAction: LovelaceAction?,
+    /** HA 2024.9: "small" / "normal" / "large". Null = normal (current sizing). */
+    val size: String? = null,
 )
 
 /**
@@ -680,10 +733,12 @@ data class GaugeSeverity(
 // One segment of a gauge's `segments:` array (HA's modern band format). A
 // segment colours the arc from `from` up to the next segment's `from` (or max
 // for the last) with `color` (an HA theme-colour name or a literal #rrggbb).
+// [label] (HA 2022.7): optional human-readable band label shown in needle mode.
 @Immutable
 data class GaugeSegment(
     val from: Double,
     val color: String,
+    val label: String? = null,
 )
 
 // One entry of a `tile` card's `features:` array. HA renders each below the

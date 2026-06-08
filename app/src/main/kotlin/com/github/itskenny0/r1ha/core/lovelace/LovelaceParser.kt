@@ -109,6 +109,7 @@ object LovelaceParser {
             cards = directCards + sectionCards,
             badges = parseBadges(obj["badges"]),
             isStrategyGenerated = isStrategy,
+            subview = obj["subview"]?.asBooleanOrNull() ?: false,
         )
     }
 
@@ -159,6 +160,7 @@ object LovelaceParser {
                         showState = item["show_state"]?.asBooleanOrNull() ?: true,
                         showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
                         tapAction = tap,
+                        size = item["size"]?.asStringOrNull(),
                     )
                 }
                 else -> null
@@ -275,6 +277,7 @@ object LovelaceParser {
                     color = obj["color"]?.asStringOrNull(),
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     features = parseTileFeatures(obj["features"]),
+                    stateContent = parseStringList(obj["state_content"]),
                 )
             }
             "light" -> {
@@ -332,6 +335,7 @@ object LovelaceParser {
                 headingStyle = obj["heading_style"]?.asStringOrNull() ?: "title",
                 icon = obj["icon"]?.asStringOrNull(),
                 badges = parseBadges(obj["badges"]),
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
             )
             "vertical-stack" -> LovelaceCard.VerticalStack(
                 raw = obj,
@@ -381,6 +385,7 @@ object LovelaceParser {
                 cameraImage = obj["camera_image"]?.asStringOrNull() ?: obj["entity"]?.asStringOrNull(),
                 entities = parseEntityRows(obj["entities"]),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                fitMode = obj["fit_mode"]?.asStringOrNull(),
             )
             "picture-entity" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -392,6 +397,7 @@ object LovelaceParser {
                     showName = obj["show_name"]?.asBooleanOrNull() ?: true,
                     showState = obj["show_state"]?.asBooleanOrNull() ?: true,
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    fitMode = obj["fit_mode"]?.asStringOrNull(),
                 )
             }
             "area" -> {
@@ -427,6 +433,8 @@ object LovelaceParser {
                 title = obj["title"]?.asStringOrNull(),
                 entities = parseEntityRows(obj["entities"]),
                 hoursToShow = obj["hours_to_show"]?.asIntOrNull(),
+                labelMode = obj["label_mode"]?.asStringOrNull(),
+                focusEntities = parseFocusEntities(obj["focus_entities"]),
             )
             "thermostat" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -434,6 +442,8 @@ object LovelaceParser {
                     raw = obj,
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
+                    showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
+                    features = parseTileFeatures(obj["features"]),
                 )
             }
             "media-control" -> {
@@ -450,6 +460,7 @@ object LovelaceParser {
                     raw = obj,
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
+                    showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
                 )
             }
             "entity-filter" -> LovelaceCard.EntityFilter(
@@ -480,6 +491,8 @@ object LovelaceParser {
                 title = obj["title"]?.asStringOrNull(),
                 showSeconds = obj["show_seconds"]?.asBooleanOrNull() ?: false,
                 analog = obj["clock_style"]?.asStringOrNull()?.equals("analog", ignoreCase = true) ?: false,
+                clockSize = obj["clock_size"]?.asStringOrNull(),
+                timeFormat = obj["time_format"]?.asStringOrNull(),
             )
             "distribution" -> LovelaceCard.Distribution(
                 raw = obj,
@@ -800,7 +813,7 @@ object LovelaceParser {
             val obj = item as? JsonObject ?: return@mapNotNull null
             val from = obj["from"]?.asDoubleOrNull() ?: return@mapNotNull null
             val color = obj["color"]?.asStringOrNull()?.takeUnless { it.isBlank() } ?: return@mapNotNull null
-            GaugeSegment(from = from, color = color)
+            GaugeSegment(from = from, color = color, label = obj["label"]?.asStringOrNull())
         }.sortedBy { it.from }
     }
 
@@ -809,6 +822,29 @@ object LovelaceParser {
     private fun parseStringList(el: JsonElement?): List<String> {
         val arr = el as? JsonArray ?: return emptyList()
         return arr.mapNotNull { (it as? JsonPrimitive)?.let { p -> if (p.isString) p.content else null } }
+    }
+
+    /**
+     * Parse the map card's `focus_entities:` list. HA accepts a plain list of
+     * entity id strings; objects with `entity` / `focus: false` are also legal
+     * but we only extract ids where focus is true (or implied by being a bare
+     * string). Returns a set for O(1) lookup in the renderer.
+     */
+    private fun parseFocusEntities(el: JsonElement?): Set<String> {
+        val arr = el as? JsonArray ?: return emptySet()
+        val out = LinkedHashSet<String>()
+        arr.forEach { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) out.add(item.content)
+                is JsonObject -> {
+                    // Respect explicit `focus: false` to opt an entity out.
+                    val focus = item["focus"]?.asBooleanOrNull() ?: true
+                    if (focus) item["entity"]?.asStringOrNull()?.let { out.add(it) }
+                }
+                else -> Unit
+            }
+        }
+        return out
     }
 
     private fun parseEntityRows(el: JsonElement?): List<EntityRow> {
