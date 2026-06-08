@@ -221,12 +221,16 @@ sealed class LovelaceCard {
         override val type: String = "weather-forecast"
     }
 
-    /** Markdown body, optionally Jinja-templated at render time. */
+    /** Markdown body, optionally Jinja-templated at render time. Whole-card
+     *  tap / hold / double-tap actions mirror HA's markdown card (2026.4). */
     @Immutable
     data class Markdown(
         override val raw: JsonObject,
         val title: String?,
         val content: String,
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "markdown"
     }

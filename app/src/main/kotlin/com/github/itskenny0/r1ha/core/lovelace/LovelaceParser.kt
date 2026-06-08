@@ -316,6 +316,9 @@ object LovelaceParser {
                 raw = obj,
                 title = obj["title"]?.asStringOrNull(),
                 content = obj["content"]?.asStringOrNull().orEmpty(),
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
             )
             "heading" -> LovelaceCard.Heading(
                 raw = obj,

@@ -50,7 +50,7 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Light -> LightCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Gauge -> GaugeCard(card, stateMap, modifier)
         is LovelaceCard.WeatherForecast -> WeatherForecastCard(card, stateMap, modifier)
-        is LovelaceCard.Markdown -> MarkdownCard(card, modifier)
+        is LovelaceCard.Markdown -> MarkdownCard(card, onAction, modifier)
         is LovelaceCard.Heading -> HeadingCard(card, modifier)
         is LovelaceCard.VerticalStack -> VerticalStackCard(card, stateMap, onAction, modifier)
         is LovelaceCard.HorizontalStack -> HorizontalStackCard(card, stateMap, onAction, modifier)
