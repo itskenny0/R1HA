@@ -34,11 +34,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
-import com.github.itskenny0.r1ha.feature.dashboards.cards.haColorAccent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.feature.dashboards.cards.haColorAccent
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
