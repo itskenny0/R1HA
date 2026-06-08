@@ -528,6 +528,21 @@ sealed class LovelaceCard {
         override val type: String = "clock"
     }
 
+    /**
+     * Distribution card (HA 2026.2): one proportional segmented bar showing how
+     * a numeric value splits across [entries], with a legend below. Each entry
+     * contributes a segment sized by its current numeric state; non-numeric or
+     * negative states contribute zero.
+     */
+    @Immutable
+    data class Distribution(
+        override val raw: JsonObject,
+        val title: String?,
+        val entries: List<DistributionEntry>,
+    ) : LovelaceCard() {
+        override val type: String = "distribution"
+    }
+
     /** Any card type we don't natively render.
      *
      * Best-effort fallback: even for a type we don't model, most cards carry
@@ -575,6 +590,15 @@ data class EntityRow(
      * subset that maps cleanly to data we already have.
      */
     val secondaryInfo: String?,
+)
+
+/** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */
+@Immutable
+data class DistributionEntry(
+    val entityId: String,
+    val name: String?,
+    /** HA `color`: a theme colour name or `#rrggbb`. Null = state-derived. */
+    val color: String?,
 )
 
 /**

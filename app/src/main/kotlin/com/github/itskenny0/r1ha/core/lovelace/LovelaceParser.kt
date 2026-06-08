@@ -471,6 +471,11 @@ object LovelaceParser {
                 showSeconds = obj["show_seconds"]?.asBooleanOrNull() ?: false,
                 analog = obj["clock_style"]?.asStringOrNull()?.equals("analog", ignoreCase = true) ?: false,
             )
+            "distribution" -> LovelaceCard.Distribution(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                entries = parseDistributionEntries(obj["entities"]),
+            )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
         }
@@ -759,6 +764,28 @@ object LovelaceParser {
                         name = item["name"]?.asStringOrNull(),
                         icon = item["icon"]?.asStringOrNull(),
                         secondaryInfo = item["secondary_info"]?.asStringOrNull(),
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    /** Parse a distribution card's `entities:`: a bare id string or an object
+     *  carrying `entity` / `name` / `color`. Entries without a usable id drop. */
+    private fun parseDistributionEntries(el: JsonElement?): List<DistributionEntry> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) {
+                    DistributionEntry(entityId = item.content, name = null, color = null)
+                } else null
+                is JsonObject -> {
+                    val entity = item["entity"]?.asStringOrNull() ?: return@mapNotNull null
+                    DistributionEntry(
+                        entityId = entity,
+                        name = item["name"]?.asStringOrNull(),
+                        color = item["color"]?.asStringOrNull(),
                     )
                 }
                 else -> null

@@ -31,6 +31,24 @@ class LovelaceNewCardsParserTest {
         assertThat(c.tapAction).isInstanceOf(LovelaceAction.Url::class.java)
     }
 
+    @Test fun `parses a distribution card with string and object entities`() {
+        val c = card(
+            """
+            {"type":"distribution","title":"Power split","entities":[
+              "sensor.fridge",
+              {"entity":"sensor.oven","name":"Oven","color":"red"}
+            ]}
+            """.trimIndent(),
+        ) as LovelaceCard.Distribution
+        assertThat(c.title).isEqualTo("Power split")
+        assertThat(c.entries).hasSize(2)
+        assertThat(c.entries[0].entityId).isEqualTo("sensor.fridge")
+        assertThat(c.entries[0].name).isNull()
+        assertThat(c.entries[1].entityId).isEqualTo("sensor.oven")
+        assertThat(c.entries[1].name).isEqualTo("Oven")
+        assertThat(c.entries[1].color).isEqualTo("red")
+    }
+
     @Test fun `parses a shortcut badge in a view badges array`() {
         val cfg = LovelaceParser.parseConfig(
             Json.parseToJsonElement(

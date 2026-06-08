@@ -119,6 +119,7 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.EntityFilter -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Statistic -> sink.addEntity(card.entityId)
         is LovelaceCard.Shortcut -> Unit
+        is LovelaceCard.Distribution -> card.entries.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> Unit
         is LovelaceCard.Logbook -> Unit
