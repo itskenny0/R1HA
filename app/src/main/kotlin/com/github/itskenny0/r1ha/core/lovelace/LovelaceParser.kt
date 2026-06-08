@@ -716,6 +716,16 @@ object LovelaceParser {
                 "toggle" -> LovelaceTileFeature.Toggle
                 "target-temperature" -> LovelaceTileFeature.TargetTemperature
                 "select-options" -> LovelaceTileFeature.SelectOptions(parseStringList(obj["options"]))
+                "media-player-playback" -> LovelaceTileFeature.MediaPlayback(parseStringList(obj["controls"]))
+                "media-player-source" -> LovelaceTileFeature.MediaSource(parseStringList(obj["sources"]))
+                "media-player-sound-mode" -> LovelaceTileFeature.MediaSoundMode(parseStringList(obj["sound_modes"]))
+                "media-player-volume-buttons" -> LovelaceTileFeature.MediaVolumeButtons(
+                    step = obj["step"]?.asIntOrNull() ?: 5,
+                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: false,
+                )
+                "media-player-volume-slider" -> LovelaceTileFeature.MediaVolumeSlider(
+                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: false,
+                )
                 else -> LovelaceTileFeature.Unsupported(type)
             }
         }

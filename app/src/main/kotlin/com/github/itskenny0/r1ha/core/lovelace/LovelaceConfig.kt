@@ -740,6 +740,40 @@ sealed class LovelaceTileFeature {
         override val type: String = "select-options"
     }
 
+    /** Media-player playback controls row. [controls] is HA's ordered list from
+     *  {turn_on, turn_off, media_play, media_pause, media_play_pause,
+     *  media_stop, media_previous_track, media_next_track, volume_down,
+     *  volume_up, volume_mute, shuffle, repeat}. Empty = HA's default trio. */
+    @Immutable
+    data class MediaPlayback(val controls: List<String>) : LovelaceTileFeature() {
+        override val type: String = "media-player-playback"
+    }
+
+    /** Media-player source selector. [sources] optionally filters/reorders. */
+    @Immutable
+    data class MediaSource(val sources: List<String>) : LovelaceTileFeature() {
+        override val type: String = "media-player-source"
+    }
+
+    /** Media-player sound-mode selector. [soundModes] optionally filters/reorders. */
+    @Immutable
+    data class MediaSoundMode(val soundModes: List<String>) : LovelaceTileFeature() {
+        override val type: String = "media-player-sound-mode"
+    }
+
+    /** Media-player volume +/- buttons. [step] is the percent nudge (default 5);
+     *  [showMute] adds a mute toggle. */
+    @Immutable
+    data class MediaVolumeButtons(val step: Int, val showMute: Boolean) : LovelaceTileFeature() {
+        override val type: String = "media-player-volume-buttons"
+    }
+
+    /** Media-player volume slider (stepper in-card). [showMute] adds a mute toggle. */
+    @Immutable
+    data class MediaVolumeSlider(val showMute: Boolean) : LovelaceTileFeature() {
+        override val type: String = "media-player-volume-slider"
+    }
+
     @Immutable
     data class Unsupported(override val type: String) : LovelaceTileFeature()
 }
