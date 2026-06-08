@@ -235,6 +235,26 @@ private fun renderFeature(
             if (domain != "media_player" || !state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_SET)) return false
             MediaVolumeFeature(entityId, state, 5, feature.showMute, accent, onAction)
         }
+        is LovelaceTileFeature.TemperatureForecast -> {
+            if (domain != "weather") return false
+            WeatherForecastFeature(
+                entityId = entityId,
+                forecastType = feature.forecastType,
+                series = ForecastSeries.TEMPERATURE,
+                accent = haColorAccent(feature.color) ?: accent,
+                showLabels = feature.showLabels,
+            )
+        }
+        is LovelaceTileFeature.PrecipitationForecast -> {
+            if (domain != "weather") return false
+            WeatherForecastFeature(
+                entityId = entityId,
+                forecastType = feature.forecastType,
+                series = if (feature.precipitationType == "probability") ForecastSeries.PRECIP_PROBABILITY else ForecastSeries.PRECIP_AMOUNT,
+                accent = haColorAccent(feature.color) ?: accent,
+                showLabels = feature.showLabels,
+            )
+        }
         is LovelaceTileFeature.Unsupported -> return false
     }
     return true
