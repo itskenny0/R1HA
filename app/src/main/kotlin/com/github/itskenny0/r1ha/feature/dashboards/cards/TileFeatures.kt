@@ -332,7 +332,10 @@ private fun renderFeature(
             }
         }
         is LovelaceTileFeature.FanDirection -> {
-            if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.DIRECTION)) return false
+            if (domain != "fan") return false
+            // hasFanFeature forgives when supportedFeatures == 0 (never populated for fan);
+            // backstop on the attribute so a fan with no direction capability renders nothing.
+            if (state.fanDirection == null) return false
             val current = state.fanDirection?.lowercase()
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -359,7 +362,10 @@ private fun renderFeature(
             }
         }
         is LovelaceTileFeature.FanOscillate -> {
-            if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.OSCILLATE)) return false
+            if (domain != "fan") return false
+            // hasFanFeature forgives when supportedFeatures == 0 (never populated for fan);
+            // backstop on the attribute so a fan with no oscillation capability renders nothing.
+            if (state.fanOscillating == null) return false
             val on = state.fanOscillating == true
             FeatureButton(
                 label = if (on) "OSCILLATING" else "OSCILLATE",
@@ -453,16 +459,20 @@ private fun renderFeature(
         // ── Cover tilt ────────────────────────────────────────────────────────
         is LovelaceTileFeature.CoverTilt -> {
             if (domain != "cover") return false
-            val sf = state.supportedFeatures
-            val anyTiltBit = sf == 0 || (sf and (
+            // EntityState.supportedFeatures is not populated for cover; read the raw
+            // attribute instead (mirrors CoverPanel.rawSupportedFeatures/rawHasFeature).
+            val sf = state.coverRawSupportedFeatures()
+            // Require an explicit tilt bit — no forgive-on-zero here, mirroring
+            // CoverPanel's anyTiltBit gate so a plain blind (sf == 0) renders nothing.
+            val anyTiltBit = sf != 0 && (sf and (
                 EntityState.CoverFeature.OPEN_TILT or
                     EntityState.CoverFeature.CLOSE_TILT or
                     EntityState.CoverFeature.STOP_TILT
                 )) != 0
             if (!anyTiltBit) return false
-            val showOpen = state.hasFeature(EntityState.CoverFeature.OPEN_TILT)
-            val showClose = state.hasFeature(EntityState.CoverFeature.CLOSE_TILT)
-            val showStop = state.hasFeature(EntityState.CoverFeature.STOP_TILT)
+            val showOpen = state.coverRawHasFeature(EntityState.CoverFeature.OPEN_TILT)
+            val showClose = state.coverRawHasFeature(EntityState.CoverFeature.CLOSE_TILT)
+            val showStop = state.coverRawHasFeature(EntityState.CoverFeature.STOP_TILT)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -555,8 +565,11 @@ private fun renderFeature(
         }
         // ── Cover tilt-position scalar ────────────────────────────────────────
         is LovelaceTileFeature.CoverTiltPosition -> {
-            if (domain != "cover" || !state.hasFeature(EntityState.CoverFeature.SET_TILT_POSITION)) return false
-            val tiltPos = state.attrInt("current_tilt_position") ?: 0
+            if (domain != "cover") return false
+            // EntityState.supportedFeatures is not populated for cover; gate on the
+            // presence of the actual tilt-position attribute instead (mirrors CoverPanel).
+            // A cover that never reports current_tilt_position has no tilt support.
+            val tiltPos = state.attrInt("current_tilt_position") ?: return false
             ScalarStepperFeature(
                 label = "TILT",
                 percent = tiltPos,
@@ -1177,4 +1190,23 @@ private fun NumericStepperFeature(
 /** Read an integer attribute directly from the raw attributes JSON. */
 private fun EntityState.attrInt(key: String): Int? =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+
+/**
+ * `supported_features` bitmask read straight from the entity's raw attributes.
+ * EntityState.supportedFeatures is only populated by the repository for a handful
+ * of domains; cover is not among them, so the cover-tilt branch reads the bit
+ * directly. Returns 0 when the attribute is absent.
+ */
+private fun EntityState.coverRawSupportedFeatures(): Int = attrInt("supported_features") ?: 0
+
+/**
+ * True when [bit] is set in the raw `supported_features`, or when the integration
+ * didn't advertise a bitmask at all (== 0). Mirrors the forgive-an-omission rule
+ * from CoverPanel for individual button gates (the section gate uses the stricter
+ * sf != 0 check to avoid rendering a tilt row on a plain blind).
+ */
+private fun EntityState.coverRawHasFeature(bit: Int): Boolean {
+    val sf = coverRawSupportedFeatures()
+    return sf == 0 || (sf and bit) != 0
+}
 
