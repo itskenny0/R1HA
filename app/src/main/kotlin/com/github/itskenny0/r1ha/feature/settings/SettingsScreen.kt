@@ -125,6 +125,32 @@ private val SettingsBackStackSaver: androidx.compose.runtime.saveable.Saver<Sett
         restore = { decodeBackStack(it) },
     )
 
+/** Persists per-node LazyList scroll offsets (firstVisibleItemIndex,
+ *  firstVisibleItemScrollOffset) so a page's scroll survives both in-tree back
+ *  navigation and a round-trip out to a standalone sub-route that tears this
+ *  screen down. Encoded as `node,index,offset` triples joined by ';'. */
+private val SettingsScrollOffsetsSaver:
+    androidx.compose.runtime.saveable.Saver<MutableMap<String, Pair<Int, Int>>, String> =
+    androidx.compose.runtime.saveable.Saver(
+        save = { map ->
+            map.entries.joinToString(";") { (node, pos) -> "$node,${pos.first},${pos.second}" }
+        },
+        restore = { encoded ->
+            val map = mutableMapOf<String, Pair<Int, Int>>()
+            if (encoded.isNotBlank()) {
+                encoded.split(";").forEach { part ->
+                    val bits = part.split(",")
+                    if (bits.size == 3) {
+                        val idx = bits[1].toIntOrNull()
+                        val off = bits[2].toIntOrNull()
+                        if (idx != null && off != null) map[bits[0]] = idx to off
+                    }
+                }
+            }
+            map
+        },
+    )
+
 @Composable
 fun SettingsScreen(
     settings: SettingsRepository,
@@ -230,13 +256,25 @@ fun SettingsScreen(
     }
     BackHandler(onBack = popOne)
 
-    // One LazyList state per node, keyed by the node's stable enum name. A
-    // freshly-entered subpage gets a brand-new state (so it reads top-down), but
-    // popping back to a parent restores the scroll position the user left it at
-    // rather than snapping to the top. The map is screen-scoped and bounded by
-    // the (small, fixed) SettingsNode enum.
-    val listStates = androidx.compose.runtime.remember { mutableMapOf<String, LazyListState>() }
-    val listState = listStates.getOrPut(node.name) { LazyListState() }
+    // Per-node scroll position, keyed by the node's stable enum name and persisted
+    // (rememberSaveable) so it survives both in-tree back navigation AND a round-trip
+    // out to a standalone sub-route that tears this screen down. Each node's
+    // LazyListState is seeded from its saved offset; a snapshotFlow writes the live
+    // position back so it's current when the node is left or the screen disposed. A
+    // node with no saved offset reads top-down, so freshly-entered pages start at the
+    // top. Bounded by the small, fixed SettingsNode enum.
+    val scrollOffsets = androidx.compose.runtime.saveable.rememberSaveable(
+        saver = SettingsScrollOffsetsSaver,
+    ) { mutableMapOf<String, Pair<Int, Int>>() }
+    val listState = androidx.compose.runtime.remember(node.name) {
+        val (idx, off) = scrollOffsets[node.name] ?: (0 to 0)
+        LazyListState(idx, off)
+    }
+    androidx.compose.runtime.LaunchedEffect(node.name) {
+        androidx.compose.runtime.snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { scrollOffsets[node.name] = it }
+    }
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
 
     val matchedEntries = androidx.compose.runtime.remember(settingsQuery) {
