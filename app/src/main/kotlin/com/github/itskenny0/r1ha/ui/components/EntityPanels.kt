@@ -1231,15 +1231,7 @@ fun CoverPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
             }
         }
         FavoritePositionChips(state, accent) { pos ->
-            dispatch?.invoke(
-                ServiceCall(
-                    state.id,
-                    "set_cover_position",
-                    kotlinx.serialization.json.buildJsonObject {
-                        put("position", kotlinx.serialization.json.JsonPrimitive(pos))
-                    },
-                ),
-            )
+            dispatch?.invoke(ServiceCall.setPercent(state.id, pos))
         }
     }
 }

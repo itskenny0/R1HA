@@ -817,18 +817,6 @@ private fun PositionSubscreen(
                 color = if (currentPct != null) R1.AccentWarm else R1.InkMuted,
             )
         }
-        if (override.favoritePositions.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
-                    .r1Pressable(onClick = { onChange(override.copy(favoritePositions = emptyList())) })
-                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
-            ) {
-                Text(text = "CLEAR ALL", style = R1.labelMicro, color = R1.StatusRed)
-            }
-        }
     }
     RowResetChip(
         onReset = { onChange(override.copy(favoritePositions = emptyList())) },
