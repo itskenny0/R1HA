@@ -150,7 +150,7 @@ fun RenameDialog(
  * a NavRow on the hub, and a branch in the host.
  */
 private enum class CustomizeSubscreen {
-    IDENTITY, LAYOUT, ACTIONS, BEHAVIOUR, LOCK, LIGHTING, ADVANCED,
+    IDENTITY, LAYOUT, ACTIONS, BEHAVIOUR, LOCK, LIGHTING, POSITION, ADVANCED,
 }
 
 /**
@@ -269,9 +269,21 @@ private fun CustomizeHub(
     if (entity.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.LIGHT) {
         CustomizeNavRow(
             label = "Lighting",
-            modified = override.lightColorTempK != null || override.lightButtonsHidden.isNotEmpty(),
+            modified = override.lightColorTempK != null || override.lightButtonsHidden.isNotEmpty()
+                || override.favoriteColors.isNotEmpty(),
             value = lightingSummary(override),
             onClick = { onDrill(CustomizeSubscreen.LIGHTING) },
+        )
+    }
+    // POSITION section only on cover / valve entities — favourite positions.
+    if (entity.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.COVER ||
+        entity.id.domain == com.github.itskenny0.r1ha.core.ha.Domain.VALVE) {
+        CustomizeNavRow(
+            label = "Position",
+            modified = override.favoritePositions.isNotEmpty(),
+            value = if (override.favoritePositions.isEmpty()) "No favourites"
+                    else override.favoritePositions.joinToString { "$it%" },
+            onClick = { onDrill(CustomizeSubscreen.POSITION) },
         )
     }
     CustomizeNavRow(
@@ -346,6 +358,7 @@ private fun CustomizeSubscreenHost(
             CustomizeSubscreen.BEHAVIOUR -> "BEHAVIOUR"
             CustomizeSubscreen.LOCK -> "LOCK"
             CustomizeSubscreen.LIGHTING -> "LIGHTING"
+            CustomizeSubscreen.POSITION -> "POSITION"
             CustomizeSubscreen.ADVANCED -> "ADVANCED"
         },
         entityId = entity.id.value,
@@ -359,6 +372,7 @@ private fun CustomizeSubscreenHost(
         CustomizeSubscreen.BEHAVIOUR -> BehaviourSubscreen(entity, override, onChange)
         CustomizeSubscreen.LOCK -> LockSubscreen(entity, override, onChange)
         CustomizeSubscreen.LIGHTING -> LightingSubscreen(entity, override, onChange)
+        CustomizeSubscreen.POSITION -> PositionSubscreen(entity, override, onChange)
         CustomizeSubscreen.ADVANCED -> AdvancedSubscreen(entity, override, onChange)
     }
 }
@@ -748,6 +762,79 @@ private fun LockSubscreen(
     )
 }
 
+// ── Subscreen: POSITION ──────────────────────────────────────────────────────
+/**
+ * Favourite positions for cover and valve entities. Each saved position appears
+ * as a chip on the cover/valve panel; tapping it sets that position immediately.
+ * The "ADD CURRENT" button captures the entity's live position into the list;
+ * "CLEAR ALL" wipes the list.
+ */
+@Composable
+private fun PositionSubscreen(
+    entity: EntityState,
+    override: EntityOverride,
+    onChange: (EntityOverride) -> Unit,
+) {
+    SectionHeader("FAVOURITE POSITIONS")
+    Text(
+        text = "Save positions as one-tap chips on the cover or valve control panel. Tap ADD CURRENT to save the entity's current position (0 = closed, 100 = open).",
+        style = R1.body,
+        color = R1.InkMuted,
+    )
+    Spacer(Modifier.height(R1.space.s))
+    // Show currently saved favourites as a readable list.
+    if (override.favoritePositions.isNotEmpty()) {
+        Text(
+            text = override.favoritePositions.joinToString { "$it%" },
+            style = R1.bodyEmph,
+            color = R1.Ink,
+        )
+        Spacer(Modifier.height(R1.space.s))
+    }
+    val currentPct = entity.percent
+    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Box(
+            modifier = Modifier
+                .clip(R1.ShapeS)
+                .background(if (currentPct != null) R1.SurfaceMuted else R1.Bg)
+                .let { m ->
+                    if (currentPct != null) m.border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeS)
+                    else m.border(1.dp, R1.Hairline, R1.ShapeS)
+                }
+                .r1Pressable(
+                    onClick = {
+                        if (currentPct != null) {
+                            val next = (override.favoritePositions + currentPct).distinct().sorted()
+                            onChange(override.copy(favoritePositions = next))
+                        }
+                    },
+                )
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        ) {
+            Text(
+                text = if (currentPct != null) "ADD CURRENT ($currentPct%)" else "ADD CURRENT",
+                style = R1.labelMicro,
+                color = if (currentPct != null) R1.AccentWarm else R1.InkMuted,
+            )
+        }
+        if (override.favoritePositions.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
+                    .r1Pressable(onClick = { onChange(override.copy(favoritePositions = emptyList())) })
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            ) {
+                Text(text = "CLEAR ALL", style = R1.labelMicro, color = R1.StatusRed)
+            }
+        }
+    }
+    RowResetChip(
+        onReset = { onChange(override.copy(favoritePositions = emptyList())) },
+    )
+}
+
 // ── Subscreen: LIGHTING ──────────────────────────────────────────────────────
 @Composable
 private fun LightingSubscreen(
@@ -785,12 +872,88 @@ private fun LightingSubscreen(
             onChange(override.copy(lightButtonsHidden = next))
         },
     )
+    SectionHeader("FAVOURITE COLOURS")
+    Text(
+        text = "Save the light's current colour as a one-tap swatch on the light control surface. Tapping a swatch fires light.turn_on with that rgb_color.",
+        style = R1.body,
+        color = R1.InkMuted,
+    )
+    Spacer(Modifier.height(R1.space.s))
+    // Show currently saved favourite colours as small swatches.
+    if (override.favoriteColors.isNotEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+        ) {
+            override.favoriteColors.forEach { argb ->
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(R1.ShapeS)
+                        .background(androidx.compose.ui.graphics.Color(argb))
+                        .border(1.dp, R1.Hairline, R1.ShapeS),
+                )
+            }
+        }
+        Spacer(Modifier.height(R1.space.s))
+    }
+    // Read the entity's current rgb_color from attributesJson to allow "ADD CURRENT".
+    val currentRgb = run {
+        val arr = entity.attributesJson?.get("rgb_color")
+            as? kotlinx.serialization.json.JsonArray
+        arr?.mapNotNull {
+            (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
+        }?.takeIf { it.size == 3 }
+    }
+    val currentRgbArgb = currentRgb?.let { (r, g, b) ->
+        (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Box(
+            modifier = Modifier
+                .clip(R1.ShapeS)
+                .background(if (currentRgbArgb != null) R1.SurfaceMuted else R1.Bg)
+                .let { m ->
+                    if (currentRgbArgb != null) m.border(1.dp, R1.AccentWarm.copy(alpha = 0.5f), R1.ShapeS)
+                    else m.border(1.dp, R1.Hairline, R1.ShapeS)
+                }
+                .r1Pressable(
+                    onClick = {
+                        if (currentRgbArgb != null) {
+                            val next = (override.favoriteColors + currentRgbArgb).distinct()
+                            onChange(override.copy(favoriteColors = next))
+                        }
+                    },
+                )
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        ) {
+            Text(
+                text = "ADD CURRENT COLOUR",
+                style = R1.labelMicro,
+                color = if (currentRgbArgb != null) R1.AccentWarm else R1.InkMuted,
+            )
+        }
+        if (override.favoriteColors.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .border(1.dp, R1.StatusRed.copy(alpha = 0.5f), R1.ShapeS)
+                    .r1Pressable(onClick = { onChange(override.copy(favoriteColors = emptyList())) })
+                    .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            ) {
+                Text(text = "CLEAR ALL", style = R1.labelMicro, color = R1.StatusRed)
+            }
+        }
+    }
     RowResetChip(
         onReset = {
             onChange(
                 override.copy(
                     lightColorTempK = null,
                     lightButtonsHidden = emptySet(),
+                    favoriteColors = emptyList(),
                 )
             )
         },
@@ -1041,6 +1204,7 @@ private fun lightingSummary(o: EntityOverride): String {
     val mods = buildList {
         if (o.lightColorTempK != null) add("${o.lightColorTempK}K")
         if (o.lightButtonsHidden.isNotEmpty()) add("${o.lightButtonsHidden.size} hidden")
+        if (o.favoriteColors.isNotEmpty()) add("${o.favoriteColors.size} colours")
     }
     return if (mods.isEmpty()) "Default" else mods.joinToString(" · ").uppercase()
 }
@@ -1501,6 +1665,17 @@ private fun ActiveOverridesList(
         rows += Triple("PIN hash set", "SHA-256") {
             onChange(override.copy(requirePinHash = null))
         }
+    }
+    if (override.favoriteColors.isNotEmpty()) {
+        rows += Triple("Favourite colours", "${override.favoriteColors.size} saved") {
+            onChange(override.copy(favoriteColors = emptyList()))
+        }
+    }
+    if (override.favoritePositions.isNotEmpty()) {
+        rows += Triple(
+            "Favourite positions",
+            override.favoritePositions.joinToString { "$it%" },
+        ) { onChange(override.copy(favoritePositions = emptyList())) }
     }
     if (rows.isEmpty()) {
         Text(text = "No overrides on this card.", style = R1.body, color = R1.InkMuted)
