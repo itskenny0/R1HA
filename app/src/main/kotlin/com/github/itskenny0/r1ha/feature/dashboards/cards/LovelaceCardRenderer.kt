@@ -70,6 +70,7 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Logbook -> LogbookCard(card, modifier)
         is LovelaceCard.Clock -> ClockCard(card, modifier)
         is LovelaceCard.Shortcut -> ShortcutCard(card, onAction, modifier)
+        is LovelaceCard.Distribution -> DistributionCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Conditional -> {
             val passes = remember(card.conditions, stateMap) {
                 evaluateConditions(card.conditions, stateMap)
