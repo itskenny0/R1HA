@@ -176,9 +176,15 @@ object LovelaceParser {
      *  section, wrapping each in a [LovelaceCard.Conditional]; this composes
      *  with any per-card `visibility:` (already applied by [parseCard]). */
     private fun parseSectionCards(section: JsonObject): List<LovelaceCard> {
-        val cards = (section["cards"] as? JsonArray)
+        val header = (section["header"] as? JsonObject)?.let(::parseCard)
+        val body = (section["cards"] as? JsonArray)
             ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) }
             ?: emptyList()
+        // Footer cards (HA 2026.3): a single card slot rendered at the section's
+        // end. R1HA flattens sections into one scroll column, so the footer
+        // renders inline after the section's cards (not pinned/sticky).
+        val footer = (section["footer"] as? JsonObject)?.let(::parseCard)
+        val cards = listOfNotNull(header) + body + listOfNotNull(footer)
         val visibility = section["visibility"]
         if (visibility is JsonArray && visibility.isNotEmpty()) {
             val conditions = parseConditions(visibility)

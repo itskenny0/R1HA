@@ -10,6 +10,24 @@ class LovelacePolishParserTest {
     private fun card(raw: String): LovelaceCard =
         LovelaceParser.parseCard(Json.parseToJsonElement(raw) as JsonObject)
 
+    @Test fun `appends a section footer card after the section cards`() {
+        val cfg = LovelaceParser.parseConfig(
+            Json.parseToJsonElement(
+                """
+                {"views":[{"path":"p","sections":[
+                  {"type":"grid",
+                   "cards":[{"type":"markdown","content":"body"}],
+                   "footer":{"type":"markdown","content":"footer"}}
+                ]}]}
+                """.trimIndent(),
+            ) as JsonObject,
+        )
+        val cards = cfg.views.single().cards
+        assertThat(cards).hasSize(2)
+        assertThat((cards[0] as LovelaceCard.Markdown).content).isEqualTo("body")
+        assertThat((cards[1] as LovelaceCard.Markdown).content).isEqualTo("footer")
+    }
+
     @Test fun `parses heading card badges`() {
         val c = card(
             """
