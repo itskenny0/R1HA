@@ -1,5 +1,10 @@
 package com.github.itskenny0.r1ha.nav
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
@@ -62,7 +67,34 @@ fun AppNavGraph(
             }
         }
     }
-    NavHost(navController = navController, startDestination = startDestination) {
+    // Default screen change is a 700ms cross-fade (navigation-compose's default,
+    // replicated here). The one exception: arriving at the card stack — almost
+    // always a Back-pop from a sub-screen — is made instant. The long fade left
+    // the entering deck tappable and Back still live while it ran, so a tap on the
+    // hamburger or a stray Back that landed before it settled could interrupt the
+    // NavHost transition and strand the app on a black screen needing a restart.
+    // Removing the animation only for card-stack-targeted transitions closes that
+    // race window while keeping the fade for every other destination.
+    NavHost(
+        navController = navController,
+        startDestination = startDestination,
+        enterTransition = {
+            if (targetState.destination.route == Routes.CARD_STACK) EnterTransition.None
+            else fadeIn(animationSpec = tween(700))
+        },
+        exitTransition = {
+            if (targetState.destination.route == Routes.CARD_STACK) ExitTransition.None
+            else fadeOut(animationSpec = tween(700))
+        },
+        popEnterTransition = {
+            if (targetState.destination.route == Routes.CARD_STACK) EnterTransition.None
+            else fadeIn(animationSpec = tween(700))
+        },
+        popExitTransition = {
+            if (targetState.destination.route == Routes.CARD_STACK) ExitTransition.None
+            else fadeOut(animationSpec = tween(700))
+        },
+    ) {
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
                 settings = settings,

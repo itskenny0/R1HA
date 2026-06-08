@@ -260,6 +260,11 @@ fun CardStackScreen(
     // shell-hosted navigation slide-out instead of the QuickActions modal; otherwise it's
     // null / inert and the modal is used. Long-press always opens the modal regardless.
     val navDrawer = com.github.itskenny0.r1ha.ui.components.LocalNavDrawerController.current
+    // This screen's NavBackStackEntry, used to tell whether the deck has finished
+    // animating in. The entry is only RESUMED once the NavHost cross-fade settles;
+    // chrome taps that land while it's still STARTED (mid-transition) are the ones
+    // that raced the transition into a black screen, so we drop them.
+    val navEntryLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     // Jump-to-card overlay visibility — tapped open from the chrome counter to let
     // the user pick a target card by name rather than scrolling through the deck.
     // Declared here (rather than at the chrome-render site) so the wheel-events
@@ -1070,9 +1075,16 @@ fun CardStackScreen(
                 },
                 onTapCounter = { jumpPickerOpen.value = true },
                 onTapHamburger = {
-                    // Slide-out when the shell offers it (SLIDEOUT style on a portrait tier);
-                    // otherwise the QuickActions modal, which is also what long-press always does.
-                    if (navDrawer?.available == true) navDrawer.open() else quickActionsOpen.value = true
+                    // Ignore a hamburger tap that lands while the deck is still animating
+                    // in from a back navigation (the NavBackStackEntry isn't RESUMED yet).
+                    // Opening the slide-out / modal mid-transition raced the NavHost's
+                    // cross-fade and could strand the app on a black screen needing a
+                    // restart; once the transition settles the tap behaves normally.
+                    if (navEntryLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                        // Slide-out when the shell offers it (SLIDEOUT style on a portrait tier);
+                        // otherwise the QuickActions modal, which long-press also opens.
+                        if (navDrawer?.available == true) navDrawer.open() else quickActionsOpen.value = true
+                    }
                 },
                 onLongPressHamburger = { quickActionsOpen.value = true },
                 onLongPressGear = onOpenSearch,
