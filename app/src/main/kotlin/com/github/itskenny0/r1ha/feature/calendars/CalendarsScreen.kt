@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.feature.dashboards.cards.haColorAccent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -213,7 +214,7 @@ private fun CalendarRow(c: CalendarsViewModel.Calendar, now: Instant, onTap: () 
             Icon(
                 imageVector = R1Icons.forDomain("calendar"),
                 contentDescription = null,
-                tint = R1.InkSoft,
+                tint = c.color?.let { haColorAccent(it) } ?: R1.InkSoft,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(R1.space.s))

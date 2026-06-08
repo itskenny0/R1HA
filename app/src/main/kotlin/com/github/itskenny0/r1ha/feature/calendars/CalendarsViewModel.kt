@@ -10,6 +10,7 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Instant
 import java.time.LocalDate
@@ -49,6 +50,9 @@ class CalendarsViewModel(
          *  ALL-DAY pill instead of a "in 2 h" countdown that would be
          *  misleading for events without a specific start time. */
         val allDay: Boolean,
+        /** Per-calendar colour (HA 2026.2), a hex string when the integration
+         *  exposes one on the entity attributes; null otherwise. Best-effort. */
+        val color: String? = null,
     )
 
     @androidx.compose.runtime.Stable
@@ -80,6 +84,7 @@ class CalendarsViewModel(
                                 ?.let { parseLooseTime(it) },
                             eventDescription = (attrs["description"] as? JsonPrimitive)?.content,
                             allDay = startRaw != null && startRaw.length <= 10,
+                            color = calendarColorOf(attrs),
                         )
                     }
                     // Currently-happening calendars first (state=on), then
@@ -145,4 +150,16 @@ internal fun parseCalendarInstant(
     runCatching { return LocalDate.parse(value).atStartOfDay(zone).toInstant() }
 
     return null
+}
+
+/**
+ * Best-effort per-calendar colour from the entity attributes. HA 2026.2 added
+ * calendar colours; integrations that expose one put a hex string under `color`
+ * (some use `backgroundColor`). Returns null when neither is present so the row
+ * keeps its default tint.
+ */
+internal fun calendarColorOf(attrs: JsonObject): String? {
+    val color = (attrs["color"] as? JsonPrimitive)?.content
+        ?: (attrs["backgroundColor"] as? JsonPrimitive)?.content
+    return color?.takeIf { it.isNotBlank() && it != "null" }
 }
