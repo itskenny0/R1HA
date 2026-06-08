@@ -1121,7 +1121,7 @@ private fun formatTemperature(value: Double): String {
 // touch the repository). attributesJson is the verbatim HA attributes object, so
 // these readers mirror HA's own attribute names exactly.
 
-private fun EntityState.attrInt(key: String): Int? =
+internal fun EntityState.attrInt(key: String): Int? =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
 
 internal fun EntityState.attrString(key: String): String? =

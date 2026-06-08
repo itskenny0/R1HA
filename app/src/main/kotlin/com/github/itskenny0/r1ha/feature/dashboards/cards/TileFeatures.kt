@@ -24,6 +24,7 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.attrInt
 import com.github.itskenny0.r1ha.ui.components.attrString
 import com.github.itskenny0.r1ha.ui.components.attrStringList
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -665,6 +666,8 @@ private fun renderFeature(
             if (domain != "light") return false
             if (!state.supportedColorModes.any { it.equals("color_temp", ignoreCase = true) }) return false
             val currentK = state.colorTempK ?: return false
+            // 2000..6500 K are HA's default mired-equivalent bounds when the
+            // light doesn't advertise its own; ~20 nudges span the whole range.
             val minK = state.minColorTempK ?: 2000
             val maxK = state.maxColorTempK ?: 6500
             val step = ((maxK - minK) / 20.0).let { kotlin.math.round(it).toDouble().coerceAtLeast(1.0) }
@@ -1186,10 +1189,6 @@ private fun NumericStepperFeature(
         }
     }
 }
-
-/** Read an integer attribute directly from the raw attributes JSON. */
-private fun EntityState.attrInt(key: String): Int? =
-    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull()
 
 /**
  * `supported_features` bitmask read straight from the entity's raw attributes.
