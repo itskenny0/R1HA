@@ -30,4 +30,22 @@ class LovelaceNewCardsParserTest {
         assertThat(c.name).isNull()
         assertThat(c.tapAction).isInstanceOf(LovelaceAction.Url::class.java)
     }
+
+    @Test fun `parses a shortcut badge in a view badges array`() {
+        val cfg = LovelaceParser.parseConfig(
+            Json.parseToJsonElement(
+                """
+                {"views":[{"path":"p","badges":[
+                  {"type":"shortcut","name":"Assist","icon":"mdi:microphone",
+                   "tap_action":{"action":"navigate","navigation_path":"/assist"}}
+                ],"cards":[]}]}
+                """.trimIndent(),
+            ) as JsonObject,
+        )
+        val badge = cfg.views.first().badges.single()
+        assertThat(badge.entityId).isNull()
+        assertThat(badge.name).isEqualTo("Assist")
+        assertThat(badge.icon).isEqualTo("mdi:microphone")
+        assertThat(badge.tapAction).isInstanceOf(LovelaceAction.Navigate::class.java)
+    }
 }

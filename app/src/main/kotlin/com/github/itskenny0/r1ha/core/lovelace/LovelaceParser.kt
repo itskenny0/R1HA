@@ -141,9 +141,14 @@ object LovelaceParser {
                 is JsonObject -> {
                     val entity = item["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
                     val name = item["name"]?.asStringOrNull()
-                    // Need at least an entity to read state from, or a name to
-                    // label a static chip; an entry with neither has nothing to show.
-                    if (entity == null && name.isNullOrBlank()) return@mapNotNull null
+                    val badgeType = item["type"]?.asStringOrNull()?.lowercase()
+                    val tap = parseAction(item["tap_action"] as? JsonObject)
+                    // A shortcut badge is action-driven and may carry only an
+                    // icon; keep it as long as it has something to show or do.
+                    val isShortcut = badgeType == "shortcut"
+                    if (entity == null && name.isNullOrBlank() && !(isShortcut && (tap != null || item["icon"] != null))) {
+                        return@mapNotNull null
+                    }
                     LovelaceBadge(
                         entityId = entity,
                         name = name,
@@ -153,7 +158,7 @@ object LovelaceParser {
                         showName = item["show_name"]?.asBooleanOrNull() ?: false,
                         showState = item["show_state"]?.asBooleanOrNull() ?: true,
                         showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
-                        tapAction = parseAction(item["tap_action"] as? JsonObject),
+                        tapAction = tap,
                     )
                 }
                 else -> null

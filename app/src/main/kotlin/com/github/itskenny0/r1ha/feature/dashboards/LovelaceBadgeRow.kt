@@ -128,13 +128,18 @@ private fun BadgeChip(
         modifier = chip,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (badge.showIcon && badge.entityId != null) {
+        val iconVector = when {
+            badge.showIcon && badge.entityId != null -> R1Icons.forEntity(
+                badge.entityId,
+                deviceClass = state?.deviceClass,
+                state = state?.rawState,
+            )
+            badge.icon != null -> R1Icons.forMdi(badge.icon)
+            else -> null
+        }
+        if (iconVector != null) {
             Icon(
-                imageVector = R1Icons.forEntity(
-                    badge.entityId,
-                    deviceClass = state?.deviceClass,
-                    state = state?.rawState,
-                ),
+                imageVector = iconVector,
                 contentDescription = null,
                 tint = accent,
                 modifier = Modifier.size(18.dp),
