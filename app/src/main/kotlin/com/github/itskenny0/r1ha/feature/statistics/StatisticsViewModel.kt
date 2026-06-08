@@ -54,6 +54,7 @@ class StatisticsViewModel(
         DAY("DAY", "day", 86_400L),
         WEEK("WEEK", "week", 7L * 86_400L),
         MONTH("MONTH", "month", 30L * 86_400L),
+        YEAR("YEAR", "year", 365L * 86_400L),
     }
 
     /** How HA's recorder collects a statistic, which decides the natural
