@@ -20,7 +20,7 @@
          manifest references that point at them.
         ──────────────────────────────────────────────────────────────── -->
 
-    <!-- App-shortcut labels — surfaced when the user long-presses the
+    <!-- App-shortcut labels, surfaced when the user long-presses the
          launcher icon. Each routes through MainActivity's extras-based
          deep-link to a specific top-level surface; the short label
          appears in the launcher pop-up under the icon, the long label
