@@ -195,6 +195,46 @@ private fun renderFeature(
                 )
             }
         }
+        is LovelaceTileFeature.MediaPlayback -> {
+            if (domain != "media_player") return false
+            MediaPlaybackFeature(entityId, state, feature.controls, accent, onAction)
+        }
+        is LovelaceTileFeature.MediaSource -> {
+            if (domain != "media_player") return false
+            val sources = filterModes(state.mediaSourceList, feature.sources)
+            if (sources.isEmpty()) return false
+            ModeChipRow(sources, state.mediaSource, accent) { src ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "media_player.select_source",
+                        entityId = entityId,
+                        data = buildJsonObject { put("source", JsonPrimitive(src)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.MediaSoundMode -> {
+            if (domain != "media_player") return false
+            val modes = filterModes(state.attrStringList("sound_mode_list"), feature.soundModes)
+            if (modes.isEmpty()) return false
+            ModeChipRow(modes, state.attrString("sound_mode"), accent) { mode ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "media_player.select_sound_mode",
+                        entityId = entityId,
+                        data = buildJsonObject { put("sound_mode", JsonPrimitive(mode)) },
+                    ),
+                )
+            }
+        }
+        is LovelaceTileFeature.MediaVolumeButtons -> {
+            if (domain != "media_player" || !state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_SET)) return false
+            MediaVolumeFeature(entityId, state, feature.step, feature.showMute, accent, onAction)
+        }
+        is LovelaceTileFeature.MediaVolumeSlider -> {
+            if (domain != "media_player" || !state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_SET)) return false
+            MediaVolumeFeature(entityId, state, 5, feature.showMute, accent, onAction)
+        }
         is LovelaceTileFeature.Unsupported -> return false
     }
     return true
@@ -467,3 +507,155 @@ private fun toggleableDomain(domain: String): Boolean = when (domain) {
     "climate", "valve" -> true
     else -> false
 }
+
+/**
+ * Media-player playback control row. Renders one button per requested control,
+ * each gated on the player's advertised supported_features so a button HA would
+ * reject is omitted. An empty controls list falls back to HA's default trio.
+ */
+@Composable
+private fun MediaPlaybackFeature(
+    entityId: String,
+    state: EntityState,
+    controls: List<String>,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val wanted = controls.ifEmpty { listOf("media_previous_track", "media_play_pause", "media_next_track") }
+    val applicable = wanted.filter { mediaControlSupported(it, state) }
+    if (applicable.isEmpty()) return
+    val playing = state.rawState.equals("playing", ignoreCase = true)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        applicable.forEach { control ->
+            val label = mediaControlLabel(control, playing, state)
+            val selected = when (control) {
+                "shuffle" -> state.mediaShuffle
+                "repeat" -> (state.mediaRepeat ?: "off") != "off"
+                "volume_mute" -> state.isVolumeMuted
+                else -> false
+            }
+            FeatureButton(label = label, accent = accent, selected = selected, modifier = Modifier.weight(1f)) {
+                onAction(mediaControlAction(entityId, control, state))
+            }
+        }
+    }
+}
+
+/** Volume row: a percent readout plus +/- buttons and an optional mute toggle. */
+@Composable
+private fun MediaVolumeFeature(
+    entityId: String,
+    state: EntityState,
+    step: Int,
+    showMute: Boolean,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val pct = state.percent ?: 0
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "VOLUME", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(2.dp))
+            Text(text = "$pct%", style = R1.numeralM, color = accent)
+        }
+        if (showMute && state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_MUTE)) {
+            FeatureButton(label = if (state.isVolumeMuted) "UNMUTE" else "MUTE", accent = accent, selected = state.isVolumeMuted) {
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "media_player.volume_mute",
+                        entityId = entityId,
+                        data = buildJsonObject { put("is_volume_muted", JsonPrimitive(!state.isVolumeMuted)) },
+                    ),
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+        }
+        StepperButton(label = "-", accent = accent, enabled = true) {
+            onAction(volumeSetAction(entityId, (pct - step).coerceIn(0, 100)))
+        }
+        Spacer(Modifier.width(10.dp))
+        StepperButton(label = "+", accent = accent, enabled = true) {
+            onAction(volumeSetAction(entityId, (pct + step).coerceIn(0, 100)))
+        }
+    }
+}
+
+private fun volumeSetAction(entityId: String, pct: Int): LovelaceAction.CallService =
+    LovelaceAction.CallService(
+        service = "media_player.volume_set",
+        entityId = entityId,
+        data = buildJsonObject { put("volume_level", JsonPrimitive(EntityState.mediaVolumeFromPct(pct))) },
+    )
+
+/** Whether the player advertises support for a given playback control. */
+private fun mediaControlSupported(control: String, state: EntityState): Boolean = when (control) {
+    "turn_on" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.TURN_ON)
+    "turn_off" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.TURN_OFF)
+    "media_play", "media_play_pause" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.PLAY) ||
+        state.hasMediaFeature(EntityState.MediaPlayerFeature.PAUSE)
+    "media_pause" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.PAUSE)
+    "media_stop" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.STOP)
+    "media_previous_track" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.PREVIOUS_TRACK)
+    "media_next_track" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.NEXT_TRACK)
+    "volume_up", "volume_down" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_STEP) ||
+        state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_SET)
+    "volume_mute" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_MUTE)
+    "shuffle" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.SHUFFLE_SET)
+    "repeat" -> state.hasMediaFeature(EntityState.MediaPlayerFeature.REPEAT_SET)
+    else -> false
+}
+
+/** Short button label for a playback control. */
+private fun mediaControlLabel(control: String, playing: Boolean, state: EntityState): String = when (control) {
+    "turn_on" -> "ON"
+    "turn_off" -> "OFF"
+    "media_play" -> "▶"
+    "media_pause" -> "⏸"
+    "media_play_pause" -> if (playing) "⏸" else "▶"
+    "media_stop" -> "⏹"
+    "media_previous_track" -> "⏮"
+    "media_next_track" -> "⏭"
+    "volume_up" -> "VOL +"
+    "volume_down" -> "VOL -"
+    "volume_mute" -> if (state.isVolumeMuted) "UNMUTE" else "MUTE"
+    "shuffle" -> "SHUFFLE"
+    "repeat" -> "REPEAT"
+    else -> control.uppercase()
+}
+
+/** Build the service call for a playback control. */
+private fun mediaControlAction(entityId: String, control: String, state: EntityState): LovelaceAction.CallService = when (control) {
+    "shuffle" -> LovelaceAction.CallService(
+        "media_player.shuffle_set", entityId,
+        buildJsonObject { put("shuffle", JsonPrimitive(!state.mediaShuffle)) },
+    )
+    "repeat" -> LovelaceAction.CallService(
+        "media_player.repeat_set", entityId,
+        buildJsonObject { put("repeat", JsonPrimitive(nextRepeat(state.mediaRepeat))) },
+    )
+    "volume_mute" -> LovelaceAction.CallService(
+        "media_player.volume_mute", entityId,
+        buildJsonObject { put("is_volume_muted", JsonPrimitive(!state.isVolumeMuted)) },
+    )
+    else -> LovelaceAction.CallService("media_player.$control", entityId, null)
+}
+
+/** Cycle repeat off -> all -> one -> off, matching HA's button. */
+private fun nextRepeat(current: String?): String = when (current) {
+    "off", null -> "all"
+    "all" -> "one"
+    else -> "off"
+}
+
+/** Read a string attribute from this entity's raw attributes JSON. */
+private fun EntityState.attrString(key: String): String? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)?.content
+
+/** Read a string-list attribute from this entity's raw attributes JSON. */
+private fun EntityState.attrStringList(key: String): List<String> =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        ?: emptyList()
