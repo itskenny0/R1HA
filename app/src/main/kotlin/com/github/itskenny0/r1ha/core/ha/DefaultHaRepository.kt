@@ -31,6 +31,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -3865,7 +3866,13 @@ class DefaultHaRepository(
                 ?: error("recorder/list_statistic_ids returned a non-array payload")
             arr.mapNotNull { el ->
                 val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
-                fun str(key: String): String? = (o[key] as? JsonPrimitive)?.content
+                // contentOrNull (not content): HA sends `"name": null` for
+                // entity-backed series, and JsonNull IS a JsonPrimitive whose
+                // .content is the literal string "null" — which is exactly what
+                // was leaking into the picker rows. contentOrNull maps JsonNull
+                // back to a real null so the name falls through to the friendly
+                // name / id instead.
+                fun str(key: String): String? = (o[key] as? JsonPrimitive)?.contentOrNull
                 fun bool(key: String): Boolean =
                     (o[key] as? JsonPrimitive)?.booleanOrNull == true
                 val sid = str("statistic_id") ?: return@mapNotNull null

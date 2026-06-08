@@ -9,6 +9,7 @@ import com.github.itskenny0.r1ha.core.ha.StatisticId
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -129,12 +130,39 @@ class StatisticsViewModel(
     fun loadCatalogue() {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(catalogueLoading = true, catalogueError = null)
+            // recorder/list_statistic_ids returns name=null for entity-backed
+            // series (the recorder doesn't carry friendly names), so fetch the
+            // entity friendly-name map alongside the catalogue and fill it in.
+            // Run in parallel so the picker isn't gated on two serial round trips;
+            // a failed name fetch just leaves rows falling back to the id.
+            val namesDeferred = async {
+                haRepository.listAllEntitiesForSearch().getOrNull()
+                    ?.associate { it.id.value to it.friendlyName }
+                    .orEmpty()
+            }
             haRepository.listStatisticIds().fold(
                 onSuccess = { rows ->
+                    val nameByEntity = namesDeferred.await()
+                    val enriched = rows
+                        .map { row ->
+                            if (!row.name.isNullOrBlank()) {
+                                row
+                            } else {
+                                // Entity-backed statistic_ids are the entity_id
+                                // itself; resolve the display name from the entity.
+                                nameByEntity[row.statisticId]
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { row.copy(name = it) }
+                                    ?: row
+                            }
+                        }
+                        .sortedBy {
+                            it.name?.lowercase()?.ifBlank { null } ?: it.statisticId.lowercase()
+                        }
                     R1Log.i("Statistics", "catalogue size=${rows.size}")
                     _ui.value = _ui.value.copy(
                         catalogueLoading = false,
-                        available = rows,
+                        available = enriched,
                         catalogueError = null,
                     )
                 },
