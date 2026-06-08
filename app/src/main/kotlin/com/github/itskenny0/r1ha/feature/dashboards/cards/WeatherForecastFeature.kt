@@ -43,7 +43,7 @@ internal fun WeatherForecastFeature(
     showLabels: Boolean,
 ) {
     val repo = LocalHaRepository.current
-    var entries by remember(entityId, forecastType) { mutableStateOf<List<ForecastEntry>>(emptyList()) }
+    var entries by remember(entityId, forecastType, repo) { mutableStateOf<List<ForecastEntry>>(emptyList()) }
     LaunchedEffect(entityId, forecastType, repo) {
         if (repo == null) return@LaunchedEffect
         val result = repo.getWeatherForecasts(entityId, forecastType)
