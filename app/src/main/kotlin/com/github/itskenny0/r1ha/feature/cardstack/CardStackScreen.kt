@@ -643,6 +643,20 @@ fun CardStackScreen(
     val onEntityCall = androidx.compose.runtime.remember(vm) {
         { call: com.github.itskenny0.r1ha.core.ha.ServiceCall -> vm.callService(call) }
     }
+    // The DETAIL "..." affordance now lives on the card body (bottom-right, beside
+    // the value bar) rather than the chrome row. We hand the scaffold a more-info
+    // opener only when the DETAIL chrome button is enabled, so the existing toggle
+    // still governs it; peek neighbours override this local back to null so only
+    // the focused card shows the button.
+    val detailEnabled = appSettings.ui.chromeButtons.any {
+        it.ref == com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL && it.enabled
+    }
+    val onCardMoreInfo: ((com.github.itskenny0.r1ha.core.ha.EntityId) -> Unit)? =
+        if (detailEnabled) {
+            { id -> moreInfoEntityId.value = id.value }
+        } else {
+            null
+        }
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides appSettings.server?.url,
@@ -661,6 +675,7 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnSetSelectOption provides onSetSelectOption,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
         com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,
+        com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo provides onCardMoreInfo,
     ) {
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
         // No max-width cap on the card column. An earlier 600 dp clamp here
@@ -1987,6 +2002,18 @@ private fun PageDeck(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
+                // Only the focused card surfaces the on-card "..." detail button;
+                // peek neighbours null the opener out (their tap overlay would
+                // swallow the tap anyway, but this also hides the glyph on the
+                // half-visible sliver).
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo provides
+                        if (isPeekNeighbour) {
+                            null
+                        } else {
+                            com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo.current
+                        },
+                ) {
                 EntityCard(
                     state = card,
                     onTapToggle = { vm.tapToggle() },
@@ -2031,6 +2058,7 @@ private fun PageDeck(
                             clip = true
                         },
                 )
+                }
                 // Tap-to-navigate overlay for peeking neighbours. Drawn last so it
                 // sits on top of the card and intercepts every pointer event over
                 // the half-visible neighbour: a tap (or any press) animates the
@@ -3520,6 +3548,11 @@ private fun ChromeRow(
                     // GEAR's enabled bit is forced-true at the repo level — the user
                     // can't lock themselves out of Settings.
                     com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.GEAR -> true
+                    // DETAIL no longer renders in the chrome row — its "..." now
+                    // lives on the card body (bottom-right). The config entry's
+                    // enabled flag still governs that on-card button (see
+                    // onCardMoreInfo), so the toggle is preserved, just relocated.
+                    com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL -> false
                     else -> cfg.enabled
                 }
             }

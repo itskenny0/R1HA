@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.core.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -8,6 +9,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -383,6 +385,42 @@ object PragmaticHybridTheme : R1Theme {
 internal fun dragFractionToPercent(frac: Float): Int =
     (frac * 100f).roundToInt().coerceIn(0, 100)
 
+/**
+ * The on-card "..." detail affordance, drawn in the bottom-right corner of the
+ * card body (the region beside the value bar). Mirrors the three-dot glyph the
+ * chrome row used to render; relocating it here puts it just inside the value
+ * bar when the bar is on the right, and lets it reclaim the right edge when the
+ * bar lives elsewhere. Renders nothing unless [LocalOnCardMoreInfo] is provided
+ * (DETAIL chrome enabled, active card only).
+ */
+@Composable
+private fun BoxScope.CardMoreInfoButton(entityId: com.github.itskenny0.r1ha.core.ha.EntityId) {
+    val onMoreInfo = com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo.current ?: return
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(end = 8.dp, bottom = 6.dp)
+            .size(36.dp)
+            .clip(CircleShape)
+            .r1Pressable(
+                onClick = { onMoreInfo(entityId) },
+                contentDescription = "Card details",
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            repeat(3) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(R1.Ink.copy(alpha = 0.85f)),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 internal fun CardValueBarScaffold(
     model: CardRenderModel,
@@ -405,12 +443,18 @@ internal fun CardValueBarScaffold(
                     tickLabelColor = tickLabelColor,
                 )
                 Spacer(Modifier.width(20.dp))
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    content()
+                    CardMoreInfoButton(entityId)
+                }
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT -> {
             Row(modifier = outer) {
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) { content() }
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    content()
+                    CardMoreInfoButton(entityId)
+                }
                 Spacer(Modifier.width(20.dp))
                 VerticalTapeMeter(
                     entityId = entityId,
@@ -433,12 +477,18 @@ internal fun CardValueBarScaffold(
                     tickLabelColor = tickLabelColor,
                 )
                 Spacer(Modifier.height(14.dp))
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    content()
+                    CardMoreInfoButton(entityId)
+                }
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM -> {
             Column(modifier = outer) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) { content() }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    content()
+                    CardMoreInfoButton(entityId)
+                }
                 Spacer(Modifier.height(14.dp))
                 HorizontalTapeMeter(
                     entityId = entityId,
@@ -452,7 +502,10 @@ internal fun CardValueBarScaffold(
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN -> {
             Box(modifier = outer) {
-                Box(modifier = Modifier.fillMaxSize()) { content() }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    content()
+                    CardMoreInfoButton(entityId)
+                }
             }
         }
     }

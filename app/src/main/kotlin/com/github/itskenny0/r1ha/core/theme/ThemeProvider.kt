@@ -172,6 +172,17 @@ val LocalOnSetEntityPercent = staticCompositionLocalOf<
 > { null }
 
 /**
+ * Open the more-info / ultra-detail sheet for a card, invoked by the on-card
+ * "..." detail affordance the scaffold draws in the card body's bottom-right.
+ * The screen layer provides it (wired to the more-info gate) only when the
+ * DETAIL chrome button is enabled and only for the active card; peek neighbours
+ * and previews leave it null so no button is drawn.
+ */
+val LocalOnCardMoreInfo = staticCompositionLocalOf<
+    ((com.github.itskenny0.r1ha.core.ha.EntityId) -> Unit)?
+> { null }
+
+/**
  * Generic service-call dispatch from inside a card panel. Dedicated panels
  * (VacuumPanel, ClimatePanel, LockPanel, ValvePanel, WaterHeaterPanel,
  * LawnMowerPanel, MediaExtrasPanel) build a [com.github.itskenny0.r1ha.core.ha.ServiceCall]
