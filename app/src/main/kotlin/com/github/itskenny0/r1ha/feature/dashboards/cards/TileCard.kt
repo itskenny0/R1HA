@@ -16,10 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Renderer for HA's modern `tile` card. Compact horizontal layout: a
@@ -54,7 +56,12 @@ fun TileCard(
     // Bind the card's entity to a config tap_action that omits one (toggle /
     // more-info / target-less call-service) so the dispatcher always has a target.
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
-    val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() }
+    val stateText = when {
+        card.stateContent.isNotEmpty() && state != null ->
+            resolveStateContent(card.stateContent, state).takeUnless { it.isBlank() }
+        else ->
+            state?.let(::compactStateText)?.takeUnless { it.isBlank() }
+    }
 
     // HA's tile renders its `features:` as a control row below the body. We
     // keep it OUTSIDE the body's tap-to-act pressable (so tapping a feature
@@ -196,3 +203,24 @@ private fun isToggleableDomain(entityId: String): Boolean =
         "remote", "group" -> true
         else -> false
     }
+
+/**
+ * Build the tile's state line from HA's `state_content` token list. Each
+ * token is resolved in order and the non-blank results joined with a space:
+ *  - "state" -> the entity's raw compact state text
+ *  - "last_changed" / "last_updated" -> relative time ("2m", "1h", ...)
+ *  - anything else -> the attribute value for that key, stringified
+ * Unknown/empty tokens are skipped rather than producing a stray gap.
+ */
+internal fun resolveStateContent(tokens: List<String>, state: EntityState): String {
+    return tokens.mapNotNull { token ->
+        when (token) {
+            "state" -> compactStateText(state).takeUnless { it.isBlank() }
+            "last_changed", "last_updated" -> relativeTimeShort(state.lastChanged).takeUnless { it.isBlank() }
+            else -> {
+                val v = state.attributesJson?.get(token) as? JsonPrimitive
+                v?.content?.takeUnless { it.isBlank() }
+            }
+        }
+    }.joinToString(" ")
+}

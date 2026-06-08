@@ -63,6 +63,9 @@ fun TodoListCard(
         ?: entityId?.let { resolveName(null, stateMap.byRaw(it), it) }
     // `hide_completed` mirrors HA's option to drop already-done items.
     val hideCompleted = card.raw["hide_completed"]?.let { (it as? JsonPrimitive)?.content?.toBoolean() } ?: false
+    // `sort` (HA 2025.2): "alpha" = alphabetical by summary, "duedate" = by due date,
+    // null/"manual" = server order (no-op).
+    val sortMode = card.raw["sort"]?.let { (it as? JsonPrimitive)?.content }
 
     var items by remember(entityId) { mutableStateOf<List<ToDoItem>?>(null) }
     // Bump to force a re-fetch after a mutation without re-keying on the list.
@@ -83,7 +86,14 @@ fun TodoListCard(
             repo == null -> EmptyRow(text = "To-do list unavailable")
             rows == null -> EmptyRow(text = "Loading…")
             else -> {
-                val visible = (if (hideCompleted) rows.filter { !it.completed } else rows)
+                val sorted = when (sortMode?.lowercase()) {
+                    "alpha" -> rows.sortedBy { it.summary.lowercase() }
+                    "duedate" -> rows.sortedWith(
+                        compareBy(nullsLast()) { it.due },
+                    )
+                    else -> rows
+                }
+                val visible = (if (hideCompleted) sorted.filter { !it.completed } else sorted)
                     .take(MAX_TODO_ROWS)
                 if (visible.isEmpty()) {
                     EmptyRow(text = if (rows.isEmpty()) "No items" else "All done")

@@ -119,6 +119,22 @@ fun GaugeCard(
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
+        // HA 2022.7: show the active segment's label in needle mode when a
+        // label is configured. Displayed under the name so it gives context
+        // (e.g. "Good" / "Poor" / "Hazardous" for an air-quality gauge).
+        if (card.needle && card.segments.isNotEmpty()) {
+            val activeLabel = activeSegmentLabel(rawValue, card.segments)
+            if (activeLabel != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = activeLabel,
+                    style = R1.labelMicro,
+                    color = severityColor ?: R1.AccentWarm,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -274,4 +290,21 @@ internal fun formatGaugeNumber(d: Double): String {
     } else {
         String.format(java.util.Locale.US, "%.1f", rounded)
     }
+}
+
+/**
+ * Return the label of the highest segment the [value] has reached, or null when
+ * no segment in the sorted list has a label or the value is null. Mirrors the
+ * band-colour selection so the label always matches the highlighted arc band.
+ */
+internal fun activeSegmentLabel(
+    value: Double?,
+    segments: List<com.github.itskenny0.r1ha.core.lovelace.GaugeSegment>,
+): String? {
+    if (value == null || segments.isEmpty()) return null
+    var picked: String? = null
+    for (seg in segments.sortedBy { it.from }) {
+        if (value >= seg.from) picked = seg.label else break
+    }
+    return picked
 }

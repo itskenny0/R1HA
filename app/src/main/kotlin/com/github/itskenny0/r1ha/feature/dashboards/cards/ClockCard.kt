@@ -26,13 +26,22 @@ import java.util.Locale
  * HA offers is rendered as the same digital readout here (the R1's small
  * canvas is better served by big legible digits than a tiny analog dial),
  * with the configured title preserved.
+ *
+ * clock_size (HA 2025.4): small / medium / large. Mapped to R1's text scales.
+ * time_format (HA 2025.4): "12" -> h:mm a (12h AM/PM), else HH:mm (24h).
  */
 @Composable
 fun ClockCard(
     card: LovelaceCard.Clock,
     modifier: Modifier = Modifier,
 ) {
-    val pattern = if (card.showSeconds) "HH:mm:ss" else "HH:mm"
+    val is12h = card.timeFormat == "12"
+    val pattern = when {
+        is12h && card.showSeconds -> "h:mm:ss a"
+        is12h -> "h:mm a"
+        card.showSeconds -> "HH:mm:ss"
+        else -> "HH:mm"
+    }
     val formatter = remember(pattern) { DateTimeFormatter.ofPattern(pattern, Locale.US) }
     val tickMs = if (card.showSeconds) 1_000L else 15_000L
     val now by produceState(initialValue = LocalTime.now(), tickMs) {
@@ -40,6 +49,11 @@ fun ClockCard(
             value = LocalTime.now()
             delay(tickMs)
         }
+    }
+    val textStyle = when (card.clockSize?.lowercase()) {
+        "small" -> R1.bodyEmph
+        "large" -> R1.numeralXl
+        else -> R1.numeralXl  // medium = default
     }
 
     CardSurface(modifier = modifier, title = card.title?.takeUnless { it.isBlank() }) {
@@ -52,7 +66,7 @@ fun ClockCard(
         ) {
             Text(
                 text = now.format(formatter),
-                style = R1.numeralXl,
+                style = textStyle,
                 color = R1.Ink,
             )
         }

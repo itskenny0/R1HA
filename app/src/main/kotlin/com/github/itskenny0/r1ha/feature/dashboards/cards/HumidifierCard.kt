@@ -84,21 +84,26 @@ fun HumidifierCard(
         }
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = currentHumidity?.let { "${fmtTemp(it)}%" } ?: "-",
-                    style = R1.numeralM,
-                    color = R1.Ink,
-                )
+            if (card.showCurrentTemperature) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = currentHumidity?.let { "${fmtTemp(it)}%" } ?: "-",
+                        style = R1.numeralM,
+                        color = R1.Ink,
+                    )
+                }
             }
             if (target != null) {
                 StepperButton(label = "−", accent = accent, enabled = isOn) {
                     onAction(setHumidityAction(card.entityId, (target - step).coerceAtLeast(minH)))
                 }
                 Spacer(Modifier.width(10.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = if (!card.showCurrentTemperature) Modifier.weight(1f) else Modifier,
+                ) {
                     Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.height(2.dp))
                     Text(text = "$target%", style = R1.numeralM, color = accent)
@@ -106,6 +111,12 @@ fun HumidifierCard(
                 Spacer(Modifier.width(10.dp))
                 StepperButton(label = "+", accent = accent, enabled = isOn) {
                     onAction(setHumidityAction(card.entityId, (target + step).coerceAtMost(maxH)))
+                }
+            } else if (!card.showCurrentTemperature) {
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(text = "-", style = R1.numeralM, color = accent)
                 }
             }
         }

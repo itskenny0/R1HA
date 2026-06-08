@@ -83,16 +83,19 @@ fun ThermostatCard(
             StateChip(text = (mode?.takeUnless { it.isBlank() } ?: "-").replace('_', ' '), accent = accent)
         }
         Spacer(Modifier.height(12.dp))
-        // Setpoint stepper: current reading on the left, target +/- on the right.
+        // Setpoint stepper. When show_current_temperature is false, render the
+        // target as the dominant large value and suppress the current reading.
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
-                    style = R1.numeralM,
-                    color = R1.Ink,
-                )
+            if (card.showCurrentTemperature) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
+                        style = R1.numeralM,
+                        color = R1.Ink,
+                    )
+                }
             }
             if (target != null) {
                 StepperButton(label = "−", accent = accent, enabled = active) {
@@ -100,7 +103,10 @@ fun ThermostatCard(
                     onAction(setTemperatureAction(card.entityId, next))
                 }
                 Spacer(Modifier.width(10.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = if (!card.showCurrentTemperature) Modifier.weight(1f) else Modifier,
+                ) {
                     Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.height(2.dp))
                     Text(text = "${fmtTemp(target)}$unit", style = R1.numeralM, color = accent)
@@ -109,6 +115,13 @@ fun ThermostatCard(
                 StepperButton(label = "+", accent = accent, enabled = active) {
                     val next = (target + step).let { if (maxTemp != null) it.coerceAtMost(maxTemp) else it }
                     onAction(setTemperatureAction(card.entityId, next))
+                }
+            } else if (!card.showCurrentTemperature) {
+                // No target temperature known; show placeholder centred.
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(text = "-", style = R1.numeralM, color = accent)
                 }
             }
         }
@@ -128,6 +141,19 @@ fun ThermostatCard(
                     ) { onAction(setHvacModeAction(card.entityId, m)) }
                 }
             }
+        }
+        // HA 2023.12: tile features rendered below the body (e.g. target-temperature
+        // stepper, hvac-modes chip row). Only render when present and state is live.
+        val hasFeatures = card.features.any { it !is com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature.Unsupported }
+        if (hasFeatures && state != null) {
+            Spacer(Modifier.height(10.dp))
+            TileFeatureRows(
+                features = card.features,
+                entityId = card.entityId,
+                state = state,
+                accent = accent,
+                onAction = onAction,
+            )
         }
     }
 }

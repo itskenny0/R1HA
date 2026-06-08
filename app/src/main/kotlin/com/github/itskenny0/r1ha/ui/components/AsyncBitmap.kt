@@ -62,6 +62,7 @@ fun AsyncBitmap(
     bearerToken: String?,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
+    contentScale: ContentScale = ContentScale.Crop,
 ) {
     val resolved = remember(url, serverUrl) { url?.let { resolveUrl(it, serverUrl) } }
     // Seed bitmap from the memory cache so swiping back to a known cover paints
@@ -98,7 +99,7 @@ fun AsyncBitmap(
             Image(
                 bitmap = img,
                 contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
+                contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
             )
         } else if (failed) {

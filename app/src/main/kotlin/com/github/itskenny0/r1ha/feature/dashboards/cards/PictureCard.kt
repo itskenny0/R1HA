@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import androidx.compose.ui.layout.ContentScale
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
@@ -64,7 +65,7 @@ fun PictureGlanceCard(
                 .fillMaxWidth()
                 .height(160.dp),
         ) {
-            PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp))
+            PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp), fitModeScale(card.fitMode))
             // Chips strip overlaid along the bottom edge, on a darkening scrim.
             Row(
                 modifier = Modifier
@@ -107,7 +108,7 @@ fun PictureEntityCard(
             .border(1.dp, R1.Hairline, R1.ShapeM)
             .r1Pressable(onClick = { onAction(action) }),
     ) {
-        PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp))
+        PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp), fitModeScale(card.fitMode))
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -140,7 +141,7 @@ fun PictureEntityCard(
 }
 
 @Composable
-private fun PictureBackground(url: String?, modifier: Modifier) {
+private fun PictureBackground(url: String?, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
     if (url.isNullOrBlank()) {
         Box(modifier = modifier.background(R1.SurfaceMuted))
         return
@@ -151,7 +152,15 @@ private fun PictureBackground(url: String?, modifier: Modifier) {
         bearerToken = LocalHaBearerToken.current,
         modifier = modifier,
         contentDescription = null,
+        contentScale = contentScale,
     )
+}
+
+/** Map HA's fit_mode string to a Compose ContentScale. Defaults to Crop (HA's default). */
+private fun fitModeScale(fitMode: String?): ContentScale = when (fitMode?.lowercase()) {
+    "contain" -> ContentScale.Fit
+    "fill" -> ContentScale.FillBounds
+    else -> ContentScale.Crop
 }
 
 @Composable

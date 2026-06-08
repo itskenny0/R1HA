@@ -19,7 +19,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
@@ -69,6 +71,14 @@ fun LovelaceBadgeRow(
     }
 }
 
+/** Map badge size to (iconSize, textStyle, minHeight). Default = normal. */
+@Composable
+private fun badgeSizeTokens(size: String?): Triple<Dp, TextStyle, Dp> = when (size?.lowercase()) {
+    "small" -> Triple(14.dp, R1.numeralS, 36.dp)
+    "large" -> Triple(22.dp, R1.body, 56.dp)
+    else -> Triple(18.dp, R1.labelMicro, 48.dp)  // normal / null
+}
+
 @Composable
 private fun BadgeChip(
     badge: LovelaceBadge,
@@ -108,6 +118,8 @@ private fun BadgeChip(
         badge.entityId ?: "badge"
     }
 
+    val (iconSize, textStyle, minHeight) = badgeSizeTokens(badge.size)
+
     var chip = Modifier
         .clip(R1.ShapeRound)
         .background(R1.Surface)
@@ -121,7 +133,7 @@ private fun BadgeChip(
         chip = chip.semantics { contentDescription = "Badge $label" }
     }
     chip = chip
-        .defaultMinSize(minHeight = 48.dp)
+        .defaultMinSize(minHeight = minHeight)
         .padding(horizontal = R1.space.m, vertical = R1.space.s)
 
     Row(
@@ -142,14 +154,14 @@ private fun BadgeChip(
                 imageVector = iconVector,
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier.size(iconSize),
             )
             if (name != null || stateText != null) Spacer(Modifier.width(R1.space.xs))
         }
         if (name != null) {
             Text(
                 text = name,
-                style = R1.labelMicro,
+                style = textStyle,
                 color = R1.Ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -159,7 +171,7 @@ private fun BadgeChip(
         if (stateText != null) {
             Text(
                 text = stateText,
-                style = R1.labelMicro,
+                style = textStyle,
                 color = accent,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

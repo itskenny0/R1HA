@@ -234,9 +234,13 @@ private fun DashboardRow(
             )
         }
         if (config != null && config.views.isNotEmpty()) {
+            // Sub-views (HA 2022.10) are navigated to via actions, not listed as
+            // top-level tabs, so filter them out here. They remain fully renderable
+            // when navigated to directly by path.
+            val visibleViews = config.views.filter { !it.subview }
             Spacer(Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                config.views.forEach { v ->
+                visibleViews.forEach { v ->
                     ViewRow(
                         view = v,
                         onClick = { onPickView(v.path) },

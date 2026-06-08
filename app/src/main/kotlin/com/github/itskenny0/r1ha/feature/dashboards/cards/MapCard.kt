@@ -37,15 +37,23 @@ fun MapCard(
     stateMap: EntityStates,
     modifier: Modifier = Modifier,
 ) {
+    val labelByState = card.labelMode?.equals("state", ignoreCase = true) == true
     val located = card.entities.mapNotNull { row ->
         val state = safeEntityId(row.entityId)?.let { stateMap[it] }
         val lat = latLon(state, "latitude")
         val lon = latLon(state, "longitude")
         if (lat != null && lon != null) {
+            // labelMode == "state": show the entity's raw state; otherwise use friendly name.
+            val label = if (labelByState) {
+                state?.rawState?.takeUnless { it.isBlank() } ?: resolveName(row.name, state, row.entityId)
+            } else {
+                resolveName(row.name, state, row.entityId)
+            }
             MapPoint(
-                label = resolveName(row.name, state, row.entityId),
+                label = label,
                 lat = lat,
                 lon = lon,
+                isFocus = card.focusEntities.isEmpty() || row.entityId in card.focusEntities,
             )
         } else {
             null
@@ -66,7 +74,10 @@ fun MapCard(
                     Text(text = "NO LOCATABLE ENTITIES", style = R1.labelMicro, color = R1.InkMuted)
                 }
             } else {
-                MapCanvas(located)
+                // Use only focus-flagged entities for the bounding box so
+                // far-away non-focus entities don't zoom the viewport out.
+                val focusPoints = located.filter { it.isFocus }.takeUnless { it.isEmpty() } ?: located
+                MapCanvas(allPoints = located, boundsPoints = focusPoints)
                 Spacer(Modifier.height(8.dp))
                 located.forEach { p ->
                     Row(
@@ -101,9 +112,10 @@ fun MapCard(
 }
 
 @Composable
-private fun MapCanvas(points: List<MapPoint>) {
-    val lats = points.map { it.lat }
-    val lons = points.map { it.lon }
+private fun MapCanvas(allPoints: List<MapPoint>, boundsPoints: List<MapPoint> = allPoints) {
+    // Bounding box is derived from the focus/bounds points only.
+    val lats = boundsPoints.map { it.lat }
+    val lons = boundsPoints.map { it.lon }
     val latMin = lats.min()
     val latMax = lats.max()
     val lonMin = lons.min()
@@ -122,19 +134,22 @@ private fun MapCanvas(points: List<MapPoint>) {
             val h = size.height
             drawLine(R1.Hairline, Offset(w * 0.5f, 0f), Offset(w * 0.5f, h), strokeWidth = 1f)
             drawLine(R1.Hairline, Offset(0f, h * 0.5f), Offset(w, h * 0.5f), strokeWidth = 1f)
-            points.forEach { p ->
+            // All points are plotted; the projection is driven by boundsPoints.
+            allPoints.forEach { p ->
                 // Normalise into [0.1 .. 0.9] with north = up.
                 val xFrac = ((p.lon - lonMin) / lonSpan).toFloat() * 0.8f + 0.1f
                 val yFrac = 1f - (((p.lat - latMin) / latSpan).toFloat() * 0.8f + 0.1f)
                 val centre = Offset(xFrac * w, yFrac * h)
-                drawCircle(color = R1.AccentWarm.copy(alpha = 0.24f), radius = 10f, center = centre)
-                drawCircle(color = R1.AccentWarm, radius = 3.5f, center = centre)
+                // Non-focus entities are plotted dimmer so they read as context, not primary.
+                val alpha = if (p.isFocus) 1f else 0.4f
+                drawCircle(color = R1.AccentWarm.copy(alpha = 0.24f * alpha), radius = 10f, center = centre)
+                drawCircle(color = R1.AccentWarm.copy(alpha = alpha), radius = 3.5f, center = centre)
             }
         }
     }
 }
 
-private data class MapPoint(val label: String, val lat: Double, val lon: Double)
+private data class MapPoint(val label: String, val lat: Double, val lon: Double, val isFocus: Boolean = true)
 
 private fun latLon(state: EntityState?, key: String): Double? {
     val prim = state?.attributesJson?.get(key) as? JsonPrimitive ?: return null
