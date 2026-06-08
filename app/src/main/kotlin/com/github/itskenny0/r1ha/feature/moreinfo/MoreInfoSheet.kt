@@ -56,6 +56,8 @@ import com.github.itskenny0.r1ha.ui.components.ClimatePanel
 import com.github.itskenny0.r1ha.ui.components.CoverPanel
 import com.github.itskenny0.r1ha.ui.components.CustomActionsPanel
 import com.github.itskenny0.r1ha.ui.components.FanPanel
+import com.github.itskenny0.r1ha.ui.components.FavoriteColorChips
+import com.github.itskenny0.r1ha.ui.components.favoriteColorAction
 import com.github.itskenny0.r1ha.ui.components.HumidifierPanel
 import com.github.itskenny0.r1ha.ui.components.LawnMowerPanel
 import com.github.itskenny0.r1ha.ui.components.LockPanel
@@ -485,6 +487,9 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                 )
             }
         }
+        // Favourite colours — user-curated per-entity swatches from EntityOverride.favoriteColors.
+        // Each swatch fires light.turn_on with rgb_color. Renders nothing when none configured.
+        FavoriteColorChips(entity) { argb -> dispatch(favoriteColorAction(entity, argb)) }
         // Effects — reuse the wire-level setter; chips so the user can pick by name.
         if (entity.effectList.isNotEmpty()) {
             Text(text = "EFFECT", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
