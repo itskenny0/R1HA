@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -787,10 +789,18 @@ fun ValvePanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
     if (state.id.domain != Domain.VALVE) return
     val dispatch = LocalOnEntityCall.current
     val supportsStop = state.hasFeature(EntityState.ValveFeature.STOP)
-    if (!supportsStop) return
-    Row(modifier = modifier.fillMaxWidth()) {
-        PanelChip("STOP", accent) {
-            dispatch?.invoke(ServiceCall.valveStop(state.id))
+    val favoritesEmpty = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current[state.id.value]?.favoritePositions.orEmpty().isEmpty()
+    if (!supportsStop && favoritesEmpty) return
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (supportsStop) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                PanelChip("STOP", accent) {
+                    dispatch?.invoke(ServiceCall.valveStop(state.id))
+                }
+            }
+        }
+        FavoritePositionChips(state, accent) { pos ->
+            dispatch?.invoke(ServiceCall.valveSetPosition(state.id, pos))
         }
     }
 }
@@ -1164,7 +1174,7 @@ fun CoverPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
     // a duplicate wheel mode would need theme-side plumbing this slice doesn't own.
     val hasTiltPosition = state.rawHasFeature(EntityState.CoverFeature.SET_TILT_POSITION) &&
         state.attrInt("current_tilt_position") != null
-    // Gate the whole panel on at least one tilt capability being advertised. We
+    // Gate the tilt section on at least one tilt capability being advertised. We
     // require an explicit tilt bit (not the forgive-omission default) here so a
     // plain blind with supported_features == 0 doesn't sprout a dead tilt row.
     val sf = state.rawSupportedFeatures()
@@ -1174,50 +1184,152 @@ fun CoverPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
             EntityState.CoverFeature.STOP_TILT or
             EntityState.CoverFeature.SET_TILT_POSITION
         )) != 0
-    if (!anyTiltBit) return
+    val hasFavorites = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current[state.id.value]?.favoritePositions.orEmpty().isNotEmpty()
+    if (!anyTiltBit && !hasFavorites) return
     val tiltPos = state.attrInt("current_tilt_position")
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(text = "TILT", style = R1.labelMicro, color = R1.InkMuted)
-        Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (showOpenTilt) PanelChip("OPEN", accent) {
-                dispatch?.invoke(ServiceCall.coverOpenTilt(state.id))
-            }
-            if (showCloseTilt) PanelChip("CLOSE", accent) {
-                dispatch?.invoke(ServiceCall.coverCloseTilt(state.id))
-            }
-            if (showStopTilt) PanelChip("STOP", accent) {
-                dispatch?.invoke(ServiceCall.coverStopTilt(state.id))
-            }
-            if (hasTiltPosition) {
-                val current = tiltPos ?: 0
-                PanelChip("TILT −", accent) {
-                    dispatch?.invoke(
-                        ServiceCall.coverSetTiltPosition(state.id, (current - 10).coerceIn(0, 100)),
-                    )
+        if (anyTiltBit) {
+            Text(text = "TILT", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (showOpenTilt) PanelChip("OPEN", accent) {
+                    dispatch?.invoke(ServiceCall.coverOpenTilt(state.id))
                 }
-                PanelChip("TILT +", accent) {
-                    dispatch?.invoke(
-                        ServiceCall.coverSetTiltPosition(state.id, (current + 10).coerceIn(0, 100)),
-                    )
+                if (showCloseTilt) PanelChip("CLOSE", accent) {
+                    dispatch?.invoke(ServiceCall.coverCloseTilt(state.id))
+                }
+                if (showStopTilt) PanelChip("STOP", accent) {
+                    dispatch?.invoke(ServiceCall.coverStopTilt(state.id))
+                }
+                if (hasTiltPosition) {
+                    val current = tiltPos ?: 0
+                    PanelChip("TILT −", accent) {
+                        dispatch?.invoke(
+                            ServiceCall.coverSetTiltPosition(state.id, (current - 10).coerceIn(0, 100)),
+                        )
+                    }
+                    PanelChip("TILT +", accent) {
+                        dispatch?.invoke(
+                            ServiceCall.coverSetTiltPosition(state.id, (current + 10).coerceIn(0, 100)),
+                        )
+                    }
+                }
+            }
+            if (tiltPos != null) {
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "AT", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.width(6.dp))
+                    Text(text = "$tiltPos%", style = R1.labelMicro, color = accent)
                 }
             }
         }
-        if (tiltPos != null) {
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "AT", style = R1.labelMicro, color = R1.InkMuted)
-                Spacer(Modifier.width(6.dp))
-                Text(text = "$tiltPos%", style = R1.labelMicro, color = accent)
-            }
+        FavoritePositionChips(state, accent) { pos ->
+            dispatch?.invoke(
+                ServiceCall(
+                    state.id,
+                    "set_cover_position",
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("position", kotlinx.serialization.json.JsonPrimitive(pos))
+                    },
+                ),
+            )
         }
     }
+}
+
+/**
+ * One-tap favourite chips. Reads the entity's favourites off
+ * [com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides] and renders a chip per value;
+ * tapping fires [onPick]. Renders nothing when the entity has no favourites
+ * configured, so a user who never sets any sees no change.
+ */
+@Composable
+internal fun FavoritePositionChips(
+    state: EntityState,
+    accent: Color,
+    onPick: (Int) -> Unit,
+) {
+    val overrides = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current
+    val favorites = overrides[state.id.value]?.favoritePositions.orEmpty()
+    if (favorites.isEmpty()) return
+    Spacer(Modifier.height(6.dp))
+    Text(text = "FAVOURITES", style = R1.labelMicro, color = R1.InkMuted)
+    Spacer(Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        favorites.forEach { pos ->
+            PanelChip(
+                label = "$pos%",
+                accent = accent,
+                selected = state.percent == pos,
+                onClick = { onPick(pos) },
+            )
+        }
+    }
+}
+
+/**
+ * One-tap favourite-colour swatches for a light. Reads the entity's
+ * [com.github.itskenny0.r1ha.core.prefs.EntityOverride.favoriteColors] off
+ * [com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides]; each swatch fires
+ * `light.turn_on` with the colour's `rgb_color`. Renders nothing when none set.
+ */
+@Composable
+internal fun FavoriteColorChips(
+    state: EntityState,
+    onPick: (Int) -> Unit,
+) {
+    val overrides = com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides.current
+    val colors = overrides[state.id.value]?.favoriteColors.orEmpty()
+    if (colors.isEmpty()) return
+    Spacer(Modifier.height(6.dp))
+    Text(text = "FAVOURITE COLOURS", style = R1.labelMicro, color = R1.InkMuted)
+    Spacer(Modifier.height(4.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        colors.forEach { argb ->
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color(argb))
+                    .border(1.dp, R1.Hairline, CircleShape)
+                    .r1Pressable(onClick = { onPick(argb) }),
+            )
+        }
+    }
+}
+
+/** Build the `light.turn_on { rgb_color: [r,g,b] }` call for a favourite swatch. */
+internal fun favoriteColorAction(state: EntityState, argb: Int): ServiceCall {
+    val r = (argb shr 16) and 0xFF
+    val g = (argb shr 8) and 0xFF
+    val b = argb and 0xFF
+    return ServiceCall(
+        state.id,
+        "turn_on",
+        kotlinx.serialization.json.buildJsonObject {
+            put(
+                "rgb_color",
+                kotlinx.serialization.json.buildJsonArray {
+                    add(kotlinx.serialization.json.JsonPrimitive(r))
+                    add(kotlinx.serialization.json.JsonPrimitive(g))
+                    add(kotlinx.serialization.json.JsonPrimitive(b))
+                },
+            )
+        },
+    )
 }
 
 /**
