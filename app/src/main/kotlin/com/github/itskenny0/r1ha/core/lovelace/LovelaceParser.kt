@@ -245,6 +245,13 @@ object LovelaceParser {
                 showState = obj["show_state"]?.asBooleanOrNull() ?: false,
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
             )
+            "shortcut" -> LovelaceCard.Shortcut(
+                raw = obj,
+                name = obj["name"]?.asStringOrNull(),
+                icon = obj["icon"]?.asStringOrNull(),
+                color = obj["color"]?.asStringOrNull(),
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+            )
             "tile" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
                 LovelaceCard.Tile(

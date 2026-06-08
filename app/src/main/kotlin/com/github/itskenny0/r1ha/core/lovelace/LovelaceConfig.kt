@@ -136,6 +136,24 @@ sealed class LovelaceCard {
         override val type: String = "button"
     }
 
+    /**
+     * Shortcut card (HA 2026.5): a tile-shaped one-tap launcher. Carries no
+     * entity; the whole card fires [tapAction] (navigate / url / call-service /
+     * assist). [name] / [icon] / [color] are optional overrides; when null HA
+     * resolves them from the action (we best-effort the name from a navigate
+     * path at render time and otherwise show a generic label).
+     */
+    @Immutable
+    data class Shortcut(
+        override val raw: JsonObject,
+        val name: String?,
+        val icon: String?,
+        val color: String?,
+        val tapAction: LovelaceAction?,
+    ) : LovelaceCard() {
+        override val type: String = "shortcut"
+    }
+
     /** Modern compact tile (HA's current first-class card type). */
     @Immutable
     data class Tile(
