@@ -1725,13 +1725,28 @@ private fun PageDeck(
     // Report the settled card index up to the VM, scoped to this page. Active page
     // writes through setCurrentIndex (which also updates the legacy currentIndex
     // field); inactive pages write through setIndexForPage so background scroll is
-    // persisted without disturbing the active deck's state.
+    // persisted without disturbing the active deck's state. The active deck also
+    // fires a tick on each settle so flipping cards gives the same tactile
+    // end-state as tab swipes and wheel detents — the primary navigation gesture
+    // was previously the only silent one. First emission is skipped so composing
+    // the deck (open, tab switch, restore) doesn't fire a phantom haptic.
+    val deckView = LocalView.current
+    val deckHaptic = com.github.itskenny0.r1ha.ui.components.rememberR1Haptic()
     LaunchedEffect(pagerState, cards.size, pageId, isActive) {
+        var firstSettle = true
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collect { page ->
                 val idx = realIndexOf(page)
-                if (isActive) vm.setCurrentIndex(idx) else vm.setIndexForPage(pageId, idx)
+                if (isActive) {
+                    vm.setCurrentIndex(idx)
+                    if (!firstSettle && appSettings.behavior.haptics) {
+                        deckHaptic.tick(deckView)
+                    }
+                } else {
+                    vm.setIndexForPage(pageId, idx)
+                }
+                firstSettle = false
             }
     }
     // Stream the pager's isScrollInProgress up to the screen-level
