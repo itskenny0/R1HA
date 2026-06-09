@@ -97,7 +97,8 @@ fun PictureEntityCard(
 ) {
     val state = stateMap.byRaw(card.entityId)
     val name = resolveName(card.name, state, card.entityId)
-    val imageUrl = card.image ?: entityPictureOf(state)
+    val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
+    val imageUrl = card.image ?: entityPictureOf(imageEntityState) ?: entityPictureOf(state)
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
     val accent = stateAccentFor(card.entityId, state)
     Box(
@@ -137,6 +138,35 @@ fun PictureEntityCard(
                 )
             }
         }
+    }
+}
+
+/**
+ * Renderer for HA's plain `picture` card. Shows [card.image] (a static URL) or,
+ * when [card.imageEntity] is set, that entity's `entity_picture` attribute.
+ * The whole card fires [card.tapAction] when set.
+ */
+@Composable
+fun PicturePlainCard(
+    card: LovelaceCard.Picture,
+    stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
+    val imageUrl = card.image ?: entityPictureOf(imageEntityState)
+    val clickModifier = card.tapAction?.let { action ->
+        Modifier.r1Pressable(onClick = { onAction(action) })
+    } ?: Modifier
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(160.dp)
+            .clip(R1.ShapeM)
+            .border(1.dp, R1.Hairline, R1.ShapeM)
+            .then(clickModifier),
+    ) {
+        PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp))
     }
 }
 

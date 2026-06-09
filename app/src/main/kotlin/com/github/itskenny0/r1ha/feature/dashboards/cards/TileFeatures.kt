@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -12,22 +13,35 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature
+import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.attrInt
 import com.github.itskenny0.r1ha.ui.components.attrString
 import com.github.itskenny0.r1ha.ui.components.attrStringList
+import com.github.itskenny0.r1ha.ui.components.chartYFraction
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import java.time.Duration
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -689,10 +703,152 @@ private fun renderFeature(
                 },
             )
         }
+        // ── Bar-gauge (HA 2025.9) ─────────────────────────────────────────────
+        is LovelaceTileFeature.BarGauge -> {
+            // Read value from attribute or entity state; skip when non-numeric.
+            val raw = if (feature.attribute != null) {
+                state.attributesJson?.get(feature.attribute)
+                    ?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            } else {
+                state.rawState
+            }
+            val value = raw?.toDoubleOrNull() ?: return false
+            val span = (feature.max - feature.min).takeIf { it > 0 } ?: return false
+            val fraction = ((value - feature.min) / span).toFloat().coerceIn(0f, 1f)
+            val barColor = haColorAccent(feature.color) ?: accent
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = (Math.round(value * 10.0) / 10.0).let {
+                        if (it == kotlin.math.floor(it)) it.toLong().toString() else it.toString()
+                    },
+                    style = R1.labelMicro,
+                    color = barColor,
+                )
+                Spacer(Modifier.height(3.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(R1.ShapeRound)
+                        .background(R1.SurfaceMuted),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction)
+                            .height(6.dp)
+                            .clip(R1.ShapeRound)
+                            .background(barColor),
+                    )
+                }
+            }
+        }
+        // ── Trend-graph (HA 2025.9) ──────────────────────────────────────────
+        is LovelaceTileFeature.TrendGraph -> {
+            val repo = LocalHaRepository.current ?: return false
+            var points by remember(entityId, feature.hoursToShow) {
+                mutableStateOf<List<HistoryPoint>>(emptyList())
+            }
+            LaunchedEffect(entityId, feature.hoursToShow) {
+                safeEntityId(entityId)?.let { eid ->
+                    repo.fetchHistory(eid, hours = feature.hoursToShow)
+                        .onSuccess { points = it }
+                }
+            }
+            val numericPts = points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
+            if (numericPts.size < 2) return false
+            val yMin = numericPts.map { it.second }.min()
+            val yMax = numericPts.map { it.second }.max()
+            val tStart = numericPts.map { it.first }.min()
+            val tEnd = numericPts.map { it.first }.max()
+            val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(R1.Surface)
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+            ) {
+                val w = size.width
+                val h = size.height
+                val path = Path()
+                numericPts.forEachIndexed { i, (instant, v) ->
+                    val elapsed = Duration.between(tStart, instant).toMillis().toFloat()
+                    val x = (elapsed / tSpan) * w
+                    val yFrac = chartYFraction(v, yMin, yMax)
+                    val y = h - (yFrac * h)
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(
+                    path = path,
+                    color = accent,
+                    style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Butt),
+                )
+            }
+        }
+        // ── Date-set (HA 2025.9) ─────────────────────────────────────────────
+        is LovelaceTileFeature.DateSet -> {
+            if (domain != "date" && domain != "datetime") return false
+            val isDatetime = domain == "datetime"
+            val current = state.rawState
+            val datePattern = Regex("\\d{4}-\\d{2}-\\d{2}")
+            val datetimePattern = Regex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}")
+            val valid = if (isDatetime) current?.matches(datetimePattern) == true
+                        else current?.matches(datePattern) == true
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = if (isDatetime) "DATETIME" else "DATE", style = R1.labelMicro, color = R1.InkMuted)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = current ?: "-",
+                        style = R1.numeralM,
+                        color = accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                StepperButton(label = "-", accent = accent, enabled = valid) {
+                    if (!valid || current == null) return@StepperButton
+                    val serviceKey = if (isDatetime) "datetime" else "date"
+                    val next = if (isDatetime) nudgeDateTimeByDays(current, -1) else nudgeDateByDays(current, -1)
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "$domain.set_value",
+                            entityId = entityId,
+                            data = buildJsonObject { put(serviceKey, JsonPrimitive(next)) },
+                        ),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                StepperButton(label = "+", accent = accent, enabled = valid) {
+                    if (!valid || current == null) return@StepperButton
+                    val serviceKey = if (isDatetime) "datetime" else "date"
+                    val next = if (isDatetime) nudgeDateTimeByDays(current, +1) else nudgeDateByDays(current, +1)
+                    onAction(
+                        LovelaceAction.CallService(
+                            service = "$domain.set_value",
+                            entityId = entityId,
+                            data = buildJsonObject { put(serviceKey, JsonPrimitive(next)) },
+                        ),
+                    )
+                }
+            }
+        }
         is LovelaceTileFeature.Unsupported -> return false
     }
     return true
 }
+
+/** Nudge a "YYYY-MM-DD" string by [days], returning the new date string or the original on parse failure. */
+private fun nudgeDateByDays(date: String, days: Int): String = runCatching {
+    java.time.LocalDate.parse(date).plusDays(days.toLong()).toString()
+}.getOrDefault(date)
+
+/** Nudge the date part of a "YYYY-MM-DD HH:MM:SS" datetime string by [days]. */
+private fun nudgeDateTimeByDays(dt: String, days: Int): String = runCatching {
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    java.time.LocalDateTime.parse(dt, formatter).plusDays(days.toLong()).format(formatter)
+}.getOrDefault(dt)
 
 /** on / off pair. Mirrors HA's toggle feature (homeassistant.turn_on/off). */
 @Composable

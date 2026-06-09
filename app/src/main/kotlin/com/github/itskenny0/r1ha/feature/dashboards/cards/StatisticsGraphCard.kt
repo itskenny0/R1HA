@@ -23,59 +23,88 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import com.github.itskenny0.r1ha.core.ha.HistoryPoint
+import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.nav.Routes
+import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import java.time.Duration
+import java.time.Instant
 
 /**
- * Renderer for HA's `history-graph` card. Fetches each configured entity's
- * history off [LocalHaRepository] and overlays the numeric series on a
- * single shared canvas, each line a distinct accent so they're tellable
- * apart, with a small colour-coded legend underneath.
+ * Renderer for HA's `statistics-graph` card (HA 2022.11). Fetches long-term-statistics
+ * buckets for each configured entity and overlays the requested aggregate series on a
+ * shared canvas. Mirrors the multi-series canvas idiom from [HistoryGraphCard] and the
+ * fetch pattern from [StatisticCard].
  *
- * Mirrors the [com.github.itskenny0.r1ha.ui.components.SensorHistoryChart]
- * canvas idiom (faint baseline + midline, accent stroke) but plots multiple
- * series against a common time + value axis. Non-numeric entities are
- * skipped from the line plot (HA renders those as state-timeline bars; we
- * leave them out rather than fake a meaningless line).
+ * Only the first stat_type is plotted per entity (the mean series by default). A
+ * "history" shortcut navigates to the Statistics screen. Gracefully shows a placeholder
+ * when no numeric data is available.
  */
 @Composable
-fun HistoryGraphCard(
-    card: LovelaceCard.HistoryGraph,
+fun StatisticsGraphCard(
+    card: LovelaceCard.StatisticsGraph,
     stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalHaRepository.current
-    val ids = remember(card.entities) { card.entities.map { it.entityId } }
-    var series by remember(ids, card.hoursToShow) {
-        mutableStateOf<List<EntitySeries>>(emptyList())
+    val statType = card.statTypes.firstOrNull() ?: "mean"
+    var series by remember(card.entityIds, statType, card.period, card.daysToShow) {
+        mutableStateOf<List<Pair<String, List<Pair<Instant, Double>>>>>(emptyList())
     }
+    var loaded by remember(card.entityIds, statType, card.period, card.daysToShow) { mutableStateOf(false) }
+
     if (repo != null) {
-        LaunchedEffect(ids, card.hoursToShow) {
-            val out = ArrayList<EntitySeries>(ids.size)
-            ids.forEachIndexed { idx, raw ->
-                val eid = safeEntityId(raw) ?: return@forEachIndexed
-                val name = resolveName(card.entities[idx].name, stateMap[eid], raw)
-                repo.fetchHistory(eid, hours = card.hoursToShow)
-                    .onSuccess { pts ->
-                        out.add(EntitySeries(name, pts, lineColor(idx)))
+        LaunchedEffect(card.entityIds, statType, card.period, card.daysToShow) {
+            val end = Instant.now()
+            val lookback = card.daysToShow?.let { Duration.ofDays(it.toLong()) } ?: lookbackFor(card.period)
+            val start = end.minus(lookback)
+            repo.getStatisticsDuringPeriod(
+                statisticIds = card.entityIds,
+                start = start,
+                end = end,
+                period = bucketPeriodFor(card.period),
+            ).onSuccess { byId ->
+                series = card.entityIds.mapNotNull { eid ->
+                    val buckets = byId[eid] ?: return@mapNotNull null
+                    val pts = buckets.mapNotNull { b ->
+                        val v = statisticBucketValue(b, statType) ?: return@mapNotNull null
+                        b.start to v
                     }
+                    if (pts.isEmpty()) null else eid to pts
+                }
             }
-            series = out
+            loaded = true
         }
     }
 
     CardSurface(modifier = modifier, title = card.title?.takeUnless { it.isBlank() }) {
         Column(modifier = Modifier.padding(horizontal = 14.dp)) {
-            val numericSeries = series.filter { it.points.count { p -> p.numeric != null } >= 2 }
-            if (numericSeries.isEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StateChip(text = statType.uppercase(), accent = R1.InkSoft)
+                Text(
+                    text = "HISTORY",
+                    style = R1.labelMicro,
+                    color = R1.AccentCool,
+                    modifier = Modifier
+                        .clip(R1.ShapeRound)
+                        .r1Pressable(onClick = { onAction(LovelaceAction.Navigate(Routes.STATISTICS)) })
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            if (series.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -85,29 +114,34 @@ fun HistoryGraphCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = if (repo == null) "HISTORY UNAVAILABLE" else "WAITING FOR HISTORY",
+                        text = when {
+                            repo == null -> "STATISTICS UNAVAILABLE"
+                            !loaded -> "LOADING..."
+                            else -> "NO STATISTICS"
+                        },
                         style = R1.labelMicro,
                         color = R1.InkMuted,
                     )
                 }
             } else {
-                MultiLineChart(numericSeries)
+                StatisticsMultiLineChart(series)
                 Spacer(Modifier.height(6.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    numericSeries.forEach { s ->
+                    series.forEachIndexed { idx, (eid, _) ->
+                        val name = resolveName(null, stateMap.byRaw(eid), eid)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(RoundedCornerShape(2.dp))
-                                    .background(s.color),
+                                    .background(lineColor(idx)),
                             )
                             Spacer(Modifier.size(4.dp))
                             Text(
-                                text = s.name,
+                                text = name,
                                 style = R1.labelMicro,
                                 color = R1.InkSoft,
                                 maxLines = 1,
@@ -122,14 +156,13 @@ fun HistoryGraphCard(
 }
 
 @Composable
-private fun MultiLineChart(series: List<EntitySeries>) {
-    // Shared bounds across every numeric series so the lines share a frame.
-    val numeric = series.map { s -> s.points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } } }
-    val allValues = numeric.flatten().map { it.second }
-    if (allValues.size < 2) return
+private fun StatisticsMultiLineChart(series: List<Pair<String, List<Pair<Instant, Double>>>>) {
+    val allPts = series.flatMap { it.second }
+    if (allPts.size < 2) return
+    val allValues = allPts.map { it.second }
     val yMin = allValues.min()
     val yMax = allValues.max()
-    val allTimes = numeric.flatten().map { it.first }
+    val allTimes = allPts.map { it.first }
     val tStart = allTimes.min()
     val tEnd = allTimes.max()
     val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
@@ -152,8 +185,7 @@ private fun MultiLineChart(series: List<EntitySeries>) {
             strokeWidth = 1.dp.toPx(),
             pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f),
         )
-        series.forEachIndexed { idx, _ ->
-            val pts = numeric[idx]
+        series.forEachIndexed { idx, (_, pts) ->
             if (pts.size < 2) return@forEachIndexed
             val path = Path()
             pts.forEachIndexed { i, (instant, value) ->
@@ -165,23 +197,20 @@ private fun MultiLineChart(series: List<EntitySeries>) {
             }
             drawPath(
                 path = path,
-                color = series[idx].color,
+                color = lineColor(idx),
                 style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Butt),
             )
         }
     }
 }
 
-private data class EntitySeries(
-    val name: String,
-    val points: List<HistoryPoint>,
-    val color: Color,
-)
-
-/** Cycle a small palette so each series in the graph reads distinctly. */
-internal fun lineColor(index: Int): Color = when (index % 4) {
-    0 -> R1.AccentWarm
-    1 -> R1.AccentCool
-    2 -> R1.AccentGreen
-    else -> R1.StatusAmber
+/** Extract one numeric value from a [StatisticsBucket] for a given [statType]. */
+private fun statisticBucketValue(b: StatisticsBucket, statType: String): Double? = when (statType.lowercase()) {
+    "mean" -> b.mean
+    "min" -> b.min
+    "max" -> b.max
+    "sum" -> b.sum
+    "state" -> b.state
+    "change" -> b.change
+    else -> b.mean ?: b.state
 }

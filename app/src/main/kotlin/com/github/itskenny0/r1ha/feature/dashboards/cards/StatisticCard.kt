@@ -126,7 +126,7 @@ internal fun formatStatistic(value: Double): String {
 }
 
 /** Lookback window for the card's coarse period label. */
-private fun lookbackFor(period: String): Duration = when (period.lowercase(Locale.US)) {
+internal fun lookbackFor(period: String): Duration = when (period.lowercase(Locale.US)) {
     "hour", "5minute" -> Duration.ofDays(1)
     "day" -> Duration.ofDays(7)
     "week" -> Duration.ofDays(30)
@@ -136,7 +136,7 @@ private fun lookbackFor(period: String): Duration = when (period.lowercase(Local
 }
 
 /** Recorder bucket resolution to request for the card's period label. */
-private fun bucketPeriodFor(period: String): String = when (period.lowercase(Locale.US)) {
+internal fun bucketPeriodFor(period: String): String = when (period.lowercase(Locale.US)) {
     "hour", "5minute" -> "hour"
     "week" -> "day"
     "month" -> "week"

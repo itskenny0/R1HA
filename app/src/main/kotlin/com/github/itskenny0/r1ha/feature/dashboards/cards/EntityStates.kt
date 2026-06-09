@@ -108,7 +108,10 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
             card.cameraImage?.let { sink.addEntity(it) }
             card.entities.forEach { sink.addEntity(it.entityId) }
         }
-        is LovelaceCard.PictureEntity -> sink.addEntity(card.entityId)
+        is LovelaceCard.PictureEntity -> {
+            sink.addEntity(card.entityId)
+            card.imageEntity?.let { sink.addEntity(it) }
+        }
         is LovelaceCard.Area -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.HistoryGraph -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.AlarmPanel -> sink.addEntity(card.entityId)
@@ -118,6 +121,8 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Humidifier -> sink.addEntity(card.entityId)
         is LovelaceCard.EntityFilter -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Statistic -> sink.addEntity(card.entityId)
+        is LovelaceCard.StatisticsGraph -> card.entityIds.forEach { sink.addEntity(it) }
+        is LovelaceCard.Picture -> card.imageEntity?.let { sink.addEntity(it) }
         is LovelaceCard.Shortcut -> Unit
         is LovelaceCard.Distribution -> card.entries.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Markdown -> Unit

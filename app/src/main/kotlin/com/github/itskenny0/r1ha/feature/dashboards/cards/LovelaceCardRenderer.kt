@@ -68,6 +68,8 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Humidifier -> HumidifierCard(card, stateMap, onAction, modifier)
         is LovelaceCard.EntityFilter -> EntityFilterCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Statistic -> StatisticCard(card, stateMap, modifier)
+        is LovelaceCard.StatisticsGraph -> StatisticsGraphCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.Picture -> PicturePlainCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Logbook -> LogbookCard(card, modifier)
         is LovelaceCard.Clock -> ClockCard(card, modifier)
         is LovelaceCard.Shortcut -> ShortcutCard(card, onAction, modifier)
