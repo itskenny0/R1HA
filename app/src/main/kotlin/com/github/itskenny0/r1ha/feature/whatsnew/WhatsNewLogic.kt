@@ -41,10 +41,9 @@ fun whatsNewAction(lastSeen: Int, current: Int, configured: Boolean): WhatsNewAc
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Navigation is three times faster: screen changes now snap instead of slow-fading.",
-    "Card swipes tick. Flipping cards gives the same haptic end-state as tabs and the wheel.",
-    "Lists show content-shaped loading placeholders instead of a bare spinner.",
-    "Pull to refresh on the Energy and Logs screens.",
-    "The Lovelace dashboard shows a loading state instead of a blank page.",
-    "This panel: the app now tells you what changed after an update.",
+    "Tablets get two-pane browsing: Devices and Areas keep the list beside the detail.",
+    "Scenes and Helpers flow into multiple columns on wide screens.",
+    "Charts grow with the screen, and History pairs its chart with the stats on wide panels.",
+    "Empty and error screens now say what happened and offer RETRY.",
+    "Calendars no longer blanks its list while refreshing.",
 )
