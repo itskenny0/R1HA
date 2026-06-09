@@ -183,8 +183,57 @@ enum class Domain(val prefix: String) {
      */
     WEATHER("weather"),
     /**
+     * `text.*` entities — free-form text values (non-helper twin of `input_text`).
+     * Read-only on the card stack; more-info shows an inline editor firing
+     * `text.set_value {value}`. Respects `min` / `max` / `pattern` / `mode` attrs
+     * when present.
+     */
+    TEXT("text"),
+    /**
+     * `date.*` entities — a settable local date (no time component). More-info
+     * shows a date-entry field firing `date.set_value {date: "YYYY-MM-DD"}`. Mirror
+     * of the date portion of `input_datetime`.
+     */
+    DATE("date"),
+    /**
+     * `datetime.*` entities — a settable local date + time. More-info shows an
+     * editor firing `datetime.set_value {datetime: "YYYY-MM-DD HH:MM:SS"}`. Mirror
+     * of `input_datetime` but as a first-class domain.
+     */
+    DATETIME("datetime"),
+    /**
+     * `time.*` entities — a settable time-of-day. More-info shows a time-entry
+     * field firing `time.set_value {time: "HH:MM:SS"}`. Mirror of the time portion
+     * of `input_datetime`.
+     */
+    TIME("time"),
+    /**
+     * `siren.*` entities — on/off alarm sirens with optional tone and volume
+     * control. `isOn` is "on"/"off". More-info adds a tone chip-row (when the
+     * entity advertises `available_tones`) and a volume slider (when it reports
+     * `is_volume_controllable` / `volume_level`). Included in the card-stack toggle
+     * set (turn_on / turn_off).
+     */
+    SIREN("siren"),
+    /**
+     * `image.*` entities — static or periodically-refreshed images published by
+     * integrations (doorbell snapshots, security camera stills, album art). State
+     * is a timestamp string (last-updated); the image is fetched from
+     * `entity_picture` or `/api/image_proxy/<entity_id>`. Read-only; more-info
+     * renders the image via AsyncBitmap. No card-stack representation — not
+     * toggleable or wheel-driveable.
+     */
+    IMAGE("image"),
+    /**
+     * `event.*` entities — stateless fire-and-forget events published by
+     * integrations (remote button presses, doorbell events, tag scans). State is
+     * the `event_type` of the last fired event. No controls; read-only in more-info
+     * with `event_type` and `event_types` attributes surfaced prominently.
+     */
+    EVENT("event"),
+    /**
      * Catch-all for any domain the app has no dedicated archetype for (device_tracker, zone,
-     * calendar, sun, image, event, tts, conversation, group, and anything new HA ships). These
+     * calendar, sun, tts, conversation, group, and anything new HA ships). These
      * entities have no card-stack rendering and can't be pinned (the favourites picker and the
      * card stack only list the archetypes above), but they are still real entities the user
      * owns, so the Universal Search surface includes them as read-only "find it by name" results
@@ -202,11 +251,16 @@ enum class Domain(val prefix: String) {
     /** Read-only sensor domains — UI renders them as SensorCard. No wheel, no tap.
      *  Includes input_text / input_datetime since they're effectively read-only
      *  text values from the card stack's perspective (no editing UX on a wheel-
-     *  driven device); the Helpers screen handles them with bespoke rendering. */
+     *  driven device); the Helpers screen handles them with bespoke rendering.
+     *  New domains text / date / datetime / time / image / event are similarly
+     *  read-only from the card-stack perspective; siren is excluded (it's on/off
+     *  toggleable and included in the switch/toggle set). */
     val isSensor: Boolean get() =
         this == SENSOR || this == BINARY_SENSOR ||
             this == INPUT_TEXT || this == INPUT_DATETIME ||
-            this == PERSON || this == WEATHER
+            this == PERSON || this == WEATHER ||
+            this == TEXT || this == DATE || this == DATETIME ||
+            this == TIME || this == IMAGE || this == EVENT
 
     /** Settable-enum domains — UI renders them as SelectCard. Wheel cycles options;
      *  tap opens a full-screen picker. */

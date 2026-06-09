@@ -314,6 +314,21 @@ data class EntityState(
      * attribute.
      */
     val displayPrecision: Int? = null,
+    /**
+     * Siren-only: list of tone names advertised by the integration via the
+     * `available_tones` attribute. Empty when the siren doesn't support tone
+     * selection. When non-empty, the SirenPanel renders a chip per tone that
+     * fires `siren.turn_on { tone: <name> }`.
+     */
+    val sirenAvailableTones: List<String> = emptyList(),
+    /**
+     * Siren-only: current volume level (0.0..1.0) from the `volume_level`
+     * attribute. Null when the integration doesn't expose volume control
+     * (`is_volume_controllable` absent or false, or `volume_level` absent).
+     * When non-null, the SirenPanel renders a volume slider that fires
+     * `siren.turn_on { volume_level: <value> }`.
+     */
+    val sirenVolumeLevel: Double? = null,
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)

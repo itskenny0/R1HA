@@ -37,6 +37,29 @@ class EntityDomainTest {
         assertThat(Domain.WEATHER.isSelect).isFalse()
     }
 
+    @Test fun `new domains are mapped from prefix`() {
+        assertThat(Domain.fromPrefix("text")).isEqualTo(Domain.TEXT)
+        assertThat(Domain.fromPrefix("date")).isEqualTo(Domain.DATE)
+        assertThat(Domain.fromPrefix("datetime")).isEqualTo(Domain.DATETIME)
+        assertThat(Domain.fromPrefix("time")).isEqualTo(Domain.TIME)
+        assertThat(Domain.fromPrefix("siren")).isEqualTo(Domain.SIREN)
+        assertThat(Domain.fromPrefix("image")).isEqualTo(Domain.IMAGE)
+        assertThat(Domain.fromPrefix("event")).isEqualTo(Domain.EVENT)
+    }
+
+    @Test fun `new read-only domains are sensor-like`() {
+        // text / date / datetime / time / image / event are read-only from the card stack
+        for (d in listOf(Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME, Domain.IMAGE, Domain.EVENT)) {
+            assertThat(d.isSensor).isTrue()
+            assertThat(d.isAction).isFalse()
+            assertThat(d.isSelect).isFalse()
+        }
+        // Siren is on/off — NOT a sensor; not action, not select.
+        assertThat(Domain.SIREN.isSensor).isFalse()
+        assertThat(Domain.SIREN.isAction).isFalse()
+        assertThat(Domain.SIREN.isSelect).isFalse()
+    }
+
     @Test fun `fromPrefix rejects unknown prefix`() {
         // Domains the app has no card archetype for. fromPrefix stays strict (throws) for the
         // control paths; the lenient fromPrefixOrOther below is the search path's entry point.
