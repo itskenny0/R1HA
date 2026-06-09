@@ -20,6 +20,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.nav.Routes
 
 /**
  * Top-level dispatch from a parsed [LovelaceCard] to the matching
@@ -158,6 +159,7 @@ suspend fun dispatchLovelaceAction(
                 }
             }
             "more-info" -> (action.entityId ?: fallbackEntityId)?.let(onMoreInfo)
+            "assist" -> onNavigate(Routes.ASSIST)
             "none" -> Unit
             else -> Unit
         }
