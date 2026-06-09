@@ -52,6 +52,12 @@ import com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.feature.moreinfo.rememberEntityHistory
+import com.github.itskenny0.r1ha.feature.moreinfo.rememberWeatherForecasts
+import com.github.itskenny0.r1ha.feature.weather.ForecastEntry
+import com.github.itskenny0.r1ha.feature.weather.ForecastKind
+import com.github.itskenny0.r1ha.feature.weather.classifyForecastKind
+import com.github.itskenny0.r1ha.feature.weather.formatForecastLabel
 import com.github.itskenny0.r1ha.ui.components.AlarmPanel
 import com.github.itskenny0.r1ha.ui.components.ClimatePanel
 import com.github.itskenny0.r1ha.ui.components.CoverPanel
@@ -81,6 +87,8 @@ import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * Ultra-detail "more info" bottom sheet for a single HA entity. A dim-scrim overlay
@@ -200,8 +208,14 @@ private fun MoreInfoContent(
         // ── Attributes ────────────────────────────────────────────────────
         AttributesSection(entity)
 
+        // ── Weather forecast strip ─────────────────────────────────────────
+        WeatherForecastSection(haRepository = haRepository, entity = entity, accent = accent)
+
         // ── History ───────────────────────────────────────────────────────
         HistorySection(haRepository = haRepository, entity = entity, accent = accent)
+
+        // ── Non-numeric recent activity ────────────────────────────────────
+        RecentActivitySection(haRepository = haRepository, entity = entity)
 
         Spacer(Modifier.height(R1.space.l))
     }
@@ -366,12 +380,18 @@ private fun PrimaryControl(
             LockPanel(state = entity, accent = accent, modifier = Modifier.padding(top = R1.space.s))
         }
         Domain.FAN -> {
-            PercentControl(
-                label = "SPEED",
-                pct = entity.percent ?: if (entity.isOn) 100 else 0,
-                accent = accent,
-                onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
-            )
+            val step = entity.fanPercentageStep
+            if (step != null && step >= 25.0) {
+                // Discrete speed steps: compute the labeled percentages from step size.
+                FanDiscreteSpeedControl(entity = entity, accent = accent, dispatch = dispatch)
+            } else {
+                PercentControl(
+                    label = "SPEED",
+                    pct = entity.percent ?: if (entity.isOn) 100 else 0,
+                    accent = accent,
+                    onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
+                )
+            }
             Spacer(Modifier.height(R1.space.s))
             FanPanel(state = entity, accent = accent)
         }
@@ -422,6 +442,8 @@ private fun PrimaryControl(
         Domain.IMAGE -> ImageControl(entity)
         // event: read-only; no primary control (attributes section surfaces event_type).
         Domain.EVENT -> Unit
+        // weather: read-only; the forecast strip renders in its own section below attributes.
+        Domain.WEATHER -> Unit
         // No primary control for read-only / unmodelled domains — the section
         // simply renders nothing (the host SectionWrap collapses it).
         else -> Unit
@@ -898,6 +920,315 @@ private fun HistorySection(haRepository: HaRepository, entity: EntityState, acce
     }
 }
 
+/**
+ * Forecast strip for `weather.*` entities. Shows a HOURLY / DAILY toggle when both
+ * cadences are available, then a horizontally-scrollable row of forecast slots
+ * (time label, condition slug, high temp, low temp, precip probability). Renders
+ * nothing until [rememberWeatherForecasts] resolves; shows a loading placeholder in
+ * the interim. Falls back to whichever cadence is available when only one exists.
+ *
+ * Uses [HaRepository.getWeatherForecasts] (the modern service path) with a legacy
+ * `forecast` attribute fallback, mirroring WeatherViewModel.loadForecasts exactly.
+ */
+@Composable
+private fun WeatherForecastSection(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+) {
+    if (entity.id.domain != Domain.WEATHER) return
+    val forecasts by rememberWeatherForecasts(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        entityAttrs = entity.attributesJson,
+        enabled = true,
+    )
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "FORECAST", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+        when (val f = forecasts) {
+            null -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .clip(R1.ShapeS)
+                    .background(R1.Surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "LOADING FORECAST", style = R1.labelMicro, color = R1.InkMuted)
+            }
+            else -> {
+                val hasBoth = f.hourly.isNotEmpty() && f.daily.isNotEmpty()
+                var showHourly by remember(f) { mutableStateOf(f.hourly.isNotEmpty()) }
+                val activeEntries = if (showHourly) f.hourly else f.daily
+                val kind = if (showHourly) ForecastKind.Hourly else ForecastKind.Daily
+                if (hasBoth) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                        DetailChip(
+                            label = "HOURLY",
+                            accent = accent,
+                            selected = showHourly,
+                            onClick = { showHourly = true },
+                        )
+                        DetailChip(
+                            label = "DAILY",
+                            accent = accent,
+                            selected = !showHourly,
+                            onClick = { showHourly = false },
+                        )
+                    }
+                }
+                if (activeEntries.isEmpty()) {
+                    Text(text = "No forecast data", style = responsiveType(R1.body), color = R1.InkMuted)
+                } else {
+                    val unit = entity.attrStr("temperature_unit") ?: ""
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                    ) {
+                        activeEntries.forEach { entry ->
+                            ForecastSlot(entry = entry, kind = kind, unit = unit, accent = accent)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForecastSlot(
+    entry: ForecastEntry,
+    kind: ForecastKind,
+    unit: String,
+    accent: Color,
+) {
+    val label = formatForecastLabel(entry.whenIso, kind)
+    Column(
+        modifier = Modifier
+            .widthIn(min = 48.dp)
+            .clip(R1.ShapeS)
+            .background(R1.Surface)
+            .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(R1.space.xxs),
+    ) {
+        Text(text = label, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+        if (entry.condition.isNotBlank()) {
+            Text(
+                text = conditionGlyph(entry.condition),
+                style = R1.numeralM,
+                color = accent,
+                maxLines = 1,
+            )
+        }
+        val temp = entry.temperature
+        if (temp != null) {
+            Text(
+                text = "${Math.round(temp)}$unit",
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+                maxLines = 1,
+            )
+        }
+        val low = entry.tempLow
+        if (low != null) {
+            Text(
+                text = "${Math.round(low)}$unit",
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 1,
+            )
+        }
+        val prob = entry.precipitationProbability
+        if (prob != null && prob > 0) {
+            Text(
+                text = "$prob%",
+                style = R1.labelMicro,
+                color = R1.AccentCool,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** Map HA condition slug to a compact Unicode glyph. Unknown slugs get a neutral dot. */
+private fun conditionGlyph(condition: String): String = when (condition.lowercase()) {
+    "clear-night" -> "★"
+    "cloudy" -> "●"
+    "exceptional" -> "!"
+    "fog" -> "~"
+    "hail" -> "*"
+    "lightning" -> "↯"
+    "lightning-rainy" -> "↯"
+    "partlycloudy" -> "◑"
+    "pouring" -> "▼"
+    "rainy" -> "·"
+    "snowy" -> "❄"
+    "snowy-rainy" -> "❄"
+    "sunny" -> "○"
+    "windy" -> ">"
+    "windy-variant" -> ">>"
+    else -> "·"
+}
+
+/**
+ * Discrete speed chip row for fans with <= 4 speed steps (percentage_step >= 25).
+ * Each chip fires `fan.set_percentage` with the computed step value. The current
+ * percentage is highlighted as the selected chip. Chip layout mirrors SelectControl.
+ */
+@Composable
+private fun FanDiscreteSpeedControl(
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+) {
+    val step = entity.fanPercentageStep ?: return
+    val steps = fanDiscreteSpeedSteps(step)
+    if (steps.isEmpty()) return
+    val currentPct = entity.percent ?: (if (entity.isOn) steps.last() else 0)
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = "SPEED", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        ChipStrip(wrap = true) {
+            steps.forEach { pct ->
+                DetailChip(
+                    label = "$pct%",
+                    accent = accent,
+                    selected = entity.isOn && currentPct == pct,
+                    onClick = {
+                        dispatch(
+                            ServiceCall(
+                                entity.id,
+                                "set_percentage",
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put(
+                                        "percentage",
+                                        kotlinx.serialization.json.JsonPrimitive(pct),
+                                    )
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Recent activity list for non-numeric entities. Shows the last ~10 state changes
+ * fetched via [HaRepository.fetchHistory] in reverse-chronological order. Renders
+ * only when the entity is non-numeric and belongs to a domain suited for a logbook
+ * view (switch, binary_sensor, light, lock, cover, etc.). Numeric and sensor-like
+ * entities are handled by [HistorySection]'s sparkline instead.
+ */
+@Composable
+private fun RecentActivitySection(
+    haRepository: HaRepository,
+    entity: EntityState,
+) {
+    val numericNow = entity.rawState?.toDoubleOrNull() != null || entity.raw != null
+    val sensorLike = entity.id.domain == Domain.SENSOR ||
+        entity.id.domain == Domain.NUMBER ||
+        entity.id.domain == Domain.INPUT_NUMBER ||
+        entity.id.domain == Domain.CLIMATE ||
+        entity.id.domain == Domain.WATER_HEATER ||
+        entity.id.domain == Domain.HUMIDIFIER
+    // Only show for non-numeric, non-sensor-like, supported domains that have meaningful
+    // state transitions. Weather gets the forecast strip instead; read-only or action
+    // domains have no state transitions worth showing.
+    val showable = !numericNow && !sensorLike && entity.id.domain !in NON_LOGBOOK_DOMAINS
+    val history by rememberEntityHistory(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        enabled = showable,
+        hours = 24,
+    )
+    if (!showable) return
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "RECENT ACTIVITY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+        when (val pts = history) {
+            null -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .clip(R1.ShapeS)
+                    .background(R1.Surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "LOADING ACTIVITY", style = R1.labelMicro, color = R1.InkMuted)
+            }
+            else -> {
+                val rows = pts
+                    .filter { it.state != "unknown" && it.state != "unavailable" }
+                    .take(10)
+                if (rows.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(R1.ShapeS)
+                            .background(R1.Surface)
+                            .padding(R1.space.m),
+                    ) {
+                        Text(text = "No activity in the last 24 h", style = responsiveType(R1.body), color = R1.InkMuted)
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(R1.ShapeS)
+                            .background(R1.Surface)
+                            .padding(R1.space.m),
+                        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    ) {
+                        rows.forEach { pt ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                            ) {
+                                Text(
+                                    text = optionLabel(pt.state),
+                                    style = responsiveType(R1.bodyEmph),
+                                    color = R1.Ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                val timeAgo = rememberRelativeTime(pt.timestamp)
+                                Text(
+                                    text = timeAgo.uppercase(),
+                                    style = R1.labelMicro,
+                                    color = R1.InkMuted,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Domains where state transitions are not meaningful to show in a logbook-style list.
+// Weather gets the forecast strip; event/scene/script/button are action-only;
+// image is a binary read-only URL; datetime/date/time are setpoints not events.
+private val NON_LOGBOOK_DOMAINS = setOf(
+    Domain.WEATHER,
+    Domain.EVENT,
+    Domain.SCENE,
+    Domain.SCRIPT,
+    Domain.BUTTON,
+    Domain.INPUT_BUTTON,
+    Domain.IMAGE,
+    Domain.DATE,
+    Domain.DATETIME,
+    Domain.TIME,
+    Domain.TEXT,
+)
+
 // ── Shared primitives ─────────────────────────────────────────────────────────────────
 
 @Composable
@@ -1098,6 +1429,31 @@ private fun sliderColors(accent: Color) = SliderDefaults.colors(
 )
 
 // ── Local helpers ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute the discrete speed percentages for a fan whose `percentage_step` is
+ * [step]. Each value is the percentage for a named speed button. HA's own
+ * frontend computes these as `(1..floor(100/step)).map { round(it * step) }`,
+ * then appends 100 when the last computed value is less than 100. This
+ * ensures the user can always select "full speed" regardless of rounding.
+ *
+ * Examples:
+ *   step=33  -> [33, 66, 100]   (100 appended because 66 < 100)
+ *   step=25  -> [25, 50, 75, 100]
+ *   step=50  -> [50, 100]
+ *   step=100 -> [100]
+ *
+ * Returns an empty list for a zero or negative [step] (defensive against
+ * malformed HA payloads).
+ */
+internal fun fanDiscreteSpeedSteps(step: Double): List<Int> {
+    if (step <= 0.0) return emptyList()
+    val count = floor(100.0 / step).toInt()
+    if (count <= 0) return emptyList()
+    val steps = (1..count).map { (it * step).roundToInt() }.toMutableList()
+    if (steps.last() < 100) steps.add(100)
+    return steps
+}
 
 private fun domainLabel(domain: Domain): String =
     optionLabel(domain.prefix.ifBlank { "ENTITY" })
