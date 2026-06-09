@@ -52,4 +52,21 @@ class HaSettingsSyncTest {
         // A real synced behaviour change from the remote is honoured.
         assertThat(merged.behavior.startOnDashboard).isTrue()
     }
+
+    /**
+     * The what's-new stamp is per-device launch state like the wheel hint: a
+     * remote value would re-show (or wrongly suppress) the overlay after sync.
+     */
+    @Test fun `preserveDeviceLocal keeps the device-local whats-new stamp`() {
+        val prev = AppSettings(
+            behavior = Behavior(lastSeenVersionCode = 250609),
+        )
+        val applied = AppSettings(
+            behavior = Behavior(lastSeenVersionCode = 0),
+        )
+
+        val merged = preserveDeviceLocal(applied, prev)
+
+        assertThat(merged.behavior.lastSeenVersionCode).isEqualTo(250609)
+    }
 }

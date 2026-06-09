@@ -410,6 +410,10 @@ internal fun preserveDeviceLocal(applied: AppSettings, prev: AppSettings): AppSe
         server = prev.server,
         behavior = applied.behavior.copy(
             wheelTutorialSeen = prev.behavior.wheelTutorialSeen,
+            // Same per-device reasoning as the wheel hint: the what's-new stamp
+            // tracks which build THIS device has launched, so a remote value
+            // would either re-show or wrongly suppress the overlay here.
+            lastSeenVersionCode = prev.behavior.lastSeenVersionCode,
         ),
         advanced = applied.advanced.copy(
             iBeaconUuid = prev.advanced.iBeaconUuid,

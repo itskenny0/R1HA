@@ -509,6 +509,45 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                         )
+                        // One-shot what's-new overlay. Keyed on the LOCKED first
+                        // settings value so a live settings edit mid-session can't
+                        // re-trigger the gate; rendered above the NavHost so it
+                        // shows regardless of start destination (card stack,
+                        // dashboard kiosk). Fresh installs stamp silently inside
+                        // whatsNewAction's contract instead of stacking an overlay
+                        // on top of onboarding.
+                        val whatsNewVisible = remember { androidx.compose.runtime.mutableStateOf(false) }
+                        val whatsNewScope = androidx.compose.runtime.rememberCoroutineScope()
+                        val stampWhatsNew: () -> Unit = {
+                            whatsNewScope.launch {
+                                graph.settings.update { s ->
+                                    s.copy(behavior = s.behavior.copy(lastSeenVersionCode = BuildConfig.VERSION_CODE))
+                                }
+                            }
+                        }
+                        androidx.compose.runtime.LaunchedEffect(initial) {
+                            when (
+                                com.github.itskenny0.r1ha.feature.whatsnew.whatsNewAction(
+                                    lastSeen = initial.behavior.lastSeenVersionCode,
+                                    current = BuildConfig.VERSION_CODE,
+                                    configured = initial.server != null,
+                                )
+                            ) {
+                                com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewAction.SHOW ->
+                                    whatsNewVisible.value = true
+                                com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewAction.STAMP_SILENTLY ->
+                                    stampWhatsNew()
+                                com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewAction.NOTHING -> Unit
+                            }
+                        }
+                        if (whatsNewVisible.value) {
+                            com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewOverlay(
+                                onDismiss = {
+                                    whatsNewVisible.value = false
+                                    stampWhatsNew()
+                                },
+                            )
+                        }
                         // Toast host sits OUTSIDE the responsive column so
                         // toasts always pop at the device's true screen
                         // edges, not the centred column's edges.

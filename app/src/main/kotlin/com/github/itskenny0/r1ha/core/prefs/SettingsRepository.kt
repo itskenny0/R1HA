@@ -151,6 +151,7 @@ class SettingsRepository private constructor(
         val behaviorStartOnDashboard = booleanPreferencesKey("behavior.start_on_dashboard")
         val behaviorWheelTogglesSwitches = booleanPreferencesKey("behavior.wheel_toggles_switches")
         val behaviorWheelTutorialSeen = booleanPreferencesKey("behavior.wheel_tutorial_seen")
+        val behaviorLastSeenVersionCode = intPreferencesKey("behavior.last_seen_version_code")
         val behaviorToastLogLevel = stringPreferencesKey("behavior.toast_log_level")
         /** entity_id bound to the Android Quick Settings tile. Empty
          *  string sentinel = unbound (a null-equivalent that the
@@ -326,6 +327,7 @@ class SettingsRepository private constructor(
                     startOnDashboard = p[K.behaviorStartOnDashboard] ?: false,
                     wheelTogglesSwitches = p[K.behaviorWheelTogglesSwitches] ?: true,
                     wheelTutorialSeen = p[K.behaviorWheelTutorialSeen] ?: false,
+                    lastSeenVersionCode = p[K.behaviorLastSeenVersionCode] ?: 0,
                     toastLogLevel = p[K.behaviorToastLogLevel]
                         ?.let { runCatching { ToastLogLevel.valueOf(it) }.getOrNull() }
                         ?: ToastLogLevel.OFF,
@@ -508,6 +510,7 @@ class SettingsRepository private constructor(
                 p[K.behaviorStartOnDashboard] = next.behavior.startOnDashboard
                 p[K.behaviorWheelTogglesSwitches] = next.behavior.wheelTogglesSwitches
                 p[K.behaviorWheelTutorialSeen] = next.behavior.wheelTutorialSeen
+                p[K.behaviorLastSeenVersionCode] = next.behavior.lastSeenVersionCode
                 p[K.behaviorToastLogLevel] = next.behavior.toastLogLevel.name
                 p[K.behaviorQuickTileEntityId] = next.behavior.quickTileEntityId.orEmpty()
                 p[K.behaviorQuickTileEntityIdB] = next.behavior.quickTileEntityIdB.orEmpty()

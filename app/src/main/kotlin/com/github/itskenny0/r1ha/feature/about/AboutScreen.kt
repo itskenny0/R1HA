@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -62,6 +63,7 @@ fun AboutScreen(
     val appSettings by settings.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
     val listState = rememberLazyListState()
     WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val whatsNewOpen = remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -89,6 +91,31 @@ fun AboutScreen(
                         if (BuildConfig.IS_FDROID_BUILD) "F-Droid" else "GitHub",
                         mono = true,
                     )
+                }
+                // Re-open the one-shot upgrade overlay on demand, for anyone who
+                // dismissed it too fast (or wants to see what the last update did).
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = R1.MinTarget)
+                            .r1Pressable(
+                                onClick = { whatsNewOpen.value = true },
+                                contentDescription = "Show what's new in this version",
+                            )
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("What's new", style = responsiveType(R1.bodyEmph), color = R1.Ink)
+                        Spacer(Modifier.width(R1.space.l))
+                        Text(
+                            text = "SHOW →",
+                            style = responsiveType(R1.label),
+                            color = R1.AccentWarm,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.End,
+                        )
+                    }
                 }
                 item {
                     LinkRow(
@@ -234,6 +261,23 @@ fun AboutScreen(
                 item { Spacer(Modifier.height(R1.MinTarget)) }
             }
         } // AdaptiveContent
+
+        // Re-view of the upgrade overlay. A Dialog (not an inline Box) so it
+        // floats above the whole screen without restructuring the layout, and
+        // system Back closes it like any modal. No version stamping here: this
+        // is a re-view, the one-shot gate lives in MainActivity.
+        if (whatsNewOpen.value) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { whatsNewOpen.value = false },
+                properties = androidx.compose.ui.window.DialogProperties(
+                    usePlatformDefaultWidth = false,
+                ),
+            ) {
+                com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewOverlay(
+                    onDismiss = { whatsNewOpen.value = false },
+                )
+            }
+        }
     }
 }
 

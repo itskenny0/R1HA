@@ -274,6 +274,13 @@ data class Behavior(
      */
     val wheelTutorialSeen: Boolean = false,
     /**
+     * versionCode of the build whose what's-new overlay this device has
+     * resolved (shown, or stamped silently on first install). 0 = never
+     * stamped. Per-device launch state like [wheelTutorialSeen]: not synced,
+     * not user-tunable, not part of the Settings registry.
+     */
+    val lastSeenVersionCode: Int = 0,
+    /**
      * Level threshold for the in-app diagnostic toast feed. OFF (default) is a clean
      * UI — no toasts unless the user explicitly opts in. WARN is the friendly
      * diagnostic level: failures, decoder drops, settings-save fallbacks pop up as
