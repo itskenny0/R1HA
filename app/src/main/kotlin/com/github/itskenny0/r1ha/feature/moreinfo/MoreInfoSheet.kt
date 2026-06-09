@@ -414,7 +414,7 @@ private fun PrimaryControl(
             dispatch(ServiceCall(entity.id, "press", kotlinx.serialization.json.JsonObject(emptyMap())))
         }
         // New domains.
-        Domain.TEXT -> TextSetControl(entity, accent, dispatch)
+        Domain.TEXT -> TextSetControl(entity, accent)
         Domain.DATE -> DateSetControl(entity, accent, dispatch)
         Domain.DATETIME -> DateTimeSetControl(entity, accent, dispatch)
         Domain.TIME -> TimeSetControl(entity, accent, dispatch)
@@ -1162,17 +1162,14 @@ private fun EntityState.attrIntList(key: String): List<Int>? =
  * anyway; the value field still fills correctly). A missing state falls back to blank.
  */
 @Composable
-private fun TextSetControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+private fun TextSetControl(entity: EntityState, accent: Color) {
     val current = entity.rawState?.takeIf { it != "unknown" && it != "unavailable" } ?: ""
-    var value by remember(current) { mutableStateOf(current) }
     val maxLen = entity.attrDouble("max")?.toInt() ?: 255
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         Text(text = "VALUE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
-        // Show current value and a SET chip that re-sends the current raw state.
-        // (Full text editing requires a soft keyboard the R1 doesn't expose; this
-        // control is intentionally minimal — it lets the user confirm or re-send the
-        // current value, and integration automations that set the value via script
-        // will reflect live in the state row above.)
+        // Read-only display: the R1 exposes no soft keyboard, so a text.* value is
+        // shown but not edited here; scripts/automations that set it reflect live
+        // in the state row above.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1183,30 +1180,13 @@ private fun TextSetControl(entity: EntityState, accent: Color, dispatch: (Servic
                 .padding(horizontal = R1.space.m, vertical = R1.space.s),
         ) {
             Text(
-                text = value.ifBlank { "—" },
+                text = current.ifBlank { "-" },
                 style = responsiveType(R1.body),
-                color = if (value.isBlank()) R1.InkMuted else R1.Ink,
+                color = if (current.isBlank()) R1.InkMuted else R1.Ink,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        DetailChip(
-            label = "RESEND CURRENT VALUE",
-            accent = accent,
-            selected = false,
-            onClick = {
-                val v = value.take(maxLen)
-                dispatch(
-                    ServiceCall(
-                        entity.id,
-                        "set_value",
-                        kotlinx.serialization.json.buildJsonObject {
-                            put("value", kotlinx.serialization.json.JsonPrimitive(v))
-                        },
-                    ),
-                )
-            },
-        )
         // Hint line: show min/max/pattern when present so the user knows constraints.
         val min = entity.attrDouble("min")?.toInt()
         val pattern = entity.attrStr("pattern")
@@ -1247,7 +1227,7 @@ private fun DateSetControl(entity: EntityState, accent: Color, dispatch: (Servic
             }
             Spacer(Modifier.width(R1.space.m))
             Text(
-                text = current ?: "—",
+                text = current ?: "-",
                 style = responsiveType(R1.numeralM),
                 color = accent,
                 modifier = Modifier.weight(1f),
@@ -1278,7 +1258,7 @@ private fun DateTimeSetControl(entity: EntityState, accent: Color, dispatch: (Se
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         Text(text = "DATETIME", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Text(
-            text = current ?: "—",
+            text = current ?: "-",
             style = responsiveType(R1.numeralM),
             color = accent,
             maxLines = 1,
@@ -1327,7 +1307,7 @@ private fun TimeSetControl(entity: EntityState, accent: Color, dispatch: (Servic
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         Text(text = "TIME", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
         Text(
-            text = current ?: "—",
+            text = current ?: "-",
             style = responsiveType(R1.numeralM),
             color = accent,
             maxLines = 1,
