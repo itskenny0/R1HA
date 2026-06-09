@@ -438,8 +438,8 @@ private fun PhoneNavSlideoutHost(
                 // Scrim: fades in behind the panel, tap anywhere to dismiss. No ripple.
                 AnimatedVisibility(
                     visible = open,
-                    enter = fadeIn(tween(180)),
-                    exit = fadeOut(tween(180)),
+                    enter = fadeIn(tween(R1.motion.shellFadeMs)),
+                    exit = fadeOut(tween(R1.motion.shellFadeMs)),
                 ) {
                     Box(
                         modifier = Modifier
@@ -457,8 +457,8 @@ private fun PhoneNavSlideoutHost(
                 // wider COMPACT phone, but takes most of the narrow R1 width.
                 AnimatedVisibility(
                     visible = open,
-                    enter = slideInHorizontally(tween(220)) { -it },
-                    exit = slideOutHorizontally(tween(200)) { -it },
+                    enter = slideInHorizontally(tween(R1.motion.shellSlideMs)) { -it },
+                    exit = slideOutHorizontally(tween(R1.motion.shellSlideMs)) { -it },
                 ) {
                     // While the panel is shown, route the scroll wheel to its list so the R1's
                     // primary input scrolls the menu it just opened. Mounted inside the visible

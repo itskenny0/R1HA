@@ -84,6 +84,29 @@ object R1 {
     /** Minimum interactive target height. Every tappable row/control honours this. */
     val MinTarget = 48.dp
 
+    // ── Motion ───────────────────────────────────────────────────────────────────────────
+    /**
+     * Shared motion durations. Screen-level transitions live here so the app's sense of
+     * speed is set in one place; component springs (sliders, presses, pager snaps) stay
+     * with their components because their feel comes from damping/stiffness, not duration.
+     */
+    val motion = Motion
+
+    object Motion {
+        /** Screen enter: fast fade + small rise. Long enough to read as motion, short
+         *  enough that navigation never feels like it's waiting on the animation. */
+        const val navEnterMs = 220
+        /** Screen exit: slightly faster than enter so the outgoing screen gets out of
+         *  the way and the incoming one carries the eye. */
+        const val navExitMs = 160
+        /** Side-nav shell content fade. */
+        const val shellFadeMs = 180
+        /** Side-nav shell content slide. */
+        const val shellSlideMs = 220
+        /** Skeleton placeholder pulse cycle (one direction; reverses). */
+        const val skeletonPulseMs = 1200
+    }
+
     // ── Shapes ───────────────────────────────────────────────────────────────────────────
     /** Default radius for cards & chips. Brutalist: only mild softening. */
     val ShapeS = RoundedCornerShape(2.dp)

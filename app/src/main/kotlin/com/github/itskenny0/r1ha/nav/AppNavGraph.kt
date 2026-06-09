@@ -5,7 +5,10 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
+import com.github.itskenny0.r1ha.core.theme.R1
 import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -67,32 +70,40 @@ fun AppNavGraph(
             }
         }
     }
-    // Default screen change is a 700ms cross-fade (navigation-compose's default,
-    // replicated here). The one exception: arriving at the card stack — almost
-    // always a Back-pop from a sub-screen — is made instant. The long fade left
-    // the entering deck tappable and Back still live while it ran, so a tap on the
-    // hamburger or a stray Back that landed before it settled could interrupt the
-    // NavHost transition and strand the app on a black screen needing a restart.
-    // Removing the animation only for card-stack-targeted transitions closes that
-    // race window while keeping the fade for every other destination.
+    // Screen changes are a fast fade with a small vertical rise on push (and the
+    // mirror-image drop on pop), so every navigation reads as crisp motion rather
+    // than the sluggish 700ms cross-fade navigation-compose defaults to. The one
+    // exception: arriving at the card stack — almost always a Back-pop from a
+    // sub-screen — is made instant. The long fade left the entering deck tappable
+    // and Back still live while it ran, so a tap on the hamburger or a stray Back
+    // that landed before it settled could interrupt the NavHost transition and
+    // strand the app on a black screen needing a restart. Removing the animation
+    // only for card-stack-targeted transitions closes that race window while
+    // keeping the motion for every other destination.
+    val navEnter = fadeIn(animationSpec = tween(R1.motion.navEnterMs)) +
+        slideInVertically(animationSpec = tween(R1.motion.navEnterMs)) { it / 24 }
+    val navExit = fadeOut(animationSpec = tween(R1.motion.navExitMs))
+    val navPopEnter = fadeIn(animationSpec = tween(R1.motion.navEnterMs))
+    val navPopExit = fadeOut(animationSpec = tween(R1.motion.navExitMs)) +
+        slideOutVertically(animationSpec = tween(R1.motion.navExitMs)) { it / 24 }
     NavHost(
         navController = navController,
         startDestination = startDestination,
         enterTransition = {
             if (targetState.destination.route == Routes.CARD_STACK) EnterTransition.None
-            else fadeIn(animationSpec = tween(700))
+            else navEnter
         },
         exitTransition = {
             if (targetState.destination.route == Routes.CARD_STACK) ExitTransition.None
-            else fadeOut(animationSpec = tween(700))
+            else navExit
         },
         popEnterTransition = {
             if (targetState.destination.route == Routes.CARD_STACK) EnterTransition.None
-            else fadeIn(animationSpec = tween(700))
+            else navPopEnter
         },
         popExitTransition = {
             if (targetState.destination.route == Routes.CARD_STACK) ExitTransition.None
-            else fadeOut(animationSpec = tween(700))
+            else navPopExit
         },
     ) {
         composable(Routes.ONBOARDING) {
