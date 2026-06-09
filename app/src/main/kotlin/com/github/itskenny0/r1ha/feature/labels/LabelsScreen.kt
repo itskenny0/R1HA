@@ -48,6 +48,8 @@ import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -142,25 +144,18 @@ fun LabelsScreen(
                 ) {
                     SkeletonList()
                 }
-                ui.error != null && ui.labels.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
-                }
-                ui.labels.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No labels yet. Labels are optional cross-axis tags " +
-                            "(\"needs batteries\", \"rec room AV\") you add in Home " +
-                            "Assistant under Settings, Labels. Once you tag entities, " +
-                            "devices, or areas they show up here.",
-                        style = responsiveType(R1.body),
-                        color = R1.InkMuted,
-                    )
-                }
+                ui.error != null && ui.labels.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD LABELS",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
+                )
+                ui.labels.isEmpty() -> R1EmptyState(
+                    title = "NO LABELS",
+                    body = "Labels are optional cross-axis tags " +
+                        "(\"needs batteries\", \"rec room AV\") you add in Home " +
+                        "Assistant under Settings, Labels. Once you tag entities, " +
+                        "devices, or areas they show up here.",
+                )
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                     isRefreshing = ui.loading,
                     onRefresh = { vm.refresh() },

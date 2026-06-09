@@ -59,6 +59,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -152,16 +153,11 @@ fun NfcScreen(
                         color = R1.AccentWarm,
                     )
                 }
-                ui.error != null && ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Tag list failed: ${ui.error}",
-                        style = responsiveType(R1.body),
-                        color = R1.StatusRed,
-                    )
-                }
+                ui.error != null && ui.tags.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD TAGS",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
+                )
                 else -> PullToRefreshBox(
                     isRefreshing = ui.loading,
                     onRefresh = { vm.refresh() },

@@ -46,6 +46,8 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -152,28 +154,17 @@ fun UpdatesScreen(
                 ) {
                     SkeletonList()
                 }
-                ui.error != null && ui.all.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Updates load failed: ${ui.error}",
-                        style = responsiveType(R1.body),
-                        color = R1.StatusRed,
-                    )
-                }
-                ui.all.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(22.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No update entities. HA exposes update.* entries " +
-                            "once the Supervisor / add-ons / integrations are " +
-                            "installed and configured to report versions.",
-                        style = responsiveType(R1.body),
-                        color = R1.InkMuted,
-                    )
-                }
+                ui.error != null && ui.all.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD UPDATES",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
+                )
+                ui.all.isEmpty() -> R1EmptyState(
+                    title = "NO UPDATE ENTITIES",
+                    body = "HA exposes update.* entries once the Supervisor / " +
+                        "add-ons / integrations are installed and configured " +
+                        "to report versions.",
+                )
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                     isRefreshing = ui.loading,
                     onRefresh = { vm.refresh() },

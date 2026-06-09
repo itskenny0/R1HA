@@ -48,6 +48,8 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -144,9 +146,19 @@ fun DevicesScreen(
                     ) {
                         SkeletonList()
                     }
-                    ui.error != null && ui.devices.isEmpty() -> ErrorState(message = ui.error.orEmpty())
-                    ui.devices.isEmpty() -> EmptyState(
-                        message = "No devices in HA's registry yet.",
+                    ui.error != null && ui.devices.isEmpty() -> R1ErrorState(
+                        title = "COULDN'T LOAD DEVICES",
+                        message = listOfNotNull(
+                            ui.error?.takeIf { it.isNotBlank() },
+                            "Device registry only flows over the live WebSocket. " +
+                                "Retry once it reconnects.",
+                        ).joinToString("\n\n"),
+                        onRetry = { vm.refresh() },
+                    )
+                    ui.devices.isEmpty() -> R1EmptyState(
+                        title = "NO DEVICES",
+                        body = "No devices in HA's registry yet. They appear as " +
+                            "integrations are set up under Settings, Devices & Services.",
                     )
                     else -> PullToRefreshBox(
                         isRefreshing = ui.loading,
@@ -431,24 +443,5 @@ private fun EmptyState(message: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(text = message, style = responsiveType(R1.body), color = R1.InkMuted)
-    }
-}
-
-@Composable
-private fun ErrorState(message: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = "COULDN'T LOAD DEVICES", style = responsiveType(R1.labelMicro), color = R1.StatusAmber)
-        Spacer(Modifier.height(R1.space.xs))
-        Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
-        Spacer(Modifier.height(R1.space.m))
-        Text(
-            text = "Device registry only flows over the live WebSocket. Retry once it reconnects.",
-            style = responsiveType(R1.labelMicro),
-            color = R1.InkMuted,
-        )
     }
 }

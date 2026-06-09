@@ -56,6 +56,8 @@ import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -184,26 +186,15 @@ fun AreasScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && ui.areas.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = ui.error ?: "Error",
-                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.areas.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No areas defined in HA. Settings → Areas in HA's web UI.",
-                    style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            ui.error != null && ui.areas.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD AREAS",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.areas.isEmpty() -> R1EmptyState(
+                title = "NO AREAS",
+                body = "Define areas under Settings → Areas in HA's web UI.",
+            )
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },
@@ -511,28 +502,17 @@ private fun AreaDrillScreen(
                         color = R1.AccentWarm,
                     )
                 }
-                drill.error != null && drill.groups.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "Couldn't load this area: ${drill.error}",
-                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
-                        color = R1.StatusRed,
-                    )
-                }
-                drill.groups.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = if (drill.unmatchedCount > 0)
-                            "No live entities to control here. ${drill.unmatchedCount} assigned entit${if (drill.unmatchedCount == 1) "y is" else "ies are"} not in the current state set."
-                        else "No entities assigned to this area.",
-                        style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
-                        color = R1.InkMuted,
-                    )
-                }
+                drill.error != null && drill.groups.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD THIS AREA",
+                    message = drill.error,
+                    onRetry = onRefresh,
+                )
+                drill.groups.isEmpty() -> R1EmptyState(
+                    title = "NO ENTITIES",
+                    body = if (drill.unmatchedCount > 0)
+                        "No live entities to control here. ${drill.unmatchedCount} assigned entit${if (drill.unmatchedCount == 1) "y is" else "ies are"} not in the current state set."
+                    else "No entities assigned to this area.",
+                )
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                     isRefreshing = drill.loading,
                     onRefresh = onRefresh,

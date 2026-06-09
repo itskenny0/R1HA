@@ -45,6 +45,8 @@ import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1CenteredContent
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 
@@ -104,29 +106,18 @@ fun WeatherScreen(
                     color = R1.AccentWarm,
                 )
             }
-            ui.error != null && ui.weathers.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Distinct from "empty integration": surface the actual
-                // error so the user knows it's a transport problem (auth,
-                // DNS, server down) rather than a config gap.
-                Text(
-                    text = "Weather load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.weathers.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No weather entities in HA. Add a weather integration to see them here.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            // Distinct from "empty integration": surface the actual
+            // error so the user knows it's a transport problem (auth,
+            // DNS, server down) rather than a config gap.
+            ui.error != null && ui.weathers.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD WEATHER",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.weathers.isEmpty() -> R1EmptyState(
+                title = "NO WEATHER ENTITIES",
+                body = "Add a weather integration in HA to see them here.",
+            )
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 // Only the explicit refresh spinner here; the populated list
                 // stays put during auto-refresh ticks (initialLoading drives

@@ -40,6 +40,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -101,28 +103,17 @@ fun PersonsScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && ui.people.isEmpty() && ui.devices.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Distinct from "no person integrations": the request
-                // itself failed (auth, network, server down).
-                Text(
-                    text = "Persons load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.people.isEmpty() && ui.devices.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No people or device trackers in HA. Add a person integration to see them here.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            // Distinct from "no person integrations": the request
+            // itself failed (auth, network, server down).
+            ui.error != null && ui.people.isEmpty() && ui.devices.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD PERSONS",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.people.isEmpty() && ui.devices.isEmpty() -> R1EmptyState(
+                title = "NO PEOPLE OR TRACKERS",
+                body = "Add a person integration in HA to see them here.",
+            )
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 // Pull-to-refresh spinner only; the populated list stays put on
                 // auto-refresh ticks (initialLoading drives the full-screen

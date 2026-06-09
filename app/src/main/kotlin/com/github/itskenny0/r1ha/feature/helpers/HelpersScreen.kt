@@ -43,6 +43,8 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -207,27 +209,15 @@ fun HelpersScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Helpers load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No helpers defined. Add them under Settings, " +
-                        "Devices & Services, Helpers in HA's web UI.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            ui.error != null && ui.all.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD HELPERS",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.all.isEmpty() -> R1EmptyState(
+                title = "NO HELPERS",
+                body = "Add them under Settings, Devices & Services, Helpers in HA's web UI.",
+            )
             entries.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,

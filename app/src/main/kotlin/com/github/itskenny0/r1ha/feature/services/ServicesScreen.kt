@@ -39,6 +39,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -96,26 +98,26 @@ fun ServicesScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && filteredDomains.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Service registry fetch failed: surface the real error
-                // rather than the "no services" fallback so the user
-                // doesn't think their HA install is empty.
-                Text(
-                    text = "Services load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
+            // Service registry fetch failed: surface the real error
+            // rather than the "no services" fallback so the user
+            // doesn't think their HA install is empty.
+            ui.error != null && filteredDomains.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD SERVICES",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            // No-data vs filtered-empty: a blank query means HA's registry
+            // really came back empty; otherwise the search excluded everything.
+            ui.all.isEmpty() -> R1EmptyState(
+                title = "NO SERVICES",
+                body = "No services reported by HA.",
+            )
             filteredDomains.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (ui.query.isNotBlank()) "No matches for '${ui.query}'."
-                    else "No services reported by HA.",
+                    text = "No matches for '${ui.query}'.",
                     style = responsiveType(R1.body),
                     color = R1.InkMuted,
                 )

@@ -46,6 +46,8 @@ import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -119,26 +121,15 @@ fun ZonesScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && ui.zones.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Zones load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.zones.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(22.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No zones defined. Settings, Areas & Zones in HA's web UI.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            ui.error != null && ui.zones.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD ZONES",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.zones.isEmpty() -> R1EmptyState(
+                title = "NO ZONES",
+                body = "Define zones under Settings, Areas & Zones in HA's web UI.",
+            )
             else -> PullToRefreshBox(
                 isRefreshing = ui.refreshing,
                 onRefresh = { vm.refresh() },

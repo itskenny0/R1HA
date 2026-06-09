@@ -44,6 +44,8 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -189,32 +191,21 @@ fun BackupsScreen(
                     ) {
                         SkeletonList()
                     }
-                    ui.error != null && ui.backups.isEmpty() -> Column {
-                        Spacer(Modifier.size(R1.space.m))
-                        Text(text = "COULDN'T LOAD BACKUPS", style = responsiveType(R1.labelMicro), color = R1.StatusRed)
-                        Spacer(Modifier.size(R1.space.xs))
-                        Text(text = ui.error ?: "", style = responsiveType(R1.body), color = R1.InkSoft)
-                        Spacer(Modifier.size(R1.space.s))
-                        Text(
-                            text = "backup/info is HA Core 2024.4+ only. Older releases or installs without the backup integration return empty.",
-                            style = responsiveType(R1.labelMicro),
-                            color = R1.InkMuted,
-                        )
-                    }
-                    ui.backups.isEmpty() -> Column {
-                        Spacer(Modifier.size(R1.space.m))
-                        Text(
-                            text = "NO BACKUPS YET",
-                            style = responsiveType(R1.labelMicro),
-                            color = R1.InkSoft,
-                        )
-                        Spacer(Modifier.size(R1.space.xs))
-                        Text(
-                            text = "Tap CREATE BACKUP NOW above to take your first one, or schedule automatic backups from Home Assistant's Settings > System > Backups.",
-                            style = responsiveType(R1.body),
-                            color = R1.InkMuted,
-                        )
-                    }
+                    ui.error != null && ui.backups.isEmpty() -> R1ErrorState(
+                        title = "COULDN'T LOAD BACKUPS",
+                        message = listOfNotNull(
+                            ui.error?.takeIf { it.isNotBlank() },
+                            "backup/info is HA Core 2024.4+ only. Older releases or " +
+                                "installs without the backup integration return empty.",
+                        ).joinToString("\n\n"),
+                        onRetry = { vm.refresh() },
+                    )
+                    ui.backups.isEmpty() -> R1EmptyState(
+                        title = "NO BACKUPS YET",
+                        body = "Tap CREATE BACKUP NOW above to take your first one, or " +
+                            "schedule automatic backups from Home Assistant's " +
+                            "Settings > System > Backups.",
+                    )
                     else -> R1Section(
                         title = "Server backups",
                         count = ui.backups.size,

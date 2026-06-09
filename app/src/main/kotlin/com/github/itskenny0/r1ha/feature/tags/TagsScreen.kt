@@ -55,6 +55,8 @@ import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1ButtonVariant
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -123,23 +125,16 @@ fun TagsScreen(
                 ) {
                     SkeletonList()
                 }
-                ui.error != null && ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
-                }
-                ui.tags.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No tags registered. Scan an NFC / QR tag at HA to register it; " +
-                            "it'll appear here automatically.",
-                        style = responsiveType(R1.body),
-                        color = R1.InkMuted,
-                    )
-                }
+                ui.error != null && ui.tags.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD TAGS",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
+                )
+                ui.tags.isEmpty() -> R1EmptyState(
+                    title = "NO TAGS",
+                    body = "Scan an NFC / QR tag at HA to register it; " +
+                        "it'll appear here automatically.",
+                )
                 // Multi-column flow on roomy tiers (gridColumns: 2/2/3/4/5) so a wide panel
                 // fills with tag cards side by side instead of one tall ribbon; the R1 /
                 // compact panel stays single column where a row's name + scan time + id

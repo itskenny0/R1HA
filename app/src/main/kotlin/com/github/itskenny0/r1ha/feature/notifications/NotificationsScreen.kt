@@ -43,6 +43,8 @@ import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.AutoRefresh
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -177,27 +179,16 @@ fun NotificationsScreen(
                     SkeletonRow()
                 }
             }
-            ui.error != null && ui.notifications.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Distinct from "all clear": the request itself failed.
-                Text(
-                    text = "Notifications load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.notifications.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No persistent notifications in HA. All clear.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            // Distinct from "all clear": the request itself failed.
+            ui.error != null && ui.notifications.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD NOTIFICATIONS",
+                message = ui.error,
+                onRetry = { vm.refresh() },
+            )
+            ui.notifications.isEmpty() -> R1EmptyState(
+                title = "NO NOTIFICATIONS",
+                body = "HA has no persistent notifications right now.",
+            )
             else -> PullToRefreshBox(
                 isRefreshing = ui.loading,
                 onRefresh = { vm.refresh() },

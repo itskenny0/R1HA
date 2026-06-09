@@ -47,6 +47,8 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
@@ -127,37 +129,20 @@ fun ScenesScreen(
                 // nothing cached to show. A transient failure over a populated list
                 // keeps the list (the toast already reported the failure) so a blip
                 // doesn't blank a working screen.
-                ui.error != null && ui.all.isEmpty() -> Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(R1.space.xl)
-                        .semantics {
-                            liveRegion = LiveRegionMode.Polite
-                            contentDescription = "Failed to load scenes and scripts: ${ui.error}"
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(R1.space.m),
-                    ) {
-                        Text(
-                            text = "Couldn't load scenes and scripts: ${ui.error}",
-                            style = responsiveType(R1.body),
-                            color = R1.StatusRed,
-                        )
-                        // Explicit retry: the empty / error Box isn't scrollable so
-                        // pull-to-refresh can't fire here. Give the user a direct way
-                        // to re-issue the /api/states fetch without leaving the screen.
-                        R1Chip(
-                            text = "RETRY",
-                            modifier = Modifier.height(R1.MinTarget),
-                            variant = R1ChipVariant.Action,
-                            onClick = { vm.refresh() },
-                            contentDescription = "Retry loading scenes and scripts",
-                        )
-                    }
-                }
+                ui.error != null && ui.all.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD SCENES & SCRIPTS",
+                    message = ui.error,
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Failed to load scenes and scripts: ${ui.error}"
+                    },
+                    onRetry = { vm.refresh() },
+                )
+                ui.all.isEmpty() -> R1EmptyState(
+                    title = "NO SCENES OR SCRIPTS",
+                    body = "Define them in HA's UI to see them here.",
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
                 entries.isEmpty() -> Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -165,12 +150,10 @@ fun ScenesScreen(
                         .semantics { liveRegion = LiveRegionMode.Polite },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // Distinguish "the install has no scenes" from "the search /
+                    // Distinguish "the search excluded everything" from "the
                     // filter chip excluded everything" so the user knows which
                     // dial to twist to see anything.
-                    val hasAny = ui.all.isNotEmpty()
                     val msg = when {
-                        !hasAny -> "No scenes or scripts in HA. Define them in HA's UI to see them here."
                         ui.query.isNotBlank() -> "No matches for '${ui.query}'. Clear the search or try different terms."
                         else -> "Nothing under this filter. Switch to ALL to see everything."
                     }

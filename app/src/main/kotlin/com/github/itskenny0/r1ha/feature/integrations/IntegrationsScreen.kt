@@ -45,6 +45,8 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -127,9 +129,19 @@ fun IntegrationsScreen(
                     ) {
                         SkeletonList()
                     }
-                    ui.error != null && ui.all.isEmpty() -> ErrorState(message = ui.error.orEmpty())
-                    ui.all.isEmpty() -> EmptyState(
-                        message = "No integrations configured in HA yet.",
+                    ui.error != null && ui.all.isEmpty() -> R1ErrorState(
+                        title = "COULDN'T LOAD INTEGRATIONS",
+                        message = listOfNotNull(
+                            ui.error?.takeIf { it.isNotBlank() },
+                            "config_entries only flows over the live WebSocket. " +
+                                "Retry once it reconnects.",
+                        ).joinToString("\n\n"),
+                        onRetry = { vm.refresh() },
+                    )
+                    ui.all.isEmpty() -> R1EmptyState(
+                        title = "NO INTEGRATIONS",
+                        body = "No integrations configured in HA yet. Add them under " +
+                            "Settings, Devices & Services in HA's web UI.",
                     )
                     else -> PullToRefreshBox(
                         isRefreshing = ui.loading,
@@ -472,24 +484,5 @@ private fun EmptyState(message: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(text = message, style = responsiveType(R1.body), color = R1.InkMuted)
-    }
-}
-
-@Composable
-private fun ErrorState(message: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = "COULDN'T LOAD INTEGRATIONS", style = R1.labelMicro, color = R1.StatusAmber)
-        Spacer(Modifier.height(R1.space.s))
-        Text(text = message, style = responsiveType(R1.body), color = R1.InkSoft)
-        Spacer(Modifier.height(R1.space.m))
-        Text(
-            text = "config_entries only flows over the live WebSocket. Retry once it reconnects.",
-            style = R1.labelMicro,
-            color = R1.InkMuted,
-        )
     }
 }

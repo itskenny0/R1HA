@@ -45,6 +45,8 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -144,32 +146,17 @@ fun AutomationsScreen(
             ) {
                 SkeletonList()
             }
-            ui.error != null && ui.all.isEmpty() -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(R1.space.xl)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "Automations load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
-                )
-            }
-            ui.all.isEmpty() -> Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(R1.space.xl)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No automations defined. Settings, Automations in HA's web UI.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
-                )
-            }
+            ui.error != null && ui.all.isEmpty() -> R1ErrorState(
+                title = "COULDN'T LOAD AUTOMATIONS",
+                message = ui.error,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                onRetry = { vm.refresh() },
+            )
+            ui.all.isEmpty() -> R1EmptyState(
+                title = "NO AUTOMATIONS",
+                body = "Create automations under Settings, Automations & Scenes in HA's web UI.",
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
             entries.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxSize()

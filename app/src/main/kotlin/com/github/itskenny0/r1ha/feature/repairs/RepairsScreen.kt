@@ -43,6 +43,8 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.core.util.Toaster
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
@@ -106,54 +108,19 @@ fun RepairsScreen(
                         SkeletonList()
                     }
                 }
-                ui.error != null && ui.issues.isEmpty() -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(R1.space.xl),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "COULDN'T LOAD REPAIRS",
-                            style = responsiveType(R1.labelMicro),
-                            color = R1.StatusAmber,
-                        )
-                        Spacer(Modifier.height(R1.space.xs))
-                        Text(
-                            text = ui.error ?: "",
-                            style = responsiveType(R1.body),
-                            color = R1.InkSoft,
-                        )
-                        Spacer(Modifier.height(R1.space.m))
-                        Text(
-                            text = "Repairs only flows over the live WebSocket. If your link is down or the server is offline, retry once it reconnects.",
-                            style = responsiveType(R1.labelMicro),
-                            color = R1.InkMuted,
-                        )
-                    }
-                }
-                ui.issues.isEmpty() -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(R1.space.xl),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "NO OPEN REPAIRS",
-                            style = responsiveType(R1.labelMicro),
-                            color = R1.AccentCool,
-                        )
-                        Spacer(Modifier.height(R1.space.xs))
-                        Text(
-                            text = "Nothing for HA's integrations to flag.",
-                            style = responsiveType(R1.body),
-                            color = R1.InkMuted,
-                        )
-                    }
-                }
+                ui.error != null && ui.issues.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD REPAIRS",
+                    message = listOfNotNull(
+                        ui.error?.takeIf { it.isNotBlank() },
+                        "Repairs only flows over the live WebSocket. If your link " +
+                            "is down or the server is offline, retry once it reconnects.",
+                    ).joinToString("\n\n"),
+                    onRetry = { vm.refresh() },
+                )
+                ui.issues.isEmpty() -> R1EmptyState(
+                    title = "NO OPEN REPAIRS",
+                    body = "Nothing for HA's integrations to flag.",
+                )
                 else -> PullToRefreshBox(
                     isRefreshing = ui.loading,
                     onRefresh = { vm.refresh() },

@@ -46,6 +46,8 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
@@ -107,21 +109,19 @@ fun UsersScreen(
                 ) {
                     SkeletonList()
                 }
-                ui.permissionDenied -> EmptyState(
+                ui.permissionDenied -> R1EmptyState(
                     title = "ADMIN ONLY",
                     body = "Sign in with an admin account to browse users. The current " +
                         "token doesn't have permission to read config/auth/list.",
-                    accent = R1.AccentWarm,
                 )
-                ui.error != null && ui.sections.isEmpty() -> EmptyState(
-                    title = "COULDN'T LOAD",
-                    body = ui.error ?: "Unknown error",
-                    accent = R1.StatusRed,
+                ui.error != null && ui.sections.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD USERS",
+                    message = ui.error ?: "Unknown error",
+                    onRetry = { vm.refresh() },
                 )
-                ui.sections.isEmpty() -> EmptyState(
+                ui.sections.isEmpty() -> R1EmptyState(
                     title = "NO USERS",
                     body = "HA returned an empty user list. (Unusual.)",
-                    accent = R1.InkMuted,
                 )
                 else -> PullToRefreshBox(
                     isRefreshing = ui.loading,
@@ -340,19 +340,5 @@ private fun rowPresence(state: String): RowPresence {
         "not_home", "away" -> RowPresence("AWAY", R1.StatusAmber)
         "unknown", "unavailable", "" -> RowPresence("?", R1.StatusRed)
         else -> RowPresence(trimmed.uppercase(java.util.Locale.US), R1.AccentCool)
-    }
-}
-
-@Composable
-private fun EmptyState(title: String, body: String, accent: Color) {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = title, style = responsiveType(R1.sectionHeader), color = accent)
-            Spacer(Modifier.size(R1.space.s))
-            Text(text = body, style = responsiveType(R1.body), color = R1.InkSoft)
-        }
     }
 }

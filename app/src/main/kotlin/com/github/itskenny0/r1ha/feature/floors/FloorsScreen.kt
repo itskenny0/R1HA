@@ -42,6 +42,8 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -86,32 +88,17 @@ fun FloorsScreen(
                 ) {
                     SkeletonList()
                 }
-                ui.error != null && ui.floors.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = ui.error ?: "Error", style = responsiveType(R1.body), color = R1.StatusRed)
-                }
-                ui.floors.isEmpty() -> Box(
-                    modifier = Modifier.fillMaxSize().padding(R1.space.xxl),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "NO FLOORS",
-                            style = responsiveType(R1.sectionHeader),
-                            color = R1.InkSoft,
-                        )
-                        Spacer(Modifier.size(R1.space.s))
-                        Text(
-                            text = "Floors are an optional HA concept that group areas " +
-                                "by building storey. Add them under Settings, Areas & Zones, " +
-                                "Floors to see them here.",
-                            style = responsiveType(R1.body),
-                            color = R1.InkMuted,
-                        )
-                    }
-                }
+                ui.error != null && ui.floors.isEmpty() -> R1ErrorState(
+                    title = "COULDN'T LOAD FLOORS",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
+                )
+                ui.floors.isEmpty() -> R1EmptyState(
+                    title = "NO FLOORS",
+                    body = "Floors are an optional HA concept that group areas " +
+                        "by building storey. Add them under Settings, Areas & Zones, " +
+                        "Floors to see them here.",
+                )
                 else -> PullToRefreshBox(
                     isRefreshing = ui.refreshing,
                     onRefresh = { vm.refresh() },
