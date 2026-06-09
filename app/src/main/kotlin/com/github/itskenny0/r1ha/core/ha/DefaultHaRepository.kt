@@ -120,6 +120,11 @@ private fun computePercent(domain: Domain, attrs: kotlinx.serialization.json.Jso
     // don't map to a 0..100 percent; input_text / input_datetime
     // are text-shaped.
     Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME,
+    // New text / date / datetime / time / image / event domains: all read-only,
+    // no 0..100 wheel scalar.
+    Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME, Domain.IMAGE, Domain.EVENT,
+    // Siren: on/off; no positional scalar.
+    Domain.SIREN,
     // Update entities expose `update_percentage` for install progress but
     // that's surfaced on the dedicated Updates screen — not a scalar
     // brightness/volume-style percent, so we leave the card-stack
@@ -221,6 +226,9 @@ private fun computeRaw(domain: Domain, attrs: kotlinx.serialization.json.JsonObj
     Domain.NUMBER, Domain.INPUT_NUMBER -> null
     // Helper-only domains: no numeric raw the card stack needs.
     Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> null
+    // New read-only / toggle domains: no card-stack raw numeric.
+    Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+    Domain.SIREN, Domain.IMAGE, Domain.EVENT -> null
     // Update entities — version diff lives in attributes that the Updates
     // screen reads directly; no card-stack raw value to expose.
     Domain.UPDATE,
@@ -311,6 +319,10 @@ private fun supportsScalar(domain: Domain, attrs: kotlinx.serialization.json.Jso
     // Helper-only domains rendered exclusively on the Helpers screen; not
     // scalar from the card stack's perspective.
     Domain.COUNTER, Domain.TIMER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> false
+    // New read-only domains: no wheel scalar.
+    Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME, Domain.IMAGE, Domain.EVENT -> false
+    // Siren: on/off only; no wheel scalar.
+    Domain.SIREN -> false
     // Update entities are managed from the dedicated Updates screen, not
     // the card stack — return false so the Favourites picker filters them
     // out of "controllable" buckets, just like sensors.
@@ -1128,6 +1140,12 @@ class DefaultHaRepository(
             // pin-to-favorites + tap could be wired later without further
             // changes to isOn semantics.
             Domain.TIMER -> stateStr.equals("active", ignoreCase = true)
+            // Siren: standard on/off state vocabulary.
+            Domain.SIREN -> stateStr.equals("on", ignoreCase = true)
+            // text / date / datetime / time / image / event: no on/off concept;
+            // read-only or fire-and-forget.
+            Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+            Domain.IMAGE, Domain.EVENT -> false
             // Update entities have state "on" when an update is available and
             // "off" when up to date. Surface that mapping so the Updates
             // screen can read isOn as "update available" without touching
@@ -1308,6 +1326,11 @@ class DefaultHaRepository(
                 raw.attributes["display_precision"].asInt()
                     ?: raw.attributes["suggested_display_precision"].asInt()
             else null,
+            sirenAvailableTones = if (domain == Domain.SIREN)
+                extractStringList(raw.attributes["available_tones"]) else emptyList(),
+            sirenVolumeLevel = if (domain == Domain.SIREN &&
+                (raw.attributes["is_volume_controllable"].asBoolean() ?: false))
+                raw.attributes["volume_level"].asDouble() else null,
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -2552,6 +2575,11 @@ class DefaultHaRepository(
                         // Helper-only — Helpers screen renders these bespoke.
                         Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> false
                         Domain.TIMER -> stateStr.equals("active", ignoreCase = true)
+                        // Siren: standard on/off.
+                        Domain.SIREN -> stateStr.equals("on", ignoreCase = true)
+                        // text / date / datetime / time / image / event: no on/off concept.
+                        Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+                        Domain.IMAGE, Domain.EVENT -> false
                         // Update entity: "on" = update available.
                         Domain.UPDATE -> stateStr.equals("on", ignoreCase = true)
                         // Remote: anything non-off / available counts as on.
@@ -2703,6 +2731,11 @@ class DefaultHaRepository(
                         attrs["display_precision"].asInt()
                             ?: attrs["suggested_display_precision"].asInt()
                     else null,
+                    sirenAvailableTones = if (domain == Domain.SIREN)
+                        extractStringList(attrs["available_tones"]) else emptyList(),
+                    sirenVolumeLevel = if (domain == Domain.SIREN &&
+                        (attrs["is_volume_controllable"].asBoolean() ?: false))
+                        attrs["volume_level"].asDouble() else null,
                 )
                 }.getOrElse { t ->
                     logWarn("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")

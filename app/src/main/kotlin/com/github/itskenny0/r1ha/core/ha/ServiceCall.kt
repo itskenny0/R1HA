@@ -132,6 +132,12 @@ data class ServiceCall(
                     "update_entity",
                     JsonObject(emptyMap()),
                 )
+                // New domains: read-only or on/off-only; wheel never reaches setPercent for
+                // these. Defensive no-op.
+                Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+                Domain.IMAGE, Domain.EVENT -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
+                // Siren: on/off; wheel doesn't apply. Defensive no-op.
+                Domain.SIREN -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
                 // Update entities never enter the wheel/percent path — they
                 // have their own install/skip flow surfaced from the Updates
                 // screen. Defensive: emit homeassistant.update_entity (a HA
@@ -409,6 +415,16 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // Siren: tap toggles on/off.
+            Domain.SIREN -> ServiceCall(
+                target,
+                if (isOn) "turn_off" else "turn_on",
+                JsonObject(emptyMap()),
+            )
+            // New read-only domains: isSensor = true so EntityCard skips the tap modifier;
+            // defensive no-op for any stray dispatch.
+            Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+            Domain.IMAGE, Domain.EVENT -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
             // Update entities have a bespoke install/skip/clear flow surfaced
             // from the dedicated Updates screen — card-stack tap / wheel
             // dispatches never reach them today. Defensive no-op keeps every
@@ -510,6 +526,12 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // Siren: explicit on/off via turn_on / turn_off.
+            Domain.SIREN -> ServiceCall(
+                target,
+                if (on) "turn_on" else "turn_off",
+                JsonObject(emptyMap()),
+            )
             // Helper-only — Helpers screen owns dispatch for these.
             Domain.COUNTER, Domain.TIMER,
             Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> ServiceCall(
@@ -517,6 +539,9 @@ data class ServiceCall(
                 "update_entity",
                 JsonObject(emptyMap()),
             )
+            // New read-only domains: no on/off concept. Defensive no-op.
+            Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+            Domain.IMAGE, Domain.EVENT -> ServiceCall(target, "update_entity", JsonObject(emptyMap()))
             // Update entities have a bespoke install/skip/clear flow surfaced
             // from the dedicated Updates screen — card-stack tap / wheel
             // dispatches never reach them today. Defensive no-op keeps every
