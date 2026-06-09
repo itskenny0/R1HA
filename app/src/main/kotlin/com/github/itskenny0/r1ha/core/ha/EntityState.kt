@@ -297,6 +297,16 @@ data class EntityState(
      * the state (mirrors the lock idiom).
      */
     val alarmChangedBy: String? = null,
+    /**
+     * Sensor-only: HA's `display_precision` (user override) or
+     * `suggested_display_precision` (integration default) — the number of
+     * decimal places HA's own frontend uses when rendering this sensor's
+     * value. When present the sensor card applies the same rounding so the
+     * R1 display matches what the user expects from the HA web UI.
+     * Null for non-sensor entities and sensors that don't advertise either
+     * attribute.
+     */
+    val displayPrecision: Int? = null,
 ) {
     /**
      * Subset of [MediaPlayerEntityFeature](https://github.com/home-assistant/core/blob/dev/homeassistant/components/media_player/const.py)

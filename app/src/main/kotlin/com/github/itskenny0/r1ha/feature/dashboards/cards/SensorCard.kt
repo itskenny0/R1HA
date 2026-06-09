@@ -28,6 +28,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.SensorHistoryChart
+import com.github.itskenny0.r1ha.ui.components.formatWithPrecision
 
 /**
  * Renderer for HA's `sensor` card. A single numeric (or text) sensor's
@@ -53,7 +54,8 @@ fun SensorCard(
     val unit = card.unit ?: state?.unit
     val valueText = state?.let { s ->
         val raw = s.rawState.orEmpty()
-        if (unit != null && raw.toDoubleOrNull() != null) "$raw $unit" else compactStateText(s)
+        val formatted = formatWithPrecision(raw, s.displayPrecision)
+        if (unit != null && raw.toDoubleOrNull() != null) "$formatted $unit" else compactStateText(s)
     }?.takeUnless { it.isBlank() } ?: "-"
 
     Column(

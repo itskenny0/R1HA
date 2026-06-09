@@ -23,6 +23,7 @@ import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.formatWithPrecision
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -266,7 +267,8 @@ internal fun compactStateText(state: EntityState): String {
         raw.equals("home", ignoreCase = true) -> "home"
         raw.equals("not_home", ignoreCase = true) -> "away"
         raw.equals("unknown", ignoreCase = true) -> "unknown"
-        state.unit != null && raw.toDoubleOrNull() != null -> "$raw ${state.unit}"
+        state.unit != null && raw.toDoubleOrNull() != null ->
+            "${formatWithPrecision(raw, state.displayPrecision)} ${state.unit}"
         // No raw state to show: render an empty string; callers that can hide
         // the chip do, and an inline readout collapses to nothing rather than a dot.
         raw.isBlank() -> ""

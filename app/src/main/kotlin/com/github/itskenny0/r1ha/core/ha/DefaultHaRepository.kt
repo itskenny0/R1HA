@@ -1304,6 +1304,10 @@ class DefaultHaRepository(
                 (raw.attributes["code_arm_required"].asBoolean() ?: true) else true,
             alarmChangedBy = if (domain == Domain.ALARM_CONTROL_PANEL)
                 raw.attributes["changed_by"].asString() else null,
+            displayPrecision = if (domain == Domain.SENSOR)
+                raw.attributes["display_precision"].asInt()
+                    ?: raw.attributes["suggested_display_precision"].asInt()
+            else null,
         )
         cache.update { it + (id to newState) }
         // Heartbeat: any successfully-applied event means the WS path is alive. The
@@ -2695,6 +2699,10 @@ class DefaultHaRepository(
                         (attrs["code_arm_required"].asBoolean() ?: true) else true,
                     alarmChangedBy = if (domain == Domain.ALARM_CONTROL_PANEL)
                         attrs["changed_by"].asString() else null,
+                    displayPrecision = if (domain == Domain.SENSOR)
+                        attrs["display_precision"].asInt()
+                            ?: attrs["suggested_display_precision"].asInt()
+                    else null,
                 )
                 }.getOrElse { t ->
                     logWarn("HaRepo.listAll", "construction failed for ${row.entity_id}: ${t.message}")

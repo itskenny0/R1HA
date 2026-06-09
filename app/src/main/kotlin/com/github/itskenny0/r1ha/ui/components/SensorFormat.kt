@@ -63,6 +63,34 @@ fun formatSensorValue(raw: String?, maxDecimals: Int = 2): String {
 internal fun formatFixed(value: Double, decimals: Int): String =
     "%.${decimals.coerceAtLeast(0)}f".format(Locale.US, value)
 
+/**
+ * Apply HA's `display_precision` / `suggested_display_precision` rounding to a raw
+ * sensor state string. When [precision] is non-null and [raw] parses as a finite number,
+ * the value is rounded to exactly [precision] decimal places using [groupThousands] for
+ * thousands-separator formatting (matching [formatSensorValue]'s output style). Non-
+ * numeric states, HA sentinels (unknown / unavailable), and a null [precision] all pass
+ * through to [formatSensorValue] unchanged so the existing rounding / dash logic applies.
+ *
+ * Locale-pinned to US (dot separator) for the same reasons as [formatFixed].
+ */
+fun formatWithPrecision(raw: String?, precision: Int?): String {
+    if (precision == null) return formatSensorValue(raw)
+    if (raw.isNullOrBlank()) return "—"
+    val trimmed = raw.trim()
+    if (trimmed.equals("unknown", ignoreCase = true) ||
+        trimmed.equals("unavailable", ignoreCase = true)
+    ) return "—"
+    val num = trimmed.toDoubleOrNull() ?: return raw
+    if (num.isNaN() || num.isInfinite()) return "—"
+    val places = precision.coerceIn(0, 6)
+    val rounded = String.format(Locale.US, "%.${places}f", num)
+    val trimmedZeros = if (places == 0) rounded else rounded.trimEnd('0').trimEnd('.')
+    val signed = if (trimmedZeros.startsWith("-") &&
+        trimmedZeros.drop(1).all { it == '0' || it == '.' }
+    ) trimmedZeros.drop(1) else trimmedZeros
+    return groupThousands(signed)
+}
+
 internal fun groupThousands(s: String): String {
     val neg = s.startsWith("-")
     val body = if (neg) s.substring(1) else s
