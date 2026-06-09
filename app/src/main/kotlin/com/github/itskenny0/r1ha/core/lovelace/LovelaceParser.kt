@@ -278,6 +278,7 @@ object LovelaceParser {
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     features = parseTileFeatures(obj["features"]),
                     stateContent = parseStringList(obj["state_content"]),
+                    nameType = obj["name_type"]?.asStringOrNull(),
                 )
             }
             "light" -> {
@@ -908,6 +909,7 @@ object LovelaceParser {
                         name = item["name"]?.asStringOrNull(),
                         icon = item["icon"]?.asStringOrNull(),
                         secondaryInfo = item["secondary_info"]?.asStringOrNull(),
+                        nameType = item["name_type"]?.asStringOrNull(),
                     )
                 }
                 else -> null

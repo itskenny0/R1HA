@@ -185,6 +185,16 @@ sealed class LovelaceCard {
          * [compactStateText] path.
          */
         val stateContent: List<String> = emptyList(),
+        /**
+         * HA 2025.11: controls which name the tile displays. One of:
+         *  - null / "entity" (default): the entity's friendly_name
+         *  - "device": the owning device's display name
+         *  - "area": the entity's area name
+         *  - "floor": the floor the entity's area belongs to
+         * Space or comma-separated combos (e.g. "device area") resolve each
+         * part and join the results with a space.
+         */
+        val nameType: String? = null,
     ) : LovelaceCard() {
         override val type: String = "tile"
     }
@@ -685,6 +695,13 @@ data class EntityRow(
      * subset that maps cleanly to data we already have.
      */
     val secondaryInfo: String?,
+    /**
+     * HA 2025.11: per-row name_type override. Same semantics as
+     * [LovelaceCard.Tile.nameType]: one of "entity", "device", "area",
+     * "floor", or a space/comma-separated combination. Null means use the
+     * entity's friendly_name (the historic default).
+     */
+    val nameType: String? = null,
 )
 
 /** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */

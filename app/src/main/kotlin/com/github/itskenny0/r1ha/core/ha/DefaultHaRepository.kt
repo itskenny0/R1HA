@@ -3442,7 +3442,8 @@ class DefaultHaRepository(
                 val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
                 val id = (o["area_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
                 val name = (o["name"] as? JsonPrimitive)?.content ?: id
-                AreaInfo(areaId = id, name = name)
+                val floorId = (o["floor_id"] as? JsonPrimitive)?.content
+                AreaInfo(areaId = id, name = name, floorId = floorId)
             }.sortedBy { it.name.lowercase() }
         }.onFailure { t ->
             R1Log.w("HaRepo.area", "list failed: ${t.message}")
