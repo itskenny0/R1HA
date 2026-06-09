@@ -529,6 +529,14 @@ object LovelaceParser {
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 )
             }
+            "picture-elements" -> LovelaceCard.PictureElements(
+                raw = obj,
+                image = obj["image"]?.asStringOrNull(),
+                cameraImage = obj["camera_image"]?.asStringOrNull()
+                    ?: obj["image_entity"]?.asStringOrNull()
+                    ?: obj["entity"]?.asStringOrNull(),
+                elements = parseElements(obj["elements"] as? JsonArray),
+            )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
         }
@@ -937,6 +945,52 @@ object LovelaceParser {
                 else -> null
             }
         }
+    }
+
+    /**
+     * Parse the `elements:` array of a picture-elements card. Each entry is an
+     * object with a required `type` key. Entries with no `type` are dropped. Only
+     * the renderable types are kept: `state-badge`, `state-icon`, `state-label`,
+     * `icon`, `image`. All other types are silently skipped so unknown elements
+     * degrade cleanly rather than crashing.
+     *
+     * Position is read from `style.top` and `style.left` as percentage strings
+     * (with an optional trailing "%"). When absent or unparseable the value
+     * defaults to 50.0 (centered).
+     */
+    private fun parseElements(arr: JsonArray?): List<PictureElement> {
+        if (arr == null) return emptyList()
+        val supported = setOf("state-badge", "state-icon", "state-label", "icon", "image")
+        return arr.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val type = obj["type"]?.asStringOrNull()?.lowercase() ?: return@mapNotNull null
+            if (type !in supported) return@mapNotNull null
+            val style = obj["style"] as? JsonObject
+            PictureElement(
+                type = type,
+                entityId = obj["entity"]?.asStringOrNull(),
+                icon = obj["icon"]?.asStringOrNull(),
+                name = obj["name"]?.asStringOrNull(),
+                attribute = obj["attribute"]?.asStringOrNull(),
+                prefix = obj["prefix"]?.asStringOrNull(),
+                suffix = obj["suffix"]?.asStringOrNull(),
+                topPct = parseStylePct(style?.get("top")),
+                leftPct = parseStylePct(style?.get("left")),
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                image = obj["image"]?.asStringOrNull(),
+            )
+        }
+    }
+
+    /**
+     * Parse a `style.top` / `style.left` percentage value. Accepts a string
+     * like "25%" or "25", or a raw JSON number. Strips a trailing "%" before
+     * parsing. Returns 50.0 when the input is absent or unparseable.
+     */
+    private fun parseStylePct(el: JsonElement?): Double {
+        if (el == null) return 50.0
+        val s = el.asStringOrNull() ?: el.asDoubleOrNull()?.let { return it } ?: return 50.0
+        return s.trimEnd('%').trim().toDoubleOrNull() ?: 50.0
     }
 
     /**

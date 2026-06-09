@@ -648,6 +648,27 @@ sealed class LovelaceCard {
         override val type: String = "distribution"
     }
 
+    /**
+     * Picture-elements card: a background image (static URL or camera entity)
+     * with interactive overlaid elements (icons, state chips, labels, images)
+     * positioned by percentage offsets over the image box.
+     *
+     * [image] is a static background URL. [cameraImage] is an entity whose
+     * `entity_picture` attribute supplies the background (mutually exclusive
+     * with [image]; [cameraImage] wins when both are present at render time).
+     * [elements] is the ordered list of overlay elements. Unknown element types
+     * are skipped by the parser so the card degrades cleanly.
+     */
+    @Immutable
+    data class PictureElements(
+        override val raw: JsonObject,
+        val image: String?,
+        val cameraImage: String?,
+        val elements: List<PictureElement>,
+    ) : LovelaceCard() {
+        override val type: String = "picture-elements"
+    }
+
     /** Any card type we don't natively render.
      *
      * Best-effort fallback: even for a type we don't model, most cards carry
@@ -795,6 +816,36 @@ data class GaugeSegment(
     val from: Double,
     val color: String,
     val label: String? = null,
+)
+
+/**
+ * One overlaid element on a `picture-elements` card. The element's centre is
+ * placed at ([leftPct]%, [topPct]%) of the card's image box. Only the supported
+ * types are kept by the parser; unknown types are dropped rather than crashing.
+ *
+ * Supported types: `state-badge`, `state-icon`, `state-label`, `icon`, `image`.
+ *
+ * [entityId]: the bound entity (`entity:` key). Null for non-entity elements.
+ * [icon]: explicit MDI icon slug override (e.g. "mdi:lightbulb").
+ * [name]: display name override; null falls back to the entity's friendly_name.
+ * [attribute]: for `state-label`, read this attribute instead of the entity's state.
+ * [prefix]/[suffix]: text decorations flanking the state-label value.
+ * [tapAction]: the action fired on tap. Null means use the entity domain default.
+ * [image]: for `image` type elements, a static image URL (used when entity has no picture).
+ */
+@Immutable
+data class PictureElement(
+    val type: String,
+    val entityId: String?,
+    val icon: String?,
+    val name: String?,
+    val attribute: String?,
+    val prefix: String?,
+    val suffix: String?,
+    val topPct: Double,
+    val leftPct: Double,
+    val tapAction: LovelaceAction?,
+    val image: String?,
 )
 
 // One entry of a `tile` card's `features:` array. HA renders each below the
