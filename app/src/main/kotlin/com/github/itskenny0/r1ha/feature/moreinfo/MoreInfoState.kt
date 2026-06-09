@@ -123,12 +123,17 @@ fun accentForDomain(domain: Domain, deviceClass: String?): Color = when (domain)
     Domain.LIGHT, Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION,
     Domain.CLIMATE, Domain.BUTTON, Domain.INPUT_BUTTON, Domain.NUMBER,
     Domain.INPUT_NUMBER, Domain.WATER_HEATER, Domain.ALARM_CONTROL_PANEL,
+    // Siren: high-attention safety device; warm accent.
+    Domain.SIREN,
     -> R1.AccentWarm
     Domain.FAN, Domain.SCENE, Domain.VACUUM, Domain.LAWN_MOWER -> R1.AccentGreen
     Domain.MEDIA_PLAYER, Domain.SCRIPT, Domain.HUMIDIFIER, Domain.VALVE,
     Domain.SELECT, Domain.INPUT_SELECT, Domain.UPDATE, Domain.REMOTE,
     -> R1.AccentCool
     Domain.SENSOR, Domain.BINARY_SENSOR -> accentForDeviceClass(deviceClass)
+    // New read-only domains: neutral accent.
+    Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+    Domain.IMAGE, Domain.EVENT -> R1.AccentNeutral
     else -> R1.AccentNeutral
 }
 
@@ -136,6 +141,11 @@ private fun accentForDeviceClass(deviceClass: String?): Color = when (deviceClas
     "temperature", "humidity", "pressure", "atmospheric_pressure", "water" -> R1.AccentCool
     "power", "energy", "current", "voltage", "gas", "frequency" -> R1.AccentWarm
     "illuminance", "wind_speed", "speed", "battery" -> R1.AccentGreen
+    // New device_class accent buckets.
+    "data_size", "data_rate" -> R1.AccentCool
+    "irradiance" -> R1.AccentWarm
+    "sound_pressure" -> R1.AccentNeutral
+    "absolute_humidity" -> R1.AccentCool
     else -> R1.AccentNeutral
 }
 

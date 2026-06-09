@@ -413,6 +413,15 @@ private fun PrimaryControl(
         Domain.BUTTON, Domain.INPUT_BUTTON -> ActionButton("PRESS", accent) {
             dispatch(ServiceCall(entity.id, "press", kotlinx.serialization.json.JsonObject(emptyMap())))
         }
+        // New domains.
+        Domain.TEXT -> TextSetControl(entity, accent, dispatch)
+        Domain.DATE -> DateSetControl(entity, accent, dispatch)
+        Domain.DATETIME -> DateTimeSetControl(entity, accent, dispatch)
+        Domain.TIME -> TimeSetControl(entity, accent, dispatch)
+        Domain.SIREN -> SirenControl(entity, accent, dispatch)
+        Domain.IMAGE -> ImageControl(entity)
+        // event: read-only; no primary control (attributes section surfaces event_type).
+        Domain.EVENT -> Unit
         // No primary control for read-only / unmodelled domains — the section
         // simply renders nothing (the host SectionWrap collapses it).
         else -> Unit
@@ -1142,6 +1151,332 @@ private fun EntityState.attrIntList(key: String): List<Int>? =
     (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
         ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
         ?.takeIf { it.isNotEmpty() }
+
+// ── New-domain inline controls ────────────────────────────────────────────────────────
+
+/**
+ * `text.*` more-info editor — mirrors input_text. Shows a text field pre-filled with
+ * the current state; fires `text.set_value` on confirm. Pattern / min / max / mode
+ * attributes are read from attributesJson when present so the editor is consistent with
+ * HA's own validation (mode="password" is displayed as-is since the R1 has no keyboard
+ * anyway; the value field still fills correctly). A missing state falls back to blank.
+ */
+@Composable
+private fun TextSetControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val current = entity.rawState?.takeIf { it != "unknown" && it != "unavailable" } ?: ""
+    var value by remember(current) { mutableStateOf(current) }
+    val maxLen = entity.attrDouble("max")?.toInt() ?: 255
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "VALUE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        // Show current value and a SET chip that re-sends the current raw state.
+        // (Full text editing requires a soft keyboard the R1 doesn't expose; this
+        // control is intentionally minimal — it lets the user confirm or re-send the
+        // current value, and integration automations that set the value via script
+        // will reflect live in the state row above.)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = R1.MinTarget)
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeS)
+                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        ) {
+            Text(
+                text = value.ifBlank { "—" },
+                style = responsiveType(R1.body),
+                color = if (value.isBlank()) R1.InkMuted else R1.Ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DetailChip(
+            label = "RESEND CURRENT VALUE",
+            accent = accent,
+            selected = false,
+            onClick = {
+                val v = value.take(maxLen)
+                dispatch(
+                    ServiceCall(
+                        entity.id,
+                        "set_value",
+                        kotlinx.serialization.json.buildJsonObject {
+                            put("value", kotlinx.serialization.json.JsonPrimitive(v))
+                        },
+                    ),
+                )
+            },
+        )
+        // Hint line: show min/max/pattern when present so the user knows constraints.
+        val min = entity.attrDouble("min")?.toInt()
+        val pattern = entity.attrStr("pattern")
+        val hints = buildList {
+            if (min != null && min > 0) add("min $min")
+            if (maxLen < 255) add("max $maxLen")
+            if (pattern != null) add("pattern: $pattern")
+        }
+        if (hints.isNotEmpty()) {
+            Text(
+                text = hints.joinToString("  ·  "),
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+/**
+ * `date.*` more-info — mirrors the date portion of input_datetime. Displays the current
+ * date string (YYYY-MM-DD) and chips for +1 / -1 day, firing `date.set_value`.
+ * Full date-picker UI would need a calendar widget beyond what's available here; the
+ * stepper approach matches HA's input_datetime more-info concept of nudge controls.
+ */
+@Composable
+private fun DateSetControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val current = entity.rawState?.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = "DATE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StepperButton("−", "Previous day", accent, enabled = current != null) {
+                if (current != null) {
+                    val next = nudgeDate(current, -1)
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("date", kotlinx.serialization.json.JsonPrimitive(next))
+                    }))
+                }
+            }
+            Spacer(Modifier.width(R1.space.m))
+            Text(
+                text = current ?: "—",
+                style = responsiveType(R1.numeralM),
+                color = accent,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(R1.space.m))
+            StepperButton("+", "Next day", accent, enabled = current != null) {
+                if (current != null) {
+                    val next = nudgeDate(current, +1)
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("date", kotlinx.serialization.json.JsonPrimitive(next))
+                    }))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `datetime.*` more-info — displays date + time and offers +/- one-minute and one-hour
+ * steppers. Fires `datetime.set_value {datetime: "YYYY-MM-DD HH:MM:SS"}`.
+ */
+@Composable
+private fun DateTimeSetControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    // HA datetime state string: "YYYY-MM-DD HH:MM:SS"
+    val current = entity.rawState?.takeIf { it.matches(Regex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}")) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "DATETIME", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        Text(
+            text = current ?: "—",
+            style = responsiveType(R1.numeralM),
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        ChipStrip(wrap = false) {
+            TransportButton("−1h", "One hour earlier", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("datetime", kotlinx.serialization.json.JsonPrimitive(nudgeDateTime(current, -3600)))
+                    }))
+                }
+            }
+            TransportButton("−1m", "One minute earlier", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("datetime", kotlinx.serialization.json.JsonPrimitive(nudgeDateTime(current, -60)))
+                    }))
+                }
+            }
+            TransportButton("+1m", "One minute later", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("datetime", kotlinx.serialization.json.JsonPrimitive(nudgeDateTime(current, +60)))
+                    }))
+                }
+            }
+            TransportButton("+1h", "One hour later", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("datetime", kotlinx.serialization.json.JsonPrimitive(nudgeDateTime(current, +3600)))
+                    }))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `time.*` more-info — displays current time-of-day and offers +/- one-minute and
+ * one-hour steppers. Fires `time.set_value {time: "HH:MM:SS"}`.
+ */
+@Composable
+private fun TimeSetControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val current = entity.rawState?.takeIf { it.matches(Regex("\\d{2}:\\d{2}:\\d{2}")) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "TIME", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        Text(
+            text = current ?: "—",
+            style = responsiveType(R1.numeralM),
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        ChipStrip(wrap = false) {
+            TransportButton("−1h", "One hour earlier", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("time", kotlinx.serialization.json.JsonPrimitive(nudgeTime(current, -3600)))
+                    }))
+                }
+            }
+            TransportButton("−1m", "One minute earlier", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("time", kotlinx.serialization.json.JsonPrimitive(nudgeTime(current, -60)))
+                    }))
+                }
+            }
+            TransportButton("+1m", "One minute later", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("time", kotlinx.serialization.json.JsonPrimitive(nudgeTime(current, +60)))
+                    }))
+                }
+            }
+            TransportButton("+1h", "One hour later", accent) {
+                if (current != null) {
+                    dispatch(ServiceCall(entity.id, "set_value", kotlinx.serialization.json.buildJsonObject {
+                        put("time", kotlinx.serialization.json.JsonPrimitive(nudgeTime(current, +3600)))
+                    }))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `siren.*` more-info control. Always renders ON/OFF toggle. When the entity
+ * advertises `available_tones`, renders a scrollable chip row — each chip fires
+ * `siren.turn_on { tone: <name> }`. When `is_volume_controllable` and
+ * `volume_level` are present, renders a 0..100% volume slider that fires
+ * `siren.turn_on { volume_level: <0..1> }`.
+ */
+@Composable
+private fun SirenControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        ToggleRow(
+            entity = entity,
+            accent = accent,
+            onLabel = "ON",
+            offLabel = "OFF",
+            isOn = entity.isOn,
+            onOn = { dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+            onOff = { dispatch(ServiceCall(entity.id, "turn_off", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+        )
+        if (entity.sirenAvailableTones.isNotEmpty()) {
+            Text(text = "TONE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+            ChipStrip(wrap = true) {
+                entity.sirenAvailableTones.forEach { tone ->
+                    DetailChip(
+                        label = com.github.itskenny0.r1ha.core.util.optionLabel(tone),
+                        accent = accent,
+                        selected = false,
+                        onClick = {
+                            dispatch(ServiceCall(
+                                entity.id,
+                                "turn_on",
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put("tone", kotlinx.serialization.json.JsonPrimitive(tone))
+                                },
+                            ))
+                        },
+                    )
+                }
+            }
+        }
+        val volLevel = entity.sirenVolumeLevel
+        if (volLevel != null) {
+            val volPct = (volLevel.coerceIn(0.0, 1.0) * 100.0).toInt()
+            PercentControl(
+                label = "VOLUME",
+                pct = volPct,
+                accent = accent,
+                onChange = { pct ->
+                    dispatch(ServiceCall(
+                        entity.id,
+                        "turn_on",
+                        kotlinx.serialization.json.buildJsonObject {
+                            put("volume_level", kotlinx.serialization.json.JsonPrimitive(pct / 100.0))
+                        },
+                    ))
+                },
+            )
+        }
+    }
+}
+
+/**
+ * `image.*` more-info — loads and displays the entity's image via AsyncBitmap.
+ * Prefers `entity_picture` from attributes (the standard HA image path); falls
+ * back to `/api/image_proxy/<entity_id>` which is the canonical image proxy
+ * endpoint for image.* entities. No controls — image entities are read-only.
+ */
+@Composable
+private fun ImageControl(entity: EntityState) {
+    val serverUrl = LocalHaServerUrl.current
+    val bearerToken = LocalHaBearerToken.current
+    // entity_picture is the standard attr; image.* also supports /api/image_proxy/<id>
+    val url = entity.attrStr("entity_picture")
+        ?: "/api/image_proxy/${entity.id.value}"
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "IMAGE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        AsyncBitmap(
+            url = url,
+            serverUrl = serverUrl,
+            bearerToken = bearerToken,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 240.dp)
+                .clip(R1.ShapeS),
+            contentDescription = entity.friendlyName,
+        )
+    }
+}
+
+// ── Date/time nudge helpers (pure, no Compose) ────────────────────────────────────────
+
+/** Nudge a "YYYY-MM-DD" string by [days] and return the new date string. Defensive:
+ *  if the input isn't parseable the original string is returned unchanged. */
+private fun nudgeDate(date: String, days: Int): String = runCatching {
+    val ld = java.time.LocalDate.parse(date)
+    ld.plusDays(days.toLong()).toString()
+}.getOrDefault(date)
+
+/** Nudge a "YYYY-MM-DD HH:MM:SS" datetime string by [seconds] and return the result. */
+private fun nudgeDateTime(dt: String, seconds: Int): String = runCatching {
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    val ldt = java.time.LocalDateTime.parse(dt, formatter)
+    ldt.plusSeconds(seconds.toLong()).format(formatter)
+}.getOrDefault(dt)
+
+/** Nudge a "HH:MM:SS" time-of-day string by [seconds], wrapping at midnight. */
+private fun nudgeTime(time: String, seconds: Int): String = runCatching {
+    val formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
+    val lt = java.time.LocalTime.parse(time, formatter)
+    lt.plusSeconds(seconds.toLong()).format(formatter)
+}.getOrDefault(time)
 
 // Light colour-mode names that imply true colour control (as opposed to brightness-only
 // or colour-temperature-only). Mirrors HA's ColorMode enum members that carry chromaticity.
