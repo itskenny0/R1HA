@@ -376,3 +376,32 @@ fun resolveName(
     val local = entityIdRaw.substringAfter('.', missingDelimiterValue = entityIdRaw)
     return local.replace('_', ' ').replaceFirstChar { it.uppercase() }
 }
+
+/**
+ * Composable name resolver that adds `name_type` awareness on top of [resolveName].
+ *
+ * Resolution order:
+ *  1. If [override] is non-blank, return it unchanged (explicit user override wins).
+ *  2. If [nameType] is non-null and not "entity", ask [LocalNameResolver] to resolve
+ *     each space/comma-separated part (device, area, floor). If at least one part
+ *     resolved, return the joined result.
+ *  3. Fall through to [resolveName] (friendly_name then prettified entity_id).
+ *
+ * This keeps the no-regression path: when [nameType] is null or the resolver has no
+ * data for the entity, the output is exactly what [resolveName] would produce.
+ */
+@androidx.compose.runtime.Composable
+fun resolveDisplayName(
+    override: String?,
+    nameType: String?,
+    state: EntityState?,
+    entityIdRaw: String,
+): String {
+    if (!override.isNullOrBlank()) return override
+    if (!nameType.isNullOrBlank() && nameType.trim().lowercase() != "entity") {
+        val resolver = com.github.itskenny0.r1ha.core.theme.LocalNameResolver.current
+        val resolved = resolver.resolveParts(nameType, entityIdRaw)
+        if (!resolved.isNullOrBlank()) return resolved
+    }
+    return resolveName(override, state, entityIdRaw)
+}

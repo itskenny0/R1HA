@@ -79,6 +79,20 @@ val LocalHaBearerToken = staticCompositionLocalOf<String?> { null }
 val LocalEntityOverrides = compositionLocalOf<Map<String, com.github.itskenny0.r1ha.core.prefs.EntityOverride>> { emptyMap() }
 
 /**
+ * Name resolver for Lovelace cards that carry a `name_type` field (HA 2025.11).
+ * Backed by the entity, device, and area registries loaded once per dashboard
+ * view. The default is an empty resolver that returns null for every lookup,
+ * so callers fall back to the entity's friendly_name when the registries are
+ * unavailable or still loading.
+ *
+ * Static is appropriate here: the resolver reference only changes when the
+ * registries finish loading (a coarse event), never during normal interactive use.
+ */
+val LocalNameResolver = staticCompositionLocalOf<com.github.itskenny0.r1ha.feature.dashboards.cards.DashboardNameResolver> {
+    com.github.itskenny0.r1ha.feature.dashboards.cards.DashboardNameResolver.EMPTY
+}
+
+/**
  * Callback for the BigReadout's tap-to-cycle gesture on light cards. Themes' BigReadout
  * composables consult this; null disables the gesture (used by previews / non-light
  * paths). Wired by CardStackScreen from CardStackViewModel.cycleLightWheelMode. Kept

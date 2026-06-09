@@ -172,7 +172,7 @@ private fun EntityRowItem(
     stateColor: Boolean = false,
 ) {
     val state = stateMap.byRaw(row.entityId)
-    val name = resolveName(row.name, state, row.entityId)
+    val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
     val secondary = row.secondaryInfo?.let { secondaryInfoLine(it, state) }
     // Genuinely-absent state hides the readout rather than printing a "."
     // placeholder; a blank chip just looks like a rendering glitch.

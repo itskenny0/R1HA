@@ -51,7 +51,7 @@ fun TileCard(
     } else {
         stateAccent
     }
-    val name = resolveName(card.name, state, card.entityId)
+    val name = resolveDisplayName(card.name, card.nameType, state, card.entityId)
     val icon = cardEntityIcon(card.entityId, state, card.icon)
     // Bind the card's entity to a config tap_action that omits one (toggle /
     // more-info / target-less call-service) so the dispatcher always has a target.

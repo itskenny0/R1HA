@@ -85,7 +85,7 @@ private fun GlanceTile(
     // TileCard (no need to round-trip through a typed EntityId just to read a
     // state slice).
     val state = stateMap.byRaw(row.entityId)
-    val name = resolveName(row.name, state, row.entityId)
+    val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
     val accent = stateAccentFor(row.entityId, state)
     Column(
         modifier = modifier

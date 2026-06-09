@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.github.itskenny0.r1ha.feature.dashboards.cards.DashboardNameResolver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +52,9 @@ import com.github.itskenny0.r1ha.ui.components.LocalWindowTier
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -182,9 +186,34 @@ fun DashboardViewScreen(
     val isStrategy = renderedCards.isEmpty() &&
         ((config?.isStrategyGenerated == true) || (view?.isStrategyGenerated == true))
 
+    // Registry fetch for name_type resolution (HA 2025.11). Fetched once per
+    // screen entry, best-effort in parallel. Failures yield empty lists so the
+    // resolver falls back to friendly_name; the first paint is not blocked because
+    // nameResolver starts as EMPTY and is updated via a state variable once loaded.
+    var nameResolver by remember { mutableStateOf(DashboardNameResolver.EMPTY) }
+    LaunchedEffect(haRepository) {
+        coroutineScope {
+            val entityResult = async(Dispatchers.IO) {
+                haRepository.listEntityRegistry().getOrDefault(emptyList())
+            }
+            val deviceResult = async(Dispatchers.IO) {
+                haRepository.listDevices().getOrDefault(emptyList())
+            }
+            val areaResult = async(Dispatchers.IO) {
+                haRepository.listAreas().getOrDefault(emptyList())
+            }
+            nameResolver = DashboardNameResolver.from(
+                entityRegistry = entityResult.await(),
+                devices = deviceResult.await(),
+                areas = areaResult.await(),
+            )
+        }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides serverUrl,
+        com.github.itskenny0.r1ha.core.theme.LocalNameResolver provides nameResolver,
     ) {
     Column(
         modifier = Modifier
