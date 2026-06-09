@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -121,41 +120,25 @@ fun CalendarsScreen(
         )
         com.github.itskenny0.r1ha.ui.components.R1CenteredContent(modifier = Modifier.weight(1f)) {
         when {
-            ui.loading -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                    color = R1.AccentWarm,
-                )
+            ui.loading -> Box(modifier = Modifier.fillMaxSize()) {
+                com.github.itskenny0.r1ha.ui.components.SkeletonList()
             }
-            ui.error != null && ui.calendars.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                // Calendar registry fetch failed; distinct from "no
-                // calendar integrations configured" empty state.
-                Text(
-                    text = "Calendars load failed: ${ui.error}",
-                    style = responsiveType(R1.body),
-                    color = R1.StatusRed,
+            // Calendar registry fetch failed; distinct from "no calendar
+            // integrations configured" empty state.
+            ui.error != null && ui.calendars.isEmpty() ->
+                com.github.itskenny0.r1ha.ui.components.R1ErrorState(
+                    title = "COULDN'T LOAD CALENDARS",
+                    message = ui.error,
+                    onRetry = { vm.refresh() },
                 )
-            }
-            ui.calendars.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize().padding(R1.space.xl),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "No calendar entities in HA. Add a calendar integration to see them here.",
-                    style = responsiveType(R1.body),
-                    color = R1.InkMuted,
+            ui.calendars.isEmpty() ->
+                com.github.itskenny0.r1ha.ui.components.R1EmptyState(
+                    title = "NO CALENDARS",
+                    body = "No calendar entities in HA. Add a calendar integration to see them here.",
                 )
-            }
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = ui.loading,
-                onRefresh = { vm.refresh() },
+                isRefreshing = ui.refreshing,
+                onRefresh = { vm.refresh(indicate = true) },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 val now by rememberTickingNow()

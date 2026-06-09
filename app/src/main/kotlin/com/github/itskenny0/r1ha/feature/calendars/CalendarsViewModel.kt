@@ -57,7 +57,14 @@ class CalendarsViewModel(
 
     @androidx.compose.runtime.Stable
     data class UiState(
+        /** First load only: nothing cached yet, the screen shows skeletons.
+         *  Subsequent refreshes (30s auto-tick, pull) keep the populated list
+         *  on screen instead of blanking it behind a spinner. */
         val loading: Boolean = true,
+        /** True while a user-initiated refresh (pull gesture) is in flight;
+         *  drives the pull-to-refresh indicator. Background ticks keep it
+         *  false so the indicator doesn't pop unbidden. */
+        val refreshing: Boolean = false,
         val calendars: List<Calendar> = emptyList(),
         val error: String? = null,
     )
@@ -65,9 +72,16 @@ class CalendarsViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
-    fun refresh() {
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(
+                // Only a fetch with nothing to show yet (first load, retry
+                // after a failed first load) may blank the screen; refreshes
+                // over a populated list update in place.
+                loading = _ui.value.calendars.isEmpty(),
+                refreshing = indicate,
+                error = null,
+            )
             haRepository.listRawEntitiesByDomain("calendar").fold(
                 onSuccess = { rows ->
                     val list = rows.map { row ->
@@ -95,12 +109,12 @@ class CalendarsViewModel(
                             .thenBy { it.name.lowercase() },
                     )
                     R1Log.i("Calendars", "loaded ${sorted.size}")
-                    _ui.value = _ui.value.copy(loading = false, calendars = sorted, error = null)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, calendars = sorted, error = null)
                 },
                 onFailure = { t ->
                     R1Log.w("Calendars", "list failed: ${t.message}")
                     Toaster.error("Calendars load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }
