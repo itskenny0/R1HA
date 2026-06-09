@@ -18,9 +18,11 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -40,6 +42,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
@@ -49,7 +52,7 @@ import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.formatFixed
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -103,7 +106,8 @@ fun HelpersScreen(
     // the filter once per state change rather than several times per frame.
     val entries = androidx.compose.runtime.remember(ui.all, ui.bucket, ui.query) { ui.entries }
     val counts = androidx.compose.runtime.remember(ui.all) { ui.counts }
-    val listState = rememberLazyListState()
+    val dimens = rememberResponsiveDimens()
+    val gridState = rememberLazyGridState()
     // Entity id of the input_number row currently grabbing the wheel for value
     // stepping, or null when the wheel scrolls the list normally. Tap on the
     // value text activates; tapping again (or 5 s of no wheel events) hands the
@@ -118,15 +122,18 @@ fun HelpersScreen(
     val numberWheelLastEvent = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableLongStateOf(0L)
     }
-    WheelScrollFor(
-        wheelInput = wheelInput,
-        listState = listState,
-        settings = settings,
-        // Hand the wheel off to the per-row stepper while a number row is
-        // active; otherwise the same detent would scroll the list AND step the
-        // value, which felt twitchy in early testing.
-        enabled = numberWheelTarget.value == null,
-    )
+    // Hand the wheel off to the per-row stepper while a number row is active;
+    // otherwise the same detent would scroll the list AND step the value, which
+    // felt twitchy in early testing. The grid overload has no `enabled` flag, so
+    // the hand-off composes it conditionally: leaving composition cancels the
+    // scroll collector, re-entering rebuilds it (same effect as enabled = false).
+    if (numberWheelTarget.value == null) {
+        WheelScrollForGrid(
+            wheelInput = wheelInput,
+            gridState = gridState,
+            settings = settings,
+        )
+    }
     val tickHaptic = com.github.itskenny0.r1ha.ui.components.rememberTickHaptic()
     androidx.compose.runtime.LaunchedEffect(numberWheelTarget.value) {
         val targetId = numberWheelTarget.value ?: return@LaunchedEffect
@@ -234,13 +241,18 @@ fun HelpersScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        state = listState,
+                    // One column on R1 / compact (visually identical to the old
+                    // LazyColumn); two on medium / expanded and three on extra-large
+                    // so a wide panel fills with helper cards side by side.
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
                             horizontal = R1.space.m, vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         items(items = entries, key = { it.id.value }) { entry ->
                             HelperRow(

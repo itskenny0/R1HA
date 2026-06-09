@@ -16,9 +16,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -44,6 +45,7 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
@@ -53,7 +55,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.SkeletonList
-import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
+import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
@@ -63,8 +65,9 @@ import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 /**
  * Fast-fire launcher for HA scenes + scripts. Pulls the full entity list
  * via the REST `/api/states` endpoint (same call the favourites picker
- * uses), filters to scene.* / script.*, and renders a dense LazyColumn
- * the user can scroll with the wheel. Tap a row fires the appropriate
+ * uses), filters to scene.* / script.*, and renders a dense list (one
+ * column on the R1, multi-column on roomy tiers) the user can scroll
+ * with the wheel. Tap a row fires the appropriate
  * service (scene.turn_on for scenes, script.<script_id> for scripts) +
  * shows a brief confirmation toast.
  *
@@ -87,8 +90,9 @@ fun ScenesScreen(
     // fires per search keystroke. Memoise against its inputs so the filter runs
     // once per state change instead of twice per frame.
     val entries = remember(ui.all, ui.filter, ui.query) { ui.entries }
-    val listState = rememberLazyListState()
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    val dimens = rememberResponsiveDimens()
+    val gridState = rememberLazyGridState()
+    WheelScrollForGrid(wheelInput = wheelInput, gridState = gridState, settings = settings)
     LaunchedEffect(Unit) { vm.refresh() }
     Column(
         modifier = Modifier
@@ -167,13 +171,18 @@ fun ScenesScreen(
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(
-                        state = listState,
+                    // One column on R1 / compact (visually identical to the old
+                    // LazyColumn); two on medium / expanded and three on extra-large
+                    // so a wide panel fills with scene rows side by side.
+                    LazyVerticalGrid(
+                        state = gridState,
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
                             horizontal = R1.space.m, vertical = R1.space.s,
                         ),
                         verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
                     ) {
                         items(items = entries, key = { it.id.value }) { entry ->
                             SceneRow(

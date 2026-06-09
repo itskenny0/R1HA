@@ -135,15 +135,14 @@ fun TagsScreen(
                     body = "Scan an NFC / QR tag at HA to register it; " +
                         "it'll appear here automatically.",
                 )
-                // Multi-column flow on roomy tiers (gridColumns: 2/2/3/4/5) so a wide panel
-                // fills with tag cards side by side instead of one tall ribbon; the R1 /
-                // compact panel stays single column where a row's name + scan time + id
-                // need the full width to read.
+                // Multi-column flow on roomy tiers (dashboardColumns: 1/1/2/2/3) so a wide
+                // panel fills with tag cards side by side instead of one tall ribbon; the
+                // R1 / compact panel stays single column where a row's name + scan time +
+                // id need the full width to read.
                 else -> {
-                    val tagColumns = if (dimens.capsContentWidth) dimens.gridColumns else 1
                     LazyVerticalGrid(
                         state = gridState,
-                        columns = GridCells.Fixed(tagColumns),
+                        columns = GridCells.Fixed(dimens.dashboardColumns),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
                             horizontal = dimens.screenGutter,
