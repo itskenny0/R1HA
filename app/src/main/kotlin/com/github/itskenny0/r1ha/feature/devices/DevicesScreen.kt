@@ -103,21 +103,32 @@ fun DevicesScreen(
     // Hardware Back: close the drill-in first, only then leave the screen.
     BackHandler(enabled = detail != null) { vm.closeDevice() }
     val openDetail = detail
-    if (openDetail != null) {
-        DeviceDetailScreen(
-            detail = openDetail,
-            listState = detailListState,
-            onBack = { vm.closeDevice() },
-        )
-        return
-    }
-    Column(
+    // Two-pane on roomy windows: the device list keeps its column on the left
+    // and the drill-in composes beside it, so a tablet never loses the list
+    // context. The scaffold collapses to the familiar full-screen swap on
+    // small tiers; the shared insets live on this root Box so neither pane
+    // double-pads.
+    val twoPane = com.github.itskenny0.r1ha.ui.components.isTwoPane()
+    com.github.itskenny0.r1ha.ui.components.R1ListDetailPane(
+        hasSelection = openDetail != null,
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding()
             .imePadding(),
-    ) {
+        detail = {
+            openDetail?.let { open ->
+                DeviceDetailScreen(
+                    detail = open,
+                    listState = detailListState,
+                    onBack = { vm.closeDevice() },
+                    standalone = false,
+                )
+            }
+        },
+        emptyDetail = { RegistrySummaryPane(ui) },
+        list = {
+    Column(modifier = Modifier.fillMaxSize()) {
         R1TopBar(
             title = "DEVICES",
             onBack = onBack,
@@ -194,7 +205,7 @@ fun DevicesScreen(
                             // 1/1/2/2/3 progression). Section headers and the count line
                             // span the full row so the grouping stays legible across the
                             // columns.
-                            val columns = dimens.dashboardColumns
+                            val columns = if (twoPane) 1 else dimens.dashboardColumns
                             LazyVerticalGrid(
                                 state = gridState,
                                 columns = GridCells.Fixed(columns),
@@ -232,6 +243,7 @@ fun DevicesScreen(
                                                 areaName = device.areaId?.let { areaName[it] },
                                                 entityCount = deviceEntities.size,
                                                 onOpen = { vm.openDevice(device.id) },
+                                                selected = twoPane && device.id == ui.openedDeviceId,
                                             )
                                         }
                                     }
@@ -242,6 +254,46 @@ fun DevicesScreen(
                 }
             }
         }
+    }
+        },
+    )
+}
+
+/**
+ * Default right-pane content in two-pane mode before any device is selected:
+ * a registry-at-a-glance summary so the pane carries real information rather
+ * than a "select something" stub.
+ */
+@Composable
+private fun RegistrySummaryPane(ui: DevicesViewModel.UiState) {
+    val manufacturers = remember(ui.devices) {
+        ui.devices.mapNotNull { it.manufacturer?.takeIf { m -> m.isNotBlank() } }.toSet().size
+    }
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "DEVICE REGISTRY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+            Spacer(Modifier.height(R1.space.l))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xl)) {
+                SummaryStat(value = ui.devices.size, label = "DEVICES")
+                SummaryStat(value = ui.areas.size, label = "AREAS")
+                SummaryStat(value = manufacturers, label = "MAKERS")
+                SummaryStat(value = ui.entities.size, label = "ENTITIES")
+            }
+            Spacer(Modifier.height(R1.space.l))
+            Text(
+                text = "Select a device to inspect its entities.",
+                style = responsiveType(R1.body),
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SummaryStat(value: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = value.toString(), style = responsiveType(R1.numeralM), color = R1.Ink)
+        Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkMuted)
     }
 }
 
@@ -350,6 +402,8 @@ private fun DeviceRow(
     areaName: String?,
     entityCount: Int,
     onOpen: () -> Unit,
+    /** Highlights the row whose detail is open beside the list (two-pane). */
+    selected: Boolean = false,
 ) {
     val disabled = device.disabledBy != null
     // Fold the name, entity count, area, maker/model, and disabled-state into
@@ -368,7 +422,7 @@ private fun DeviceRow(
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(if (disabled) R1.Bg else R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .border(1.dp, if (selected) R1.AccentWarm else R1.Hairline, R1.ShapeS)
             .r1Pressable(onClick = onOpen, contentDescription = "Open ${device.displayName}")
             // mergeDescendants keeps the row's click action for TalkBack's
             // double-tap while replacing the child text with one spoken phrase.

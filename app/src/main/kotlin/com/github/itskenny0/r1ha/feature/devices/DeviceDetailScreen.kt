@@ -63,12 +63,19 @@ fun DeviceDetailScreen(
     detail: DevicesViewModel.DetailState,
     listState: LazyListState,
     onBack: () -> Unit,
+    /**
+     * False when composed as the right pane of the Devices two-pane layout:
+     * the parent already applied system-bar padding, and the title bar keeps
+     * its back chevron only as a "clear selection" affordance. True (default)
+     * is the phone path, where this is a standalone full-screen surface.
+     */
+    standalone: Boolean = true,
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
-            .systemBarsPadding(),
+            .then(if (standalone) Modifier.systemBarsPadding() else Modifier),
     ) {
         R1TopBar(
             title = detail.device.displayName.uppercase(),

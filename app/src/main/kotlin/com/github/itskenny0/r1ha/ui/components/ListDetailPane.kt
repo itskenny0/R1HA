@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -62,13 +61,7 @@ fun R1ListDetailPane(
     /** Placeholder shown in the detail pane (two-pane mode) when nothing is selected. */
     emptyDetail: @Composable () -> Unit = { DefaultEmptyDetail() },
 ) {
-    val window by androidx.compose.runtime.rememberUpdatedState(LocalWindowTier.current)
-    val info = window
-    val twoPane = when {
-        info.tier.isAtLeast(WindowTier.EXPANDED) -> true
-        info.tier == WindowTier.MEDIUM -> allowTwoPaneOnMedium && info.isLandscape
-        else -> false
-    }
+    val twoPane = isTwoPane(allowTwoPaneOnMedium)
 
     if (twoPane) {
         Row(modifier = modifier.fillMaxSize()) {
@@ -128,6 +121,24 @@ fun R1ListDetailPaneCapped(
             }
         },
     )
+}
+
+/**
+ * Whether [R1ListDetailPane] would render two panes for the current window.
+ * Exposed so callers can adapt the panes' own chrome to the mode: a detail
+ * screen that is a standalone full-screen surface on a phone (own top bar,
+ * own system-bar padding) usually drops part of that dressing when it is
+ * composed beside its list. Keep the predicate here, next to the scaffold
+ * that consumes it, so the two can't drift apart.
+ */
+@Composable
+fun isTwoPane(allowTwoPaneOnMedium: Boolean = true): Boolean {
+    val info = LocalWindowTier.current
+    return when {
+        info.tier.isAtLeast(WindowTier.EXPANDED) -> true
+        info.tier == WindowTier.MEDIUM -> allowTwoPaneOnMedium && info.isLandscape
+        else -> false
+    }
 }
 
 /** Quiet placeholder for the detail pane before a selection exists. */

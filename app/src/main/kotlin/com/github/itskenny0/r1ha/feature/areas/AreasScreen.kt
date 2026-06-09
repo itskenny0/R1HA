@@ -115,17 +115,6 @@ fun AreasScreen(
     var expandedAreaKey by remember { mutableStateOf<String?>(null) }
     // Back closes the drill-in first, then leaves the screen.
     androidx.activity.compose.BackHandler(enabled = drill != null) { vm.closeArea() }
-    drill?.let { d ->
-        AreaDrillScreen(
-            drill = d,
-            listState = drillListState,
-            onBack = { vm.closeArea() },
-            onRefresh = { vm.refreshDrill() },
-            onTapEntity = { vm.activate(it) },
-            onRename = { vm.renameArea(it) },
-        )
-        return
-    }
     fun openInHa(entityId: String) {
         scope.launch {
             val server = runCatching { settings.settings.first().server?.url }.getOrNull()
@@ -147,12 +136,33 @@ fun AreasScreen(
             }
         }
     }
-    Column(
+    // Two-pane on roomy windows: the area list stays on the left and the
+    // drill-in composes beside it. Small tiers keep the full-screen swap (the
+    // scaffold collapses to one pane); shared insets live on the scaffold so
+    // neither pane double-pads.
+    val twoPane = com.github.itskenny0.r1ha.ui.components.isTwoPane()
+    com.github.itskenny0.r1ha.ui.components.R1ListDetailPane(
+        hasSelection = drill != null,
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding(),
-    ) {
+        detail = {
+            drill?.let { d ->
+                AreaDrillScreen(
+                    drill = d,
+                    listState = drillListState,
+                    onBack = { vm.closeArea() },
+                    onRefresh = { vm.refreshDrill() },
+                    onTapEntity = { vm.activate(it) },
+                    onRename = { vm.renameArea(it) },
+                    standalone = false,
+                )
+            }
+        },
+        emptyDetail = { AreasSummaryPane(ui) },
+        list = {
+    Column(modifier = Modifier.fillMaxSize()) {
         R1TopBar(
             title = "AREAS",
             onBack = onBack,
@@ -240,6 +250,54 @@ fun AreasScreen(
             }
         }
         } // AdaptiveContent
+    }
+        },
+    )
+}
+
+/**
+ * Default right-pane content in two-pane mode before any area is opened: the
+ * registry roll-up so the pane carries real information rather than a
+ * "select something" stub.
+ */
+@Composable
+private fun AreasSummaryPane(ui: AreasViewModel.UiState) {
+    val totalEntities = remember(ui.areas) { ui.areas.sumOf { area -> area.entityIds.size } }
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "AREAS",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.heightIn(min = R1.space.l))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xl)) {
+                AreasSummaryStat(value = ui.areas.size, label = "AREAS")
+                AreasSummaryStat(value = totalEntities, label = "ENTITIES")
+            }
+            Spacer(Modifier.heightIn(min = R1.space.l))
+            Text(
+                text = "Open an area to control its entities.",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AreasSummaryStat(value: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value.toString(),
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.numeralM),
+            color = R1.Ink,
+        )
+        Text(
+            text = label,
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
+            color = R1.InkMuted,
+        )
     }
 }
 
@@ -427,6 +485,9 @@ private fun AreaDrillScreen(
     onRefresh: () -> Unit,
     onTapEntity: (EntityState) -> Unit,
     onRename: (String) -> Unit,
+    /** False when composed as the right pane of the two-pane layout: the
+     *  scaffold already applied system-bar padding. */
+    standalone: Boolean = true,
 ) {
     val matchedCount = drill.groups.sumOf { it.entities.size }
     val dimens = com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens()
@@ -438,7 +499,7 @@ private fun AreaDrillScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
-            .systemBarsPadding(),
+            .then(if (standalone) Modifier.systemBarsPadding() else Modifier),
     ) {
         R1TopBar(
             title = drill.area.name.uppercase(),
