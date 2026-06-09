@@ -87,8 +87,6 @@ import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.floor
-import kotlin.math.roundToInt
 
 /**
  * Ultra-detail "more info" bottom sheet for a single HA entity. A dim-scrim overlay
@@ -943,10 +941,12 @@ private fun WeatherForecastSection(
         entityAttrs = entity.attributesJson,
         enabled = true,
     )
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
-        Text(text = "FORECAST", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
-        when (val f = forecasts) {
-            null -> Box(
+    // Null = still loading; non-null with both lists empty = no data (render nothing).
+    val f = forecasts ?: run {
+        // Loading state: show the section header + placeholder while fetching.
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+            Text(text = "FORECAST", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(40.dp)
@@ -956,42 +956,42 @@ private fun WeatherForecastSection(
             ) {
                 Text(text = "LOADING FORECAST", style = R1.labelMicro, color = R1.InkMuted)
             }
-            else -> {
-                val hasBoth = f.hourly.isNotEmpty() && f.daily.isNotEmpty()
-                var showHourly by remember(f) { mutableStateOf(f.hourly.isNotEmpty()) }
-                val activeEntries = if (showHourly) f.hourly else f.daily
-                val kind = if (showHourly) ForecastKind.Hourly else ForecastKind.Daily
-                if (hasBoth) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
-                        DetailChip(
-                            label = "HOURLY",
-                            accent = accent,
-                            selected = showHourly,
-                            onClick = { showHourly = true },
-                        )
-                        DetailChip(
-                            label = "DAILY",
-                            accent = accent,
-                            selected = !showHourly,
-                            onClick = { showHourly = false },
-                        )
-                    }
-                }
-                if (activeEntries.isEmpty()) {
-                    Text(text = "No forecast data", style = responsiveType(R1.body), color = R1.InkMuted)
-                } else {
-                    val unit = entity.attrStr("temperature_unit") ?: ""
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
-                    ) {
-                        activeEntries.forEach { entry ->
-                            ForecastSlot(entry = entry, kind = kind, unit = unit, accent = accent)
-                        }
-                    }
-                }
+        }
+        return
+    }
+    // Resolved but both cadences empty — no data at all; render nothing.
+    if (f.hourly.isEmpty() && f.daily.isEmpty()) return
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Text(text = "FORECAST", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+        val hasBoth = f.hourly.isNotEmpty() && f.daily.isNotEmpty()
+        var showHourly by remember(f) { mutableStateOf(f.hourly.isNotEmpty()) }
+        val activeEntries = if (showHourly) f.hourly else f.daily
+        val kind = if (showHourly) ForecastKind.Hourly else ForecastKind.Daily
+        if (hasBoth) {
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                DetailChip(
+                    label = "HOURLY",
+                    accent = accent,
+                    selected = showHourly,
+                    onClick = { showHourly = true },
+                )
+                DetailChip(
+                    label = "DAILY",
+                    accent = accent,
+                    selected = !showHourly,
+                    onClick = { showHourly = false },
+                )
+            }
+        }
+        val unit = entity.attrStr("temperature_unit") ?: ""
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+        ) {
+            activeEntries.forEach { entry ->
+                ForecastSlot(entry = entry, kind = kind, unit = unit, accent = accent)
             }
         }
     }
@@ -1096,20 +1096,7 @@ private fun FanDiscreteSpeedControl(
                     label = "$pct%",
                     accent = accent,
                     selected = entity.isOn && currentPct == pct,
-                    onClick = {
-                        dispatch(
-                            ServiceCall(
-                                entity.id,
-                                "set_percentage",
-                                kotlinx.serialization.json.buildJsonObject {
-                                    put(
-                                        "percentage",
-                                        kotlinx.serialization.json.JsonPrimitive(pct),
-                                    )
-                                },
-                            ),
-                        )
-                    },
+                    onClick = { dispatch(ServiceCall.setPercent(entity.id, pct)) },
                 )
             }
         }
@@ -1432,27 +1419,25 @@ private fun sliderColors(accent: Color) = SliderDefaults.colors(
 
 /**
  * Compute the discrete speed percentages for a fan whose `percentage_step` is
- * [step]. Each value is the percentage for a named speed button. HA's own
- * frontend computes these as `(1..floor(100/step)).map { round(it * step) }`,
- * then appends 100 when the last computed value is less than 100. This
- * ensures the user can always select "full speed" regardless of rounding.
+ * [step]. Produces evenly-spaced steps that always end at exactly 100 with no
+ * near-duplicates. The count is derived by rounding 100/step and clamping to
+ * 1..8; each step value is round(i * 100 / count) so the last entry is always
+ * exactly 100.
  *
  * Examples:
- *   step=33  -> [33, 66, 100]   (100 appended because 66 < 100)
- *   step=25  -> [25, 50, 75, 100]
- *   step=50  -> [50, 100]
- *   step=100 -> [100]
+ *   step=33.0  -> [33, 67, 100]
+ *   step=33.33 -> [33, 67, 100]
+ *   step=25.0  -> [25, 50, 75, 100]
+ *   step=50.0  -> [50, 100]
+ *   step=100.0 -> [100]
  *
  * Returns an empty list for a zero or negative [step] (defensive against
  * malformed HA payloads).
  */
-internal fun fanDiscreteSpeedSteps(step: Double): List<Int> {
-    if (step <= 0.0) return emptyList()
-    val count = floor(100.0 / step).toInt()
-    if (count <= 0) return emptyList()
-    val steps = (1..count).map { (it * step).roundToInt() }.toMutableList()
-    if (steps.last() < 100) steps.add(100)
-    return steps
+internal fun fanDiscreteSpeedSteps(percentageStep: Double): List<Int> {
+    if (percentageStep <= 0.0) return emptyList()
+    val count = Math.round(100.0 / percentageStep).toInt().coerceIn(1, 8)
+    return (1..count).map { Math.round(it * 100.0 / count).toInt() }
 }
 
 private fun domainLabel(domain: Domain): String =
