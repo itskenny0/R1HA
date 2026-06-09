@@ -180,7 +180,7 @@ fun LogsScreen(
                         contentDescription = "Toggle auto refresh",
                     )
                     R1Chip(
-                        text = if (ui.loading) "…" else "REFRESH",
+                        text = if (ui.refreshing) "…" else "REFRESH",
                         variant = R1ChipVariant.Action,
                         onClick = { vm.refresh(indicate = true) },
                         contentDescription = "Refresh log",
