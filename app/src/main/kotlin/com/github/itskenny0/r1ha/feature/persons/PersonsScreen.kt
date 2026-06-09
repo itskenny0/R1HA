@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -43,6 +42,7 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
@@ -95,16 +95,11 @@ fun PersonsScreen(
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics { contentDescription = "Loading who's home" },
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .semantics { contentDescription = "Loading who's home" },
-                    strokeWidth = 2.dp,
-                    color = R1.AccentWarm,
-                )
+                SkeletonList()
             }
             ui.error != null && ui.people.isEmpty() && ui.devices.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(R1.space.xl),

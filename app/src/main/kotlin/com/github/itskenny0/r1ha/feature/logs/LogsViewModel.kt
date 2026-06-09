@@ -52,6 +52,9 @@ class LogsViewModel(
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a fetch is in flight; drives the pull-to-refresh
+         *  indicator. */
+        val refreshing: Boolean = false,
         /** Every line read from the server. Kept whole so toggling filters
          *  is instant and doesn't require re-fetching from HA. */
         val lines: List<Line> = emptyList(),
@@ -105,9 +108,15 @@ class LogsViewModel(
         _ui.value = _ui.value.copy(autoRefresh = !_ui.value.autoRefresh)
     }
 
-    fun refresh() {
+    /**
+     * [indicate] marks a user-initiated refresh (pull gesture, REFRESH chip):
+     * only those drive the pull-to-refresh indicator. The 10s auto-refresh and
+     * the initial load keep it false so the indicator doesn't pop unbidden on
+     * every background tick.
+     */
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             haRepository.fetchErrorLogFull(maxBytes = TAIL_CAP_BYTES).fold(
                 onSuccess = { tail ->
                     val parsed = parseLines(tail.body)
@@ -118,6 +127,7 @@ class LogsViewModel(
                     )
                     _ui.value = _ui.value.copy(
                         loading = false,
+                        refreshing = false,
                         lines = parsed,
                         totalBytes = tail.totalBytes,
                         shownBytes = tail.body.length.toLong(),
@@ -130,7 +140,7 @@ class LogsViewModel(
                 onFailure = { t ->
                     R1Log.w("Logs", "fetch failed: ${t.message}")
                     Toaster.error("Log load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }

@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -181,7 +182,7 @@ fun LogsScreen(
                     R1Chip(
                         text = if (ui.loading) "…" else "REFRESH",
                         variant = R1ChipVariant.Action,
-                        onClick = { vm.refresh() },
+                        onClick = { vm.refresh(indicate = true) },
                         contentDescription = "Refresh log",
                     )
                 }
@@ -195,7 +196,13 @@ fun LogsScreen(
                 Spacer(Modifier.size(R1.space.s))
                 SearchField(query = ui.query, onChange = { vm.setQuery(it) })
                 Spacer(Modifier.size(R1.space.s))
-                LogBody(ui = ui, visible = visible, listState = listState)
+                PullToRefreshBox(
+                    isRefreshing = ui.refreshing,
+                    onRefresh = { vm.refresh(indicate = true) },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    LogBody(ui = ui, visible = visible, listState = listState)
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -117,38 +118,60 @@ fun LovelaceScreen(
                 serverUrl = url,
                 accessToken = accessToken,
                 refreshToken = refreshToken,
-                onLoadingChange = { loading = it },
+                // A fresh main-frame load also clears a stale error so an
+                // in-page retry / back navigation resets the overlay.
+                onLoadingChange = {
+                    loading = it
+                    if (it) errorMessage = null
+                },
                 onError = { errorMessage = it },
                 onBackHandled = { onBackState.value() },
                 modifier = Modifier.fillMaxSize(),
             )
             if (loading) {
-                // Spinner overlay during main-frame loads — same idiom
-                // as OAuthWebView.
+                // Opaque overlay during main-frame loads so the WebView's
+                // blank pre-render never flashes through.
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(R1.Bg.copy(alpha = 0.55f)),
+                        .background(R1.Bg),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = R1.AccentWarm,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = R1.AccentWarm,
+                        )
+                        Spacer(Modifier.size(R1.space.s))
+                        Text(
+                            text = "LOADING DASHBOARD",
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                        )
+                    }
                 }
-            }
-            errorMessage?.let { msg ->
-                Box(
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .clip(R1.ShapeS)
-                        .background(R1.StatusRed.copy(alpha = 0.12f))
-                        .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
-                        .r1Pressable(onClick = { errorMessage = null })
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                ) {
-                    Text(text = msg, style = R1.labelMicro, color = R1.StatusRed)
+            } else {
+                errorMessage?.let { msg ->
+                    // Main-frame failure: same centred layout with the error in
+                    // place of the loading label. No opaque background so the
+                    // WebView stays visible (and usable) underneath for retry /
+                    // back; tap the message to dismiss it.
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(R1.Bg.copy(alpha = 0.85f))
+                                .border(1.dp, R1.StatusRed.copy(alpha = 0.4f), R1.ShapeS)
+                                .r1Pressable(onClick = { errorMessage = null })
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                        ) {
+                            Text(text = msg, style = R1.labelMicro, color = R1.StatusRed)
+                        }
+                    }
                 }
             }
         }

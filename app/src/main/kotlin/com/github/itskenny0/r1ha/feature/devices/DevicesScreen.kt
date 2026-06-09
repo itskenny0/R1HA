@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -51,6 +50,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForGrid
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -138,16 +138,11 @@ fun DevicesScreen(
                 )
                 when {
                     ui.loading && ui.devices.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { contentDescription = "Loading devices" },
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .semantics { contentDescription = "Loading devices" },
-                            strokeWidth = 2.dp,
-                            color = R1.AccentWarm,
-                        )
+                        SkeletonList()
                     }
                     ui.error != null && ui.devices.isEmpty() -> ErrorState(message = ui.error.orEmpty())
                     ui.devices.isEmpty() -> EmptyState(

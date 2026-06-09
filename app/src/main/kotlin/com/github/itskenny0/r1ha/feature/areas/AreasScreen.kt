@@ -58,6 +58,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
@@ -180,13 +181,8 @@ fun AreasScreen(
         when {
             ui.loading -> Box(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp,
-                    color = R1.AccentWarm,
-                )
+                SkeletonList()
             }
             ui.error != null && ui.areas.isEmpty() -> Box(
                 modifier = Modifier.fillMaxSize().padding(dimens.screenGutter),

@@ -50,6 +50,7 @@ import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -119,13 +120,8 @@ fun ScenesScreen(
                             liveRegion = LiveRegionMode.Polite
                             contentDescription = "Loading scenes and scripts"
                         },
-                    contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        strokeWidth = 2.dp,
-                        color = R1.AccentWarm,
-                    )
+                    SkeletonList()
                 }
                 // Dedicated error state: only when the load failed AND we have
                 // nothing cached to show. A transient failure over a populated list

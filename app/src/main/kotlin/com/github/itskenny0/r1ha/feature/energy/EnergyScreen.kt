@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -159,7 +160,7 @@ fun EnergyScreen(
                     R1Chip(
                         text = if (ui.loading) "…" else "REFRESH",
                         variant = R1ChipVariant.Action,
-                        onClick = { vm.refresh() },
+                        onClick = { vm.refresh(indicate = true) },
                         contentDescription = "Refresh energy",
                     )
                 }
@@ -172,6 +173,11 @@ fun EnergyScreen(
         // tier via the responsive dims rather than a fixed R1.space.
         val dimens = rememberResponsiveDimens()
         R1CenteredContent(modifier = Modifier.weight(1f)) {
+            PullToRefreshBox(
+                isRefreshing = ui.refreshing,
+                onRefresh = { vm.refresh(indicate = true) },
+                modifier = Modifier.fillMaxSize(),
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -332,6 +338,7 @@ fun EnergyScreen(
                 }
                 Spacer(Modifier.height(R1.space.xl))
             }
+            } // PullToRefreshBox
         } // R1CenteredContent
     }
 }

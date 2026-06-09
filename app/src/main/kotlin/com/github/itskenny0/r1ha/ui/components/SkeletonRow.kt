@@ -39,7 +39,7 @@ fun SkeletonBlock(
         initialValue = 0.55f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200),
+            animation = tween(durationMillis = R1.motion.skeletonPulseMs),
             repeatMode = RepeatMode.Reverse,
         ),
         label = "skeleton-alpha",
@@ -49,6 +49,27 @@ fun SkeletonBlock(
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted.copy(alpha = alpha)),
     )
+}
+
+/**
+ * First-load placeholder for list screens: a column of [SkeletonRow]s with the
+ * standard list gutter. Drop-in replacement for the centred spinner so the
+ * loading state already has the shape of the content that will replace it.
+ * Not scrollable — it only ever shows for the moment before real rows arrive.
+ */
+@Composable
+fun SkeletonList(
+    modifier: Modifier = Modifier,
+    rows: Int = 6,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.s),
+    ) {
+        repeat(rows) { SkeletonRow() }
+    }
 }
 
 /**

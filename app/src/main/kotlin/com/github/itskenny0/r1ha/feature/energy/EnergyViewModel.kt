@@ -79,6 +79,9 @@ class EnergyViewModel(
     @Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a live-tile refresh is in flight; drives the
+         *  pull-to-refresh indicator. */
+        val refreshing: Boolean = false,
         /** Sum of every `device_class=power` sensor's positive state in
          *  W. Negative sensors (battery export, grid export) are
          *  excluded so the figure is "what's being USED right now". */
@@ -168,9 +171,15 @@ class EnergyViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
-    fun refresh() {
+    /**
+     * [indicate] marks a user-initiated refresh (pull gesture, REFRESH chip):
+     * only those drive the pull-to-refresh indicator. The 30s auto-refresh and
+     * the initial load keep it false so the indicator doesn't pop unbidden on
+     * every background tick.
+     */
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             // Core electricity templates in parallel; each one is cheap server-side
             // (a single Jinja pass over states.sensor), but firing them
             // serially would gate every refresh on the slowest. await
@@ -239,6 +248,7 @@ class EnergyViewModel(
             // fresh UiState here would blank the chart on every 30 s tick.
             _ui.value = _ui.value.copy(
                 loading = false,
+                refreshing = false,
                 currentDrawW = drawRaw?.toDoubleOrNull(),
                 productionW = prodRaw?.toDoubleOrNull(),
                 todayKwh = kwhRaw?.toDoubleOrNull(),

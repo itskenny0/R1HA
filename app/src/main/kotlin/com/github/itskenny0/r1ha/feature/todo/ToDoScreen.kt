@@ -23,7 +23,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +50,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
@@ -118,7 +118,7 @@ fun ToDoScreen(
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when {
                         ui.loadingLists && ui.lists.isEmpty() ->
-                            CenteredSpinner()
+                            SkeletonList()
                         ui.error != null && ui.lists.isEmpty() ->
                             EmptyText("Could not load to-do lists.\n\n${ui.error}")
                         ui.lists.isEmpty() ->
@@ -131,7 +131,7 @@ fun ToDoScreen(
                         ui.activeEntityId == null ->
                             EmptyText("Pick a list to view items.")
                         ui.loadingItems && ui.items.isEmpty() ->
-                            CenteredSpinner()
+                            SkeletonList()
                         ui.items.isEmpty() ->
                             EmptyText("List is empty.\n\nType below to add the first item.")
                         else ->
@@ -553,20 +553,6 @@ private fun EditItemDialog(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CenteredSpinner() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(
-            modifier = Modifier.size(R1.space.xl),
-            strokeWidth = 2.dp,
-            color = R1.AccentWarm,
-        )
     }
 }
 

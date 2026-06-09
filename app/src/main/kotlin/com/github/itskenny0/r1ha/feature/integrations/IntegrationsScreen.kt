@@ -47,6 +47,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
@@ -120,16 +121,11 @@ fun IntegrationsScreen(
                 }
                 when {
                     ui.loading && ui.all.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { contentDescription = "Loading integrations" },
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .semantics { contentDescription = "Loading integrations" },
-                            strokeWidth = 2.dp,
-                            color = R1.AccentWarm,
-                        )
+                        SkeletonList()
                     }
                     ui.error != null && ui.all.isEmpty() -> ErrorState(message = ui.error.orEmpty())
                     ui.all.isEmpty() -> EmptyState(

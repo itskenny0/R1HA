@@ -46,6 +46,7 @@ import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
 import com.github.itskenny0.r1ha.ui.components.R1Section
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -184,10 +185,9 @@ fun BackupsScreen(
                 Spacer(Modifier.size(R1.space.xs))
                 when {
                     ui.loading && ui.backups.isEmpty() -> Box(
-                        modifier = Modifier.fillMaxWidth().padding(R1.space.xl),
-                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp, color = R1.AccentWarm)
+                        SkeletonList()
                     }
                     ui.error != null && ui.backups.isEmpty() -> Column {
                         Spacer(Modifier.size(R1.space.m))
