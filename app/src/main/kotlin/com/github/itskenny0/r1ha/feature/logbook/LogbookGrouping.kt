@@ -44,6 +44,13 @@ fun domainGlyph(domain: String?): String = when (domain) {
     "alarm_control_panel" -> "⚠" // warning
     "weather" -> "☁"        // cloud
     "sun" -> "☉"            // sun (astronomical)
+    "siren" -> "⚡"         // lightning — alarm/alert
+    "text" -> "T"           // text entity
+    "date" -> "▦"           // calendar-like
+    "datetime" -> "▦"       // calendar + time
+    "time" -> "◷"           // clock face
+    "image" -> "▷"          // image/picture placeholder (same as camera)
+    "event" -> "◎"          // circle target — event fired
     null -> "•"             // bullet
     else -> "•"
 }

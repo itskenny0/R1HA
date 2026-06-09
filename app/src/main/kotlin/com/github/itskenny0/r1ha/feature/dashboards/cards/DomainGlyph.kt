@@ -120,6 +120,13 @@ internal fun domainGlyph(entityId: String, state: EntityState?): String {
         "update" -> "↑"
         "remote" -> "⎚"
         "zone" -> "⌖"
+        "siren" -> "⚡"     // alert/alarm
+        "text" -> "T"       // text value
+        "date" -> "▦"       // calendar-like
+        "datetime" -> "▦"   // date + time
+        "time" -> "◷"       // clock face
+        "image" -> "▷"      // image/picture (same family as camera)
+        "event" -> "◎"      // event fired
         else -> "·"
     }
 }
