@@ -111,13 +111,18 @@ fun WheelScrollForGrid(
     gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     stepDp: Int = 56,
     settings: SettingsRepository? = null,
+    /** Same contract as [WheelScrollFor]'s flag: suspends the collector while
+     *  false (a per-row editor owns the wheel) without tearing down the scope,
+     *  so an in-flight scroll glide finishes instead of snapping dead. */
+    enabled: Boolean = true,
 ) {
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val accelEnabled by (settings?.settings?.map { it.wheel.acceleration }
         ?: kotlinx.coroutines.flow.flowOf(false))
         .collectAsState(initial = AppSettings().wheel.acceleration)
-    LaunchedEffect(gridState, accelEnabled) {
+    LaunchedEffect(gridState, accelEnabled, enabled) {
+        if (!enabled) return@LaunchedEffect
         val timestamps = ArrayDeque<Long>()
         val windowMs = 250L
         var pendingJob: kotlinx.coroutines.Job? = null

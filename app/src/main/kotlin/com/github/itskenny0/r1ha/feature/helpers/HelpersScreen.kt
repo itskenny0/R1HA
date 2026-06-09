@@ -124,16 +124,15 @@ fun HelpersScreen(
     }
     // Hand the wheel off to the per-row stepper while a number row is active;
     // otherwise the same detent would scroll the list AND step the value, which
-    // felt twitchy in early testing. The grid overload has no `enabled` flag, so
-    // the hand-off composes it conditionally: leaving composition cancels the
-    // scroll collector, re-entering rebuilds it (same effect as enabled = false).
-    if (numberWheelTarget.value == null) {
-        WheelScrollForGrid(
-            wheelInput = wheelInput,
-            gridState = gridState,
-            settings = settings,
-        )
-    }
+    // felt twitchy in early testing. enabled=false suspends the collector
+    // without tearing down its scope, so an in-flight scroll glide finishes
+    // instead of snapping dead when a number row grabs the wheel.
+    WheelScrollForGrid(
+        wheelInput = wheelInput,
+        gridState = gridState,
+        settings = settings,
+        enabled = numberWheelTarget.value == null,
+    )
     val tickHaptic = com.github.itskenny0.r1ha.ui.components.rememberTickHaptic()
     androidx.compose.runtime.LaunchedEffect(numberWheelTarget.value) {
         val targetId = numberWheelTarget.value ?: return@LaunchedEffect

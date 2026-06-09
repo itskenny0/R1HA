@@ -29,8 +29,9 @@ fun whatsNewAction(lastSeen: Int, current: Int, configured: Boolean): WhatsNewAc
     lastSeen == current -> WhatsNewAction.NOTHING
     !configured -> WhatsNewAction.STAMP_SILENTLY
     lastSeen < current -> WhatsNewAction.SHOW
-    // lastSeen > current: sideloaded downgrade. Stamp quietly so the next real
-    // upgrade shows again, but never present old features as new.
+    // lastSeen > current: sideloaded downgrade. Stay quiet and keep the
+    // high-water stamp: the user already saw those releases' notes, so
+    // re-upgrading past this build shouldn't re-present them as new.
     else -> WhatsNewAction.NOTHING
 }
 

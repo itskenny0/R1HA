@@ -239,6 +239,7 @@ fun AreasScreen(
                         AreaRow(
                             area = area,
                             expanded = expandedAreaKey == area.key,
+                            selected = twoPane && drill?.area?.key == area.key,
                             onOpen = { vm.openArea(area) },
                             onToggle = {
                                 expandedAreaKey = if (expandedAreaKey == area.key) null else area.key
@@ -308,13 +309,15 @@ private fun AreaRow(
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onTapEntity: (String) -> Unit,
+    /** Highlights the row whose drill is open beside the list (two-pane). */
+    selected: Boolean = false,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
-            .border(1.dp, R1.Hairline, R1.ShapeS),
+            .border(1.dp, if (selected) R1.AccentWarm else R1.Hairline, R1.ShapeS),
     ) {
         Row(
             modifier = Modifier

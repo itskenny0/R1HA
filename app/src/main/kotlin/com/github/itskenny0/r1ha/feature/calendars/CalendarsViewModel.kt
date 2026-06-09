@@ -72,15 +72,21 @@ class CalendarsViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    /** True once any fetch has completed. Background ticks over a settled
+     *  empty or error state must not flip the screen back to the skeleton,
+     *  so only the genuinely-first fetch may show it. */
+    private var loadedOnce = false
+
     fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(
-                // Only a fetch with nothing to show yet (first load, retry
-                // after a failed first load) may blank the screen; refreshes
-                // over a populated list update in place.
-                loading = _ui.value.calendars.isEmpty(),
+                // Only a fetch with nothing settled on screen yet may blank it
+                // with the skeleton; refreshes over a populated list, an empty
+                // result, or an error state update in place. The error is kept
+                // until the fetch resolves for the same reason.
+                loading = _ui.value.calendars.isEmpty() && !loadedOnce,
                 refreshing = indicate,
-                error = null,
+                error = if (loadedOnce) _ui.value.error else null,
             )
             haRepository.listRawEntitiesByDomain("calendar").fold(
                 onSuccess = { rows ->
@@ -109,11 +115,13 @@ class CalendarsViewModel(
                             .thenBy { it.name.lowercase() },
                     )
                     R1Log.i("Calendars", "loaded ${sorted.size}")
+                    loadedOnce = true
                     _ui.value = _ui.value.copy(loading = false, refreshing = false, calendars = sorted, error = null)
                 },
                 onFailure = { t ->
                     R1Log.w("Calendars", "list failed: ${t.message}")
                     Toaster.error("Calendars load failed: ${t.message ?: "unknown"}")
+                    loadedOnce = true
                     _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
