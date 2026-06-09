@@ -39,17 +39,20 @@ fun HeadingCard(
     }
     val hasTap = card.tapAction != null
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
+        // Only a tappable heading needs to fill the width and weight the text so
+        // the trailing chevron sits flush right; a plain heading stays wrap-content
+        // exactly as before.
         val rowMod = if (hasTap) {
             Modifier.fillMaxWidth().r1Pressable(onClick = { onAction(card.tapAction!!) })
         } else {
-            Modifier.fillMaxWidth()
+            Modifier
         }
         Row(modifier = rowMod, verticalAlignment = Alignment.CenterVertically) {
             R1Icons.forMdi(card.icon)?.let { icon ->
                 Icon(imageVector = icon, contentDescription = null, tint = R1.InkSoft, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
             }
-            Text(text = card.heading, style = style, color = R1.Ink, modifier = Modifier.weight(1f))
+            Text(text = card.heading, style = style, color = R1.Ink, modifier = if (hasTap) Modifier.weight(1f) else Modifier)
             if (hasTap) {
                 Spacer(Modifier.width(8.dp))
                 Text(text = "›", style = R1.numeralM, color = R1.InkSoft)
