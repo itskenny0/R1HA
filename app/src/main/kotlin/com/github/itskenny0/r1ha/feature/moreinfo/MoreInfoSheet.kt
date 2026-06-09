@@ -737,7 +737,7 @@ private fun TempStepperRow(
             StepperButton("−", "Lower $label", accent, enabled = value != null, onClick = onLower)
             Spacer(Modifier.width(R1.space.m))
             Text(
-                text = value?.let { formatNumber(it) + unit } ?: "—",
+                text = value?.let { formatNumber(it) + unit } ?: "-",
                 style = responsiveType(R1.numeralM),
                 color = accent,
                 maxLines = 1,
@@ -768,7 +768,7 @@ private fun NumberStepper(entity: EntityState, accent: Color, dispatch: (Service
             }
             Spacer(Modifier.width(R1.space.m))
             Text(
-                text = value?.let { formatNumber(it) + unit } ?: "—",
+                text = value?.let { formatNumber(it) + unit } ?: "-",
                 style = responsiveType(R1.numeralM),
                 color = accent,
                 maxLines = 1,
@@ -1114,11 +1114,11 @@ private fun headerValueAndUnit(entity: EntityState): Pair<String, String?> {
         Domain.CLIMATE, Domain.WATER_HEATER -> {
             val t = entity.climateTargetTemperature
             if (t != null) formatNumber(t) to (entity.temperatureUnit ?: entity.unit)
-            else (raw?.let { optionLabel(it) } ?: "—") to null
+            else (raw?.let { optionLabel(it) } ?: "-") to null
         }
         Domain.SELECT, Domain.INPUT_SELECT ->
-            (entity.currentOption ?: raw ?: "—") to null
-        Domain.MEDIA_PLAYER -> (raw?.uppercase() ?: "—") to null
+            (entity.currentOption ?: raw ?: "-") to null
+        Domain.MEDIA_PLAYER -> (raw?.uppercase() ?: "-") to null
         else -> {
             // On/off + everything else: show the raw state word; if it's a bare on/off
             // collapse to ON/OFF, otherwise show HA's word verbatim (OPEN, LOCKED, ...).
