@@ -260,6 +260,14 @@ data class EntityState(
     val lockCodeFormat: String? = null,
     /** Lock-only: `changed_by` attribute — last user / source that flipped it. */
     val lockChangedBy: String? = null,
+    /**
+     * Fan-only: HA's `percentage_step` attribute. Indicates the granularity of the
+     * fan's speed control: 100 / percentage_step gives the number of discrete speed
+     * steps. When >= 25 (i.e. 4 or fewer steps), the more-info sheet renders named
+     * speed chips instead of a continuous slider. Null when the integration doesn't
+     * report it (treat as continuous in that case).
+     */
+    val fanPercentageStep: Double? = null,
     /** Fan-only: HA's `preset_mode` attribute (Smart / Sleep / Level 1..4 / etc.).
      *  Surfaced as the selected chip in the FanPanel's PRESET row. */
     val fanPresetMode: String? = null,

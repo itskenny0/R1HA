@@ -1304,6 +1304,8 @@ class DefaultHaRepository(
                 raw.attributes["code_format"].asString() else null,
             lockChangedBy = if (domain == Domain.LOCK)
                 raw.attributes["changed_by"].asString() else null,
+            fanPercentageStep = if (domain == Domain.FAN)
+                raw.attributes["percentage_step"].asDouble() else null,
             fanPresetMode = if (domain == Domain.FAN)
                 raw.attributes["preset_mode"].asString() else null,
             fanPresetModes = if (domain == Domain.FAN)
@@ -2709,6 +2711,8 @@ class DefaultHaRepository(
                         attrs["code_format"].asString() else null,
                     lockChangedBy = if (domain == Domain.LOCK)
                         attrs["changed_by"].asString() else null,
+                    fanPercentageStep = if (domain == Domain.FAN)
+                        attrs["percentage_step"].asDouble() else null,
                     fanPresetMode = if (domain == Domain.FAN)
                         attrs["preset_mode"].asString() else null,
                     fanPresetModes = if (domain == Domain.FAN)
