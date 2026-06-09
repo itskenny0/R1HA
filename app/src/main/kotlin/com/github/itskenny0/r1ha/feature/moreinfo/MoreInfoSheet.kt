@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -63,17 +64,23 @@ import com.github.itskenny0.r1ha.ui.components.LawnMowerPanel
 import com.github.itskenny0.r1ha.ui.components.LockPanel
 import com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel
 import com.github.itskenny0.r1ha.ui.components.RemotePanel
+import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
 import com.github.itskenny0.r1ha.ui.components.SensorHistoryChart
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
 import com.github.itskenny0.r1ha.ui.components.VacuumPanel
 import com.github.itskenny0.r1ha.ui.components.ValvePanel
 import com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel
+import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
+import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
 import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.util.optionLabel
 import com.github.itskenny0.r1ha.ui.components.formatSensorValue
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Ultra-detail "more info" bottom sheet for a single HA entity. A dim-scrim overlay
@@ -258,16 +265,30 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
             }
             // Last-changed line — HA's more-info state-header shows a relative
             // "changed N ago" beneath the state. Mirrors that with the app's own
-            // live-ticking relative-time formatter.
+            // live-ticking relative-time formatter. Tapping toggles to the
+            // absolute local date-time so the user can see the exact timestamp.
             val changedAgo = rememberRelativeTime(entity.lastChanged)
             if (changedAgo.isNotEmpty()) {
+                var showAbsolute by remember { mutableStateOf(false) }
+                val absoluteText = remember(entity.lastChanged) {
+                    entity.lastChanged
+                        .atZone(ZoneId.systemDefault())
+                        .format(
+                            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US),
+                        )
+                }
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(
-                    text = "CHANGED ${changedAgo.uppercase()}",
+                    text = if (showAbsolute) absoluteText else "CHANGED ${changedAgo.uppercase()}",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.r1Pressable(
+                        onClick = { showAbsolute = !showAbsolute },
+                        hapticOnClick = false,
+                        contentDescription = "Toggle timestamp format",
+                    ),
                 )
             }
         }
@@ -510,6 +531,20 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
 @Composable
 private fun MediaControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        // Album art — only when entity_picture is present. Mirrors the card-stack
+        // MediaNowPlaying artwork slot; uses the same server URL + bearer token
+        // locals so relative HA paths resolve correctly.
+        if (!entity.mediaPicture.isNullOrBlank()) {
+            AsyncBitmap(
+                url = entity.mediaPicture,
+                serverUrl = LocalHaServerUrl.current,
+                bearerToken = LocalHaBearerToken.current,
+                modifier = Modifier
+                    .size(112.dp)
+                    .clip(R1.ShapeS),
+                contentDescription = "Album art",
+            )
+        }
         if (!entity.mediaTitle.isNullOrBlank() || !entity.mediaArtist.isNullOrBlank()) {
             Column {
                 entity.mediaTitle?.takeIf { it.isNotBlank() }?.let {
