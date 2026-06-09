@@ -62,6 +62,7 @@ object R1Responsive {
             dashboardColumns = 2,
             gridColumns = 3,
             typeScale = 1.06f,
+            chartScale = 1.4f,
         )
         WindowTier.EXPANDED -> ResponsiveDimens(
             tier = tier,
@@ -72,6 +73,7 @@ object R1Responsive {
             dashboardColumns = 2,
             gridColumns = 4,
             typeScale = 1.12f,
+            chartScale = 1.7f,
         )
         WindowTier.EXTRA_LARGE -> ResponsiveDimens(
             tier = tier,
@@ -83,6 +85,7 @@ object R1Responsive {
             dashboardColumns = 3,
             gridColumns = 5,
             typeScale = 1.18f,
+            chartScale = 2.0f,
         )
     }
 
@@ -148,6 +151,10 @@ data class ResponsiveDimens(
     val dashboardColumns: Int,
     val gridColumns: Int,
     val typeScale: Float,
+    /** Multiplier for fixed-height canvases (history/energy charts, the zones
+     *  map). A 180dp chart that reads fine on the R1 becomes a thin strip on a
+     *  13" tablet; scaling height with the tier keeps the aspect sane. */
+    val chartScale: Float = 1.0f,
 ) {
     /** True when content should be centred + width-capped rather than filling full-bleed. */
     val capsContentWidth: Boolean get() = maxContentWidth != Dp.Unspecified

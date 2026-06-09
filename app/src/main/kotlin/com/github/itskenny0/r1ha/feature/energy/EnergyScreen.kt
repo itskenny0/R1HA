@@ -185,7 +185,16 @@ fun EnergyScreen(
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
             ) {
-                // ── DRAW + PRODUCTION row ──────────────────────────────
+                // ── DRAW + PRODUCTION (+ TODAY on wide tiers) row ──────
+                // On expanded panels the TODAY tile joins the top row as a
+                // third column so the headline stats read as one band instead
+                // of stacking down a mostly-empty wide page. Prefer the
+                // recorder-derived today total (HA-accurate sum of per-bucket
+                // consumption since midnight); fall back to the live-template
+                // sum until the first history fetch lands.
+                val today = ui.statsTodayKwh ?: ui.todayKwh
+                val wideStats = dimens.tier == com.github.itskenny0.r1ha.ui.components.WindowTier.EXPANDED ||
+                    dimens.tier == com.github.itskenny0.r1ha.ui.components.WindowTier.EXTRA_LARGE
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(R1.space.s),
@@ -208,18 +217,24 @@ fun EnergyScreen(
                         // the real generation source rather than always-solar.
                         icon = if (ui.hasBatterySource) R1IconSet.Battery else R1IconSet.Sun,
                     )
+                    if (wideStats) {
+                        BigStatTile(
+                            modifier = Modifier.weight(1f),
+                            label = "TODAY",
+                            value = today?.let { formatKwh(it) } ?: NO_VALUE,
+                            accent = if ((today ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
+                        )
+                    }
                 }
-                // ── TODAY (kWh) row ────────────────────────────────────
-                // Prefer the recorder-derived today total (HA-accurate sum of
-                // per-bucket consumption since midnight); fall back to the
-                // live-template sum until the first history fetch lands.
-                val today = ui.statsTodayKwh ?: ui.todayKwh
-                BigStatTile(
-                    modifier = Modifier.fillMaxWidth(),
-                    label = "TODAY",
-                    value = today?.let { formatKwh(it) } ?: NO_VALUE,
-                    accent = if ((today ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
-                )
+                // ── TODAY (kWh) row (narrow tiers keep the full-width tile) ─
+                if (!wideStats) {
+                    BigStatTile(
+                        modifier = Modifier.fillMaxWidth(),
+                        label = "TODAY",
+                        value = today?.let { formatKwh(it) } ?: NO_VALUE,
+                        accent = if ((today ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
+                    )
+                }
                 // ── WATER + GAS tiles (additive: only when sensors exist) ─
                 // UNVERIFIED OFFLINE: todayWater / todayGas come from Jinja
                 // templates that mirror the kWh path but have not been tested
@@ -483,7 +498,9 @@ private fun EnergyHistoryPanel(ui: EnergyViewModel.UiState) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
+                        // Match the chart's tier-scaled height so load -> data
+                        // doesn't jump the layout.
+                        .height((160.dp.value * rememberResponsiveDimens().chartScale).dp)
                         .semantics { contentDescription = "Loading energy history" },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -568,12 +585,15 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
     // "Σ X.X kWh" still fits without clipping on big panels.
     val dimens = rememberResponsiveDimens()
     val axisWidth = (64.dp.value * dimens.typeScale).dp
+    // Height steps with the tier: 160dp suits the R1, but reads as a thin
+    // strip across a tablet-width panel.
+    val chartHeight = (160.dp.value * dimens.chartScale).dp
     Row {
         Column(modifier = Modifier.weight(1f)) {
             Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(chartHeight)
                     .clip(RoundedCornerShape(2.dp))
                     .background(R1.Surface)
                     .semantics { contentDescription = chartDescription }
@@ -802,10 +822,11 @@ private fun EnergyFlowSection(ui: EnergyViewModel.UiState) {
 @Composable
 private fun EnergyFlowCanvas(bands: List<FlowBand>) {
     val palette = flowPalette()
+    val flowHeight = (120.dp.value * rememberResponsiveDimens().chartScale).dp
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(120.dp),
+            .height(flowHeight),
     ) {
         val w = size.width
         val h = size.height

@@ -204,18 +204,47 @@ fun HistoryScreen(
                     )
                 }
                 WindowChips(current = ui.window, onSelect = { vm.setWindow(it) })
-                HistoryChartPanel(ui)
-                OverlayLegend(
-                    ui = ui,
-                    onAdd = { pickerOpen = true },
-                    onRemove = { vm.removeEntity(it) },
-                )
-                // Per-series numeric summary + rewind only apply to the
-                // primary entity. When extra series are overlaid they're
-                // summarized in the legend instead, so the single-entity
-                // summary stays focused on the entity the user drilled into.
-                SummaryPanel(ui)
-                RewindPanel(ui)
+                // On expanded tiers the chart gets the left two-thirds and the
+                // numeric summary + rewind ride beside it, so a wide panel
+                // reads as one composed view instead of a chart strip floating
+                // over empty space. Smaller tiers keep the vertical stack.
+                val sideBySide = dimens.tier == WindowTier.EXPANDED ||
+                    dimens.tier == WindowTier.EXTRA_LARGE
+                if (sideBySide) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.m)) {
+                        Column(
+                            modifier = Modifier.weight(2f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            HistoryChartPanel(ui)
+                            OverlayLegend(
+                                ui = ui,
+                                onAdd = { pickerOpen = true },
+                                onRemove = { vm.removeEntity(it) },
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            SummaryPanel(ui)
+                            RewindPanel(ui)
+                        }
+                    }
+                } else {
+                    HistoryChartPanel(ui)
+                    OverlayLegend(
+                        ui = ui,
+                        onAdd = { pickerOpen = true },
+                        onRemove = { vm.removeEntity(it) },
+                    )
+                    // Per-series numeric summary + rewind only apply to the
+                    // primary entity. When extra series are overlaid they're
+                    // summarized in the legend instead, so the single-entity
+                    // summary stays focused on the entity the user drilled into.
+                    SummaryPanel(ui)
+                    RewindPanel(ui)
+                }
                 // Surface refresh errors even when the chart still has stale points; the
                 // prior gate of `ui.points.isEmpty()` silently swallowed errors during
                 // routine re-fetches, so a user staring at an old line had no way to
