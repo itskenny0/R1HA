@@ -35,6 +35,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -246,6 +248,14 @@ fun EnergyScreen(
                     ui = ui,
                     onSelectWindow = { vm.setWindow(it) },
                 )
+                // ── ENERGY FLOW ────────────────────────────────────────
+                // Additive section: renders only when draw or production > 0.
+                // UNVERIFIED OFFLINE: data comes from live HA templates.
+                EnergyFlowSection(ui = ui)
+                // ── CONSUMER BREAKDOWN ─────────────────────────────────
+                // Additive section: renders only when consumers are present.
+                // UNVERIFIED OFFLINE: data comes from live HA templates.
+                ConsumerBreakdownSection(ui = ui)
                 // ── TOP CONSUMERS ──────────────────────────────────────
                 if (ui.topConsumers.isNotEmpty()) {
                     var consumersExpanded by remember {
@@ -717,6 +727,330 @@ private fun drawAccent(w: Double?): Color = when {
     w < 1500 -> R1.StatusAmber
     else -> R1.StatusRed
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Energy flow (Sankey-style) visualization
+//
+// Additive section: renders only when there is usable source data (draw > 0
+// or production > 0). When both are absent or zero the section is silent.
+//
+// UNVERIFIED OFFLINE: all data originates from live HA template renders.
+// The Canvas-based rendering degrades silently to nothing when energyFlowBands
+// returns an empty list.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Collapsible energy-flow section. Visible only when there is at least one
+ * source band (draw or production > 0). Uses [energyFlowBands] to compute
+ * proportional band widths from the instantaneous W figures already in
+ * [EnergyViewModel.UiState], so no additional network call is made.
+ *
+ * UNVERIFIED OFFLINE: data is live-HA-only; section is absent when data
+ * is not available.
+ */
+@Composable
+private fun EnergyFlowSection(ui: EnergyViewModel.UiState) {
+    val bands = remember(ui.productionW, ui.currentDrawW, ui.topConsumers) {
+        energyFlowBands(
+            productionW = ui.productionW,
+            drawW = ui.currentDrawW,
+            consumers = ui.topConsumers,
+        )
+    }
+    // Render nothing when there is no usable data.
+    if (bands.isEmpty()) return
+
+    R1Section(title = "ENERGY FLOW", topSpace = R1.space.s) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .padding(horizontal = R1.space.m, vertical = R1.space.m)
+                .semantics {
+                    contentDescription = "Energy flow diagram, ${bands.size} bands"
+                },
+        ) {
+            EnergyFlowCanvas(bands = bands)
+        }
+    }
+}
+
+/**
+ * Canvas-drawn Sankey-style flow diagram. Sources appear on the left as
+ * proportional-height blocks, HOME in the centre, and consumers on the
+ * right. Each band is a filled trapezoid (straight-line segmented band)
+ * running from source to HOME (left-side bands) or from HOME to consumer
+ * (right-side bands). Band height is proportional to [FlowBand.frac].
+ *
+ * The palette cycles through a fixed set of accent colours so each band
+ * gets a distinct tint without needing a dynamic palette. Both the left-
+ * side (source) and right-side (consumer) bands share the same total
+ * height (the Canvas height), so the drawing stays compact.
+ *
+ * UNVERIFIED OFFLINE: rendering is exercised only at compile time; live
+ * visual appearance requires a device with real HA data.
+ */
+@Composable
+private fun EnergyFlowCanvas(bands: List<FlowBand>) {
+    val palette = flowPalette()
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+    ) {
+        val w = size.width
+        val h = size.height
+        val nodeW = w * 0.12f
+        val leftX = 0f
+        val midX = w * 0.44f
+        val rightX = w * 0.88f
+        val gap = h * 0.06f
+
+        // Separate source (left) and consumer (right) bands.
+        val sourceBands = bands.filter { it.destLabel == "HOME" }
+        val consumerBands = bands.filter { it.sourceLabel == "HOME" }
+
+        // Layout helper: assign y-start for each band stacked top-to-bottom
+        // with a small gap between bands.
+        fun layoutBands(list: List<FlowBand>): List<Float> {
+            if (list.isEmpty()) return emptyList()
+            val totalGap = gap * (list.size - 1)
+            val usable = h - totalGap
+            val starts = mutableListOf<Float>()
+            var y = 0f
+            for (band in list) {
+                starts += y
+                y += (band.frac * usable).toFloat() + gap
+            }
+            return starts
+        }
+
+        val sourceStarts = layoutBands(sourceBands)
+        val consumerStarts = layoutBands(consumerBands)
+
+        // Draw source-node blocks on the left.
+        sourceBands.forEachIndexed { i, band ->
+            val color = palette[band.colorIndex % palette.size]
+            val bh = (band.frac * h).toFloat()
+            drawRect(
+                color = color,
+                topLeft = Offset(leftX, sourceStarts[i]),
+                size = Size(nodeW, bh),
+            )
+        }
+
+        // HOME node in the centre: full-height neutral block.
+        drawRect(
+            color = R1.AccentNeutral.copy(alpha = 0.25f),
+            topLeft = Offset(midX, 0f),
+            size = Size(nodeW, h),
+        )
+
+        // Draw consumer-node blocks on the right.
+        consumerBands.forEachIndexed { i, band ->
+            val color = palette[band.colorIndex % palette.size]
+            val bh = (band.frac * h).toFloat()
+            drawRect(
+                color = color,
+                topLeft = Offset(rightX, consumerStarts[i]),
+                size = Size(nodeW, bh),
+            )
+        }
+
+        // Draw connecting bands: source -> HOME (left half of canvas).
+        // Each band is a filled quadrilateral (two top points, two bottom points)
+        // from the source node's right edge to the HOME node's left edge, with
+        // the y coordinates matching the source-side stacked layout on the left
+        // and the same stacked layout mirrored on the HOME node left edge.
+        val usableLeft = h - gap * (sourceBands.size - 1).coerceAtLeast(0)
+        var homeLY = 0f
+        sourceBands.forEachIndexed { i, band ->
+            val color = palette[band.colorIndex % palette.size].copy(alpha = 0.3f)
+            val srcBH = (band.frac * h).toFloat()
+            val homeBH = (band.frac * usableLeft).toFloat()
+            val srcTop = sourceStarts[i]
+            val srcBot = srcTop + srcBH
+            val homeTop = homeLY
+            val homeBot = homeLY + homeBH
+            homeLY = homeBot + gap
+            val path = Path().apply {
+                moveTo(leftX + nodeW, srcTop)
+                lineTo(midX, homeTop)
+                lineTo(midX, homeBot)
+                lineTo(leftX + nodeW, srcBot)
+                close()
+            }
+            drawPath(path = path, color = color, style = Fill)
+        }
+
+        // Draw connecting bands: HOME -> consumer (right half of canvas).
+        val usableRight = h - gap * (consumerBands.size - 1).coerceAtLeast(0)
+        var homeRY = 0f
+        consumerBands.forEachIndexed { i, band ->
+            val color = palette[band.colorIndex % palette.size].copy(alpha = 0.3f)
+            val consBH = (band.frac * h).toFloat()
+            val homeBH = (band.frac * usableRight).toFloat()
+            val homeTop = homeRY
+            val homeBot = homeRY + homeBH
+            homeRY = homeBot + gap
+            val consTop = consumerStarts[i]
+            val consBot = consTop + consBH
+            val path = Path().apply {
+                moveTo(midX + nodeW, homeTop)
+                lineTo(rightX, consTop)
+                lineTo(rightX, consBot)
+                lineTo(midX + nodeW, homeBot)
+                close()
+            }
+            drawPath(path = path, color = color, style = Fill)
+        }
+    }
+    // Label row below the canvas: sources on left, HOME centre, top consumer on right.
+    Spacer(Modifier.height(R1.space.xs))
+    Row(modifier = Modifier.fillMaxWidth()) {
+        val sourceBands = bands.filter { it.destLabel == "HOME" }
+        val consumerBands = bands.filter { it.sourceLabel == "HOME" }
+        Column(modifier = Modifier.weight(1f)) {
+            for (b in sourceBands) {
+                Text(
+                    text = b.sourceLabel,
+                    style = responsiveType(R1.labelMicro),
+                    color = R1.InkSoft,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Text(
+            text = "HOME",
+            style = responsiveType(R1.labelMicro),
+            color = R1.AccentNeutral,
+            modifier = Modifier.weight(1f),
+        )
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+            for (b in consumerBands.take(3)) {
+                Text(
+                    text = b.destLabel,
+                    style = responsiveType(R1.labelMicro),
+                    color = R1.InkSoft,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consumer distribution bar
+//
+// Additive section: proportional horizontal bar of top consumers.
+// Renders only when consumers are present. No new data fetch.
+//
+// UNVERIFIED OFFLINE: data originates from live HA template renders.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Proportional horizontal bar showing each top consumer's share of the total
+ * measured consumer wattage. Each consumer is a coloured segment; a compact
+ * legend maps colours to names.
+ *
+ * Renders nothing when [EnergyViewModel.UiState.topConsumers] is empty.
+ * UNVERIFIED OFFLINE: data is live-HA-only.
+ */
+@Composable
+private fun ConsumerBreakdownSection(ui: EnergyViewModel.UiState) {
+    val segs = remember(ui.topConsumers) {
+        consumerDistributionSegments(ui.topConsumers)
+    }
+    if (segs.isEmpty()) return
+
+    val palette = flowPalette()
+
+    R1Section(title = "CONSUMER BREAKDOWN", topSpace = R1.space.s) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .padding(horizontal = R1.space.m, vertical = R1.space.m),
+            verticalArrangement = Arrangement.spacedBy(R1.space.s),
+        ) {
+            // Distribution bar.
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp)
+                    .clip(R1.ShapeS)
+                    .semantics {
+                        contentDescription = "Consumer distribution bar, ${segs.size} segments"
+                    },
+            ) {
+                val w = size.width
+                val h = size.height
+                var x = 0f
+                for (seg in segs) {
+                    val segW = (seg.share * w).toFloat()
+                    val color = palette[seg.colorIndex % palette.size]
+                    drawRect(color = color, topLeft = Offset(x, 0f), size = Size(segW, h))
+                    x += segW
+                }
+            }
+            // Compact legend: colour dot + name + share%.
+            Column(verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
+                for (seg in segs) {
+                    val color = palette[seg.colorIndex % palette.size]
+                    val pct = String.format(java.util.Locale.US, "%.0f%%", seg.share * 100.0)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.xs),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(color, R1.ShapeRound),
+                        )
+                        Text(
+                            text = seg.name,
+                            style = responsiveType(R1.labelMicro),
+                            color = R1.InkSoft,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = pct,
+                            style = responsiveType(R1.labelMicro),
+                            color = color,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Fixed accent palette for flow bands and consumer segments. Cycles when
+ * there are more bands than colours. Chosen to be legible on the dark
+ * background and distinct from each other.
+ *
+ * Extracted as a function (not a top-level val) so Compose's Color
+ * objects are allocated lazily only when the section is rendered.
+ */
+@Composable
+private fun flowPalette(): List<Color> = listOf(
+    R1.AccentGreen,
+    R1.AccentCool,
+    R1.AccentWarm,
+    R1.StatusAmber,
+    R1.AccentNeutral,
+    R1.StatusRed,
+)
 
 /**
  * Write [csv] to the app's cache/share directory and fire an ACTION_SEND

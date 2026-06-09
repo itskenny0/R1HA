@@ -187,7 +187,12 @@ class EnergyViewModel(
             // not been tested against a live HA with water / gas meters.
             val waterJob = async { haRepository.renderTemplate(SUM_TODAY_WATER) }
             val gasJob = async { haRepository.renderTemplate(SUM_TODAY_GAS) }
-            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob, waterJob, gasJob)
+            // Energy prefs are best-effort: a failure or empty result is a no-op
+            // overlay (consumers still display with their HA friendly_name).
+            // UNVERIFIED OFFLINE: energy/get_prefs WS command not tested against
+            // a live HA instance.
+            val prefsJob = async { haRepository.getEnergyPrefs() }
+            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob, waterJob, gasJob, prefsJob)
 
             val drawRaw = drawJob.await().getOrNull()?.trim()
             val prodRaw = prodJob.await().getOrNull()?.trim()
@@ -196,6 +201,9 @@ class EnergyViewModel(
             val batRaw = batJob.await().getOrNull()?.trim()
             val waterRaw = waterJob.await().getOrNull()?.trim()
             val gasRaw = gasJob.await().getOrNull()?.trim()
+            // Custom name overrides keyed by entity/stat id. Empty map when
+            // the fetch failed or the user hasn't set any custom names.
+            val customNames = prefsJob.await().getOrElse { emptyMap() }
 
             // Any single template failure shouldn't tank the whole
             // surface — we render whatever did succeed and the other
@@ -211,12 +219,20 @@ class EnergyViewModel(
             }
 
             val top = topRaw?.let { parseTopConsumers(it) }.orEmpty()
+                // Apply custom display names where available. The consumer
+                // fetch and ranking are unchanged; only the display name is
+                // overridden. UNVERIFIED OFFLINE: relies on getEnergyPrefs()
+                // which has not been tested against a live HA instance.
+                .map { c ->
+                    val override = customNames[c.entityId]
+                    if (override != null) c.copy(name = override) else c
+                }
             val (waterValue, waterUnitStr) = parseValueUnit(waterRaw)
             val (gasValue, gasUnitStr) = parseValueUnit(gasRaw)
             R1Log.i(
                 "Energy",
                 "draw=$drawRaw prod=$prodRaw kwh=$kwhRaw consumers=${top.size} " +
-                    "water=$waterRaw gas=$gasRaw",
+                    "water=$waterRaw gas=$gasRaw customNames=${customNames.size}",
             )
             // copy() over the existing state so the history section (window,
             // bars, load flags) survives a live-tile refresh; rebuilding a
