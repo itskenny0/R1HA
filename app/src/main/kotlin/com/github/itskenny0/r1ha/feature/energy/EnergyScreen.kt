@@ -59,6 +59,11 @@ import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState
 import com.github.itskenny0.r1ha.ui.icons.R1IconSet
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
+import android.content.Intent
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileOutputStream
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -133,6 +138,23 @@ fun EnergyScreen(
                         },
                     )
                     R1Chip(
+                        text = "CSV",
+                        variant = R1ChipVariant.Action,
+                        selected = true,
+                        tone = R1.AccentGreen,
+                        contentDescription = "Export energy data as CSV",
+                        onClick = {
+                            runCatching {
+                                val csv = energyCsv(ui)
+                                shareCsvText(context, csv)
+                            }.onFailure { t ->
+                                com.github.itskenny0.r1ha.core.util.Toaster.error(
+                                    "CSV export failed: ${t.message ?: "unknown"}",
+                                )
+                            }
+                        },
+                    )
+                    R1Chip(
                         text = if (ui.loading) "…" else "REFRESH",
                         variant = R1ChipVariant.Action,
                         onClick = { vm.refresh() },
@@ -190,6 +212,35 @@ fun EnergyScreen(
                     value = today?.let { formatKwh(it) } ?: NO_VALUE,
                     accent = if ((today ?: 0.0) > 0) R1.AccentWarm else R1.InkMuted,
                 )
+                // ── WATER + GAS tiles (additive: only when sensors exist) ─
+                // UNVERIFIED OFFLINE: todayWater / todayGas come from Jinja
+                // templates that mirror the kWh path but have not been tested
+                // against a live HA with water / gas meters.
+                if (ui.todayWater != null || ui.todayGas != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+                    ) {
+                        if (ui.todayWater != null) {
+                            BigStatTile(
+                                modifier = Modifier.weight(1f),
+                                label = "WATER TODAY",
+                                value = formatMeter(ui.todayWater, ui.waterUnit),
+                                accent = R1.AccentCool,
+                                icon = R1IconSet.Moisture,
+                            )
+                        }
+                        if (ui.todayGas != null) {
+                            BigStatTile(
+                                modifier = Modifier.weight(1f),
+                                label = "GAS TODAY",
+                                value = formatMeter(ui.todayGas, ui.gasUnit),
+                                accent = R1.StatusAmber,
+                                icon = R1IconSet.Smoke,
+                            )
+                        }
+                    }
+                }
                 // ── CONSUMPTION HISTORY ────────────────────────────────
                 EnergyHistorySection(
                     ui = ui,
@@ -642,6 +693,20 @@ private fun formatWatts(w: Double): String =
     if (kotlin.math.abs(w) >= 1000) "${"%.1f".format(java.util.Locale.US, w / 1000.0)} kW"
     else "${w.toInt()} W"
 
+/** Format a water/gas meter value with its unit. Two decimals for values
+ *  below 10, one decimal above, with the unit appended. Falls back to
+ *  "n/a" when the value is null. Unit defaults to "m3" when absent so the
+ *  tile always reads cleanly even if the template didn't return a unit. */
+private fun formatMeter(value: Double?, unit: String?): String {
+    if (value == null) return NO_VALUE
+    val u = unit?.takeIf { it.isNotBlank() } ?: "m3"
+    return if (kotlin.math.abs(value) < 10) {
+        String.format(java.util.Locale.US, "%.2f %s", value, u)
+    } else {
+        String.format(java.util.Locale.US, "%.1f %s", value, u)
+    }
+}
+
 /** Three-band accent for draw values: green under 200 W (idle
  *  household), amber up to 1500 W (typical mid-load), red beyond
  *  (heavy load like an electric kettle or EV charging). The
@@ -651,4 +716,30 @@ private fun drawAccent(w: Double?): Color = when {
     w < 200 -> R1.AccentGreen
     w < 1500 -> R1.StatusAmber
     else -> R1.StatusRed
+}
+
+/**
+ * Write [csv] to the app's cache/share directory and fire an ACTION_SEND
+ * intent so the user can route the file to any app that accepts text/csv.
+ * Mirrors [EnergyShareSnapshot.shareAsPng]: reuses the same FileProvider
+ * authority and cache/share directory so no manifest changes are needed.
+ */
+private fun shareCsvText(context: android.content.Context, csv: String) {
+    val cache = context.cacheDir.resolve("share")
+    if (!cache.exists()) cache.mkdirs()
+    val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+    val file = File(cache, "r1ha-energy-$stamp.csv")
+    FileOutputStream(file).use { out -> out.write(csv.toByteArray(Charsets.UTF_8)) }
+    val authority = "${context.packageName}.updates"
+    val uri = FileProvider.getUriForFile(context, authority, file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TITLE, "R1HA energy export")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    val chooser = Intent.createChooser(intent, "Export energy CSV").apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(chooser)
 }

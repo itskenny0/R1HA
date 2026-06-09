@@ -123,6 +123,46 @@ class EnergyViewModel(
          *  statistic ids were found, so the chart shows a clear "recorder
          *  has no energy statistics" message rather than a blank panel. */
         val historyNoStatistics: Boolean = false,
+
+        // ---- water / gas summary tiles ---------------------------------------
+        // NOTE: these fields are built offline and have NOT been verified against
+        // a live Home Assistant instance. They mirror the SUM_TODAY_KWH template
+        // path (known to be unverified for normalisation/unit handling - see the
+        // energy-template-unit-normalization memory note) using device_class=water
+        // and device_class=gas respectively. They are null when no such sensors
+        // exist, so the tiles appear only on installs that have water / gas meters.
+
+        /** Today's total water consumption, summed from
+         *  `device_class=water state_class=total_increasing` sensors, in the
+         *  unit of the first sensor encountered (mixed units are summed raw;
+         *  see [SUM_TODAY_WATER] comment). Null when no water sensors exist.
+         *
+         *  UNVERIFIED OFFLINE: template path mirrors SUM_TODAY_KWH but has not
+         *  been tested against a live HA with water meters. */
+        val todayWater: Double? = null,
+
+        /** Unit string for [todayWater] (e.g. "m3", "gal"). Null when
+         *  [todayWater] is null.
+         *
+         *  UNVERIFIED OFFLINE: read from the first water sensor's
+         *  unit_of_measurement via the Jinja template. */
+        val waterUnit: String? = null,
+
+        /** Today's total gas consumption, summed from
+         *  `device_class=gas state_class=total_increasing` sensors, in the
+         *  unit of the first sensor encountered (mixed units are summed raw;
+         *  see [SUM_TODAY_GAS] comment). Null when no gas sensors exist.
+         *
+         *  UNVERIFIED OFFLINE: template path mirrors SUM_TODAY_KWH but has not
+         *  been tested against a live HA with gas meters. */
+        val todayGas: Double? = null,
+
+        /** Unit string for [todayGas] (e.g. "m3", "ft3"). Null when
+         *  [todayGas] is null.
+         *
+         *  UNVERIFIED OFFLINE: read from the first gas sensor's
+         *  unit_of_measurement via the Jinja template. */
+        val gasUnit: String? = null,
     )
 
     private val _ui = MutableStateFlow(UiState())
@@ -131,7 +171,7 @@ class EnergyViewModel(
     fun refresh() {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(loading = true, error = null)
-            // Four templates in parallel — each one is cheap server-side
+            // Core electricity templates in parallel; each one is cheap server-side
             // (a single Jinja pass over states.sensor), but firing them
             // serially would gate every refresh on the slowest. await
             // them all so the UI flips loading → ready in one render.
@@ -140,13 +180,22 @@ class EnergyViewModel(
             val kwhJob = async { haRepository.renderTemplate(SUM_TODAY_KWH) }
             val topJob = async { haRepository.renderTemplate(TOP_CONSUMERS_JSON) }
             val batJob = async { haRepository.renderTemplate(HAS_BATTERY_SOURCE) }
-            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob)
+            // Water + gas are additive/optional: fetched in parallel with the
+            // electricity templates but their failure is always silent:
+            // tiles simply stay absent rather than surfacing an error.
+            // UNVERIFIED OFFLINE: these templates mirror SUM_TODAY_KWH and have
+            // not been tested against a live HA with water / gas meters.
+            val waterJob = async { haRepository.renderTemplate(SUM_TODAY_WATER) }
+            val gasJob = async { haRepository.renderTemplate(SUM_TODAY_GAS) }
+            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob, waterJob, gasJob)
 
             val drawRaw = drawJob.await().getOrNull()?.trim()
             val prodRaw = prodJob.await().getOrNull()?.trim()
             val kwhRaw = kwhJob.await().getOrNull()?.trim()
             val topRaw = topJob.await().getOrNull()?.trim()
             val batRaw = batJob.await().getOrNull()?.trim()
+            val waterRaw = waterJob.await().getOrNull()?.trim()
+            val gasRaw = gasJob.await().getOrNull()?.trim()
 
             // Any single template failure shouldn't tank the whole
             // surface — we render whatever did succeed and the other
@@ -162,9 +211,12 @@ class EnergyViewModel(
             }
 
             val top = topRaw?.let { parseTopConsumers(it) }.orEmpty()
+            val (waterValue, waterUnitStr) = parseValueUnit(waterRaw)
+            val (gasValue, gasUnitStr) = parseValueUnit(gasRaw)
             R1Log.i(
                 "Energy",
-                "draw=$drawRaw prod=$prodRaw kwh=$kwhRaw consumers=${top.size}",
+                "draw=$drawRaw prod=$prodRaw kwh=$kwhRaw consumers=${top.size} " +
+                    "water=$waterRaw gas=$gasRaw",
             )
             // copy() over the existing state so the history section (window,
             // bars, load flags) survives a live-tile refresh; rebuilding a
@@ -185,6 +237,12 @@ class EnergyViewModel(
                     "All energy templates returned errors. Does HA have any " +
                         "device_class=power or device_class=energy sensors?"
                 } else null,
+                // Water + gas: null when the template returned empty (no sensors).
+                // UNVERIFIED OFFLINE: see SUM_TODAY_WATER / SUM_TODAY_GAS above.
+                todayWater = waterValue,
+                waterUnit = waterUnitStr,
+                todayGas = gasValue,
+                gasUnit = gasUnitStr,
             )
         }
     }
@@ -432,6 +490,62 @@ class EnergyViewModel(
             "{%- endif -%}" +
             "{%- endfor -%}" +
             "{{ out.items | tojson }}"
+
+        // ---- water / gas templates -------------------------------------------
+        // UNVERIFIED OFFLINE: both templates mirror SUM_TODAY_KWH exactly, with
+        // only the device_class filter changed (water / gas instead of energy).
+        // The unit is read from the FIRST matching sensor via `| first` so the
+        // value and unit always agree. If an install has mixed units (e.g. one
+        // sensor in m3 and another in L), the values are summed raw and the unit
+        // shown is that of the first sensor; the caller should note this in the
+        // UI. An empty string is emitted when no matching sensors exist, which
+        // the client treats as null (absent tile).
+
+        /**
+         * Sum every `device_class=water state_class=total_increasing` sensor.
+         * Emits "value|unit" so a single template call returns both. An absent
+         * install emits an empty string.
+         *
+         * UNVERIFIED OFFLINE: mirrors SUM_TODAY_KWH. Not tested against a live
+         * HA with water meters.
+         */
+        private const val SUM_TODAY_WATER = "{%- set ws = states.sensor " +
+            "| selectattr('attributes.device_class','eq','water') " +
+            "| selectattr('attributes.state_class','eq','total_increasing') " +
+            "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            "| list -%}" +
+            "{%- if ws -%}" +
+            "{{ ws | map(attribute='state') | map('float',0) | sum | round(3) }}" +
+            "|{{ ws | first | attr('attributes') | attr('unit_of_measurement') }}" +
+            "{%- endif -%}"
+
+        /**
+         * Sum every `device_class=gas state_class=total_increasing` sensor.
+         * Emits "value|unit". An absent install emits an empty string.
+         *
+         * UNVERIFIED OFFLINE: mirrors SUM_TODAY_KWH. Not tested against a live
+         * HA with gas meters.
+         */
+        private const val SUM_TODAY_GAS = "{%- set gs = states.sensor " +
+            "| selectattr('attributes.device_class','eq','gas') " +
+            "| selectattr('attributes.state_class','eq','total_increasing') " +
+            "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            "| list -%}" +
+            "{%- if gs -%}" +
+            "{{ gs | map(attribute='state') | map('float',0) | sum | round(3) }}" +
+            "|{{ gs | first | attr('attributes') | attr('unit_of_measurement') }}" +
+            "{%- endif -%}"
+
+        /** Parse a "value|unit" pair returned by [SUM_TODAY_WATER] and
+         *  [SUM_TODAY_GAS]. Returns null for either field when the raw string
+         *  is blank (no sensors) or malformed. */
+        internal fun parseValueUnit(raw: String?): Pair<Double?, String?> {
+            if (raw.isNullOrBlank()) return null to null
+            val parts = raw.trim().split("|", limit = 2)
+            val value = parts.getOrNull(0)?.toDoubleOrNull()
+            val unit = parts.getOrNull(1)?.trim()?.takeIf { it.isNotEmpty() }
+            return value to unit
+        }
 
         /** Sum each bucket's per-meter `change` (consumption during the
          *  bucket) across every requested meter, keyed by bucket start,
