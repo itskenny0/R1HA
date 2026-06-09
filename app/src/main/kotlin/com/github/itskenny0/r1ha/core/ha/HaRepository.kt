@@ -649,6 +649,25 @@ interface HaRepository {
      * empty; callers compose it in locally. Each entry's [url_path] is the
      * value to pass to [fetchLovelaceConfig] for that dashboard. */
     suspend fun listLovelaceDashboards(): Result<kotlinx.serialization.json.JsonArray>
+
+    /**
+     * Fetch the Energy dashboard user preferences via `energy/get_prefs`.
+     * Returns a map of stat/entity id to the user-configured custom display
+     * name for that source or device. An absent or blank name entry is
+     * omitted from the map so callers can use `map[id] ?: fallbackName`
+     * safely.
+     *
+     * Best-effort: a transport error, a disconnected WS, or an HA install
+     * that hasn't set any custom names all result in an empty map (no
+     * visible error surfaced to the user). The caller should treat this
+     * map as an optional overlay, never a required fetch.
+     *
+     * UNVERIFIED OFFLINE: the `energy/get_prefs` WS command and the
+     * `device_consumption[].name` field shape have not been tested against
+     * a live Home Assistant instance. The implementation follows HA's
+     * documented energy websocket API.
+     */
+    suspend fun getEnergyPrefs(): Result<Map<String, String>>
 }
 
 /**

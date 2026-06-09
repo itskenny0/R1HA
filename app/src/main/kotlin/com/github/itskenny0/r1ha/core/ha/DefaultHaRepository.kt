@@ -3987,6 +3987,44 @@ class DefaultHaRepository(
 
 
     /**
+     * Fetch Energy dashboard user prefs via the `energy/get_prefs` WS command.
+     * Parses `device_consumption[].stat_consumption` (entity/stat id) and
+     * `device_consumption[].name` (optional custom display name) into a map.
+     * Entries with a blank or absent `name` are omitted so callers can do
+     * `map[id] ?: fallback` without extra null-checks.
+     *
+     * Best-effort: any parse error or transport failure returns an empty map;
+     * no error is surfaced to the user because a missing custom-name overlay
+     * is a graceful degradation, not a hard failure.
+     *
+     * UNVERIFIED OFFLINE: the `energy/get_prefs` WS command and its
+     * `device_consumption[].name` field have not been tested against a live
+     * Home Assistant instance. The shape follows HA's energy websocket API docs.
+     */
+    override suspend fun getEnergyPrefs(): Result<Map<String, String>> =
+        withContext(Dispatchers.IO) {
+            callWsExpectingPayload("energy/get_prefs").mapCatching { payload ->
+                val obj = payload as? kotlinx.serialization.json.JsonObject
+                    ?: return@mapCatching emptyMap()
+                val arr = obj["device_consumption"] as? kotlinx.serialization.json.JsonArray
+                    ?: return@mapCatching emptyMap()
+                val out = mutableMapOf<String, String>()
+                for (el in arr) {
+                    val row = el as? kotlinx.serialization.json.JsonObject ?: continue
+                    val statId = (row["stat_consumption"] as? JsonPrimitive)?.content
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    val name = (row["name"] as? JsonPrimitive)?.content
+                        ?.takeIf { it.isNotBlank() } ?: continue
+                    out[statId] = name
+                }
+                out
+            }.recoverCatching { t ->
+                R1Log.w("HaRepo.energyPrefs", "get_prefs failed (best-effort): ${t.message}")
+                emptyMap()
+            }
+        }
+
+    /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last
      * N of M bytes" hint. Memory profile is identical: bounded by
