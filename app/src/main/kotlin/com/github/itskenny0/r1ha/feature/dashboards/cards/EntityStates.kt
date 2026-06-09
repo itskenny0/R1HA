@@ -129,6 +129,10 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Heading -> card.badges.forEach { it.entityId?.let(sink::addEntity) }
         is LovelaceCard.Logbook -> Unit
         is LovelaceCard.Clock -> Unit
+        is LovelaceCard.PictureElements -> {
+            card.cameraImage?.let { sink.addEntity(it) }
+            card.elements.forEach { el -> el.entityId?.let { sink.addEntity(it) } }
+        }
         is LovelaceCard.Unsupported -> card.entityRefs.forEach { sink.addEntity(it) }
     }
 }
