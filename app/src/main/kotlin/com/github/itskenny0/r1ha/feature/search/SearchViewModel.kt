@@ -91,6 +91,11 @@ class SearchViewModel(
         // Remote/IR blasters control devices via send_command: sit them
         // under CONTROLS alongside switches and the like.
         Domain.REMOTE -> Bucket.CONTROLS
+        // Siren: on/off controllable — CONTROLS bucket.
+        Domain.SIREN -> Bucket.CONTROLS
+        // New read-only domains: group under SENSORS (display-only readouts).
+        Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+        Domain.IMAGE, Domain.EVENT -> Bucket.SENSORS
         // Catch-all domains with no archetype (device_tracker, zone, calendar, ...) are
         // search-only, read-only results. They bucket under OTHER.
         Domain.OTHER -> Bucket.OTHER

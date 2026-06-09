@@ -74,6 +74,12 @@ fun EntityCard(
         // exhaustive. Pick something sensible-but-irrelevant.
         Domain.COUNTER, Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> CardRenderModel.Glyph.NUMBER
         Domain.TIMER -> CardRenderModel.Glyph.SWITCH
+        // New text / date / datetime / time / image / event: isSensor = true so these
+        // route to SensorCard; glyph is unused in practice but must be exhaustive.
+        Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+        Domain.IMAGE, Domain.EVENT -> CardRenderModel.Glyph.SWITCH
+        // Siren: on/off; SWITCH glyph (never pinned via normal flows but exhaustive).
+        Domain.SIREN -> CardRenderModel.Glyph.SWITCH
         // Update entities are managed from the dedicated Updates screen and
         // shouldn't end up on the card stack via normal flows. Defensive
         // glyph keeps the when exhaustive without crashing if a user pins
@@ -136,6 +142,13 @@ fun EntityCard(
         // confusing.
         Domain.COUNTER, Domain.TIMER,
         Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> CardRenderModel.AccentRole.NEUTRAL
+        // text / date / datetime / time / image: read-only sensor-like, neutral accent.
+        Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+        Domain.IMAGE -> CardRenderModel.AccentRole.NEUTRAL
+        // event: read-only fire-and-forget, neutral accent.
+        Domain.EVENT -> CardRenderModel.AccentRole.NEUTRAL
+        // Siren: on/off; warm accent (high-attention safety device).
+        Domain.SIREN -> CardRenderModel.AccentRole.WARM
         // Update entity defensive accent — see the glyph branch for context.
         Domain.UPDATE -> CardRenderModel.AccentRole.COOL
         // Remote — cool accent. IR/RF is a "send" affordance like media transport,
@@ -655,13 +668,21 @@ internal fun climateAccentRole(hvacMode: String?): CardRenderModel.AccentRole =
 
 /** Map a plain sensor's device_class to an accent colour. Read on the picker UI's
  *  domainAccentFor too so the picker chip and the card agree. */
-private fun sensorAccent(deviceClass: String?): CardRenderModel.AccentRole = when (deviceClass) {
+private fun sensorAccent(deviceClass: String?): CardRenderModel.AccentRole = when (deviceClass?.lowercase()) {
     // Cool — physical environment readouts.
     "temperature", "humidity", "pressure", "atmospheric_pressure", "water" -> CardRenderModel.AccentRole.COOL
     // Warm — energy/power consumption.
     "power", "energy", "current", "voltage", "gas", "frequency" -> CardRenderModel.AccentRole.WARM
     // Green — outdoor/illuminance-ish.
     "illuminance", "wind_speed", "speed", "battery" -> CardRenderModel.AccentRole.GREEN
+    // Cool — data-throughput/size classes feel like tech/information (blue-ish family).
+    "data_size", "data_rate" -> CardRenderModel.AccentRole.COOL
+    // Warm — solar irradiance is radiated heat/light energy.
+    "irradiance" -> CardRenderModel.AccentRole.WARM
+    // Neutral — sound pressure has no obvious colour affinity.
+    "sound_pressure" -> CardRenderModel.AccentRole.NEUTRAL
+    // Cool — humidity relative; absolute humidity is similarly environment-moisture.
+    "absolute_humidity" -> CardRenderModel.AccentRole.COOL
     else -> CardRenderModel.AccentRole.NEUTRAL
 }
 

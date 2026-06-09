@@ -1058,6 +1058,11 @@ private fun domainAccentFor(domain: Domain): Color = when (domain) {
     // adding their entity_id to favorites JSON. Neutral tint.
     Domain.COUNTER, Domain.TIMER,
     Domain.INPUT_TEXT, Domain.INPUT_DATETIME -> R1.AccentNeutral
+    // New read-only domains: neutral accent.
+    Domain.TEXT, Domain.DATE, Domain.DATETIME, Domain.TIME,
+    Domain.IMAGE, Domain.EVENT -> R1.AccentNeutral
+    // Siren: warm accent (high-attention safety device).
+    Domain.SIREN -> R1.AccentWarm
     // Update entities live on the dedicated Updates screen; same niche
     // manual-favorites path applies.
     Domain.UPDATE -> R1.AccentCool
@@ -1105,6 +1110,13 @@ private fun domainLabel(domain: Domain): String = when (domain) {
     Domain.TIMER -> "TIMER"
     Domain.INPUT_TEXT -> "TEXT"
     Domain.INPUT_DATETIME -> "DATETIME"
+    Domain.TEXT -> "TEXT"
+    Domain.DATE -> "DATE"
+    Domain.DATETIME -> "DATETIME"
+    Domain.TIME -> "TIME"
+    Domain.SIREN -> "SIREN"
+    Domain.IMAGE -> "IMAGE"
+    Domain.EVENT -> "EVENT"
     Domain.UPDATE -> "UPDATE"
     Domain.REMOTE -> "REMOTE"
     Domain.ALARM_CONTROL_PANEL -> "ALARM"
