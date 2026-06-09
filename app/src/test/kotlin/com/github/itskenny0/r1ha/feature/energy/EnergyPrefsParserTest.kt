@@ -65,6 +65,15 @@ class EnergyPrefsParserTest {
         assertThat(result).isEmpty()
     }
 
+    @Test fun `entry with JSON-null name is omitted`() {
+        // A JSON-null value is serialised as a JsonPrimitive whose content is "null";
+        // that must not become a literal display-name override.
+        val result = parse(
+            """{"device_consumption": [{"stat_consumption": "sensor.fridge_power", "name": null}]}""",
+        )
+        assertThat(result).isEmpty()
+    }
+
     @Test fun `mix of named and unnamed entries - only named returned`() {
         val result = parse(
             """{"device_consumption": [

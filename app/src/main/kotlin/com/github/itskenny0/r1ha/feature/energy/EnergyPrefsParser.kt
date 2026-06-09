@@ -38,7 +38,7 @@ fun parseEnergyPrefsJson(payload: kotlinx.serialization.json.JsonElement?): Map<
         val statId = (row["stat_consumption"] as? JsonPrimitive)?.content
             ?.takeIf { it.isNotBlank() } ?: continue
         val name = (row["name"] as? JsonPrimitive)?.content
-            ?.takeIf { it.isNotBlank() } ?: continue
+            ?.takeIf { it.isNotBlank() && it != "null" } ?: continue
         out[statId] = name
     }
     return out

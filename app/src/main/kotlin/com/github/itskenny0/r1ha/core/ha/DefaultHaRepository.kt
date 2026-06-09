@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.core.ha
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.feature.energy.parseEnergyPrefsJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -4004,20 +4005,7 @@ class DefaultHaRepository(
     override suspend fun getEnergyPrefs(): Result<Map<String, String>> =
         withContext(Dispatchers.IO) {
             callWsExpectingPayload("energy/get_prefs").mapCatching { payload ->
-                val obj = payload as? kotlinx.serialization.json.JsonObject
-                    ?: return@mapCatching emptyMap()
-                val arr = obj["device_consumption"] as? kotlinx.serialization.json.JsonArray
-                    ?: return@mapCatching emptyMap()
-                val out = mutableMapOf<String, String>()
-                for (el in arr) {
-                    val row = el as? kotlinx.serialization.json.JsonObject ?: continue
-                    val statId = (row["stat_consumption"] as? JsonPrimitive)?.content
-                        ?.takeIf { it.isNotBlank() } ?: continue
-                    val name = (row["name"] as? JsonPrimitive)?.content
-                        ?.takeIf { it.isNotBlank() } ?: continue
-                    out[statId] = name
-                }
-                out
+                parseEnergyPrefsJson(payload)
             }.recoverCatching { t ->
                 R1Log.w("HaRepo.energyPrefs", "get_prefs failed (best-effort): ${t.message}")
                 emptyMap()
