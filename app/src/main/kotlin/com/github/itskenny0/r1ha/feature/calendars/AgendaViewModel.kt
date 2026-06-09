@@ -40,6 +40,9 @@ class AgendaViewModel(
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a user-initiated refresh (pull gesture) is in flight;
+         *  drives the pull-to-refresh indicator. Auto-ticks keep it false. */
+        val refreshing: Boolean = false,
         val calendars: List<CalendarRef> = emptyList(),
         /** Calendar ids the user has hidden via the chip row. */
         val hidden: Set<String> = emptySet(),
@@ -58,9 +61,9 @@ class AgendaViewModel(
         _ui.value = cur.copy(hidden = next)
     }
 
-    fun refresh() {
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             val windowDays = settings.settings.first().integrations.calendarLookaheadDays
             haRepository.listRawEntitiesByDomain("calendar").fold(
                 onSuccess = { rows ->
@@ -74,6 +77,7 @@ class AgendaViewModel(
                     )
                     _ui.value = _ui.value.copy(
                         loading = false,
+                        refreshing = false,
                         calendars = refs,
                         entries = merged,
                         windowDays = windowDays,
@@ -85,7 +89,7 @@ class AgendaViewModel(
                 onFailure = { t ->
                     R1Log.w("Agenda", "calendar list failed: ${t.message}")
                     Toaster.error("Agenda load failed: ${t.message ?: "unknown"}")
-                    _ui.value = _ui.value.copy(loading = false, error = t.message)
+                    _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
                 },
             )
         }

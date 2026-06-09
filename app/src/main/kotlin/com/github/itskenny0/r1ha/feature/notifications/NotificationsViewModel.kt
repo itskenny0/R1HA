@@ -33,6 +33,10 @@ class NotificationsViewModel(
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a user-initiated refresh (pull gesture) is in flight;
+         *  drives the pull-to-refresh indicator. Background auto-ticks keep it
+         *  false so the indicator doesn't pop unbidden. */
+        val refreshing: Boolean = false,
         val notifications: List<PersistentNotification> = emptyList(),
         val error: String? = null,
         /** Set of notification IDs whose dismiss is in flight; drives
@@ -46,14 +50,15 @@ class NotificationsViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
-    fun refresh() {
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             haRepository.listPersistentNotifications().fold(
                 onSuccess = { notifications ->
                     R1Log.i("Notifications", "loaded ${notifications.size}")
                     _ui.value = _ui.value.copy(
                         loading = false,
+                        refreshing = false,
                         notifications = notifications,
                         error = null,
                     )
@@ -63,6 +68,7 @@ class NotificationsViewModel(
                     Toaster.error("Notifications load failed: ${t.message ?: "unknown"}")
                     _ui.value = _ui.value.copy(
                         loading = false,
+                        refreshing = false,
                         error = t.message ?: "Failed to load",
                     )
                 },

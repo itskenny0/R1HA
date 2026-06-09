@@ -247,8 +247,8 @@ fun LogbookScreen(
             // so a refresh just re-issues the same window query and picks
             // up anything that landed in the seconds since the last fetch.
             else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                isRefreshing = ui.loading,
-                onRefresh = { vm.refresh() },
+                isRefreshing = ui.refreshing,
+                onRefresh = { vm.refresh(indicate = true) },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 // On the roomy tablet / desktop tiers the feed flows into two

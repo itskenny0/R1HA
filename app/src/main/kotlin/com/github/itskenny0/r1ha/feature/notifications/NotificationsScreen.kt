@@ -190,8 +190,8 @@ fun NotificationsScreen(
                 body = "HA has no persistent notifications right now.",
             )
             else -> PullToRefreshBox(
-                isRefreshing = ui.loading,
-                onRefresh = { vm.refresh() },
+                isRefreshing = ui.refreshing,
+                onRefresh = { vm.refresh(indicate = true) },
                 modifier = Modifier.fillMaxSize(),
             ) {
                 LazyColumn(

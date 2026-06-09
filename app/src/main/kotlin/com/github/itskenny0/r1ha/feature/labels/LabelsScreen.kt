@@ -157,7 +157,7 @@ fun LabelsScreen(
                         "devices, or areas they show up here.",
                 )
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                    isRefreshing = ui.loading,
+                    isRefreshing = ui.refreshing,
                     onRefresh = { vm.refresh() },
                     modifier = Modifier.fillMaxSize(),
                 ) {

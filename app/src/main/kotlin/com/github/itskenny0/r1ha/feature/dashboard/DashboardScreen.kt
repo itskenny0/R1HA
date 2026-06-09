@@ -179,8 +179,8 @@ fun DashboardScreen(
             settings = settings,
         )
         androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-            isRefreshing = ui.loading,
-            onRefresh = { vm.refresh() },
+            isRefreshing = ui.refreshing,
+            onRefresh = { vm.refresh(indicate = true) },
             modifier = Modifier.fillMaxSize(),
         ) {
             // Detect 'all sections hidden' so we can render a friendly

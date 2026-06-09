@@ -58,6 +58,9 @@ class LogbookViewModel(
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a user-initiated refresh (pull gesture) is in flight;
+         *  drives the pull-to-refresh indicator. Auto-ticks keep it false. */
+        val refreshing: Boolean = false,
         val window: Window = Window.H12,
         /** Full set of entries from the last fetch. [visibleEntries] applies
          *  the search filter on top so we don't have to re-fetch from HA on
@@ -123,7 +126,7 @@ class LogbookViewModel(
      *  don't re-snap if the user manually picked a different chip. */
     private var defaultWindowApplied = false
 
-    fun refresh() {
+    fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
             // On the very first refresh, snap the active window to the
             // closest chip for the configured default-window hours.
@@ -132,7 +135,7 @@ class LogbookViewModel(
                 _ui.value = _ui.value.copy(window = Window.forHours(defaultHours))
                 defaultWindowApplied = true
             }
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             val window = _ui.value.window
             haRepository.fetchLogbook(hours = window.hours).fold(
                 onSuccess = { entries ->
@@ -153,6 +156,7 @@ class LogbookViewModel(
                         }
                         current.copy(
                             loading = false,
+                            refreshing = false,
                             all = merged,
                             error = null,
                         )
@@ -163,6 +167,7 @@ class LogbookViewModel(
                     Toaster.error("Logbook load failed: ${t.message ?: "unknown"}")
                     _ui.value = _ui.value.copy(
                         loading = false,
+                        refreshing = false,
                         error = t.message ?: "Failed to load logbook",
                     )
                 },

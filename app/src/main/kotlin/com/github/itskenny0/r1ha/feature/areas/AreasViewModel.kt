@@ -111,7 +111,12 @@ class AreasViewModel(
     @androidx.compose.runtime.Stable
     data class DrillState(
         val area: Area,
+        /** True only while there's nothing to show for this area yet; reloads
+         *  over a populated drill keep the entity list on screen. */
         val loading: Boolean = true,
+        /** True while a user-initiated reload (pull gesture) is in flight;
+         *  drives the drill's pull-to-refresh indicator. */
+        val refreshing: Boolean = false,
         val groups: List<DomainGroup> = emptyList(),
         val unmatchedCount: Int = 0,
         val error: String? = null,
@@ -267,8 +272,21 @@ class AreasViewModel(
      * grouped by domain. Entities whose domain the app doesn't model, or
      * that aren't in the current state set, fall into [DrillState.unmatchedCount].
      */
-    fun openArea(area: Area) {
-        _drill.value = DrillState(area = area, loading = true)
+    fun openArea(area: Area, indicate: Boolean = false) {
+        // Carry the prior groups forward when re-opening the same area (pull
+        // refresh, post-toggle reload) so the populated list stays on screen
+        // while the fresh snapshot loads; only a genuinely new drill starts
+        // from the loading state.
+        val prior = _drill.value?.takeIf { it.area.key == area.key }
+        _drill.value = DrillState(
+            area = area,
+            loading = prior == null || prior.groups.isEmpty(),
+            refreshing = indicate,
+            groups = prior?.groups.orEmpty(),
+            unmatchedCount = prior?.unmatchedCount ?: 0,
+            summary = prior?.summary,
+            activeAlerts = prior?.activeAlerts ?: 0,
+        )
         viewModelScope.launch {
             haRepository.listAllEntities().fold(
                 onSuccess = { all ->
@@ -303,6 +321,7 @@ class AreasViewModel(
                         _drill.value = DrillState(
                             area = area,
                             loading = false,
+                            refreshing = false,
                             groups = groups,
                             unmatchedCount = unmatched,
                             error = null,
@@ -316,6 +335,7 @@ class AreasViewModel(
                     if (_drill.value?.area?.key == area.key) {
                         _drill.value = _drill.value?.copy(
                             loading = false,
+                            refreshing = false,
                             error = t.message ?: "load failed",
                         )
                     }
@@ -326,7 +346,7 @@ class AreasViewModel(
 
     /** Re-run the drill-in load for the currently open area (pull to refresh). */
     fun refreshDrill() {
-        _drill.value?.area?.let { openArea(it) }
+        _drill.value?.area?.let { openArea(it, indicate = true) }
     }
 
     /**

@@ -134,6 +134,10 @@ class DashboardViewModel(
     @androidx.compose.runtime.Stable
     data class UiState(
         val loading: Boolean = true,
+        /** True while a user-initiated refresh (pull gesture) is in flight;
+         *  drives the pull-to-refresh indicator. The periodic auto-refresh
+         *  keeps it false so the indicator doesn't pop on every tick. */
+        val refreshing: Boolean = false,
         val weather: WeatherSummary? = null,
         val persons: PersonsSummary? = null,
         val nextEvent: CalendarSummary? = null,
@@ -162,13 +166,13 @@ class DashboardViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
-    fun refresh() {
+    fun refresh(indicate: Boolean = false) {
         // Network fan-out runs on Default but the post-await assembly (JSON walking,
         // Instant parsing, sorting) is non-trivial; keep it off Main so a refresh
         // doesn't jank the dashboard scroll. viewModelScope's default is Main, hence
         // the explicit withContext.
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
-            _ui.value = _ui.value.copy(loading = true, error = null)
+            _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
             try {
                 val weatherJob = async { haRepository.listRawEntitiesByDomain("weather") }
                 val personJob = async { haRepository.listRawEntitiesByDomain("person") }
@@ -380,6 +384,7 @@ class DashboardViewModel(
                 )
                 _ui.value = _ui.value.copy(
                     loading = false,
+                    refreshing = false,
                     weather = weather,
                     persons = persons,
                     nextEvent = nextEvent,
@@ -395,7 +400,7 @@ class DashboardViewModel(
                 )
             } catch (t: Throwable) {
                 R1Log.w("Dashboard", "refresh failed: ${t.message}")
-                _ui.value = _ui.value.copy(loading = false, error = t.message)
+                _ui.value = _ui.value.copy(loading = false, refreshing = false, error = t.message)
             }
         }
     }

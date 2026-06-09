@@ -126,7 +126,7 @@ fun AgendaScreen(
                         color = R1.StatusRed,
                     )
                 }
-                else -> AgendaBody(ui = ui, listState = listState, onToggle = vm::toggleCalendar, onRefresh = vm::refresh)
+                else -> AgendaBody(ui = ui, listState = listState, onToggle = vm::toggleCalendar, onRefresh = { vm.refresh(indicate = true) })
             }
         } // R1CenteredContent
     }
@@ -146,7 +146,7 @@ private fun AgendaBody(
             CalendarChipRow(ui = ui, onToggle = onToggle)
         }
         androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-            isRefreshing = ui.loading,
+            isRefreshing = ui.refreshing,
             onRefresh = onRefresh,
             modifier = Modifier.fillMaxSize(),
         ) {

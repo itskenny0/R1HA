@@ -575,7 +575,7 @@ private fun AreaDrillScreen(
                     else "No entities assigned to this area.",
                 )
                 else -> androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                    isRefreshing = drill.loading,
+                    isRefreshing = drill.refreshing,
                     onRefresh = onRefresh,
                     modifier = Modifier.fillMaxSize(),
                 ) {
