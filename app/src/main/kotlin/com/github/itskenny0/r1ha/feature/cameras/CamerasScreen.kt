@@ -64,7 +64,8 @@ import com.github.itskenny0.r1ha.ui.icons.R1IconSet
  * the user tap one to see a live polling snapshot. The list view
  * shows just text rows + state chip (idle / recording / streaming /
  * unavailable). Tapping a row pushes a fullscreen overlay with the
- * snapshot polling every 4 s.
+ * snapshot polling every 4 s; on roomy windows the overlay becomes a
+ * detail pane beside the list instead, so the list stays in reach.
  *
  * Why no inline thumbnails on the list: each thumbnail would be its
  * own HTTP poll, and on big installs with 8-10 cameras that's a
@@ -126,12 +127,44 @@ fun CamerasScreen(
         value = settings.settings.first().server?.url
     }
     val token by produceState<String?>(null, tokens) { value = tokens.load()?.accessToken }
-    Column(
+    // Two-pane on roomy windows: the camera list stays on the left and the
+    // live view composes beside it, so swapping cameras is a single tap and
+    // the list never disappears. The scaffold collapses to today's
+    // fullscreen-overlay swap on small tiers; the shared insets live on the
+    // scaffold so neither pane double-pads.
+    val twoPane = com.github.itskenny0.r1ha.ui.components.isTwoPane()
+    val viewing = viewingEntityId
+    com.github.itskenny0.r1ha.ui.components.R1ListDetailPane(
+        hasSelection = viewing != null,
         modifier = Modifier
             .fillMaxSize()
             .background(R1.Bg)
             .systemBarsPadding(),
-    ) {
+        detail = {
+            viewing?.let { entityId ->
+                val tuning = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
+                    .from(appSettings.connection)
+                val camera = ui.cameras.firstOrNull { it.entityId == entityId }
+                CameraDetailOverlay(
+                    entityId = entityId,
+                    displayName = camera?.name ?: entityId,
+                    state = camera?.state,
+                    settings = settings,
+                    tokens = tokens,
+                    pollSec = tuning.flooredCameraSeconds(appSettings.integrations.cameraOverlayPollSec),
+                    // Strict-mode floor in millis: the overlay's refresh stepper can
+                    // walk down to 200 ms, which would otherwise undercut the
+                    // configured minimum camera interval. Pass it so the stepper
+                    // clamps its faster bound to it.
+                    minPollMillis = tuning.minCameraIntervalMillis,
+                    standalone = !twoPane,
+                    onDismiss = { viewingEntityId = null },
+                )
+            }
+        },
+        emptyDetail = { CamerasSummaryPane(ui.cameras) },
+        list = {
+    Column(modifier = Modifier.fillMaxSize()) {
         R1TopBar(title = "CAMERAS", onBack = onBack)
         // LIST / GRID toggle row. GRID auto-polls every tile (heavier);
         // LIST is text-only. Default to LIST so big installs don't fire
@@ -139,12 +172,11 @@ fun CamerasScreen(
         if (ui.cameras.isNotEmpty()) {
             ViewModeRow(current = viewMode, onSelect = { viewModeOverride = it })
         }
-        // Stop composing the grid/list entirely while the detail overlay is
-        // up. The overlay draws over this column, and if the tiles stayed
-        // composed they'd keep polling at the grid cadence behind the
-        // overlay's faster poll, doubling network load for no visible gain.
+        // Single-pane: the scaffold stops composing this list while the
+        // detail is up, so grid tiles don't keep polling at the grid cadence
+        // behind the overlay's faster poll. Two-pane: the list is visible
+        // beside the live view, so it stays composed (and polling) on purpose.
         when {
-            viewingEntityId != null -> Unit
             ui.loading && ui.cameras.isEmpty() -> Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -241,6 +273,7 @@ fun CamerasScreen(
                             pollSec = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
                                 .from(appSettings.connection)
                                 .flooredCameraSeconds(appSettings.integrations.cameraGridPollSec),
+                            selected = twoPane && camera.entityId == viewing,
                             onTap = { viewingEntityId = camera.entityId },
                         )
                     }
@@ -290,30 +323,67 @@ fun CamerasScreen(
                     verticalArrangement = Arrangement.spacedBy(R1.space.xs),
                 ) {
                     items(items = ui.cameras, key = { it.entityId }) { camera ->
-                        CameraRow(camera, onTap = { viewingEntityId = camera.entityId })
+                        CameraRow(
+                            camera = camera,
+                            selected = twoPane && camera.entityId == viewing,
+                            onTap = { viewingEntityId = camera.entityId },
+                        )
                     }
                 }
                 }
             }
         }
     }
-    // Detail overlay: fullscreen snapshot polling. Back-press dismisses.
-    val viewing = viewingEntityId
-    if (viewing != null) {
-        val tuning = com.github.itskenny0.r1ha.core.ha.ConnectionTuning
-            .from(appSettings.connection)
-        CameraDetailOverlay(
-            entityId = viewing,
-            displayName = ui.cameras.firstOrNull { it.entityId == viewing }?.name ?: viewing,
-            settings = settings,
-            tokens = tokens,
-            pollSec = tuning.flooredCameraSeconds(appSettings.integrations.cameraOverlayPollSec),
-            // Strict-mode floor in millis: the overlay's refresh stepper can
-            // walk down to 200 ms, which would otherwise undercut the
-            // configured minimum camera interval. Pass it so the stepper
-            // clamps its faster bound to it.
-            minPollMillis = tuning.minCameraIntervalMillis,
-            onDismiss = { viewingEntityId = null },
+        },
+    )
+}
+
+/**
+ * Default right-pane content in two-pane mode before any camera is selected:
+ * fleet counts at a glance so the pane carries real information rather than
+ * a "select something" stub.
+ */
+@Composable
+private fun CamerasSummaryPane(cameras: List<CamerasViewModel.Camera>) {
+    val streaming = cameras.count { it.state.lowercase() == "streaming" }
+    val recording = cameras.count { it.state.lowercase() == "recording" }
+    val offline = cameras.count { it.state.lowercase() in setOf("unavailable", "unknown") }
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "CAMERAS",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.height(R1.space.l))
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xl)) {
+                CameraStat(value = cameras.size, label = "TOTAL")
+                CameraStat(value = streaming, label = "STREAMING")
+                CameraStat(value = recording, label = "RECORDING")
+                CameraStat(value = offline, label = "OFFLINE")
+            }
+            Spacer(Modifier.height(R1.space.l))
+            Text(
+                text = "Select a camera for a live view.",
+                style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CameraStat(value: Int, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value.toString(),
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.numeralM),
+            color = R1.Ink,
+        )
+        Text(
+            text = label,
+            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro),
+            color = R1.InkMuted,
         )
     }
 }
@@ -365,6 +435,7 @@ private fun CameraTile(
     serverUrl: String,
     bearerToken: String?,
     pollSec: Int,
+    selected: Boolean = false,
     onTap: () -> Unit,
 ) {
     val (statusLabel, statusColor) = cameraStatusChip(camera.state)
@@ -373,6 +444,10 @@ private fun CameraTile(
             .fillMaxWidth()
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
+            // Accent ring marks the tile whose feed is open in the two-pane
+            // detail; single-pane never passes selected (the list is hidden
+            // while the overlay is up).
+            .then(if (selected) Modifier.border(1.dp, R1.AccentWarm, R1.ShapeS) else Modifier)
             .r1Pressable(
                 onClick = onTap,
                 // Reads the whole tile as a single actionable item to a
@@ -458,7 +533,11 @@ private fun CameraTile(
 }
 
 @Composable
-private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
+private fun CameraRow(
+    camera: CamerasViewModel.Camera,
+    selected: Boolean = false,
+    onTap: () -> Unit,
+) {
     val (label, color) = cameraStatusChip(camera.state)
     Row(
         modifier = Modifier
@@ -466,6 +545,9 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
             .heightIn(min = R1.MinTarget)
             .clip(R1.ShapeS)
             .background(R1.SurfaceMuted)
+            // Accent ring marks the row whose feed is open in the two-pane
+            // detail; single-pane never passes selected.
+            .then(if (selected) Modifier.border(1.dp, R1.AccentWarm, R1.ShapeS) else Modifier)
             .r1Pressable(
                 onClick = onTap,
                 contentDescription = "${camera.name}, $label. Open live view.",
@@ -532,12 +614,21 @@ private fun CameraRow(camera: CamerasViewModel.Camera, onTap: () -> Unit) {
 private fun CameraDetailOverlay(
     entityId: String,
     displayName: String,
+    state: String?,
     settings: SettingsRepository,
     tokens: TokenStore,
     pollSec: Int,
     minPollMillis: Long = 0L,
+    /** True when this is the only pane on screen (today's fullscreen
+     *  overlay): show the close X and its hint. False in two-pane, where the
+     *  list beside us is the way to swap cameras and Back clears the
+     *  selection. */
+    standalone: Boolean = true,
     onDismiss: () -> Unit,
 ) {
+    // Back clears the selection first in both modes: single-pane that
+    // dismisses the overlay, two-pane it empties the detail pane. Only the
+    // next Back leaves the screen.
     BackHandler(onBack = onDismiss)
     // Floor every poll cadence at the strict-mode minimum (if set) but never
     // below the 200 ms hard floor. With strict-mode off this stays at 200 ms.
@@ -555,17 +646,20 @@ private fun CameraDetailOverlay(
     // user can crank pseudo-realtime (~200 ms) when they're actively
     // watching the feed, and rotate via the on-overlay button for cameras
     // mounted at non-zero degrees without editing the source.
-    var pollMillisLive by androidx.compose.runtime.remember {
+    // Keyed on the entity so two-pane camera swaps reset cadence + rotation
+    // the same way single-pane gets a fresh overlay per open.
+    var pollMillisLive by androidx.compose.runtime.remember(entityId) {
         androidx.compose.runtime.mutableStateOf((pollSec * 1000L).coerceAtLeast(pollFloorMillis))
     }
-    var rotationDegrees by androidx.compose.runtime.remember {
+    var rotationDegrees by androidx.compose.runtime.remember(entityId) {
         androidx.compose.runtime.mutableFloatStateOf(0f)
     }
+    // No insets here: the list/detail scaffold already applies the screen's
+    // system-bar padding around both panes.
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(R1.Bg)
-            .systemBarsPadding(),
+            .background(R1.Bg),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Custom top bar: title + close X. R1TopBar uses NavController
@@ -577,19 +671,21 @@ private fun CameraDetailOverlay(
                     .padding(horizontal = R1.space.m),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(R1.MinTarget)
-                        .clip(R1.ShapeS)
-                        .r1Pressable(
-                            onClick = onDismiss,
-                            contentDescription = "Close live view",
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = "✕", style = R1.body, color = R1.InkSoft)
+                if (standalone) {
+                    Box(
+                        modifier = Modifier
+                            .size(R1.MinTarget)
+                            .clip(R1.ShapeS)
+                            .r1Pressable(
+                                onClick = onDismiss,
+                                contentDescription = "Close live view",
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "✕", style = R1.body, color = R1.InkSoft)
+                    }
+                    Spacer(Modifier.width(R1.space.s))
                 }
-                Spacer(Modifier.width(R1.space.s))
                 Text(
                     text = displayName.uppercase(),
                     style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),
@@ -598,6 +694,19 @@ private fun CameraDetailOverlay(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
+                // Two-pane carries the list's state chip into the detail so
+                // the live view reads name + state at a glance. Single-pane
+                // keeps the original chrome (state is visible on the list the
+                // user just left).
+                if (!standalone && state != null) {
+                    val (stateLabel, stateColor) = cameraStatusChip(state)
+                    Text(
+                        text = stateLabel,
+                        style = R1.labelMicro,
+                        color = stateColor,
+                        modifier = Modifier.padding(end = R1.space.s),
+                    )
+                }
                 // 90-degree increments. Holding modulo-360 in floats stays
                 // exact for the four canonical values we care about; the
                 // rotate modifier inside CameraSnapshot treats anything in
@@ -727,7 +836,11 @@ private fun CameraDetailOverlay(
                     modifier = Modifier.padding(horizontal = R1.space.m),
                 )
                 Text(
-                    text = "Rotate ↻ · tap ✕ to close",
+                    text = if (standalone) {
+                        "Rotate ↻ · tap ✕ to close"
+                    } else {
+                        "Rotate ↻ · tap a camera to swap"
+                    },
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     modifier = Modifier.padding(horizontal = R1.space.m),
