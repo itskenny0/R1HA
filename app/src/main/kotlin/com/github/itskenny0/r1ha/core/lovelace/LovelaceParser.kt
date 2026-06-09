@@ -382,7 +382,9 @@ object LovelaceParser {
                 raw = obj,
                 title = obj["title"]?.asStringOrNull(),
                 image = obj["image"]?.asStringOrNull(),
-                cameraImage = obj["camera_image"]?.asStringOrNull() ?: obj["entity"]?.asStringOrNull(),
+                cameraImage = obj["camera_image"]?.asStringOrNull()
+                    ?: obj["image_entity"]?.asStringOrNull()
+                    ?: obj["entity"]?.asStringOrNull(),
                 entities = parseEntityRows(obj["entities"]),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 fitMode = obj["fit_mode"]?.asStringOrNull(),
@@ -394,6 +396,7 @@ object LovelaceParser {
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
                     image = obj["image"]?.asStringOrNull(),
+                    imageEntity = obj["image_entity"]?.asStringOrNull(),
                     showName = obj["show_name"]?.asBooleanOrNull() ?: true,
                     showState = obj["show_state"]?.asBooleanOrNull() ?: true,
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
@@ -499,6 +502,32 @@ object LovelaceParser {
                 title = obj["title"]?.asStringOrNull(),
                 entries = parseDistributionEntries(obj["entities"]),
             )
+            "statistics-graph" -> {
+                val ids = parseStatisticsGraphEntities(obj)
+                if (ids.isEmpty()) return bestEffortUnsupported(obj, type)
+                LovelaceCard.StatisticsGraph(
+                    raw = obj,
+                    title = obj["title"]?.asStringOrNull(),
+                    entityIds = ids,
+                    statTypes = parseStringList(obj["stat_types"]).takeIf { it.isNotEmpty() } ?: listOf("mean"),
+                    period = parseStatisticPeriod(obj["period"]),
+                    chartType = obj["chart_type"]?.asStringOrNull()?.lowercase() ?: "line",
+                    daysToShow = obj["days_to_show"]?.asIntOrNull(),
+                )
+            }
+            "picture" -> {
+                val image = obj["image"]?.asStringOrNull()
+                val imageEntity = obj["image_entity"]?.asStringOrNull()
+                if (image.isNullOrBlank() && imageEntity.isNullOrBlank()) {
+                    return bestEffortUnsupported(obj, type)
+                }
+                LovelaceCard.Picture(
+                    raw = obj,
+                    image = image?.takeUnless { it.isBlank() },
+                    imageEntity = imageEntity?.takeUnless { it.isBlank() },
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                )
+            }
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
         }
@@ -795,6 +824,19 @@ object LovelaceParser {
                 "numeric-input" -> LovelaceTileFeature.NumericInput
                 // Light colour temperature
                 "light-color-temp" -> LovelaceTileFeature.LightColorTemp
+                // Bar-gauge (HA 2025.9)
+                "bar-gauge" -> LovelaceTileFeature.BarGauge(
+                    attribute = obj["attribute"]?.asStringOrNull(),
+                    min = obj["min"]?.asDoubleOrNull() ?: 0.0,
+                    max = obj["max"]?.asDoubleOrNull() ?: 100.0,
+                    color = obj["color"]?.asStringOrNull(),
+                )
+                // Trend-graph (HA 2025.9)
+                "trend-graph" -> LovelaceTileFeature.TrendGraph(
+                    hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
+                )
+                // Date-set (HA 2025.9)
+                "date-set" -> LovelaceTileFeature.DateSet
                 else -> LovelaceTileFeature.Unsupported(type)
             }
         }
@@ -908,6 +950,20 @@ object LovelaceParser {
             when (item) {
                 is JsonPrimitive -> if (item.isString) item.content else null
                 is JsonObject -> item["value"]?.asStringOrNull() ?: item["state"]?.asStringOrNull()
+                else -> null
+            }
+        }
+    }
+
+    /** Parse the statistics-graph `entities:` list. Each entry is either a bare
+     *  statistic id string or an object carrying `entity` / `name`. Returns the
+     *  ordered list of entity/statistic ids; entries without a usable id are dropped. */
+    private fun parseStatisticsGraphEntities(obj: JsonObject): List<String> {
+        val arr = obj["entities"] as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) item.content.takeUnless { it.isBlank() } else null
+                is JsonObject -> item["entity"]?.asStringOrNull()?.takeUnless { it.isBlank() }
                 else -> null
             }
         }

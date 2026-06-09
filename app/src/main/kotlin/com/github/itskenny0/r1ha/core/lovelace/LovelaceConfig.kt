@@ -327,6 +327,21 @@ sealed class LovelaceCard {
     }
 
     /**
+     * Plain picture card (HA 2022.x). Shows [image] (a static URL) or, when
+     * [imageEntity] is set, that entity's `entity_picture` attribute. Optional
+     * [tapAction] makes the whole card tappable.
+     */
+    @Immutable
+    data class Picture(
+        override val raw: JsonObject,
+        val image: String?,
+        val imageEntity: String?,
+        val tapAction: LovelaceAction?,
+    ) : LovelaceCard() {
+        override val type: String = "picture"
+    }
+
+    /**
      * Picture card with overlaid entity chips. Background is a static
      * [image] URL or, when [cameraImage] / an `entity` with an
      * `entity_picture` is set, that entity's picture. [entities] render as
@@ -359,6 +374,9 @@ sealed class LovelaceCard {
         val entityId: String,
         val name: String?,
         val image: String?,
+        /** HA 2024.8: an alternate entity whose `entity_picture` supplies the background.
+         *  When set, overrides the bound entity's own picture as the background source. */
+        val imageEntity: String? = null,
         val showName: Boolean,
         val showState: Boolean,
         val tapAction: LovelaceAction?,
@@ -544,6 +562,27 @@ sealed class LovelaceCard {
         val period: String,
     ) : LovelaceCard() {
         override val type: String = "statistic"
+    }
+
+    /**
+     * Statistics-graph card (HA 2022.11): multi-entity long-term-statistics chart.
+     * [entityIds] is the ordered list of statistic/entity ids to plot. [statTypes]
+     * selects which aggregates to render (mean/min/max/sum/change); defaults to mean.
+     * [period] is the coarse lookback bucket (day/week/month/year). [chartType] is
+     * "line" or "bar" (default line). [daysToShow] is an optional explicit lookback
+     * override in days (null = derived from period).
+     */
+    @Immutable
+    data class StatisticsGraph(
+        override val raw: JsonObject,
+        val title: String?,
+        val entityIds: List<String>,
+        val statTypes: List<String>,
+        val period: String,
+        val chartType: String,
+        val daysToShow: Int?,
+    ) : LovelaceCard() {
+        override val type: String = "statistics-graph"
     }
 
     /**
@@ -1024,6 +1063,38 @@ sealed class LovelaceTileFeature {
     @Immutable
     data object LightColorTemp : LovelaceTileFeature() {
         override val type: String = "light-color-temp"
+    }
+
+    // ── Bar-gauge (HA 2025.9) ────────────────────────────────────────────────
+
+    /** bar-gauge tile feature: a horizontal fill bar showing (value-min)/(max-min).
+     *  [attribute] names the entity attribute to read; null means the entity state.
+     *  [color] is an optional HA theme colour name or #rrggbb. */
+    @Immutable
+    data class BarGauge(
+        val attribute: String?,
+        val min: Double,
+        val max: Double,
+        val color: String?,
+    ) : LovelaceTileFeature() {
+        override val type: String = "bar-gauge"
+    }
+
+    // ── Trend-graph (HA 2025.9) ──────────────────────────────────────────────
+
+    /** trend-graph tile feature: a compact history sparkline.
+     *  [hoursToShow] is the lookback window (default 24). */
+    @Immutable
+    data class TrendGraph(val hoursToShow: Int) : LovelaceTileFeature() {
+        override val type: String = "trend-graph"
+    }
+
+    // ── Date-set (HA 2025.9) ─────────────────────────────────────────────────
+
+    /** date-set tile feature: inline +/- day stepper for date/datetime entities. */
+    @Immutable
+    data object DateSet : LovelaceTileFeature() {
+        override val type: String = "date-set"
     }
 
     @Immutable
