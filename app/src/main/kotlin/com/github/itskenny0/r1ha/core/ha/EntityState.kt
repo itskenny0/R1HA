@@ -298,11 +298,18 @@ data class EntityState(
      */
     val alarmChangedBy: String? = null,
     /**
-     * Sensor-only: HA's `display_precision` (user override) or
-     * `suggested_display_precision` (integration default) — the number of
-     * decimal places HA's own frontend uses when rendering this sensor's
-     * value. When present the sensor card applies the same rounding so the
-     * R1 display matches what the user expects from the HA web UI.
+     * Sensor-only: the number of decimal places HA's frontend uses when
+     * rendering this sensor's value. When present the sensor card pads to
+     * exactly this many decimal places (matching HA's minimumFractionDigits
+     * == maximumFractionDigits behaviour) so the R1 display agrees with the
+     * HA web UI.
+     *
+     * Only `suggested_display_precision` (the integration default) is
+     * reliably present on the state object. The user's `display_precision`
+     * override lives in the entity registry and is not carried on the state
+     * payload, so it is read best-effort and may be absent even when the
+     * user has set a custom value.
+     *
      * Null for non-sensor entities and sensors that don't advertise either
      * attribute.
      */

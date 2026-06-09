@@ -83,12 +83,12 @@ fun formatWithPrecision(raw: String?, precision: Int?): String {
     val num = trimmed.toDoubleOrNull() ?: return raw
     if (num.isNaN() || num.isInfinite()) return "—"
     val places = precision.coerceIn(0, 6)
-    val rounded = String.format(Locale.US, "%.${places}f", num)
-    val trimmedZeros = if (places == 0) rounded else rounded.trimEnd('0').trimEnd('.')
-    val signed = if (trimmedZeros.startsWith("-") &&
-        trimmedZeros.drop(1).all { it == '0' || it == '.' }
-    ) trimmedZeros.drop(1) else trimmedZeros
-    return groupThousands(signed)
+    var rounded = String.format(Locale.US, "%.${places}f", num)
+    // Suppress negative-zero ("-0.00" -> "0.00"), keeping the padded magnitude.
+    if (rounded.startsWith("-") && rounded.drop(1).all { it == '0' || it == '.' }) {
+        rounded = rounded.drop(1)
+    }
+    return groupThousands(rounded)
 }
 
 internal fun groupThousands(s: String): String {

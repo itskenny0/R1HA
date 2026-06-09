@@ -34,9 +34,11 @@ class FormatWithPrecisionTest {
         assertThat(formatWithPrecision("21.740", 2)).isEqualTo("21.74")
     }
 
-    @Test fun `trailing zeros stripped after rounding`() {
-        assertThat(formatWithPrecision("21.70", 2)).isEqualTo("21.7")
-        assertThat(formatWithPrecision("21.00", 2)).isEqualTo("21")
+    @Test fun `trailing zeros padded to exact decimal count`() {
+        assertThat(formatWithPrecision("21.7", 2)).isEqualTo("21.70")
+        assertThat(formatWithPrecision("21.00", 2)).isEqualTo("21.00")
+        assertThat(formatWithPrecision("21", 2)).isEqualTo("21.00")
+        assertThat(formatWithPrecision("22.4", 0)).isEqualTo("22")
     }
 
     @Test fun `non-numeric state passes through unchanged`() {
@@ -57,7 +59,7 @@ class FormatWithPrecisionTest {
     }
 
     @Test fun `negative zero suppressed`() {
-        assertThat(formatWithPrecision("-0.002", 2)).isEqualTo("0")
+        assertThat(formatWithPrecision("-0.002", 2)).isEqualTo("0.00")
         assertThat(formatWithPrecision("-0.4", 0)).isEqualTo("0")
     }
 
