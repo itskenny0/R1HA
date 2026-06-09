@@ -10,6 +10,9 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HistoryPoint
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.feature.weather.ForecastEntry
+import com.github.itskenny0.r1ha.feature.weather.parseForecastEntries
+import com.github.itskenny0.r1ha.feature.weather.parseForecastResponse
 import com.github.itskenny0.r1ha.ui.components.groupThousands
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -112,6 +115,92 @@ fun rememberHistory(
         return@produceState
     }
     value = haRepository.fetchHistory(EntityId(entityId), hours).getOrElse { emptyList() }
+}
+
+/**
+ * Holds the resolved hourly + daily forecast lists for a weather entity.
+ * Both lists default to empty (not yet loaded / unavailable).
+ */
+data class WeatherForecasts(
+    val hourly: List<ForecastEntry> = emptyList(),
+    val daily: List<ForecastEntry> = emptyList(),
+)
+
+/**
+ * Lazily fetches hourly + daily forecasts for [entityId] when [enabled]. Returns
+ * null while in-flight; a WeatherForecasts with the resolved lists (either or both
+ * may be empty) once the pair of get_forecasts calls settles. Mirrors the fetch
+ * pattern from WeatherForecastFeature / WeatherViewModel: tries the modern
+ * weather.get_forecasts service for each cadence, then falls back to the legacy
+ * forecast attribute on the entity's attributesJson when the service returns nothing.
+ */
+@Composable
+fun rememberWeatherForecasts(
+    haRepository: HaRepository,
+    entityId: String,
+    entityAttrs: JsonObject?,
+    enabled: Boolean,
+): State<WeatherForecasts?> = produceState<WeatherForecasts?>(
+    initialValue = null,
+    key1 = entityId,
+    key2 = enabled,
+) {
+    if (!enabled) {
+        value = null
+        return@produceState
+    }
+    val hourlyResult = haRepository.getWeatherForecasts(entityId, "hourly")
+        .map { parseForecastResponse(it) }
+        .getOrDefault(emptyList())
+    val dailyResult = haRepository.getWeatherForecasts(entityId, "daily")
+        .map { parseForecastResponse(it) }
+        .getOrDefault(emptyList())
+
+    var hourly = hourlyResult.take(24)
+    var daily = dailyResult.take(7)
+
+    // Legacy fallback: classify the forecast attribute and slot it into the
+    // matching empty bucket (mirrors WeatherViewModel.loadForecasts).
+    if (hourly.isEmpty() || daily.isEmpty()) {
+        val legacyArr = entityAttrs?.get("forecast") as? JsonArray
+        val legacy = parseForecastEntries(legacyArr)
+        if (legacy.isNotEmpty()) {
+            val kind = com.github.itskenny0.r1ha.feature.weather.classifyForecastKind(legacy)
+            when (kind) {
+                com.github.itskenny0.r1ha.feature.weather.ForecastKind.Hourly ->
+                    if (hourly.isEmpty()) hourly = legacy.take(24)
+                com.github.itskenny0.r1ha.feature.weather.ForecastKind.Daily ->
+                    if (daily.isEmpty()) daily = legacy.take(7)
+            }
+        }
+    }
+    value = WeatherForecasts(hourly = hourly, daily = daily)
+}
+
+/**
+ * Lazily fetches per-entity state-change history for [entityId] when [enabled],
+ * returning it as a reverse-chronological list of (state, timestamp) pairs. Returns
+ * null while in-flight, an empty list on failure. Reuses [HaRepository.fetchHistory]
+ * exactly as the chart path does; non-numeric points are simply the full list.
+ */
+@Composable
+fun rememberEntityHistory(
+    haRepository: HaRepository,
+    entityId: String,
+    enabled: Boolean,
+    hours: Int = 24,
+): State<List<HistoryPoint>?> = produceState<List<HistoryPoint>?>(
+    initialValue = null,
+    key1 = entityId,
+    key2 = enabled,
+) {
+    if (!enabled) {
+        value = null
+        return@produceState
+    }
+    val all = haRepository.fetchHistory(EntityId(entityId), hours).getOrElse { emptyList() }
+    // Reverse-chrono (newest first) for the logbook-style view.
+    value = all.sortedByDescending { it.timestamp }
 }
 
 /**
