@@ -25,9 +25,16 @@ enum class WhatsNewAction {
  * from an upgrade off a build that predates the stamp field (no stamp, but a
  * configured server: exactly who the overlay is for).
  */
-fun whatsNewAction(lastSeen: Int, current: Int, configured: Boolean): WhatsNewAction = when {
+fun whatsNewAction(
+    lastSeen: Int,
+    current: Int,
+    configured: Boolean,
+    /** The "show what's new after updates" preference. When off, upgrades
+     *  stamp silently so re-enabling later doesn't dump a backlog overlay. */
+    enabled: Boolean = true,
+): WhatsNewAction = when {
     lastSeen == current -> WhatsNewAction.NOTHING
-    !configured -> WhatsNewAction.STAMP_SILENTLY
+    !configured || !enabled -> WhatsNewAction.STAMP_SILENTLY
     lastSeen < current -> WhatsNewAction.SHOW
     // lastSeen > current: sideloaded downgrade. Stay quiet and keep the
     // high-water stamp: the user already saw those releases' notes, so

@@ -531,6 +531,7 @@ class MainActivity : ComponentActivity() {
                                     lastSeen = initial.behavior.lastSeenVersionCode,
                                     current = BuildConfig.VERSION_CODE,
                                     configured = initial.server != null,
+                                    enabled = initial.behavior.showWhatsNew,
                                 )
                             ) {
                                 com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewAction.SHOW ->
@@ -545,6 +546,19 @@ class MainActivity : ComponentActivity() {
                                 onDismiss = {
                                     whatsNewVisible.value = false
                                     stampWhatsNew()
+                                },
+                                onDisable = {
+                                    whatsNewVisible.value = false
+                                    whatsNewScope.launch {
+                                        graph.settings.update { s ->
+                                            s.copy(
+                                                behavior = s.behavior.copy(
+                                                    showWhatsNew = false,
+                                                    lastSeenVersionCode = BuildConfig.VERSION_CODE,
+                                                ),
+                                            )
+                                        }
+                                    }
                                 },
                             )
                         }

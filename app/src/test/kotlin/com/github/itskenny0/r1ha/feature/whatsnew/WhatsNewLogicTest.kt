@@ -46,6 +46,20 @@ class WhatsNewLogicTest {
             .isEqualTo(WhatsNewAction.NOTHING)
     }
 
+    // ── Suppression toggle ───────────────────────────────────────────────────
+
+    @Test fun `suppressed upgrade stamps silently instead of showing`() {
+        // The user opted out (About toggle or the overlay's own affordance):
+        // keep the stamp moving so re-enabling later doesn't dump a backlog.
+        assertThat(whatsNewAction(lastSeen = 250101, current = 250609, configured = true, enabled = false))
+            .isEqualTo(WhatsNewAction.STAMP_SILENTLY)
+    }
+
+    @Test fun `suppressed same version does nothing`() {
+        assertThat(whatsNewAction(lastSeen = 250609, current = 250609, configured = true, enabled = false))
+            .isEqualTo(WhatsNewAction.NOTHING)
+    }
+
     // ── Changelog content sanity ─────────────────────────────────────────────
 
     @Test fun `changelog has entries and stays terse`() {

@@ -39,7 +39,17 @@ import com.github.itskenny0.r1ha.ui.components.R1Button
  * obvious way out.
  */
 @Composable
-fun WhatsNewOverlay(onDismiss: () -> Unit) {
+fun WhatsNewOverlay(
+    onDismiss: () -> Unit,
+    /**
+     * "Don't show these again": flips the show-what's-new preference off and
+     * closes the panel. Hidden when null (e.g. a context that has no settings
+     * write path). Tucked behind the ⋯ toggle so the one-shot upgrade panel
+     * keeps a single obvious action.
+     */
+    onDisable: (() -> Unit)? = null,
+) {
+    val menuOpen = remember { androidx.compose.runtime.mutableStateOf(false) }
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -63,17 +73,58 @@ fun WhatsNewOverlay(onDismiss: () -> Unit) {
                 .border(1.dp, R1.Hairline, R1.ShapeS)
                 .padding(R1.space.l),
         ) {
-            Text(
-                text = "WHAT'S NEW",
-                style = R1.sectionHeader,
-                color = R1.AccentWarm,
-            )
-            Spacer(Modifier.height(R1.space.xxs))
-            Text(
-                text = BuildConfig.VERSION_NAME,
-                style = R1.numeralS,
-                color = R1.InkMuted,
-            )
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "WHAT'S NEW",
+                        style = R1.sectionHeader,
+                        color = R1.AccentWarm,
+                    )
+                    Spacer(Modifier.height(R1.space.xxs))
+                    Text(
+                        text = BuildConfig.VERSION_NAME,
+                        style = R1.numeralS,
+                        color = R1.InkMuted,
+                    )
+                }
+                if (onDisable != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClickLabel = "More options",
+                                onClick = { menuOpen.value = !menuOpen.value },
+                            )
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+                    ) {
+                        Text(text = "⋯", style = R1.numeralM, color = R1.InkMuted)
+                    }
+                }
+            }
+            if (menuOpen.value && onDisable != null) {
+                Spacer(Modifier.height(R1.space.s))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.Hairline, R1.ShapeS)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClickLabel = "Don't show what's new after updates",
+                            onClick = onDisable,
+                        )
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                ) {
+                    Text(
+                        text = "DON'T SHOW THESE AGAIN",
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                    )
+                }
+            }
             Spacer(Modifier.height(R1.space.m))
             Column(
                 modifier = Modifier

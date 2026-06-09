@@ -281,6 +281,12 @@ data class Behavior(
      */
     val lastSeenVersionCode: Int = 0,
     /**
+     * "Show what's new after updates": when off, upgrades stamp
+     * [lastSeenVersionCode] silently and the overlay never appears. Surfaced
+     * next to the updater in About and via the overlay's own ⋯ affordance.
+     */
+    val showWhatsNew: Boolean = true,
+    /**
      * Level threshold for the in-app diagnostic toast feed. OFF (default) is a clean
      * UI — no toasts unless the user explicitly opts in. WARN is the friendly
      * diagnostic level: failures, decoder drops, settings-save fallbacks pop up as

@@ -117,6 +117,42 @@ fun AboutScreen(
                         )
                     }
                 }
+                // Opt-out lives here, beside the updater rows, rather than in the
+                // Settings registry: it only matters in the update context.
+                item {
+                    val whatsNewScope = androidx.compose.runtime.rememberCoroutineScope()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = R1.MinTarget)
+                            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Show what's new after updates",
+                                style = responsiveType(R1.bodyEmph),
+                                color = R1.Ink,
+                            )
+                            Text(
+                                text = "One-time panel summarising each release.",
+                                style = responsiveType(R1.body),
+                                color = R1.InkMuted,
+                            )
+                        }
+                        Spacer(Modifier.width(R1.space.l))
+                        com.github.itskenny0.r1ha.ui.components.R1Switch(
+                            checked = appSettings.behavior.showWhatsNew,
+                            onCheckedChange = { on ->
+                                whatsNewScope.launch {
+                                    settings.update { s ->
+                                        s.copy(behavior = s.behavior.copy(showWhatsNew = on))
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
                 item {
                     LinkRow(
                         label = "Source code",
@@ -267,6 +303,7 @@ fun AboutScreen(
         // system Back closes it like any modal. No version stamping here: this
         // is a re-view, the one-shot gate lives in MainActivity.
         if (whatsNewOpen.value) {
+            val disableScope = androidx.compose.runtime.rememberCoroutineScope()
             androidx.compose.ui.window.Dialog(
                 onDismissRequest = { whatsNewOpen.value = false },
                 properties = androidx.compose.ui.window.DialogProperties(
@@ -275,6 +312,14 @@ fun AboutScreen(
             ) {
                 com.github.itskenny0.r1ha.feature.whatsnew.WhatsNewOverlay(
                     onDismiss = { whatsNewOpen.value = false },
+                    onDisable = {
+                        whatsNewOpen.value = false
+                        disableScope.launch {
+                            settings.update { s ->
+                                s.copy(behavior = s.behavior.copy(showWhatsNew = false))
+                            }
+                        }
+                    },
                 )
             }
         }
