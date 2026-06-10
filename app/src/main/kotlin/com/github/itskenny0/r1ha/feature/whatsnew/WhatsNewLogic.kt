@@ -49,9 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Tablets get two-pane browsing: Devices and Areas keep the list beside the detail.",
-    "Scenes and Helpers flow into multiple columns on wide screens.",
-    "Charts grow with the screen, and History pairs its chart with the stats on wide panels.",
-    "Empty and error screens now say what happened and offer RETRY.",
-    "Calendars no longer blanks its list while refreshing.",
+    "Make it yours: text size, clock format, list density, reduce motion, and timestamp style in Settings.",
+    "Colourful Cards refresh: crisper text on every gradient, brightness presets, two new palettes.",
+    "Cameras join Devices and Areas in two-pane on wide screens, live view beside the list.",
+    "Background refreshes stay quiet: no more lists blinking or spinners popping on timers.",
+    "Don't want this panel? Turn it off in About, or via the corner of this very screen.",
 )

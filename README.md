@@ -110,13 +110,13 @@ The small things that decide whether you actually keep using an app.
 
 - **Sign-in your way**: OAuth via an in-app WebView after entering your HA URL once, or a pasted long-lived access token for kiosk-style R1s. Either way, tokens are encrypted at rest with an AndroidKeystore-wrapped AES-256/GCM key.
 - **Gesture-first navigation**: swipe left for Settings, right for the Favourites picker, tap the value area to toggle on/off; small chevron-back buttons on every sub-screen plus full system-back support.
-- **Three themes**: Pragmatic Hybrid (the default), Minimal Dark, and Colourful Cards, switchable live in Settings with a side-by-side preview.
+- **Three themes**: Pragmatic Hybrid (the default), Minimal Dark, and Colourful Cards (six per-entity gradient palettes with legibility scrims), switchable live in Settings with a side-by-side preview and an accent-colour override.
 - **Backup & restore**: export and import your favourites, tabs, and settings as a single JSON file from Settings.
 - **A home-screen widget**: a single launcher tile; tap to open the app from anywhere on your launcher.
 - **Background entity-cache refresh**: an opt-in JobService warms the entity cache every ~15 min while the app is closed, so Quick Tile state and cold-start paint stay fresh.
-- **What's new after updates**: a one-shot WHAT'S NEW panel summarises each release the first time you launch it, reopenable any time from Settings → About. Fresh installs skip it.
-- **Fully configurable**: wheel step (1/2/5/10%) and acceleration, haptics, keep-screen-on, display mode, on/off pill, area labels, position dots.
-- **Built for the R1, scales beyond it**: designed around the R1's small portrait display and physical scroll wheel (handling both `DPAD_UP/DOWN` and `VOLUME_UP/DOWN` keycodes across ROM variants), while wide windows get real layouts instead of stretched phone screens: Devices and Areas browse two-pane with the list beside the detail, Scenes and Helpers flow into multiple columns, charts grow with the window, and History composes its chart beside the numeric summary.
+- **What's new after updates**: a one-shot WHAT'S NEW panel summarises each release the first time you launch it, reopenable any time from Settings → About. Fresh installs skip it, and a toggle in About (or the panel's own corner menu) turns it off for good.
+- **Fully configurable**: wheel step (1/2/5/10%) and acceleration, haptics, keep-screen-on, display mode, on/off pill, area labels, position dots, plus appearance controls for global text size, 12/24-hour clock, list density, relative vs absolute timestamps, and a reduce-motion mode that turns transitions into instant cuts.
+- **Built for the R1, scales beyond it**: designed around the R1's small portrait display and physical scroll wheel (handling both `DPAD_UP/DOWN` and `VOLUME_UP/DOWN` keycodes across ROM variants), while wide windows get real layouts instead of stretched phone screens: Devices, Areas, and Cameras browse two-pane with the list beside the detail, Scenes and Helpers flow into multiple columns, charts grow with the window, and History composes its chart beside the numeric summary.
 
 ## Devices and compatibility
 
