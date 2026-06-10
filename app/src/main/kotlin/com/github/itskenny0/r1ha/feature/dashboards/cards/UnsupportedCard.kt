@@ -106,15 +106,35 @@ private fun IframeCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modi
     val serverUrl = com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl.current
     val url = remember(rawUrl, serverUrl) { rawUrl?.let { resolveIframeUrl(it, serverUrl) } }
     val ratio = remember(card.raw) { parseAspectRatio(card.raw["aspect_ratio"]?.let { aspectString(it) }) }
-    val description = card.friendlyType.ifBlank { "Embedded web content" }
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
+    val title = card.iframeTitle?.takeUnless { it.isBlank() }
+    val description = title ?: card.friendlyType.ifBlank { "Embedded web content" }
+    // hide_background drops the card surface (background, border, padding) so the
+    // frame floats transparently, mirroring ha-card.hide-background.
+    val surface = if (card.hideBackground) {
+        Modifier
+    } else {
+        Modifier
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, R1.Hairline, R1.ShapeM)
-            .padding(8.dp),
+            .padding(8.dp)
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(surface),
     ) {
+        if (title != null) {
+            Text(
+                text = title,
+                style = R1.titleCard,
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         if (url == null) {
             // Unresolvable url (blank, unsupported scheme, or a relative path with
             // no server origin to anchor it). Show why instead of a blank box.

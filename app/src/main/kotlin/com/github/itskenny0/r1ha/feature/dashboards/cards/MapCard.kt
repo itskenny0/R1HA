@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
@@ -25,11 +26,33 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 
 /**
- * Renderer for HA's `map` card. Plots each configured entity's
- * `latitude`/`longitude` attributes on an abstract Compose canvas (no real
- * map tiles, mirroring the Zones map): a bounding-box projection with a
- * centre cross-hair, a labelled dot per locatable entity. Entities without
- * coordinates are listed underneath so the user still sees them.
+ * Renderer for HA's `map` card. The R1 substrate is an abstract Compose canvas
+ * (no real map tiles, mirroring the Zones map): a bounding-box projection with a
+ * centre cross-hair and a coloured dot per locatable entity, plus a labelled
+ * legend underneath. Each entity's `latitude`/`longitude` attributes drive its
+ * position; entities without coordinates are dropped from the plot.
+ *
+ * Config gaps honoured by this substrate:
+ *  - per-entity marker colours (`entities: [{entity, color}]`) and the default
+ *    palette ordering, via [assignMarkerColors].
+ *  - `label_mode` (name / state / attribute + attribute key + unit) and the
+ *    per-entity `label_mode` / `attribute` override, via [markerLabel].
+ *  - per-entity `focus` flag: a non-focus marker is plotted dimmer and excluded
+ *    from the bounding-box auto-fit.
+ *
+ * Adaptations (the abstract canvas can't express these the way Leaflet does, so
+ * each degrades to the closest legible equivalent rather than being silently
+ * ignored):
+ *  - `hours_to_show` history trail: HA draws a polyline of past positions per
+ *    entity. R1HA's history endpoint is fetched with `no_attributes`, so past
+ *    lat/lon are not available without a new attribute-bearing history fetch.
+ *    The trail is therefore not drawn; only the current position is plotted.
+ *  - `geo_location_sources` / `show_all`: the canvas plots the explicitly
+ *    listed entities only; auto-discovered geo-location entities and the
+ *    "every entity with coordinates" mode are not enumerated here.
+ *  - zones rendering / `fit_zones` / `cluster`: with no tile layer there is no
+ *    zone-circle or marker-cluster layer to toggle; markers are always plotted
+ *    individually and zones are not drawn as circles.
  */
 @Composable
 fun MapCard(
@@ -37,23 +60,35 @@ fun MapCard(
     stateMap: EntityStates,
     modifier: Modifier = Modifier,
 ) {
-    val labelByState = card.labelMode?.equals("state", ignoreCase = true) == true
-    val located = card.entities.mapNotNull { row ->
+    // Marker config is 1:1 with card.entities in declaration order; pre-resolve
+    // each marker's palette/explicit colour once so the legend and the plot
+    // agree. When markers is empty (every row was a bare string the parser
+    // dropped) fall back to a default config per entity row.
+    val markers = card.markers.ifEmpty {
+        card.entities.map { com.github.itskenny0.r1ha.core.lovelace.MapMarkerConfig(entityId = it.entityId) }
+    }
+    val colors = assignMarkerColors(markers)
+
+    val located = card.entities.mapIndexedNotNull { idx, row ->
         val state = safeEntityId(row.entityId)?.let { stateMap[it] }
         val lat = latLon(state, "latitude")
         val lon = latLon(state, "longitude")
         if (lat != null && lon != null) {
-            // labelMode == "state": show the entity's raw state; otherwise use friendly name.
-            val label = if (labelByState) {
-                state?.rawState?.takeUnless { it.isBlank() } ?: resolveName(row.name, state, row.entityId)
-            } else {
-                resolveName(row.name, state, row.entityId)
-            }
+            val marker = markers.getOrNull(idx)
+            val mode = effectiveLabelMode(card.labelMode, marker?.labelMode)
+            val attr = effectiveLabelAttribute(card.labelAttribute, marker?.attribute)
+            val friendly = resolveName(row.name, state, row.entityId)
+            val label = markerLabel(mode, attr, state, friendly)
+            // A marker is focus when either no focus list narrows the card and
+            // the marker's own focus flag is true, or it is in the focus list.
+            val markerFocus = marker?.focus ?: true
+            val isFocus = if (card.focusEntities.isEmpty()) markerFocus else row.entityId in card.focusEntities
             MapPoint(
                 label = label,
                 lat = lat,
                 lon = lon,
-                isFocus = card.focusEntities.isEmpty() || row.entityId in card.focusEntities,
+                isFocus = isFocus,
+                color = colors.getOrElse(idx) { R1.AccentWarm },
             )
         } else {
             null
@@ -88,7 +123,7 @@ fun MapCard(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(RoundedCornerShape(3.dp))
-                                .background(R1.AccentWarm),
+                                .background(p.color),
                         )
                         Spacer(Modifier.size(8.dp))
                         Text(
@@ -142,14 +177,20 @@ private fun MapCanvas(allPoints: List<MapPoint>, boundsPoints: List<MapPoint> = 
                 val centre = Offset(xFrac * w, yFrac * h)
                 // Non-focus entities are plotted dimmer so they read as context, not primary.
                 val alpha = if (p.isFocus) 1f else 0.4f
-                drawCircle(color = R1.AccentWarm.copy(alpha = 0.24f * alpha), radius = 10f, center = centre)
-                drawCircle(color = R1.AccentWarm.copy(alpha = alpha), radius = 3.5f, center = centre)
+                drawCircle(color = p.color.copy(alpha = 0.24f * alpha), radius = 10f, center = centre)
+                drawCircle(color = p.color.copy(alpha = alpha), radius = 3.5f, center = centre)
             }
         }
     }
 }
 
-private data class MapPoint(val label: String, val lat: Double, val lon: Double, val isFocus: Boolean = true)
+private data class MapPoint(
+    val label: String,
+    val lat: Double,
+    val lon: Double,
+    val isFocus: Boolean = true,
+    val color: Color = R1.AccentWarm,
+)
 
 private fun latLon(state: EntityState?, key: String): Double? {
     val prim = state?.attributesJson?.get(key) as? JsonPrimitive ?: return null
