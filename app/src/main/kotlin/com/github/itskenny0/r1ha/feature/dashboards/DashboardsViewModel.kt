@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.HaThemeCatalogue
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceConfig
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceDashboard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore
@@ -14,6 +15,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceParser
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceView
 import com.github.itskenny0.r1ha.core.lovelace.OverrideOp
 import com.github.itskenny0.r1ha.core.lovelace.ViewOverride
+import com.github.itskenny0.r1ha.core.lovelace.haThemeVariablesToOverlay
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,6 +62,42 @@ class DashboardsViewModel(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = LovelaceOverrides.EMPTY,
     )
+
+    /**
+     * Active HA theme catalogue, fetched once per session and updated live when
+     * HA fires `themes_updated`. The initial value is [HaThemeCatalogue.EMPTY]
+     * so dashboard cards render with R1 defaults until the fetch completes.
+     *
+     * Exposed so [DashboardViewScreen] can build the theme-lookup lambda that
+     * the [com.github.itskenny0.r1ha.core.theme.LocalHaThemeLookup] CompositionLocal
+     * provides to per-card renderers.
+     */
+    private val _themeCatalogue = MutableStateFlow(HaThemeCatalogue.EMPTY)
+    val themeCatalogue: StateFlow<HaThemeCatalogue> = _themeCatalogue.asStateFlow()
+
+    /**
+     * Live subscription to `themes_updated`; null until the first successful subscribe.
+     * Cancelled when the ViewModel is cleared.
+     */
+    private var themesSub: HaRepository.EventSubscription? = null
+
+    /**
+     * Fetch the theme catalogue once per ViewModel lifetime and subscribe to live
+     * updates. Called by the dashboard list screen on first entry; idempotent
+     * (does nothing if already fetched).
+     */
+    fun ensureThemesFetched() {
+        if (_themeCatalogue.value !== HaThemeCatalogue.EMPTY) return
+        if (themesSub != null) return
+        viewModelScope.launch {
+            val result = haRepository.fetchThemes()
+            result.getOrNull()?.let { _themeCatalogue.value = it }
+            haRepository.subscribeThemesUpdated { catalogue ->
+                _themeCatalogue.value = catalogue
+            }.onSuccess { sub -> themesSub = sub }
+                .onFailure { R1Log.w("Dashboards", "themes_updated subscribe failed: ${it.message}") }
+        }
+    }
 
     /**
      * Set of RAW entity ids referenced by the currently-rendered view. Used
@@ -229,6 +267,10 @@ class DashboardsViewModel(
         subs.forEach { sub ->
             viewModelScope.launch { runCatching { sub.cancel() } }
         }
+        themesSub?.let { sub ->
+            viewModelScope.launch { runCatching { sub.cancel() } }
+        }
+        themesSub = null
     }
 
     /**

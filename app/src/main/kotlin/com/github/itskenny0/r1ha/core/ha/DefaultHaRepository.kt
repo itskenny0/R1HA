@@ -4287,6 +4287,29 @@ class DefaultHaRepository(
             }
         }
 
+    override suspend fun fetchThemes(): Result<HaThemeCatalogue> =
+        withContext(Dispatchers.IO) {
+            callWsExpectingPayload("frontend/get_themes").mapCatching { payload ->
+                parseHaThemeCatalogue(payload)
+            }.recoverCatching { t ->
+                R1Log.w("HaRepo.themes", "get_themes failed (best-effort): ${t.message}")
+                HaThemeCatalogue.EMPTY
+            }
+        }
+
+    override suspend fun subscribeThemesUpdated(
+        onUpdate: (HaThemeCatalogue) -> Unit,
+    ): Result<HaRepository.EventSubscription> = withContext(Dispatchers.IO) {
+        // themes_updated fires with no extra data — the handler re-fetches the full
+        // catalogue so we always have a coherent snapshot (same as the HA frontend's
+        // subscribeUpdates: () => fetchThemes(conn).then(store.setState)).
+        subscribeEvents(eventType = "themes_updated") { _ ->
+            scope.launch {
+                fetchThemes().getOrNull()?.let { onUpdate(it) }
+            }
+        }
+    }
+
     /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last
@@ -4325,5 +4348,53 @@ class DefaultHaRepository(
             }
         }
 
+}
+
+// ---------------------------------------------------------------------------
+// Parsing helpers (file-level so they can be unit-tested without instantiating
+// the repository; access to JsonPrimitive / JsonObject only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a `frontend/get_themes` WS response payload into a [HaThemeCatalogue].
+ * Shape: `{ themes: { "<name>": { "<var>": "<val>", ..., modes: { dark: {...}, light: {...} } } },
+ *           default_theme: "default", default_dark_theme: null }`.
+ * Unknown or malformed entries are silently dropped.
+ */
+internal fun parseHaThemeCatalogue(
+    payload: kotlinx.serialization.json.JsonElement?,
+): HaThemeCatalogue {
+    val obj = payload as? kotlinx.serialization.json.JsonObject ?: return HaThemeCatalogue.EMPTY
+    val defaultTheme = (obj["default_theme"] as? JsonPrimitive)?.content ?: "default"
+    val defaultDark = (obj["default_dark_theme"] as? JsonPrimitive)?.content
+        ?.takeUnless { it.isBlank() || it == "null" }
+    val themesObj = obj["themes"] as? kotlinx.serialization.json.JsonObject
+        ?: return HaThemeCatalogue(emptyMap(), defaultTheme, defaultDark)
+
+    val result = mutableMapOf<String, HaThemeEntry>()
+    for ((name, value) in themesObj) {
+        val themeObj = value as? kotlinx.serialization.json.JsonObject ?: continue
+        val modes = themeObj["modes"] as? kotlinx.serialization.json.JsonObject
+        val dark = (modes?.get("dark") as? kotlinx.serialization.json.JsonObject)
+            ?.let { flattenStringMap(it) }
+        val light = (modes?.get("light") as? kotlinx.serialization.json.JsonObject)
+            ?.let { flattenStringMap(it) }
+        // Base vars: all keys except "modes"
+        val base = flattenStringMap(themeObj, skip = "modes")
+        result[name] = HaThemeEntry(vars = base, darkVars = dark, lightVars = light)
+    }
+    return HaThemeCatalogue(themes = result, defaultTheme = defaultTheme, defaultDarkTheme = defaultDark)
+}
+
+/** Flatten a JsonObject to Map<String, String>, skipping JsonNull and the optional [skip] key. */
+private fun flattenStringMap(
+    obj: kotlinx.serialization.json.JsonObject,
+    skip: String? = null,
+): Map<String, String> = buildMap {
+    for ((k, v) in obj) {
+        if (k == skip) continue
+        val str = (v as? JsonPrimitive)?.content ?: continue
+        put(k, str)
+    }
 }
 

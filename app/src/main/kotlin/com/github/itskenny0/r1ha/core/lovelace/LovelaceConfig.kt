@@ -2744,6 +2744,22 @@ sealed class LovelaceCondition {
     data object AlwaysTrue : LovelaceCondition()
 }
 
+/**
+ * Extract the per-card `theme:` name from a [LovelaceCard] without casting to
+ * every possible subclass. The field is stored on specific subclasses (Light,
+ * Map, Humidifier); when the subclass doesn't carry the parsed field we fall
+ * back to the raw JSON so no card type misses it silently.
+ *
+ * Returns null when no `theme:` is set or when the card type doesn't declare one.
+ */
+fun LovelaceCard.cardThemeKey(): String? = when (this) {
+    is LovelaceCard.Light -> theme
+    is LovelaceCard.Map -> theme
+    is LovelaceCard.Humidifier -> theme
+    else -> (raw["theme"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        ?.takeUnless { it.isBlank() }
+}
+
 /** Dashboard descriptor from `lovelace/dashboards/list`. The default
  *  dashboard is identified by a null [urlPath] (HA's convention). */
 @Immutable

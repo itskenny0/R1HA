@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,12 +17,17 @@ import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
+import com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceConditionContext
+import com.github.itskenny0.r1ha.core.lovelace.cardThemeKey
 import com.github.itskenny0.r1ha.core.lovelace.evaluateMediaQuery
 import com.github.itskenny0.r1ha.core.lovelace.evaluateTimeWindow
+import com.github.itskenny0.r1ha.core.lovelace.mergedWith
+import com.github.itskenny0.r1ha.core.theme.LocalDashboardThemeOverlay
+import com.github.itskenny0.r1ha.core.theme.LocalHaThemeLookup
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.nav.Routes
 
@@ -41,6 +47,34 @@ import com.github.itskenny0.r1ha.nav.Routes
  */
 @Composable
 fun LovelaceCardRenderer(
+    card: LovelaceCard,
+    stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Per-card `theme:` override: look up the named theme from the catalogue
+    // (provided by the dashboard screen) and merge it on top of the inherited
+    // view-level overlay. The merge is additive: the parent overlay stays in
+    // effect for tokens the card theme doesn't specify. When no per-card
+    // theme is set, this block is a no-op and the parent overlay applies.
+    val cardThemeKey = card.cardThemeKey()
+    if (cardThemeKey != null) {
+        val lookup = LocalHaThemeLookup.current
+        val parentOverlay = LocalDashboardThemeOverlay.current
+        val cardOverlay = remember(cardThemeKey, parentOverlay) {
+            val named = lookup(cardThemeKey) ?: HaThemeOverlay.NONE
+            parentOverlay.mergedWith(named)
+        }
+        CompositionLocalProvider(LocalDashboardThemeOverlay provides cardOverlay) {
+            LovelaceCardContent(card, stateMap, onAction, modifier)
+        }
+        return
+    }
+    LovelaceCardContent(card, stateMap, onAction, modifier)
+}
+
+@Composable
+private fun LovelaceCardContent(
     card: LovelaceCard,
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
@@ -477,6 +511,12 @@ private fun conditionNumeric(
  * 4dp radius. Cards override this when they need a different fill (e.g.
  * markdown gets a softer surface; stacks get no chrome of their own
  * because they only wrap children).
+ *
+ * When [LocalDashboardThemeOverlay] carries a `cardBg` from an active HA
+ * theme, that colour replaces [R1.Surface]. The accent border falls back to
+ * [R1.Hairline] unless the overlay provides a [HaThemeOverlay.primary]. The
+ * R1 design system is the default; the overlay only applies when an HA theme
+ * is active for the current card's context.
  */
 @Composable
 fun CardSurface(
@@ -485,19 +525,23 @@ fun CardSurface(
     accent: androidx.compose.ui.graphics.Color = R1.Hairline,
     content: @Composable () -> Unit,
 ) {
+    val overlay = LocalDashboardThemeOverlay.current
+    val bg = overlay.cardBg ?: R1.Surface
+    val border = if (overlay.cardBg != null) (overlay.primary ?: overlay.accent ?: accent) else accent
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
-            .background(R1.Surface)
-            .border(1.dp, accent, R1.ShapeM)
+            .background(bg)
+            .border(1.dp, border, R1.ShapeM)
             .padding(vertical = 10.dp),
     ) {
         if (!title.isNullOrBlank()) {
+            val titleColor = overlay.textSecondary ?: R1.InkSoft
             Text(
                 text = title,
                 style = R1.sectionHeader,
-                color = R1.InkSoft,
+                color = titleColor,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
             )
             Spacer(Modifier.height(2.dp))

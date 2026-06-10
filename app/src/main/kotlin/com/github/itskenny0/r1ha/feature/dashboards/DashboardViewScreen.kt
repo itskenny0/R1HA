@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideApplier
@@ -43,8 +44,12 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrideStore
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceOverrides
 import com.github.itskenny0.r1ha.core.lovelace.PICKER_TEMPLATES
 import com.github.itskenny0.r1ha.core.lovelace.ViewOverride
+import com.github.itskenny0.r1ha.core.lovelace.haThemeVariablesToOverlay
+import com.github.itskenny0.r1ha.core.lovelace.mergedWith
 import com.github.itskenny0.r1ha.core.lovelace.parseCardJsonBlob
 import com.github.itskenny0.r1ha.core.lovelace.renderWithFlags
+import com.github.itskenny0.r1ha.core.theme.LocalDashboardThemeOverlay
+import com.github.itskenny0.r1ha.core.theme.LocalHaThemeLookup
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.feature.dashboards.cards.LovelaceCardRenderer
 import com.github.itskenny0.r1ha.feature.dashboards.cards.dispatchLovelaceAction
@@ -122,7 +127,10 @@ fun DashboardViewScreen(
     val state by vm.state.collectAsState()
     val overrides by vm.overrides.collectAsState()
     val entities by vm.entities.collectAsState()
+    val themeCatalogue by vm.themeCatalogue.collectAsState()
     val scope = rememberCoroutineScope()
+    // Kick off theme fetch on first entry; idempotent on re-entries.
+    LaunchedEffect(Unit) { vm.ensureThemesFetched() }
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(dashboardUrlPath, viewPath) {
         vm.loadConfig(dashboardUrlPath)
@@ -238,12 +246,42 @@ fun DashboardViewScreen(
         { resolveUserPersonState(currentUserId, entities) }
     }
 
+    // Build a stable theme lookup lambda from the current catalogue snapshot.
+    // Remembered on the catalogue reference so it only rebuilds when themes change.
+    val themeLookup: (String?) -> HaThemeOverlay? = remember(themeCatalogue) {
+        { name ->
+            val vars = themeCatalogue.resolvedVarsFor(name) ?: return@remember null
+            haThemeVariablesToOverlay(vars)
+        }
+    }
+    // View-level overlay: from the per-view `theme:` key, merged on top of the
+    // global default theme (HA applies default_dark_theme to the whole dashboard).
+    val globalDefaultOverlay: HaThemeOverlay = remember(themeCatalogue) {
+        val defaultName = themeCatalogue.effectiveDefaultName()
+        if (defaultName != null) {
+            themeLookup(defaultName) ?: HaThemeOverlay.NONE
+        } else {
+            HaThemeOverlay.NONE
+        }
+    }
+    val viewThemeName = view?.theme
+    val viewLevelOverlay: HaThemeOverlay = remember(globalDefaultOverlay, viewThemeName, themeCatalogue) {
+        if (viewThemeName != null) {
+            val namedOverlay = themeLookup(viewThemeName) ?: HaThemeOverlay.NONE
+            globalDefaultOverlay.mergedWith(namedOverlay)
+        } else {
+            globalDefaultOverlay
+        }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides serverUrl,
         com.github.itskenny0.r1ha.core.theme.LocalNameResolver provides nameResolver,
         com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceCurrentUserId provides currentUserId,
         com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelacePersonStateForUser provides personStateForUser,
+        LocalHaThemeLookup provides themeLookup,
+        LocalDashboardThemeOverlay provides viewLevelOverlay,
     ) {
     Column(
         modifier = Modifier

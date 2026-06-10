@@ -14,6 +14,40 @@ import com.github.itskenny0.r1ha.core.prefs.UiOptions
 val LocalR1Theme = staticCompositionLocalOf<R1Theme> { PragmaticHybridTheme }
 
 /**
+ * Active HA theme overlay for the current dashboard context (view, section, or
+ * card scope). Composed from the fetched HA theme catalogue and the per-view /
+ * per-card `theme:` key, falling back through card -> section -> view -> global.
+ *
+ * Only card surfaces consult this; the app's own chrome (top bar, nav, settings)
+ * ignores it and keeps the R1 design system unchanged. The default is
+ * [com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay.NONE] so cards with
+ * no active HA theme render identically to before.
+ *
+ * Uses [compositionLocalOf] (not the static variant) because different cards
+ * within the same view can carry different per-card `theme:` keys; each card
+ * provides its own narrowed overlay so Compose tracks the read per-composable
+ * rather than invalidating the whole subtree on a coarse change.
+ */
+val LocalDashboardThemeOverlay = compositionLocalOf {
+    com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay.NONE
+}
+
+/**
+ * Resolver function for HA theme names: given a theme name returns the derived
+ * [com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay], or null when the
+ * name is unknown / absent from the catalogue. Provided by the dashboard screen
+ * once the catalogue is fetched; deep composables (per-card renderers) call this
+ * to apply a `theme:` key without the screen threading the catalogue through
+ * every parameter list.
+ *
+ * Static is fine: the catalogue only changes on reconnect or a `themes_updated`
+ * event, both of which rebuild the providing scope.
+ */
+val LocalHaThemeLookup = staticCompositionLocalOf<(String?) -> com.github.itskenny0.r1ha.core.lovelace.HaThemeOverlay?> {
+    { _ -> null }
+}
+
+/**
  * UI options surfaced to themes so they can honour user toggles without taking extra
  * params. Uses [compositionLocalOf] (not the static variant) because EntityCard merges
  * per-card overrides into this — when the user changes a card's text size or pill
