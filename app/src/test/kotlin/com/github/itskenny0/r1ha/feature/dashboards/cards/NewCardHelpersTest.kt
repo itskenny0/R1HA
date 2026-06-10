@@ -14,31 +14,45 @@ class NewCardHelpersTest {
 
     private fun row(id: String) = EntityRow(entityId = id, name = null, icon = null, secondaryInfo = null)
 
-    // --- entity-filter: filterEntityRows ---
+    // --- entity-filter: entityFilterPasses (operator-form state_filter) ---
+
+    private fun eqFilter(vararg states: String) =
+        states.map { com.github.itskenny0.r1ha.core.lovelace.StateFilterRule(
+            com.github.itskenny0.r1ha.core.lovelace.StateFilterOperator.EQ, listOf(it),
+        ) }
+
+    private fun entry(id: String) = com.github.itskenny0.r1ha.core.lovelace.EntityFilterEntry(row(id))
+
+    private fun passes(
+        id: String,
+        filter: List<com.github.itskenny0.r1ha.core.lovelace.StateFilterRule>,
+        states: Map<String, String>,
+    ) = com.github.itskenny0.r1ha.core.lovelace.entityFilterPasses(
+        entry(id), filter, emptyList(), states, { _, _ -> null },
+    )
 
     @Test fun `entity-filter keeps only matching states`() {
-        val rows = listOf(row("light.a"), row("light.b"), row("light.c"))
         val states = mapOf("light.a" to "on", "light.b" to "off", "light.c" to "on")
-        val out = filterEntityRows(rows, listOf("on")) { states[it] }
-        assertEquals(listOf("light.a", "light.c"), out.map { it.entityId })
+        val kept = listOf("light.a", "light.b", "light.c").filter { passes(it, eqFilter("on"), states) }
+        assertEquals(listOf("light.a", "light.c"), kept)
     }
 
-    @Test fun `entity-filter is case insensitive`() {
-        val rows = listOf(row("device_tracker.phone"))
-        val out = filterEntityRows(rows, listOf("HOME")) { "home" }
-        assertEquals(1, out.size)
+    @Test fun `entity-filter equality is case sensitive like HA`() {
+        // HA's == operator is exact string compare; "HOME" does not match "home".
+        assertTrue(!passes("device_tracker.phone", eqFilter("HOME"), mapOf("device_tracker.phone" to "home")))
+        assertTrue(passes("device_tracker.phone", eqFilter("home"), mapOf("device_tracker.phone" to "home")))
     }
 
-    @Test fun `entity-filter with empty filter keeps everything`() {
-        val rows = listOf(row("light.a"), row("light.b"))
-        val out = filterEntityRows(rows, emptyList()) { null }
-        assertEquals(2, out.size)
+    @Test fun `entity-filter with empty filter keeps everything that exists`() {
+        val states = mapOf("light.a" to "on", "light.b" to "off")
+        val kept = listOf("light.a", "light.b").filter { passes(it, emptyList(), states) }
+        assertEquals(2, kept.size)
     }
 
-    @Test fun `entity-filter drops rows with no resolvable state when filtering`() {
-        val rows = listOf(row("light.a"), row("light.gone"))
-        val out = filterEntityRows(rows, listOf("on")) { if (it == "light.a") "on" else null }
-        assertEquals(listOf("light.a"), out.map { it.entityId })
+    @Test fun `entity-filter drops rows with no resolvable state`() {
+        val states = mapOf("light.a" to "on")
+        val kept = listOf("light.a", "light.gone").filter { passes(it, eqFilter("on"), states) }
+        assertEquals(listOf("light.a"), kept)
     }
 
     // --- statistic: reduceStatistic / formatStatistic ---

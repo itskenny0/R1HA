@@ -471,7 +471,11 @@ class LovelaceParserTest {
         assertEquals(2, filter.entities.size)
         assertEquals("light.a", filter.entities[0].entityId)
         assertEquals("Bee", filter.entities[1].name)
-        assertEquals(listOf("on", "home"), filter.stateFilter)
+        assertEquals(
+            listOf("on", "home"),
+            filter.stateFilter.map { it.value },
+        )
+        assertTrue(filter.stateFilter.all { it.operator == StateFilterOperator.EQ })
         assertTrue(filter.showEmpty)
 
         val stat = cards[1] as LovelaceCard.Statistic
