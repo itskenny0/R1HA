@@ -132,6 +132,58 @@ class ViewChromeLogicTest {
         assertThat(resolveSectionBackgroundOpacity(null)).isNull()
     }
 
+    // ── sectionBackgroundRuns ────────────────────────────────────────────────
+
+    private fun bgSection(
+        entity: String,
+        background: LovelaceSectionBackground?,
+        disabled: Boolean = false,
+    ) = LovelaceSection(
+        cards = listOf(stubCard(entity)),
+        disabled = disabled,
+        background = background,
+    )
+
+    @Test fun `runs tag each section with its background`() {
+        val red = LovelaceSectionBackground(color = "red")
+        val runs = sectionBackgroundRuns(
+            listOf(
+                bgSection("light.a", red),
+                bgSection("light.b", null),
+            ),
+        )
+        assertThat(runs).hasSize(2)
+        assertThat(runs[0].background).isEqualTo(red)
+        assertThat((runs[0].cards.single() as LovelaceCard.Button).entityId).isEqualTo("light.a")
+        assertThat(runs[1].background).isNull()
+    }
+
+    @Test fun `runs drop disabled and empty sections`() {
+        val runs = sectionBackgroundRuns(
+            listOf(
+                bgSection("light.a", null, disabled = true),
+                LovelaceSection(cards = emptyList(), background = LovelaceSectionBackground()),
+                bgSection("light.b", LovelaceSectionBackground()),
+            ),
+        )
+        assertThat(runs).hasSize(1)
+        assertThat((runs.single().cards.single() as LovelaceCard.Button).entityId).isEqualTo("light.b")
+    }
+
+    @Test fun `concatenating runs reproduces orderedSectionCards`() {
+        // The painted path and the flat path must render the SAME cards in the
+        // same order; only the grouping/painting differs.
+        val sections = listOf(
+            bgSection("light.a", LovelaceSectionBackground(color = "blue")),
+            bgSection("light.b", null),
+            bgSection("light.c", LovelaceSectionBackground()),
+        )
+        val flat = orderedSectionCards(sections).map { (it as LovelaceCard.Button).entityId }
+        val viaRuns = sectionBackgroundRuns(sections)
+            .flatMap { it.cards }.map { (it as LovelaceCard.Button).entityId }
+        assertThat(viaRuns).isEqualTo(flat)
+    }
+
     // ── isViewTabVisible / isViewListed ──────────────────────────────────────
 
     @Test fun `null visibility is always visible`() {

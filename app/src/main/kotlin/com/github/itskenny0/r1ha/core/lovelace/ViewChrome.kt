@@ -133,6 +133,33 @@ fun resolveSectionBackgroundOpacity(background: LovelaceSectionBackground?): Int
 }
 
 /**
+ * One renderable run of section cards on the single column, tagging the run with
+ * the [LovelaceSectionBackground] (if any) that paints behind it. Each enabled,
+ * non-empty section becomes one run, in HA's reading (declaration) order. A
+ * section with no background yields a run with [background] = null (the cards
+ * render on the plain surface). Empty and disabled sections drop out, matching
+ * [orderedSectionCards].
+ */
+data class SectionRun(
+    val background: LovelaceSectionBackground?,
+    val cards: List<LovelaceCard>,
+)
+
+/**
+ * Group a sections-view's [sections] into background-tagged [SectionRun]s for
+ * the single column. This is the section-background pass deferred from Batch M:
+ * the flat [orderedSectionCards] list loses section boundaries, so the renderer
+ * uses these runs (when the view carries no card overrides) to paint each
+ * section's background behind its own run of cards. Concatenating the runs'
+ * cards reproduces [orderedSectionCards] exactly, so the two paths stay in sync.
+ */
+fun sectionBackgroundRuns(sections: List<LovelaceSection>): List<SectionRun> =
+    sections
+        .filterNot { it.disabled }
+        .filter { it.cards.isNotEmpty() }
+        .map { SectionRun(background = it.background, cards = it.cards) }
+
+/**
  * Decide whether a view should appear in the tab/page list for the current
  * user. Mirrors HA's hui-root tab filter:
  *  - a [ViewVisibility.AlwaysHidden] view (`visible: false`) is never listed;

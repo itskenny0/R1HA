@@ -359,6 +359,15 @@ fun DashboardViewScreen(
             )
             else -> ViewModeBody(
                 cards = renderedCards,
+                // Section-background runs (Batch M section-background pass). Only
+                // supplied when the user has not customised this view's cards: a
+                // card override mutates the flat order, so the section boundaries
+                // would no longer line up and we fall back to the plain flat list.
+                sectionRuns = if (viewOverride.isEmpty() && view.sections.isNotEmpty()) {
+                    com.github.itskenny0.r1ha.core.lovelace.sectionBackgroundRuns(view.sections)
+                } else {
+                    null
+                },
                 badges = view.badges,
                 header = view.header,
                 footer = view.footer,
@@ -560,6 +569,11 @@ private fun TopChip(text: String, accent: androidx.compose.ui.graphics.Color, on
 @Composable
 private fun ViewModeBody(
     cards: List<LovelaceCard>,
+    /** Section-background runs for the single column (null = no per-section
+     *  background painting; render the plain flat [cards] list). Concatenating
+     *  the runs' cards equals [cards], so this only changes how the cards are
+     *  grouped/painted, never which cards render. */
+    sectionRuns: List<com.github.itskenny0.r1ha.core.lovelace.SectionRun>? = null,
     badges: List<com.github.itskenny0.r1ha.core.lovelace.LovelaceBadge>,
     stateMap: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
     onAction: (LovelaceAction) -> Unit,
@@ -728,7 +742,18 @@ private fun ViewModeBody(
         // flips the body live at its next boundary.
         val conditionContext = com.github.itskenny0.r1ha.feature.dashboards.cards
             .rememberLovelaceConditionContextForCards(cards)
-        if (columns <= 1) {
+        // Paint per-section backgrounds only when a section actually declares one
+        // (HA's `background:`); otherwise keep the plain flat column unchanged.
+        val paintSectionBackgrounds = columns <= 1 &&
+            sectionRuns != null && sectionRuns.any { it.background != null }
+        if (paintSectionBackgrounds) {
+            SectionRunsColumn(
+                runs = sectionRuns!!,
+                states = states,
+                conditionContext = conditionContext,
+                onAction = onAction,
+            )
+        } else if (columns <= 1) {
             // Single column: render cards in order, one per row. This is the
             // R1 / compact-phone path and must stay a plain vertical list so
             // the narrow panel never tries to share a row between two cards.
@@ -805,6 +830,71 @@ private fun ViewModeBody(
     }
     } // end non-panel else
     } // end background Box
+}
+
+/**
+ * Single-column section render that paints each section's `background:` behind
+ * its own run of cards (the Batch M section-background pass). A run that
+ * declares a background draws a rounded surface behind its visible cards (HA's
+ * resolved colour + opacity); a run with no background renders its cards on the
+ * plain surface, identical to the flat path. Runs with no visible card draw
+ * nothing (no empty surface). Inter-run and inter-card spacing matches the flat
+ * column so toggling a section background never shifts the layout otherwise.
+ */
+@Composable
+private fun SectionRunsColumn(
+    runs: List<com.github.itskenny0.r1ha.core.lovelace.SectionRun>,
+    states: com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates,
+    conditionContext: com.github.itskenny0.r1ha.core.lovelace.LovelaceConditionContext,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    var emittedRun = false
+    runs.forEach { run ->
+        val visibleCards = run.cards.filter { card ->
+            com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(
+                card, states.sliceFor(card), conditionContext,
+            )
+        }
+        if (visibleCards.isEmpty()) return@forEach
+        if (emittedRun) Spacer(Modifier.height(10.dp))
+        emittedRun = true
+
+        val cardsBlock: @Composable () -> Unit = {
+            visibleCards.forEachIndexed { position, card ->
+                if (position > 0) Spacer(Modifier.height(10.dp))
+                androidx.compose.runtime.key(card.raw) {
+                    LovelaceCardRenderer(
+                        card = card,
+                        stateMap = states.sliceFor(card),
+                        onAction = onAction,
+                    )
+                }
+            }
+        }
+
+        val bg = run.background
+        if (bg == null) {
+            Column(Modifier.fillMaxWidth()) { cardsBlock() }
+        } else {
+            // HA's resolved section surface: the configured colour (named theme
+            // colour or hex) at the resolved opacity, falling back to R1's muted
+            // surface when the colour is absent/unparseable.
+            val opacityPct = com.github.itskenny0.r1ha.core.lovelace
+                .resolveSectionBackgroundOpacity(bg) ?: com.github.itskenny0.r1ha.core.lovelace.DEFAULT_SECTION_BACKGROUND_OPACITY
+            val base = com.github.itskenny0.r1ha.feature.dashboards.cards.haColorAccent(bg.color)
+                ?: R1.SurfaceMuted
+            val surface = base.copy(alpha = (opacityPct / 100f).coerceIn(0f, 1f))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeM)
+                    .background(surface)
+                    .padding(8.dp),
+            ) {
+                cardsBlock()
+            }
+        }
+    }
 }
 
 /**
