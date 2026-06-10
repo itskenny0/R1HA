@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -114,6 +115,10 @@ fun MoreInfoSheet(
     settings: SettingsRepository,
     entityId: String,
     onDismiss: () -> Unit,
+    /** "Show more" hook — when set, the history embed offers a SHOW MORE chip that
+     *  closes the sheet and opens the native History screen for the entity. Null
+     *  (the default) hides the chip, so callers without a nav host stay valid. */
+    onOpenHistory: ((entityId: String) -> Unit)? = null,
 ) {
     BackHandler(onBack = onDismiss)
 
@@ -173,6 +178,7 @@ fun MoreInfoSheet(
                         entity = entity,
                         dispatch = dispatch,
                         onDismiss = onDismiss,
+                        onOpenHistory = onOpenHistory,
                     )
                 }
 
@@ -189,6 +195,7 @@ private fun MoreInfoContent(
     entity: EntityState,
     dispatch: (ServiceCall) -> Unit,
     onDismiss: () -> Unit,
+    onOpenHistory: ((entityId: String) -> Unit)?,
 ) {
     val domain = entity.id.domain
     val accent = accentForDomain(domain, entity.deviceClass)
@@ -203,17 +210,47 @@ private fun MoreInfoContent(
         Header(entity = entity, accent = accent, onDismiss = onDismiss)
 
         // ── Primary control ───────────────────────────────────────────────
-        val control: @Composable () -> Unit = { PrimaryControl(entity, accent, dispatch) }
-        SectionWrap(control)
+        // Cross-cutting gate (gap 11): every primary control disables when the
+        // entity is unavailable. HA renders the controls greyed (not hidden), so
+        // the affordance still shows; we dim the whole control block and swallow
+        // taps so a service can't be fired against a dead entity.
+        val controlsEnabled = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+            .controlEnabled(entity.rawState, entity.isAvailable)
+        val control: @Composable () -> Unit = { PrimaryControl(haRepository, entity, accent, dispatch) }
+        if (controlsEnabled) {
+            SectionWrap(control)
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Swallow taps so disabled controls can't dispatch. hapticOnClick
+                    // off so the dead block doesn't buzz under a stray tap.
+                    .r1Pressable(onClick = {}, hapticOnClick = false)
+                    .alpha(0.4f),
+            ) {
+                SectionWrap(control)
+            }
+        }
 
         // ── Weather forecast strip ─────────────────────────────────────────
         WeatherForecastSection(haRepository = haRepository, entity = entity, accent = accent)
 
         // ── History ───────────────────────────────────────────────────────
-        HistorySection(haRepository = haRepository, entity = entity, accent = accent)
+        HistorySection(
+            haRepository = haRepository,
+            entity = entity,
+            accent = accent,
+            onOpenHistory = onOpenHistory?.let { open -> { open(entity.id.value); onDismiss() } },
+        )
 
         // ── Non-numeric recent activity ────────────────────────────────────
         RecentActivitySection(haRepository = haRepository, entity = entity)
+
+        // ── Logbook (24h, collapsible) ─────────────────────────────────────
+        LogbookSection(haRepository = haRepository, entity = entity)
+
+        // ── Details (state block + YAML) ───────────────────────────────────
+        DetailsSection(entity = entity)
 
         // ── Attributes ────────────────────────────────────────────────────
         // Last on purpose: the raw attribute dump is reference material, while
@@ -345,19 +382,22 @@ private fun CloseButton(onDismiss: () -> Unit) {
  */
 @Composable
 private fun PrimaryControl(
+    haRepository: HaRepository,
     entity: EntityState,
     accent: Color,
     dispatch: (ServiceCall) -> Unit,
 ) {
     when (entity.id.domain) {
-        Domain.LIGHT -> LightControl(entity, accent, dispatch)
+        Domain.LIGHT -> LightControl(haRepository, entity, accent, dispatch)
         Domain.CLIMATE -> {
             ClimateStepper(entity, accent, dispatch)
+            ClimateHumidityControl(entity, accent, dispatch)
             Spacer(Modifier.height(R1.space.s))
             ClimatePanel(state = entity, accent = accent)
         }
         Domain.WATER_HEATER -> {
             ClimateStepper(entity, accent, dispatch)
+            WaterHeaterAwayToggle(entity, accent, dispatch)
             Spacer(Modifier.height(R1.space.s))
             WaterHeaterPanel(state = entity, accent = accent)
         }
@@ -368,11 +408,13 @@ private fun PrimaryControl(
         }
         Domain.COVER -> {
             CoverControl(entity, accent, dispatch)
+            RegistryFavoritePositions(haRepository, entity, accent, dispatch, domain = "cover")
             Spacer(Modifier.height(R1.space.s))
             CoverPanel(state = entity, accent = accent)
         }
         Domain.VALVE -> {
             CoverControl(entity, accent, dispatch)
+            RegistryFavoritePositions(haRepository, entity, accent, dispatch, domain = "valve")
             Spacer(Modifier.height(R1.space.s))
             ValvePanel(state = entity, accent = accent)
         }
@@ -388,31 +430,81 @@ private fun PrimaryControl(
                 onOff = { dispatch(ServiceCall.lockSet(entity.id, lock = true)) },
                 isOn = entity.isOn,
             )
+            LockOpenControl(entity, accent, dispatch)
             LockPanel(state = entity, accent = accent, modifier = Modifier.padding(top = R1.space.s))
         }
         Domain.FAN -> {
-            val step = entity.fanPercentageStep
-            if (step != null && step >= 25.0) {
-                // Discrete speed steps: compute the labeled percentages from step size.
-                FanDiscreteSpeedControl(entity = entity, accent = accent, dispatch = dispatch)
-            } else {
-                PercentControl(
-                    label = "SPEED",
-                    pct = entity.percent ?: if (entity.isOn) 100 else 0,
+            val supportsSetSpeed = entity.hasFanFeature(EntityState.FanFeature.SET_SPEED)
+            val toggleOnly = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls.fanIsToggleOnly(
+                supportsSetSpeed = supportsSetSpeed,
+                hasPresetModes = entity.fanPresetModes.isNotEmpty(),
+            )
+            if (toggleOnly) {
+                // No speed and no presets — the power toggle is the only control.
+                ToggleRow(
+                    entity = entity,
                     accent = accent,
-                    onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
+                    onLabel = "ON",
+                    offLabel = "OFF",
+                    onOn = { dispatch(ServiceCall.setSwitch(entity.id, true)) },
+                    onOff = { dispatch(ServiceCall.setSwitch(entity.id, false)) },
+                    isOn = entity.isOn,
+                )
+            } else {
+                val step = entity.fanPercentageStep
+                if (step != null && step >= 25.0) {
+                    // Discrete speed steps: compute the labeled percentages from step size.
+                    FanDiscreteSpeedControl(entity = entity, accent = accent, dispatch = dispatch)
+                } else {
+                    PercentControl(
+                        label = "SPEED",
+                        pct = entity.percent ?: if (entity.isOn) 100 else 0,
+                        accent = accent,
+                        onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
+                    )
+                }
+                // Power button beside the speed control — HA's more-info-fan always
+                // shows on/off next to the speed dial so the fan can be stopped
+                // without dragging speed to 0.
+                Spacer(Modifier.height(R1.space.xs))
+                ToggleRow(
+                    entity = entity,
+                    accent = accent,
+                    onLabel = "ON",
+                    offLabel = "OFF",
+                    onOn = { dispatch(ServiceCall.setSwitch(entity.id, true)) },
+                    onOff = { dispatch(ServiceCall.setSwitch(entity.id, false)) },
+                    isOn = entity.isOn,
                 )
             }
             Spacer(Modifier.height(R1.space.s))
             FanPanel(state = entity, accent = accent)
         }
         Domain.HUMIDIFIER -> {
+            // Explicit on/off — HA's more-info-humidifier shows a dedicated power
+            // toggle distinct from the target-humidity slider.
+            ToggleRow(
+                entity = entity,
+                accent = accent,
+                onLabel = "ON",
+                offLabel = "OFF",
+                onOn = { dispatch(ServiceCall.setSwitch(entity.id, true)) },
+                onOff = { dispatch(ServiceCall.setSwitch(entity.id, false)) },
+                isOn = entity.isOn,
+            )
+            Spacer(Modifier.height(R1.space.xs))
             PercentControl(
                 label = "TARGET",
                 pct = entity.percent ?: 0,
                 accent = accent,
                 onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
             )
+            // action attribute (humidifying / drying / idle) — the live operating status.
+            com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+                .humidifierActionLabel(entity.attrStr("action"))?.let { action ->
+                    Spacer(Modifier.height(R1.space.xxs))
+                    Text(text = action, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
+                }
             Spacer(Modifier.height(R1.space.s))
             HumidifierPanel(state = entity, accent = accent)
         }
@@ -466,7 +558,12 @@ private fun PrimaryControl(
 // ── Inline controls ───────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+private fun LightControl(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         PercentControl(
             label = "BRIGHTNESS",
@@ -628,9 +725,38 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                 )
             }
         }
+        // White mode — HA's more-info-light offers a dedicated WHITE button for
+        // bulbs that advertise LightColorMode.WHITE; it drives the white channel
+        // (not a colour) at the bulb's current brightness.
+        if (com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls.lightSupportsWhite(colorModes)) {
+            val whiteLevel = EntityState.lightRawFromPct(entity.percent ?: 100)
+            ChipStrip {
+                DetailChip(
+                    label = "WHITE",
+                    accent = accent,
+                    selected = entity.attrStr("color_mode").equals("white", ignoreCase = true),
+                    onClick = {
+                        dispatch(
+                            ServiceCall(
+                                entity.id,
+                                "turn_on",
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put("white", kotlinx.serialization.json.JsonPrimitive(whiteLevel))
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
         // Favourite colours — user-curated per-entity swatches from EntityOverride.favoriteColors.
         // Each swatch fires light.turn_on with rgb_color. Renders nothing when none configured.
         FavoriteColorChips(entity) { argb -> dispatch(favoriteColorAction(entity, argb)) }
+        // Registry-backed favourite colours — HA's more-info reads the user's
+        // stored favourites from the entity registry and falls back to a computed
+        // default palette (per-temperature swatches + fixed colours) from the
+        // bulb's capabilities. We surface those here.
+        RegistryFavoriteColors(haRepository, entity, accent, dispatch)
         // Effects — reuse the wire-level setter; chips so the user can pick by name.
         if (entity.effectList.isNotEmpty()) {
             Text(text = "EFFECT", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
@@ -643,6 +769,72 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                         onClick = { dispatch(ServiceCall.setLightEffect(entity.id, fx)) },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Registry-backed favourite colours for a light: reads the user's stored
+ * favourites from the entity registry options, falling back to HA's computed
+ * default palette ([MoreInfoFavorites.computeDefaultFavoriteColors]) when none are
+ * stored. Each swatch fires the matching `light.turn_on` (rgb_color or
+ * color_temp_kelvin). Renders nothing until the registry fetch resolves and only
+ * when the bulb supports colour or colour-temperature at all.
+ */
+@Composable
+private fun RegistryFavoriteColors(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+) {
+    val colorModes = entity.supportedColorModes.map { it.lowercase() }
+    val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
+    val supportsCt = colorModes.any { it == "color_temp" }
+    if (!supportsColor && !supportsCt) return
+    val favorites by rememberRegistryFavorites(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        domain = "light",
+        enabled = true,
+    )
+    val stored = favorites ?: return
+    val swatches = if (stored.colors.isNotEmpty()) {
+        stored.colors
+    } else {
+        com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.computeDefaultFavoriteColors(
+            supportsColorTemp = supportsCt,
+            supportsColor = supportsColor,
+            minColorTempK = entity.minColorTempK,
+            maxColorTempK = entity.maxColorTempK,
+        )
+    }
+    if (swatches.isEmpty()) return
+    Text(text = "FAVOURITES", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+    ChipStrip {
+        swatches.forEach { fav ->
+            when (fav) {
+                is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb -> ColorSwatch(
+                    color = Color(fav.argb),
+                    selected = false,
+                    description = "Favourite colour",
+                    onClick = { dispatch(favoriteColorAction(entity, fav.argb)) },
+                )
+                is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.ColorTemp -> ColorSwatch(
+                    color = Color(com.github.itskenny0.r1ha.ui.components.kelvinToArgb(fav.kelvin)),
+                    selected = entity.colorTempK == fav.kelvin,
+                    description = "${fav.kelvin} K",
+                    onClick = {
+                        dispatch(
+                            ServiceCall.setLightColorTemp(
+                                entity.id,
+                                fav.kelvin,
+                                brightnessPct = entity.percent?.takeIf { it > 0 },
+                            ),
+                        )
+                    },
+                )
             }
         }
     }
@@ -752,6 +944,75 @@ private fun CoverControl(entity: EntityState, accent: Color, dispatch: (ServiceC
     }
 }
 
+/**
+ * Registry-backed favourite position chips for a cover / valve. Reads the stored
+ * favourites from the entity registry options, falling back to HA's
+ * [MoreInfoFavorites.DEFAULT_POSITIONS] ([0, 25, 75, 100]) when none are stored.
+ * Each chip fires `set_cover_position` / `set_valve_position`. Renders nothing
+ * until the registry fetch resolves.
+ */
+@Composable
+private fun RegistryFavoritePositions(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+    domain: String,
+) {
+    val favorites by rememberRegistryFavorites(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        domain = domain,
+        enabled = true,
+    )
+    val stored = favorites ?: return
+    // Position support: cover/valve both gate the feature on a settable position.
+    val supportsPosition = entity.supportsScalar || entity.percent != null
+    val positions = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.resolvePositions(
+        stored = stored.positions,
+        supportsPosition = supportsPosition,
+    )
+    if (positions.isEmpty()) return
+    Spacer(Modifier.height(R1.space.xs))
+    Text(text = "FAVOURITES", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+    ChipStrip {
+        positions.forEach { pos ->
+            val service = if (domain == "valve") "set_valve_position" else "set_cover_position"
+            DetailChip(
+                label = "$pos%",
+                accent = accent,
+                selected = entity.percent == pos,
+                onClick = {
+                    dispatch(
+                        ServiceCall(
+                            entity.id,
+                            service,
+                            kotlinx.serialization.json.buildJsonObject {
+                                put("position", kotlinx.serialization.json.JsonPrimitive(pos))
+                            },
+                        ),
+                    )
+                },
+            )
+        }
+    }
+    // Tilt favourites (cover only) when the registry carries them.
+    if (domain == "cover" && stored.tiltPositions.isNotEmpty()) {
+        Spacer(Modifier.height(R1.space.xs))
+        Text(text = "TILT FAVOURITES", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        ChipStrip {
+            stored.tiltPositions.forEach { tilt ->
+                DetailChip(
+                    label = "$tilt%",
+                    accent = accent,
+                    selected = entity.attrDouble("current_tilt_position")?.toInt() == tilt,
+                    onClick = { dispatch(ServiceCall.coverSetTiltPosition(entity.id, tilt)) },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ClimateStepper(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
     val step = entity.climateTempStep ?: 0.5
@@ -831,6 +1092,119 @@ private fun ClimateStepper(entity: EntityState, accent: Color, dispatch: (Servic
             Text(text = parts.joinToString("  ·  "), style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
     }
+}
+
+/**
+ * Climate target-humidity slider — shown only when the thermostat advertises the
+ * TARGET_HUMIDITY feature. Fires `climate.set_humidity`. Mirrors HA's
+ * more-info-climate humidity control sitting beside the temperature control.
+ */
+@Composable
+private fun ClimateHumidityControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    if (!com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+            .climateSupportsTargetHumidity(entity.supportedFeatures)
+    ) {
+        return
+    }
+    val target = entity.attrDouble("humidity")?.toInt() ?: 50
+    Spacer(Modifier.height(R1.space.xs))
+    PercentControl(
+        label = "TARGET HUMIDITY",
+        pct = target.coerceIn(0, 100),
+        accent = accent,
+        onChange = { pct ->
+            dispatch(
+                ServiceCall(
+                    entity.id,
+                    "set_humidity",
+                    kotlinx.serialization.json.buildJsonObject {
+                        put("humidity", kotlinx.serialization.json.JsonPrimitive(pct))
+                    },
+                ),
+            )
+        },
+    )
+}
+
+/**
+ * Water-heater away-mode toggle — shown when the heater advertises the AWAY_MODE
+ * feature. Fires `water_heater.set_away_mode`. Mirrors HA's more-info-water_heater
+ * away-mode switch.
+ */
+@Composable
+private fun WaterHeaterAwayToggle(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    if (!com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+            .waterHeaterSupportsAway(entity.supportedFeatures)
+    ) {
+        return
+    }
+    val away = entity.attrStr("away_mode").equals("on", ignoreCase = true)
+    Spacer(Modifier.height(R1.space.xs))
+    Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s), modifier = Modifier.fillMaxWidth()) {
+        DetailChip(
+            label = if (away) "AWAY ON" else "AWAY OFF",
+            accent = accent,
+            selected = away,
+            onClick = {
+                dispatch(
+                    ServiceCall(
+                        entity.id,
+                        "set_away_mode",
+                        kotlinx.serialization.json.buildJsonObject {
+                            put("away_mode", kotlinx.serialization.json.JsonPrimitive(!away))
+                        },
+                    ),
+                )
+            },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+/**
+ * Lock open-door button with a confirm step — shown only when the lock advertises
+ * LockEntityFeature.OPEN (unlatch). Unlatching a door is higher-risk than a plain
+ * unlock, so the first tap arms a "CONFIRM OPEN" state that the second tap fires.
+ * Fires `lock.open` with the `default_code` registry option when present (skips a
+ * keypad we don't surface here).
+ */
+@Composable
+private fun LockOpenControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    if (!com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+            .lockSupportsOpen(entity.supportedFeatures)
+    ) {
+        return
+    }
+    var armed by remember(entity.id) { mutableStateOf(false) }
+    Spacer(Modifier.height(R1.space.xs))
+    DetailChip(
+        label = if (armed) "CONFIRM OPEN" else "OPEN DOOR",
+        accent = accent,
+        selected = armed,
+        onClick = {
+            if (!armed) {
+                armed = true
+            } else {
+                armed = false
+                val defaultCode = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+                    .lockDefaultCode(entity.attrStr("default_code"))
+                dispatch(
+                    ServiceCall(
+                        entity.id,
+                        "open",
+                        if (defaultCode != null) {
+                            kotlinx.serialization.json.buildJsonObject {
+                                put("code", kotlinx.serialization.json.JsonPrimitive(defaultCode))
+                            }
+                        } else {
+                            kotlinx.serialization.json.JsonObject(emptyMap())
+                        },
+                    ),
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
@@ -977,7 +1351,12 @@ private fun AttributesSection(entity: EntityState) {
 }
 
 @Composable
-private fun HistorySection(haRepository: HaRepository, entity: EntityState, accent: Color) {
+private fun HistorySection(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    onOpenHistory: (() -> Unit)? = null,
+) {
     // Numeric history only makes sense for entities whose state is a reading. Probe by
     // whether the current state parses as a number; sensors/number/climate all qualify.
     val numericNow = entity.rawState?.toDoubleOrNull() != null || entity.raw != null
@@ -987,14 +1366,125 @@ private fun HistorySection(haRepository: HaRepository, entity: EntityState, acce
         entity.id.domain == Domain.CLIMATE ||
         entity.id.domain == Domain.WATER_HEATER ||
         entity.id.domain == Domain.HUMIDIFIER
-    val enabled = numericNow && sensorLike
-    val history by rememberHistory(haRepository, entity.id.value, enabled = enabled)
-    if (!enabled) return
+    // HA routes sensors that carry a long-term `state_class` (measurement / total /
+    // total_increasing) to the statistics-backed aggregate chart; everything else
+    // numeric uses the raw line chart.
+    val hasStatistics = entity.attrStr("state_class") != null
+    val mode = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.chooseHistoryMode(
+        numericNow = numericNow && sensorLike,
+        hasStatistics = hasStatistics,
+        supportsTimeline = false,
+    )
+    if (mode == com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.HistoryMode.NONE) return
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
-        Text(text = "HISTORY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
-        when (val pts = history) {
-            null -> SectionLoadingPlaceholder("Loading history")
-            else -> SensorHistoryChart(points = pts, accent = accent, unit = entity.unit)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "HISTORY",
+                style = responsiveType(R1.sectionHeader),
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            if (onOpenHistory != null) {
+                DetailChip(label = "SHOW MORE", accent = accent, onClick = onOpenHistory)
+            }
+        }
+        when (mode) {
+            com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.HistoryMode.STATISTICS ->
+                StatisticsChart(haRepository = haRepository, entity = entity, accent = accent)
+            else -> {
+                val history by rememberHistory(haRepository, entity.id.value, enabled = true)
+                when (val pts = history) {
+                    null -> SectionLoadingPlaceholder("Loading history")
+                    else -> SensorHistoryChart(points = pts, accent = accent, unit = entity.unit)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Statistics-backed aggregate chart for sensors with a `state_class`. Draws the
+ * mean line plus a min/max band via the shared [com.github.itskenny0.r1ha.ui.components.Sparkline].
+ * Live-updates while the sheet is open (a per-minute tick re-fetches); a fetch
+ * failure surfaces a quiet error instead of an empty box. Falls back to the raw
+ * line chart when the recorder returns no buckets (sensor too new to have any).
+ */
+@Composable
+private fun StatisticsChart(haRepository: HaRepository, entity: EntityState, accent: Color) {
+    // Live tick: re-fetch every minute while the sheet stays open so an open
+    // more-info reflects new recorder buckets (matches HA's subscribed history).
+    var tick by remember(entity.id) { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(entity.id) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000L)
+            tick++
+        }
+    }
+    val stats by rememberStatistics(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        enabled = true,
+        refreshKey = tick,
+    )
+    when (val s = stats) {
+        null -> SectionLoadingPlaceholder("Loading statistics")
+        else -> when {
+            s.error ->
+                com.github.itskenny0.r1ha.ui.components.SparklinePlaceholder(
+                    errorText = "Statistics unavailable",
+                )
+            s.buckets.isEmpty() -> {
+                // Recorder has no buckets yet — fall back to the raw line so a new
+                // sensor still shows its short live history.
+                val history by rememberHistory(haRepository, entity.id.value, enabled = true)
+                when (val pts = history) {
+                    null -> SectionLoadingPlaceholder("Loading history")
+                    else -> SensorHistoryChart(points = pts, accent = accent, unit = entity.unit)
+                }
+            }
+            else -> {
+                val series = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.statisticsSeries(s.buckets)
+                val lines = buildList {
+                    if (series.min.isNotEmpty()) {
+                        add(
+                            com.github.itskenny0.r1ha.ui.components.SparklineSeries(
+                                samples = series.min,
+                                color = accent.copy(alpha = 0.35f),
+                                fill = false,
+                            ),
+                        )
+                    }
+                    if (series.max.isNotEmpty()) {
+                        add(
+                            com.github.itskenny0.r1ha.ui.components.SparklineSeries(
+                                samples = series.max,
+                                color = accent.copy(alpha = 0.35f),
+                                fill = false,
+                            ),
+                        )
+                    }
+                    if (series.mean.isNotEmpty()) {
+                        add(
+                            com.github.itskenny0.r1ha.ui.components.SparklineSeries(
+                                samples = series.mean,
+                                color = accent,
+                                fill = true,
+                            ),
+                        )
+                    }
+                }
+                if (lines.isEmpty()) {
+                    com.github.itskenny0.r1ha.ui.components.SparklinePlaceholder(
+                        errorText = "No statistics",
+                    )
+                } else {
+                    com.github.itskenny0.r1ha.ui.components.Sparkline(series = lines)
+                }
+                val unit = entity.unit
+                if (!unit.isNullOrBlank()) {
+                    Text(text = "MEAN · MIN/MAX · $unit", style = R1.labelMicro, color = R1.InkMuted)
+                }
+            }
         }
     }
 }
@@ -1263,6 +1753,216 @@ private fun RecentActivitySection(
                 }
             }
         }
+    }
+}
+
+/**
+ * Collapsible 24h logbook embed for non-continuous entities, mirroring HA's
+ * `ha-more-info-logbook.ts`. Shown for the same domains as [RecentActivitySection]
+ * (binary state transitions worth a log), collapsed by default so it never pushes
+ * the controls off-screen; expanding fetches the per-entity logbook. The header
+ * row is the expand toggle.
+ *
+ * Distinct from RecentActivitySection: that derives a state list from /api/history;
+ * this is HA's logbook proper (carries automation triggers, context attribution,
+ * and human-readable messages), fetched server-side filtered to the entity.
+ */
+@Composable
+private fun LogbookSection(haRepository: HaRepository, entity: EntityState) {
+    val numericNow = entity.rawState?.toDoubleOrNull() != null || entity.raw != null
+    val sensorLike = entity.id.domain == Domain.SENSOR ||
+        entity.id.domain == Domain.NUMBER ||
+        entity.id.domain == Domain.INPUT_NUMBER ||
+        entity.id.domain == Domain.CLIMATE ||
+        entity.id.domain == Domain.WATER_HEATER ||
+        entity.id.domain == Domain.HUMIDIFIER
+    val showable = !numericNow && !sensorLike && entity.id.domain !in NON_LOGBOOK_DOMAINS
+    if (!showable) return
+    var expanded by remember(entity.id) { mutableStateOf(false) }
+    val logbook by rememberEntityLogbook(
+        haRepository = haRepository,
+        entityId = entity.id.value,
+        enabled = expanded,
+    )
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .r1Pressable(
+                    onClick = { expanded = !expanded },
+                    hapticOnClick = false,
+                    contentDescription = if (expanded) "Collapse logbook" else "Expand logbook",
+                ),
+        ) {
+            Text(
+                text = "LOGBOOK",
+                style = responsiveType(R1.sectionHeader),
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            Text(text = if (expanded) "−" else "+", style = R1.numeralM, color = R1.InkSoft)
+        }
+        if (expanded) {
+            when (val rows = logbook) {
+                null -> SectionLoadingPlaceholder("Loading logbook")
+                else -> {
+                    val visible = rows.take(12)
+                    if (visible.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(R1.ShapeS)
+                                .background(R1.Surface)
+                                .padding(R1.space.m),
+                        ) {
+                            Text(
+                                text = "No logbook entries in the last 24 h",
+                                style = responsiveType(R1.body),
+                                color = R1.InkMuted,
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(R1.ShapeS)
+                                .background(R1.Surface)
+                                .padding(R1.space.m),
+                            verticalArrangement = Arrangement.spacedBy(R1.space.s),
+                        ) {
+                            visible.forEach { row -> LogbookRow(row) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LogbookRow(row: com.github.itskenny0.r1ha.core.ha.LogbookEntry) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = row.message.ifBlank { "changed" },
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val by = row.contextName?.takeIf { it.isNotBlank() }
+            if (by != null) {
+                Text(
+                    text = "via ${by}",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        val timeAgo = rememberRelativeTime(row.timestamp)
+        Text(
+            text = timeAgo.uppercase(),
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/**
+ * Details pane (HA `ha-more-info-details.ts`): a state block (translated / raw
+ * state, last-changed, last-updated) plus a read-only YAML-ish dump of state +
+ * attributes. Collapsed by default behind a toggle so it stays the reference
+ * material it is, never crowding the controls. The YAML is rendered by the pure
+ * [com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.renderStateYaml].
+ */
+@Composable
+private fun DetailsSection(entity: EntityState) {
+    var expanded by remember(entity.id) { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .r1Pressable(
+                    onClick = { expanded = !expanded },
+                    hapticOnClick = false,
+                    contentDescription = if (expanded) "Collapse details" else "Expand details",
+                ),
+        ) {
+            Text(
+                text = "DETAILS",
+                style = responsiveType(R1.sectionHeader),
+                color = R1.InkSoft,
+                modifier = Modifier.weight(1f),
+            )
+            Text(text = if (expanded) "−" else "+", style = R1.numeralM, color = R1.InkSoft)
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeS)
+                    .background(R1.Surface)
+                    .padding(R1.space.m),
+                verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+            ) {
+                DetailRow("State", entity.rawState?.let { optionLabel(it) } ?: "-")
+                entity.rawState?.let { DetailRow("Raw state", it) }
+                // last_updated isn't parsed into EntityState; last_changed is the
+                // timestamp HA's state-header surfaces, so the details block mirrors it.
+                val changed = rememberRelativeTime(entity.lastChanged)
+                if (changed.isNotEmpty()) DetailRow("Last changed", changed)
+            }
+            // Read-only YAML view of state + attributes.
+            val yaml = remember(entity.rawState, entity.attributesJson) {
+                com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoEmbeds.renderStateYaml(
+                    rawState = entity.rawState,
+                    attributes = entity.attributesJson,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .padding(R1.space.m),
+            ) {
+                Text(
+                    text = yaml,
+                    style = responsiveType(R1.body),
+                    color = R1.InkSoft,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            text = label,
+            style = responsiveType(R1.body),
+            color = R1.InkMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(0.4f)
+                .padding(end = R1.space.s),
+        )
+        Text(
+            text = value,
+            style = responsiveType(R1.body),
+            color = R1.Ink,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(0.6f),
+        )
     }
 }
 

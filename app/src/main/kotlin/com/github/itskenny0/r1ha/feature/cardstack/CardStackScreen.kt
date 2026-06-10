@@ -1529,6 +1529,9 @@ fun CardStackScreen(
                 settings = settings,
                 entityId = moreInfoId,
                 onDismiss = { moreInfoEntityId.value = null },
+                // "Show more" in the history embed opens the native History screen
+                // for the entity (the card stack already wires onOpenHistory).
+                onOpenHistory = { eid -> onOpenHistory(eid) },
             )
         }
 

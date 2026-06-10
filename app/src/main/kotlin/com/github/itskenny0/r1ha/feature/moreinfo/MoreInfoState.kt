@@ -118,6 +118,78 @@ fun rememberHistory(
 }
 
 /**
+ * Result of a statistics fetch for the history embed: null = still loading,
+ * non-null carries the chronological buckets (possibly empty) plus an error flag
+ * so the section can surface a fetch failure rather than silently rendering blank.
+ */
+data class StatisticsResult(
+    val buckets: List<com.github.itskenny0.r1ha.core.ha.StatisticsBucket> = emptyList(),
+    val error: Boolean = false,
+)
+
+/**
+ * Lazily fetch hourly long-term statistics for [entityId] when [enabled]. Pulls
+ * the last [hours] hours at hour resolution via
+ * [HaRepository.getStatisticsDuringPeriod]. Returns null while in flight; a
+ * [StatisticsResult] with `error = true` when the fetch fails so the embed can
+ * say so. Re-fetches whenever [refreshKey] changes (live updates while the sheet
+ * is open).
+ */
+@Composable
+fun rememberStatistics(
+    haRepository: HaRepository,
+    entityId: String,
+    enabled: Boolean,
+    hours: Int = 24,
+    refreshKey: Int = 0,
+): State<StatisticsResult?> = produceState<StatisticsResult?>(
+    initialValue = null,
+    key1 = entityId,
+    key2 = enabled,
+    key3 = refreshKey,
+) {
+    if (!enabled) {
+        value = null
+        return@produceState
+    }
+    val end = java.time.Instant.now()
+    val start = end.minusSeconds(hours.toLong() * 3600L)
+    val result = haRepository.getStatisticsDuringPeriod(
+        statisticIds = listOf(entityId),
+        start = start,
+        end = end,
+        period = "hour",
+    )
+    value = result.fold(
+        onSuccess = { map -> StatisticsResult(buckets = map[entityId].orEmpty(), error = false) },
+        onFailure = { StatisticsResult(buckets = emptyList(), error = true) },
+    )
+}
+
+/**
+ * Lazily fetch the 24h per-entity logbook for [entityId] when [enabled]. Returns
+ * null while in flight, an empty list on failure (the embed degrades to a hint).
+ */
+@Composable
+fun rememberEntityLogbook(
+    haRepository: HaRepository,
+    entityId: String,
+    enabled: Boolean,
+    hours: Int = 24,
+): State<List<com.github.itskenny0.r1ha.core.ha.LogbookEntry>?> =
+    produceState<List<com.github.itskenny0.r1ha.core.ha.LogbookEntry>?>(
+        initialValue = null,
+        key1 = entityId,
+        key2 = enabled,
+    ) {
+        if (!enabled) {
+            value = null
+            return@produceState
+        }
+        value = haRepository.fetchLogbookForEntity(entityId, hours).getOrElse { emptyList() }
+    }
+
+/**
  * Holds the resolved hourly + daily forecast lists for a weather entity.
  * Both lists default to empty (not yet loaded / unavailable).
  */
