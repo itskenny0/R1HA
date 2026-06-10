@@ -363,6 +363,24 @@ interface HaRepository {
     suspend fun listAreas(): Result<List<AreaInfo>>
 
     /**
+     * List every floor HA knows about via `config/floor_registry/list`. Floors
+     * group areas into levels (HA 2024.x). The areas / home strategies use this
+     * to section their overview by floor; an older server that doesn't expose the
+     * command (or has no floors) yields an empty list and the strategy degrades
+     * to a single ungrouped "Areas" section.
+     */
+    suspend fun listFloors(): Result<List<FloorInfo>>
+
+    /**
+     * Ask HA's `usage_prediction/common_control` WS command for the entities the
+     * user most commonly controls at this time of day. Returns the ordered entity
+     * id list, or a failure when the `usage_prediction` integration isn't loaded
+     * (the common-controls strategy then falls back to recently-changed
+     * toggleables).
+     */
+    suspend fun predictCommonControls(): Result<List<String>>
+
+    /**
      * Create a fresh area via `config/area_registry/create`. Returns the
      * server-assigned area_id so the caller can immediately assign an entity
      * to the new area without a second round-trip to refresh the list.

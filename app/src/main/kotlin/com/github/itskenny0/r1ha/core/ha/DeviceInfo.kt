@@ -73,6 +73,14 @@ data class EntityRegistryEntry(
     val platform: String?,
     val disabledBy: String?,
     val hiddenBy: String?,
+    /**
+     * HA's `entity_category` (`config` / `diagnostic` / null). The original-states
+     * and areas strategies treat any categorised entity as a "config/diagnostic"
+     * helper and exclude it from the main grouped cards (HA's
+     * `computeDefaultViewStates` filters `entry.entity_category`, and the area
+     * grouping filters use `entity_category: "none"`). Null = a primary entity.
+     */
+    val entityCategory: String? = null,
 ) {
     val displayName: String
         get() = name?.takeIf { it.isNotBlank() }
