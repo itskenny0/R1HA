@@ -340,6 +340,18 @@ sealed class LovelaceCard {
         /** Hours of history the line graph spans (HA's `hours_to_show`). */
         val hoursToShow: Int,
         val detail: Int?,
+        /** HA's `limits: {min, max}`: pins the sparkline Y axis. Null = autoscale. */
+        val limitMin: Double? = null,
+        val limitMax: Double? = null,
+        /** HA entity-card inherited options: state-coloured value text and an
+         *  attribute to display in place of the state. */
+        val stateColor: Boolean = false,
+        val attribute: String? = null,
+        /** HA entity-card tap interactions. A null tap falls back to the
+         *  entity's domain-default action via the shared action layer. */
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "sensor"
     }
@@ -473,7 +485,23 @@ sealed class LovelaceCard {
         override val raw: JsonObject,
         val title: String?,
         val entities: List<EntityRow>,
+        /** Fractional `hours_to_show` (HA accepts e.g. 0.5). Use this for the
+         *  window maths; [hoursToShow] is the rounded int kept for the slice. */
+        val hoursToShowExact: Double,
         val hoursToShow: Int,
+        /** HA `split_device_classes`: group entities into separate charts by
+         *  unit AND device-class instead of one shared chart per unit. */
+        val splitDeviceClasses: Boolean = false,
+        /** Per-entity colour overrides keyed by entity id (`entities: [{entity,
+         *  color}]`). A theme colour name or `#rrggbb`. */
+        val entityColors: kotlin.collections.Map<String, String> = emptyMap(),
+        /** Axis / legend options. */
+        val showNames: Boolean = true,
+        val logarithmicScale: Boolean = false,
+        val minYAxis: Double? = null,
+        val maxYAxis: Double? = null,
+        val fitYData: Boolean = false,
+        val expandLegend: Boolean = false,
     ) : LovelaceCard() {
         override val type: String = "history-graph"
     }
@@ -614,8 +642,20 @@ sealed class LovelaceCard {
         /** HA's `stat_type`: one of mean/min/max/sum/state/change. */
         val statType: String,
         /** Human-friendly period label HA's card accepts (`day`, `week`,
-         *  `month`, `year`). Drives the lookback window. */
+         *  `month`, `year`). Drives the lookback window. Kept for back-compat;
+         *  [periodSpec] is the richer resolution path. */
         val period: String,
+        /** Resolved period spec (calendar/fixed/rolling). The renderer turns
+         *  this into a concrete window via the shared period engine. */
+        val periodSpec: StatisticPeriodConfig = StatisticPeriodConfig.Rolling(604_800_000L),
+        /** HA `icon` override. Null = derived from the entity. */
+        val icon: String? = null,
+        /** HA `unit` override shown after the value. Null = entity's unit. */
+        val unit: String? = null,
+        /** HA `energy_date_selection` / `collection_key`: when set, the card's
+         *  window is driven by an external energy date-range selector instead of
+         *  [periodSpec]. Parsed here, bound by the energy batch; null = self. */
+        val collectionKey: String? = null,
     ) : LovelaceCard() {
         override val type: String = "statistic"
     }
@@ -634,9 +674,28 @@ sealed class LovelaceCard {
         val title: String?,
         val entityIds: List<String>,
         val statTypes: List<String>,
+        /** Recorder bucket size HA's `period:` selects: 5minute / hour / day /
+         *  week / month. Drives both bucket resolution and the x-grid. */
         val period: String,
+        /** "line" (default) or "bar". */
         val chartType: String,
         val daysToShow: Int?,
+        /** Per-entity display name overrides keyed by entity id. */
+        val entityNames: kotlin.collections.Map<String, String> = emptyMap(),
+        /** Per-entity colour overrides keyed by entity id. */
+        val entityColors: kotlin.collections.Map<String, String> = emptyMap(),
+        /** Y-axis options. */
+        val minYAxis: Double? = null,
+        val maxYAxis: Double? = null,
+        val fitYData: Boolean = false,
+        val logarithmicScale: Boolean = false,
+        val unit: String? = null,
+        /** Legend options. */
+        val hideLegend: Boolean = false,
+        val expandLegend: Boolean = false,
+        /** HA `energy_date_selection` / `collection_key` seam; bound by the
+         *  energy batch. Null = window from [period] / [daysToShow]. */
+        val collectionKey: String? = null,
     ) : LovelaceCard() {
         override val type: String = "statistics-graph"
     }
@@ -824,6 +883,26 @@ data class DistributionEntry(
     /** HA `color`: a theme colour name or `#rrggbb`. Null = state-derived. */
     val color: String?,
 )
+
+/**
+ * Parsed `period:` config for the statistic / statistics-graph cards. Mirrors
+ * the three shapes HA accepts; the renderer hands this to the shared period
+ * engine ([com.github.itskenny0.r1ha.ui.components.resolveStatisticWindow]) to
+ * get a concrete window. Kept in the config layer (not the engine) so the
+ * parser stays self-contained and the engine takes only primitives.
+ */
+@Immutable
+sealed interface StatisticPeriodConfig {
+    /** calendar: {period, offset}. */
+    @Immutable
+    data class Calendar(val period: String, val offset: Int) : StatisticPeriodConfig
+    /** fixed_period: {start, end} as epoch millis (null = open-ended). */
+    @Immutable
+    data class Fixed(val startMillis: Long?, val endMillis: Long?) : StatisticPeriodConfig
+    /** rolling_window: a sliding [durationMillis] window shifted by [offsetMillis]. */
+    @Immutable
+    data class Rolling(val durationMillis: Long, val offsetMillis: Long = 0L) : StatisticPeriodConfig
+}
 
 /**
  * One badge chip from a view's top-level `badges:` array. HA renders these as
