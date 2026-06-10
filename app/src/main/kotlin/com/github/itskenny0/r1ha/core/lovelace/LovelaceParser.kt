@@ -87,7 +87,7 @@ object LovelaceParser {
 
     private fun parseView(obj: JsonObject, index: Int): LovelaceView {
         val directCards = (obj["cards"] as? JsonArray)
-            ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) }
+            ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) ?: nonObjectCardError(el) }
             ?: emptyList()
         // "sections" views (HA's default UI-editor layout since 2024.x) hold
         // their cards under sections[].cards rather than the legacy top-level
@@ -197,6 +197,26 @@ object LovelaceParser {
         val isShortcutLike = badgeType == "shortcut" || badgeType == "button"
         if (entity == null && name.isNullOrBlank() &&
             !(isShortcutLike && (tap != null || hold != null || item["icon"] != null || item["text"] != null))) {
+            // A custom: (or unrecognised) badge type with neither entity nor
+            // name is otherwise silently dropped. Emit a minimal placeholder
+            // chip labelled with the type so the user can see that a
+            // configured badge was not rendered rather than having it vanish.
+            // Pure shortcut/button badges with no action/icon are still
+            // dropped (no meaningful content to show).
+            if (badgeType != null && badgeType.startsWith("custom:")) {
+                val label = badgeType.removePrefix("custom:")
+                return LovelaceBadge(
+                    entityId = null,
+                    name = label.ifBlank { badgeType },
+                    icon = null,
+                    color = null,
+                    showName = true,
+                    showState = false,
+                    showIcon = false,
+                    tapAction = tap,
+                    conditions = conditions,
+                )
+            }
             return null
         }
 
@@ -245,7 +265,7 @@ object LovelaceParser {
     private fun parseSectionCards(section: JsonObject): List<LovelaceCard> {
         val header = (section["header"] as? JsonObject)?.let(::parseCard)
         val body = (section["cards"] as? JsonArray)
-            ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) }
+            ?.mapNotNull { el -> (el as? JsonObject)?.let(::parseCard) ?: nonObjectCardError(el) }
             ?: emptyList()
         // Footer cards (HA 2026.3): a single card slot rendered at the section's
         // end. R1HA flattens sections into one scroll column, so the footer
@@ -1032,9 +1052,36 @@ object LovelaceParser {
         return dot > 0 && dot < length - 1 && none { it.isWhitespace() }
     }
 
-    private fun parseChildCards(el: JsonElement?): List<LovelaceCard> =
-        (el as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let(::parseCard) }
-            ?: emptyList()
+    private fun parseChildCards(el: JsonElement?): List<LovelaceCard> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            (item as? JsonObject)?.let(::parseCard)
+                ?: nonObjectCardError(item)
+        }
+    }
+
+    /**
+     * Non-object card entry (bare string, number, null, or array) in a cards
+     * array. HA renders an error card reading "Config is not an object" for
+     * this case; R1HA emits an [LovelaceCard.Unsupported] with the same message
+     * so the user sees a visible placeholder rather than a silent gap. A `null`
+     * JSON value from a partially-parsed config is the most common trigger.
+     */
+    private fun nonObjectCardError(item: JsonElement): LovelaceCard.Unsupported? {
+        // JsonNull is a legitimate intentional skip (no meaningful content to
+        // surface); only non-null non-object entries become visible errors.
+        if (item is JsonNull) return null
+        val typeLabel = when (item) {
+            is JsonPrimitive -> if (item.isString) "\"${item.content}\"" else item.content
+            is JsonArray -> "(array)"
+            else -> "(unknown)"
+        }
+        return LovelaceCard.Unsupported(
+            raw = JsonObject(emptyMap()),
+            type = "(config error)",
+            friendlyType = "Config is not an object: $typeLabel",
+        )
+    }
 
     /**
      * Parse a tile card's `features:` array. Each entry is a `{type: ...}`

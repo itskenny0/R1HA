@@ -895,7 +895,28 @@ private fun renderFeature(
                 }
             }
         }
-        is LovelaceTileFeature.Unsupported -> return false
+        is LovelaceTileFeature.Unsupported -> {
+            // A feature type we don't model (including custom:* like
+            // custom:service-call). Show a muted labeled row so the user
+            // can see which configured feature was skipped rather than
+            // having it vanish silently. Returns true so the caller
+            // inserts the correct inter-feature spacing.
+            val label = feature.type.removePrefix("custom:").ifBlank { feature.type }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = "$label (unsupported feature)",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
     return true
 }
