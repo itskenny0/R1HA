@@ -11,22 +11,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.EntitiesItem
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
-import com.github.itskenny0.r1ha.core.lovelace.TimestampFormat
+import com.github.itskenny0.r1ha.core.lovelace.SpecialRow
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.formatTimestamp
 import com.github.itskenny0.r1ha.ui.components.formatWithPrecision
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
-import com.github.itskenny0.r1ha.ui.components.rememberNowTick
-import com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock
 import com.github.itskenny0.r1ha.ui.components.resolveTimestampFormat
 import com.github.itskenny0.r1ha.ui.components.timestampInstantOrNull
 import kotlinx.serialization.json.JsonArray
@@ -60,11 +57,11 @@ fun EntitiesCard(
     // `show_header_toggle` surfaces a master on/off control in the header that
     // flips every toggleable entity in the card at once. HA shows it whenever
     // the card has at least one toggleable entity and the option isn't false.
-    val toggleableIds = remember(card.entities) {
-        card.entities.map { it.entityId }.filter { headerToggleableDomain(it) }
+    val toggleableIds = remember(card.rowItems) {
+        card.rowItems.filterIsInstance<EntitiesItem.Entity>()
+            .map { it.row.entityId }.filter { headerToggleableDomain(it) }
     }
     val showToggle = (card.showHeaderToggle ?: true) && toggleableIds.isNotEmpty()
-
     CardSurface(modifier = modifier, title = if (showToggle) null else title) {
         if (showToggle) {
             HeaderToggleRow(
@@ -74,13 +71,33 @@ fun EntitiesCard(
                 onAction = onAction,
             )
         }
-        if (card.entities.isEmpty()) {
+        if (card.rowItems.isEmpty()) {
             EmptyRow(text = "No entities configured")
             return@CardSurface
         }
-        card.entities.forEachIndexed { idx, row ->
-            if (idx > 0) Divider1dp()
-            EntityRowItem(row = row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
+        // Dividers are drawn between consecutive entity/non-divider rows only;
+        // section headers and dividers themselves don't get an extra separator.
+        var needsDivider = false
+        card.rowItems.forEach { item ->
+            when (item) {
+                is EntitiesItem.Entity -> {
+                    if (needsDivider) Divider1dp()
+                    EntityRowItem(row = item.row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
+                    needsDivider = true
+                }
+                is EntitiesItem.Special -> {
+                    // Section and divider rows reset the divider so no double-line appears.
+                    val isSeparator = item.row is SpecialRow.Section || item.row is SpecialRow.Divider
+                    if (needsDivider && !isSeparator) Divider1dp()
+                    SpecialRowItem(
+                        row = item.row,
+                        stateMap = stateMap,
+                        onAction = onAction,
+                        stateColor = stateColor,
+                    )
+                    needsDivider = !isSeparator
+                }
+            }
         }
     }
 }
@@ -170,12 +187,14 @@ internal fun ToggleSwitch(checked: Boolean, onClick: () -> Unit) {
 
 /**
  * Dispatch one entities-card row to the interactive per-domain renderer for its
- * domain, falling back to the read-only display row for sensor-style domains a
- * sibling batch owns. An entity HA doesn't serve renders the not-found warning
- * row rather than crashing or disappearing.
+ * domain (EntityRows.kt), to the event / weather / timer display rows, or to the
+ * generic read-only display row for sensor-style domains. An explicit per-row
+ * `type:` override (e.g. "toggle", "simple") forces the generic renderer
+ * regardless of domain, matching HA's create-row-element behaviour. An entity HA
+ * doesn't serve renders the not-found warning row rather than crashing.
  */
 @Composable
-private fun EntityRowItem(
+internal fun EntityRowItem(
     row: EntityRow,
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
@@ -183,6 +202,13 @@ private fun EntityRowItem(
 ) {
     val state = stateMap.byRaw(row.entityId)
     val accent = stateAccentFor(row.entityId, state)
+    // An explicit per-row `type:` forces the generic display row and skips domain
+    // dispatch (matches HA's create-row-element: the config type beats the domain).
+    // Unknown custom types (e.g. "custom:my-row") also fall through to generic.
+    if (row.explicitType != null) {
+        DisplayEntityRow(row, state, accent, onAction, stateColor, explicitType = row.explicitType)
+        return
+    }
     when (rowKindFor(row.entityId)) {
         RowKind.Toggle -> ToggleEntityRow(row, state, accent, onAction, stateColor)
         RowKind.Button -> ButtonEntityRow(row, state, accent, onAction, stateColor, pressService = "button.press")
@@ -205,6 +231,9 @@ private fun EntityRowItem(
         RowKind.Select -> SelectEntityRow(row, state, accent, onAction, stateColor, service = "select.select_option")
         RowKind.Update -> UpdateEntityRow(row, state, accent, onAction, stateColor)
         RowKind.Valve -> ValveEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Event -> EventEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Weather -> WeatherEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Timer -> TimerEntityRow(row, state, accent, onAction, stateColor)
         RowKind.Display -> DisplayEntityRow(row, state, accent, onAction, stateColor)
     }
 }
@@ -212,7 +241,9 @@ private fun EntityRowItem(
 /**
  * Read-only display row for sensor-style domains: the generic scaffold plus a
  * state chip. Mirrors the previous EntitiesCard rendering for those rows. An
- * entity HA doesn't serve renders the not-found warning instead.
+ * entity HA doesn't serve renders the not-found warning instead. An explicit
+ * per-row `type:` we don't model renders a muted placeholder chip rather than
+ * the live state, matching HA's "unsupported row" treatment.
  */
 @Composable
 private fun DisplayEntityRow(
@@ -221,13 +252,22 @@ private fun DisplayEntityRow(
     accent: androidx.compose.ui.graphics.Color,
     onAction: (LovelaceAction) -> Unit,
     stateColor: Boolean,
+    explicitType: String? = null,
 ) {
     if (state == null) {
         EntityNotFoundRow(row.entityId)
         return
     }
+    // An explicit `type:` we don't model: render a muted "type" label in the chip
+    // area instead of the live state, so an unsupported custom row is visible.
+    val isUnknownType = explicitType != null &&
+        explicitType !in setOf("toggle", "simple", "display", "button", "lock", "cover")
     val stateText = compactStateText(state)
     EntityRowScaffold(row, state, accent, onAction, stateColor) {
+        if (isUnknownType) {
+            StateChip(text = explicitType ?: "?", accent = R1.InkMuted)
+            return@EntityRowScaffold
+        }
         // Timestamp/uptime sensors tick live; everything else is a plain chip.
         val tsFormat = resolveTimestampFormat(row.format, state.deviceClass)
         val tsInstant = if (tsFormat != null) {
@@ -239,34 +279,6 @@ private fun DisplayEntityRow(
             StateChip(text = stateText, accent = accent)
         }
     }
-}
-
-/**
- * A state chip whose text derives from a live 1-second ticker for RELATIVE
- * and TOTAL formats; DATE / TIME / DATETIME don't need per-second refresh but
- * still use this composable for a consistent call site (they simply ignore the
- * tick's sub-minute changes). The ticker is tied to this composable's lifetime:
- * once the row leaves the visible composition (e.g. scrolled off) the
- * [rememberNowTick] coroutine pauses automatically.
- */
-@Composable
-private fun LiveTimestampChip(
-    at: java.time.Instant,
-    format: TimestampFormat,
-    accent: androidx.compose.ui.graphics.Color,
-) {
-    val now by rememberNowTick()
-    val use24h = rememberUse24HourClock()
-    val text = runCatching {
-        formatTimestamp(
-            at = at,
-            format = format,
-            now = now,
-            zone = java.time.ZoneId.systemDefault(),
-            use24h = use24h,
-        )
-    }.getOrDefault(at.toString())
-    StateChip(text = text, accent = accent)
 }
 
 @Composable
@@ -388,7 +400,15 @@ internal fun secondaryInfoLine(kind: String, state: EntityState?): String? {
         "entity-id" -> state.id.value
         "area" -> state.area
         "state" -> state.rawState
-        "last-changed", "last-triggered", "last-updated" -> "since " + relativeTimeShort(state.lastChanged)
+        "last-changed" -> "since " + relativeTimeShort(state.lastChanged)
+        // last-triggered: automation / script "last ran" time. Falls back to
+        // last-changed when the entity has never been triggered (lastTriggered null).
+        "last-triggered" -> "since " + relativeTimeShort(state.lastTriggered ?: state.lastChanged)
+        // last-updated: HA's wire field distinct from last-changed. EntityState does not
+        // carry it yet (only lastChanged is mapped); fall back to lastChanged so the
+        // label is accurate for states that HA doesn't suppress re-reports on, and
+        // silently omit rather than crash. This is a known delta vs. HA's frontend.
+        "last-updated" -> "since " + relativeTimeShort(state.lastChanged)
         // Numeric cover/light attributes HA surfaces under the row. Each reads
         // the live attribute and renders nothing when the entity doesn't carry
         // it (so a non-cover gets no spurious "Position:" line).

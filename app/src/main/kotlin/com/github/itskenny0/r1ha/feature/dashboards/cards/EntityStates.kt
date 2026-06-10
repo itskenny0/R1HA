@@ -3,7 +3,10 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 import androidx.compose.runtime.Immutable
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.ConditionalRowPayload
+import com.github.itskenny0.r1ha.core.lovelace.EntitiesItem
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.SpecialRow
 
 /**
  * Stable, value-equal wrapper around a slice of the live entity-state map.
@@ -85,7 +88,17 @@ class EntityStates private constructor(private val map: Map<String, EntityState>
  */
 internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
     when (card) {
-        is LovelaceCard.Entities -> card.entities.forEach { sink.addEntity(it.entityId) }
+        is LovelaceCard.Entities -> {
+            // Walk the full rowItems list so entity refs inside special rows
+            // (attribute, button, buttons, conditional) are included in the
+            // slice and the card re-evaluates when those entities change.
+            card.rowItems.forEach { item ->
+                when (item) {
+                    is EntitiesItem.Entity -> sink.addEntity(item.row.entityId)
+                    is EntitiesItem.Special -> collectSpecialRowEntityIds(item.row, sink)
+                }
+            }
+        }
         is LovelaceCard.Glance -> card.entities.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Button -> card.entityId?.let { sink.addEntity(it) }
         is LovelaceCard.Tile -> sink.addEntity(card.entityId)
@@ -178,6 +191,34 @@ internal fun collectConditionEntities(
         is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.ViewColumns,
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
+    }
+}
+
+/**
+ * Collect entity ids referenced by a special row so they are included in the
+ * per-card state slice and the card re-evaluates when those entities change.
+ * Recursively handles the conditional row's conditions and wrapped row.
+ */
+internal fun collectSpecialRowEntityIds(row: SpecialRow, sink: MutableSet<String>) {
+    when (row) {
+        is SpecialRow.Attribute -> sink.addEntity(row.entityId)
+        is SpecialRow.Button -> row.entityId?.let { sink.addEntity(it) }
+        is SpecialRow.Buttons -> row.entries.forEach { it.entityId?.let(sink::addEntity) }
+        is SpecialRow.Conditional -> {
+            // Condition gating entities + entities inside the wrapped row itself.
+            row.conditions.forEach { collectConditionEntities(it, sink) }
+            when (val payload = row.row) {
+                is ConditionalRowPayload.EntityRowPayload -> sink.addEntity(payload.row.entityId)
+                is ConditionalRowPayload.SpecialRowPayload -> collectSpecialRowEntityIds(payload.row, sink)
+            }
+        }
+        // Section, divider, text, weblink, cast, and unknown rows carry no entity refs.
+        is SpecialRow.Section,
+        is SpecialRow.Divider,
+        is SpecialRow.Text,
+        is SpecialRow.Weblink,
+        is SpecialRow.Cast,
+        is SpecialRow.Unknown -> Unit
     }
 }
 

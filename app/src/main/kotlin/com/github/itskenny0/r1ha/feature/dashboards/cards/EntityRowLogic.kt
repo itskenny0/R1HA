@@ -28,7 +28,9 @@ internal fun domainOf(entityId: String): String =
 internal enum class RowKind {
     Toggle, Button, InputButton, Climate, Cover, Group, Humidifier,
     InputDatetime, InputNumber, InputSelect, InputText, Lock, MediaPlayer,
-    Number, Scene, Script, Select, Update, Valve, Display,
+    Number, Scene, Script, Select, Update, Valve,
+    // Read-only display rows with a specialised renderer per domain.
+    Event, Weather, Timer, Display,
 }
 
 internal fun rowKindFor(entityId: String): RowKind = when (domainOf(entityId)) {
@@ -52,8 +54,12 @@ internal fun rowKindFor(entityId: String): RowKind = when (domainOf(entityId)) {
     "select" -> RowKind.Select
     "update" -> RowKind.Update
     "valve" -> RowKind.Valve
-    // sensor / event / weather / timer / date / time and any unmodelled domain:
-    // a sibling batch owns the display rows; render the read-only state chip.
+    // Display domains with a dedicated read-only renderer.
+    "event" -> RowKind.Event
+    "weather" -> RowKind.Weather
+    "timer" -> RowKind.Timer
+    // sensor / date / time and any unmodelled domain: render the generic
+    // read-only state chip (timestamp-aware via the shared format engine).
     else -> RowKind.Display
 }
 
