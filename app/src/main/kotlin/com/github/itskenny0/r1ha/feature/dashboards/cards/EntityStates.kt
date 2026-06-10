@@ -146,6 +146,10 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Repairs -> Unit
         is LovelaceCard.EmptyState -> Unit
         is LovelaceCard.Distribution -> card.entries.forEach { sink.addEntity(it.entityId) }
+        // Energy cards source their entities from the energy preferences fetched
+        // at runtime, not from card config, so they contribute no static ids.
+        is LovelaceCard.EnergyDateSelection -> Unit
+        is LovelaceCard.Energy -> Unit
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> card.badges.forEach { it.entityId?.let(sink::addEntity) }
         is LovelaceCard.Logbook -> Unit

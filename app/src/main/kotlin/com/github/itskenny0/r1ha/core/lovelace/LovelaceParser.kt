@@ -18,6 +18,11 @@ private val SPECIAL_ROW_TYPES = setOf(
     "call-service", "perform-action", "conditional", "text", "weblink", "cast",
 )
 
+// The HA `energy-*` / `*-sankey` card types, mapped to their R1 kind. The
+// `energy-date-selection` host is parsed separately (it carries no kind).
+private val ENERGY_CARD_TYPES_BY_TYPE: Map<String, EnergyCardKind> =
+    EnergyCardKind.entries.associateBy { it.haType }
+
 /**
  * Pure parser turning HA's raw `lovelace/config` JSON into the typed
  * [LovelaceConfig] tree. Stateless: no IO, no caching, no Compose.
@@ -700,6 +705,16 @@ object LovelaceParser {
                 raw = obj,
                 title = obj["title"]?.asStringOrNull(),
                 entries = parseDistributionEntries(obj["entities"]),
+            )
+            "energy-date-selection" -> LovelaceCard.EnergyDateSelection(
+                raw = obj,
+                collectionKey = parseCollectionKey(obj),
+            )
+            in ENERGY_CARD_TYPES_BY_TYPE.keys -> LovelaceCard.Energy(
+                raw = obj,
+                kind = ENERGY_CARD_TYPES_BY_TYPE.getValue(type),
+                title = obj["title"]?.asStringOrNull(),
+                collectionKey = parseCollectionKey(obj),
             )
             "statistics-graph" -> {
                 val ids = parseStatisticsGraphEntities(obj)
