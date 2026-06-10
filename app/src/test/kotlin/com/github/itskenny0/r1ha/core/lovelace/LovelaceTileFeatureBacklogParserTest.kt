@@ -51,6 +51,13 @@ class LovelaceTileFeatureBacklogParserTest {
         assertEquals(emptyList<String>(), (f as LovelaceTileFeature.ClimateSwingHorizontalModes).swingModes)
     }
 
+    @Test fun `climate-swing-horizontal-modes reads the swing_horizontal_modes key`() {
+        // HA's config key is swing_horizontal_modes (not swing_modes); the
+        // narrowing list must come through.
+        val f = single("""{"type":"climate-swing-horizontal-modes","swing_horizontal_modes":["off","both"]}""")
+        assertEquals(listOf("off", "both"), (f as LovelaceTileFeature.ClimateSwingHorizontalModes).swingModes)
+    }
+
     @Test fun `parses fan-preset-modes`() {
         val f = single("""{"type":"fan-preset-modes","preset_modes":["Smart","Sleep"]}""")
         assertEquals(listOf("Smart", "Sleep"), (f as LovelaceTileFeature.FanPresetModes).presetModes)

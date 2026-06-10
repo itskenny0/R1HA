@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -286,20 +287,30 @@ private fun renderFeature(
             if (domain != "weather") return false
             WeatherForecastFeature(
                 entityId = entityId,
-                forecastType = feature.forecastType,
+                configuredForecastType = feature.forecastType,
+                supportedFeatures = state.supportedFeatures,
                 series = ForecastSeries.TEMPERATURE,
                 accent = haColorAccent(feature.color) ?: accent,
                 showLabels = feature.showLabels,
+                daysToShow = feature.daysToShow,
+                hoursToShow = feature.hoursToShow,
+                currentTemperature = state.attrString("temperature")?.toDoubleOrNull(),
+                precipitationImperial = state.attrString("precipitation_unit") == "in",
             )
         }
         is LovelaceTileFeature.PrecipitationForecast -> {
             if (domain != "weather") return false
             WeatherForecastFeature(
                 entityId = entityId,
-                forecastType = feature.forecastType,
+                configuredForecastType = feature.forecastType,
+                supportedFeatures = state.supportedFeatures,
                 series = if (feature.precipitationType == "probability") ForecastSeries.PRECIP_PROBABILITY else ForecastSeries.PRECIP_AMOUNT,
                 accent = haColorAccent(feature.color) ?: accent,
                 showLabels = feature.showLabels,
+                daysToShow = feature.daysToShow,
+                hoursToShow = feature.hoursToShow,
+                currentTemperature = null,
+                precipitationImperial = state.attrString("precipitation_unit") == "in",
             )
         }
         // ── Climate mode-pickers ─────────────────────────────────────────────
@@ -873,17 +884,36 @@ private fun renderFeature(
         // ── Trend-graph (HA 2025.9) ──────────────────────────────────────────
         is LovelaceTileFeature.TrendGraph -> {
             val repo = LocalHaRepository.current ?: return false
-            var points by remember(entityId, feature.hoursToShow) {
-                mutableStateOf<List<HistoryPoint>>(emptyList())
+            // null = still loading; non-null Result captures success or failure so
+            // the placeholder can distinguish loading / error / no-history.
+            var fetch by remember(entityId, feature.hoursToShow) {
+                mutableStateOf<Result<List<HistoryPoint>>?>(null)
             }
+            // Periodic redraw so the sparkline advances on a long-lived kiosk
+            // screen rather than going permanently stale (HA's 60s window tick).
             LaunchedEffect(entityId, feature.hoursToShow) {
-                safeEntityId(entityId)?.let { eid ->
-                    repo.fetchHistory(eid, hours = feature.hoursToShow)
-                        .onSuccess { points = it }
+                val eid = safeEntityId(entityId) ?: run { fetch = Result.success(emptyList()); return@LaunchedEffect }
+                while (true) {
+                    fetch = repo.fetchHistory(eid, hours = feature.hoursToShow)
+                    delay(60_000L)
                 }
             }
-            val numericPts = points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
-            if (numericPts.size < 2) return false
+            val current = fetch
+            if (current == null) {
+                Text(text = "...", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
+            if (current.isFailure) {
+                Text(text = "No history", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
+            val points = current.getOrDefault(emptyList())
+            val rawPts = points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
+            val numericPts = downsampleTrendPoints(rawPts, feature.detail)
+            if (numericPts.size < 2) {
+                Text(text = "No history", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
             val yMin = numericPts.map { it.second }.min()
             val yMax = numericPts.map { it.second }.max()
             val tStart = numericPts.map { it.first }.min()

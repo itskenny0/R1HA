@@ -1330,16 +1330,23 @@ object LovelaceParser {
                     // HA default is true (renderMuteButton: showMuteButton ?? true).
                     showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: true,
                 )
+                // forecast_type absent -> null = resolve from the entity's
+                // supported bits at render time (HA: daily > twice_daily > hourly).
+                // show_labels defaults to TRUE, matching HA's `!== false` default.
                 "temperature-forecast" -> LovelaceTileFeature.TemperatureForecast(
-                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase() ?: "daily",
+                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase(),
                     color = obj["color"]?.asStringOrNull(),
-                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: false,
+                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: true,
+                    daysToShow = obj["days_to_show"]?.asIntOrNull(),
+                    hoursToShow = obj["hours_to_show"]?.asIntOrNull(),
                 )
                 "precipitation-forecast" -> LovelaceTileFeature.PrecipitationForecast(
-                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase() ?: "daily",
+                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase(),
                     precipitationType = obj["precipitation_type"]?.asStringOrNull()?.lowercase() ?: "amount",
                     color = obj["color"]?.asStringOrNull(),
-                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: false,
+                    showLabels = obj["show_labels"]?.asBooleanOrNull() ?: true,
+                    daysToShow = obj["days_to_show"]?.asIntOrNull(),
+                    hoursToShow = obj["hours_to_show"]?.asIntOrNull(),
                 )
                 // Climate mode-pickers
                 "climate-fan-modes" -> LovelaceTileFeature.ClimateFanModes(parseStringList(obj["fan_modes"]))
@@ -1398,6 +1405,9 @@ object LovelaceParser {
                 // Trend-graph (HA 2025.9)
                 "trend-graph" -> LovelaceTileFeature.TrendGraph(
                     hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
+                    // HA's `detail` defaults to true (draw every point); false
+                    // downsamples to ~1 point/hour.
+                    detail = obj["detail"]?.asBooleanOrNull() ?: true,
                 )
                 // Date-set (HA 2025.9)
                 "date-set" -> LovelaceTileFeature.DateSet
