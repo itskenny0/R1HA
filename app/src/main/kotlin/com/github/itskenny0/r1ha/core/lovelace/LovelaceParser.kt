@@ -963,11 +963,28 @@ object LovelaceParser {
                         tapAction = parseAction(item["tap_action"] as? JsonObject),
                         holdAction = parseAction(item["hold_action"] as? JsonObject),
                         doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
+                        format = parseTimestampFormat(item["format"]?.asStringOrNull()),
                     )
                 }
                 else -> null
             }
         }
+    }
+
+    /**
+     * Parse HA's `format:` key on entity rows and badge rows. Accepts the five
+     * values from `TimestampRenderingFormat` (hui-timestamp-display.ts):
+     * relative | total | date | time | datetime. Unknown values and null yield
+     * null (the renderer applies the device-class default: timestamp -> relative,
+     * uptime -> total, everything else -> raw state).
+     */
+    private fun parseTimestampFormat(raw: String?): TimestampFormat? = when (raw?.lowercase()) {
+        "relative" -> TimestampFormat.RELATIVE
+        "total" -> TimestampFormat.TOTAL
+        "date" -> TimestampFormat.DATE
+        "time" -> TimestampFormat.TIME
+        "datetime" -> TimestampFormat.DATETIME
+        else -> null
     }
 
     /** Parse a distribution card's `entities:`: a bare id string or an object

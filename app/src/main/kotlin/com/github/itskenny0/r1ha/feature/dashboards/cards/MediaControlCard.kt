@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -86,12 +87,18 @@ fun MediaControlCard(
             StateChip(text = if (raw.isBlank()) "-" else raw.replace('_', ' '), accent = accent)
         }
         Spacer(Modifier.height(6.dp))
+        // Scroll long track titles while playing, matching HA's hui-marquee
+        // behaviour. basicMarquee only activates when the text actually overflows
+        // the available width, so short titles are unaffected. The modifier is
+        // gated on `playing` (not just `active`) so paused/buffering states keep
+        // the text stationary rather than scrolling a frozen frame.
         Text(
             text = nowPlaying,
             style = R1.body,
             color = R1.InkSoft,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = if (playing) Modifier.basicMarquee() else Modifier,
         )
         // Selected input source (e.g. "Spotify", "HDMI 1") when the player
         // reports one, so the card reads like HA's media-control card.

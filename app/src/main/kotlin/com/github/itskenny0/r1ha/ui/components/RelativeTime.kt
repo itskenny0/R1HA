@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
@@ -110,6 +111,27 @@ fun rememberRelativeTime(at: Instant?): String {
     }
     return text
 }
+
+/**
+ * A 1-second wall-clock [Instant] ticker scoped to the current composition.
+ * Emits [Instant.now()] once per second while the composable is visible;
+ * pauses automatically when the composition leaves the screen (the
+ * [produceState] coroutine suspends inside delay while the Recomposer is
+ * stopped for background lifecycle events, so no background ticking occurs).
+ *
+ * Use this for timestamp displays that must advance every second (RELATIVE /
+ * TOTAL formats). One [rememberNowTick] call per composable is sufficient
+ * regardless of how many formatted fields it produces — key by
+ * `(at, format)` to limit recomposition to the field that changed.
+ */
+@Composable
+fun rememberNowTick(): State<Instant> =
+    produceState(initialValue = Instant.now()) {
+        while (true) {
+            delay(1_000L)
+            value = Instant.now()
+        }
+    }
 
 /**
  * Localised relative-time label. Renders nothing when [at] is null. The

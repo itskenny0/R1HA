@@ -776,7 +776,26 @@ data class EntityRow(
     /** Per-row `hold_action` / `double_tap_action`. Null = gesture unbound. */
     val holdAction: LovelaceAction? = null,
     val doubleTapAction: LovelaceAction? = null,
+    /**
+     * HA timestamp display format for this row. Mirrors `hui-timestamp-display`'s
+     * `format:` option: relative / total / date / time / datetime. Null means auto:
+     * the row uses [TimestampFormat.RELATIVE] for timestamp device-class sensors and
+     * falls back to the raw state for everything else.
+     */
+    val format: TimestampFormat? = null,
 )
+
+/**
+ * Timestamp rendering format. Mirrors HA's `TimestampRenderingFormat` type
+ * (src/panels/lovelace/components/types.ts) used by `hui-timestamp-display`.
+ *
+ *  - [RELATIVE]: live-ticking "5m ago" / "in 2h" (default for timestamp sensors)
+ *  - [TOTAL]: elapsed/remaining as HH:MM:SS (uptime default in HA)
+ *  - [DATE]: locale-formatted date only ("3 Jun 2025")
+ *  - [TIME]: locale-formatted time only ("14:32" / "2:32 PM")
+ *  - [DATETIME]: locale-formatted date + time ("3 Jun 14:32")
+ */
+enum class TimestampFormat { RELATIVE, TOTAL, DATE, TIME, DATETIME }
 
 /** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */
 @Immutable

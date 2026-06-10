@@ -860,4 +860,96 @@ class LovelaceParserTest {
         assertThat(card.segments).isEmpty()
         assertThat(card.severity?.yellow).isEqualTo(50.0)
     }
+
+    // ── Timestamp format: EntityRow.format parsing ────────────────────────────
+
+    @Test fun `entity row with format relative parses to TimestampFormat RELATIVE`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"entities","entities":[
+                  {"entity":"sensor.boot_time","format":"relative"}
+                ]}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.RELATIVE)
+    }
+
+    @Test fun `entity row with format total parses to TimestampFormat TOTAL`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"entities","entities":[
+                  {"entity":"sensor.uptime","format":"total"}
+                ]}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.TOTAL)
+    }
+
+    @Test fun `entity row with format date parses to TimestampFormat DATE`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts","format":"date"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.DATE)
+    }
+
+    @Test fun `entity row with format time parses to TimestampFormat TIME`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts","format":"time"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.TIME)
+    }
+
+    @Test fun `entity row with format datetime parses to TimestampFormat DATETIME`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts","format":"datetime"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.DATETIME)
+    }
+
+    @Test fun `entity row with unknown format parses to null`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts","format":"invalid_value"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isNull()
+    }
+
+    @Test fun `entity row without format key has null format`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isNull()
+    }
+
+    @Test fun `bare entity-id string row has null format`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":["sensor.uptime"]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isNull()
+    }
+
+    @Test fun `format key is case-insensitive`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"entities","entities":[{"entity":"sensor.ts","format":"RELATIVE"}]}"""),
+        ) as LovelaceCard.Entities
+        assertThat(card.entities.first().format).isEqualTo(TimestampFormat.RELATIVE)
+    }
+
+    @Test fun `glance card entity row also accepts format key`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"glance","entities":[
+                  {"entity":"sensor.boot","format":"total"},
+                  {"entity":"sensor.ts","format":"relative"}
+                ]}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Glance
+        assertThat(card.entities[0].format).isEqualTo(TimestampFormat.TOTAL)
+        assertThat(card.entities[1].format).isEqualTo(TimestampFormat.RELATIVE)
+    }
 }
