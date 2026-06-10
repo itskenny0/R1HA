@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.ValueBarLocation
@@ -108,11 +109,20 @@ object ColorfulCardsTheme : R1Theme {
      * EntityCard wrapper remembers the returned style per entity so this never runs in
      * the per-detent recomposition path.
      */
-    override fun auxCardStyle(entityIdText: String): AuxCardStyle = AuxCardStyle(
-        backdrop = Brush.linearGradient(paletteFor(entityIdText)),
+    override fun auxCardStyle(
+        entityIdText: String,
+        accentOverride: Color?,
+    ): AuxCardStyle = AuxCardStyle(
+        backdrop = Brush.linearGradient(
+            accentOverride?.let { overridePalette(it) } ?: paletteFor(entityIdText),
+        ),
         scrim = topScrim,
         ink = auxInk,
     )
+
+    /** Gradient stops derived from a per-card colour override; see [overrideGradientArgb]. */
+    private fun overridePalette(base: Color): List<Color> =
+        overrideGradientArgb(base.toArgb()).map { Color(it) }
 
     private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
         CardRenderModel.Glyph.LIGHT -> "LIGHT"
@@ -134,20 +144,26 @@ object ColorfulCardsTheme : R1Theme {
 
     @Composable
     override fun Card(model: CardRenderModel, modifier: Modifier, onTapToggle: () -> Unit) {
-        val pal = paletteFor(model.entityIdText)
+        // A per-card colour override recolours the SKY in this theme: the gradient is
+        // the card's colour identity, so picking a colour in the customize sheet and
+        // only tinting the slider read as "the override does nothing". Without an
+        // override the entity-id hash picks from the stock palettes as before.
+        val overrideAccent = model.accentOverride
+        val pal = overrideAccent?.let { ov ->
+            androidx.compose.runtime.remember(ov) { overridePalette(ov) }
+        } ?: paletteFor(model.entityIdText)
         // The gradient backdrop depends only on the (stable, interned) palette for
         // this entity, so build the Brush once and reuse it. The card recomposes on
         // every wheel detent (percent change); rebuilding the linear-gradient Brush
         // each time was an allocation in the per-detent rendering path for no benefit.
         val bgBrush = androidx.compose.runtime.remember(pal) { Brush.linearGradient(pal) }
         val ui = LocalUiOptions.current
-        // Accent is white for body text + slider, with a per-card override (from
-        // EntityOverride.accentColor) winning when set. The gradient backdrop already
-        // carries the colour identity so we don't need a coloured accent on top.
-        // Per-card override wins, then the global accent picker, then white
-        // (the readable default on every gradient backdrop).
-        val accent = model.accentOverride
-            ?: LocalThemeAccentOverride.current
+        // Accent is white for body text + slider. When a per-card override exists it
+        // now paints the backdrop, so the accent FALLS BACK to white: a fill the same
+        // colour as the sky's mid-stop would vanish into it. Otherwise the global
+        // accent picker, then the light's live colour, then white.
+        val accent = if (overrideAccent != null) Color.White
+        else LocalThemeAccentOverride.current
             ?: model.liveLightColor
             ?: Color.White
         // Short landscape viewport: trim vertical chrome so the card's bottom controls don't

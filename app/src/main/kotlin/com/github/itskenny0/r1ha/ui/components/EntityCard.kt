@@ -249,8 +249,14 @@ fun EntityCard(
     // DefaultCardInk == the R1 ink tokens the cards used to read directly. Remembered
     // because the style is a pure function of theme + entity id; rebuilding the gradient
     // Brush on every recomposition would be a per-detent allocation for nothing.
-    val auxStyle = androidx.compose.runtime.remember(theme, state.id.value) {
-        theme.auxCardStyle(state.id.value)
+    // The per-card accent override participates in the aux backdrop: under
+    // Colourful Cards a chosen colour recolours the gradient itself, so the
+    // override must reach the hook (and key the remember) for sensor / action /
+    // select / switch cards too.
+    val auxOverrideAccent = perCardOverridePulledEarly?.accentColor
+        ?.let { androidx.compose.ui.graphics.Color(it) }
+    val auxStyle = androidx.compose.runtime.remember(theme, state.id.value, auxOverrideAccent) {
+        theme.auxCardStyle(state.id.value, auxOverrideAccent)
     }
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalUiOptions provides mergedUi,

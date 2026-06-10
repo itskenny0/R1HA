@@ -223,7 +223,13 @@ interface R1Theme {
      * (palette hash + constant scrims), and the EntityCard wrapper remembers the result
      * per entity so a per-call Brush build never lands in the recomposition hot path.
      */
-    fun auxCardStyle(entityIdText: String): AuxCardStyle? = null
+    fun auxCardStyle(
+        entityIdText: String,
+        /** Per-card accent override (EntityOverride.accentColor). Themes whose
+         *  backdrop IS the card's colour identity derive the backdrop from it
+         *  so the customize sheet's colour pick genuinely recolours the card. */
+        accentOverride: androidx.compose.ui.graphics.Color? = null,
+    ): AuxCardStyle? = null
 }
 
 /** Shared baseline used by all three themes for non-card screens (settings, picker, about, onboarding). */
