@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -23,6 +24,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.HuiImage
 import com.github.itskenny0.r1ha.ui.components.ImageEngine
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -56,13 +58,21 @@ fun PictureGlanceCard(
         ?: card.filter
 
     // Whole-card action (HA fires the card's tap_action on the image area). The
-    // card carries no single entity, so the slots pass through unchanged; chips
-    // below have their own per-entity actions.
+    // card has no single entity field beyond the camera/image entity; with no
+    // explicit tap_action HA defaults to more-info on that entity when one is
+    // present, else the image area is inert.
     val cardActions = CardActions(
-        tap = card.tapAction,
-        hold = card.holdAction,
-        doubleTap = card.doubleTapAction,
+        tap = card.tapAction?.boundTo(camEntityId)
+            ?: camEntityId?.let { LovelaceAction.Builtin("more-info", it) },
+        hold = card.holdAction?.boundTo(camEntityId),
+        doubleTap = card.doubleTapAction?.boundTo(camEntityId),
     )
+
+    // Split the chips into HA's two groups: the left "dialog" group (domains not
+    // in DOMAINS_TOGGLE, default tap = more-info) and the right "toggle" group
+    // (default tap = toggle). HA lays the box out with space-between.
+    val groups = glanceGroups(card.entities, forceDialog = card.forceDialog)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -92,17 +102,26 @@ fun PictureGlanceCard(
                 contentDescription = card.title,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // Chips strip overlaid along the bottom edge, on a darkening scrim.
+            // Chip strip overlaid along the bottom edge, on a darkening scrim.
+            // Dialog group left, toggle group right (space-between like HA).
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
                     .background(R1.Bg.copy(alpha = 0.55f))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                card.entities.take(6).forEach { row ->
-                    PictureChip(row, stateMap, onAction)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    groups.dialog.forEach { row ->
+                        PictureGlanceChip(row, card.showState, dialogGroup = true, stateMap, onAction)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    groups.toggle.forEach { row ->
+                        PictureGlanceChip(row, card.showState, dialogGroup = false, stateMap, onAction)
+                    }
                 }
             }
         }
@@ -130,9 +149,11 @@ fun PictureEntityCard(
     val camState = camEntityId?.let { stateMap.byRaw(it) }
     val entityState = state?.rawState
 
-    // state_image resolution
+    // state_image resolution. When show_entity_picture is set HA prefers the
+    // entity's own picture before the configured image.
     @Suppress("UNCHECKED_CAST")
-    val resolvedImage = ImageEngine.resolveStateImage(card.stateImage as kotlin.collections.Map<String, String>?, entityState)
+    val resolvedImage = (if (card.showEntityPicture) entityPictureOf(state) else null)
+        ?: ImageEngine.resolveStateImage(card.stateImage as kotlin.collections.Map<String, String>?, entityState)
         ?: card.image
         ?: entityPictureOf(imageEntityState)
         ?: entityPictureOf(state)
@@ -142,11 +163,13 @@ fun PictureEntityCard(
     val effectiveFilter = entityState?.let { (card.stateFilter as kotlin.collections.Map<String, String>?)?.get(it) }
         ?: card.filter
 
-    val actions = resolveCardActions(
-        tapAction = card.tapAction,
-        holdAction = card.holdAction,
-        doubleTapAction = card.doubleTapAction,
-        cardEntityId = card.entityId,
+    // HA's picture-entity hardcodes tap_action: more-info (it does NOT use the
+    // domain toggle default). Hold / double-tap pass through unchanged.
+    val actions = CardActions(
+        tap = card.tapAction?.boundTo(card.entityId)
+            ?: LovelaceAction.Builtin("more-info", card.entityId),
+        hold = card.holdAction?.boundTo(card.entityId),
+        doubleTap = card.doubleTapAction?.boundTo(card.entityId),
     )
     val accent = stateAccentFor(card.entityId, state)
 
@@ -228,12 +251,13 @@ fun PicturePlainCard(
 
     val camEntityId = card.cameraImage?.takeUnless { it.isBlank() }
 
-    // Whole-card action; the plain picture card has no entity, so a missing
-    // tap_action leaves the surface inert (no domain default to fall back to).
+    // Whole-card action. HA: when an image_entity is set the default tap is
+    // more-info on that entity; otherwise tap defaults to `none` (inert).
     val actions = CardActions(
-        tap = card.tapAction,
-        hold = card.holdAction,
-        doubleTap = card.doubleTapAction,
+        tap = card.tapAction?.boundTo(card.imageEntity)
+            ?: card.imageEntity?.let { LovelaceAction.Builtin("more-info", it) },
+        hold = card.holdAction?.boundTo(card.imageEntity),
+        doubleTap = card.doubleTapAction?.boundTo(card.imageEntity),
     )
     Box(
         modifier = modifier
@@ -257,33 +281,87 @@ fun PicturePlainCard(
     }
 }
 
+/**
+ * One picture-glance chip: an icon reflecting the entity state (coloured when
+ * [stateActive], dimmed when off/unavailable, mirroring HA's `.state-on`
+ * class) over an optional state-text caption. The chip fires the entity's
+ * action; the default tap depends on its group ([dialogGroup] → more-info, else
+ * toggle), and per-entity tap/hold/double-tap overrides apply.
+ */
 @Composable
-private fun PictureChip(
+private fun PictureGlanceChip(
     row: EntityRow,
+    cardShowState: Boolean,
+    dialogGroup: Boolean,
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val eid = safeEntityId(row.entityId)
-    val state = eid?.let { stateMap[it] }
-    val accent = stateAccentFor(row.entityId, state)
-    val actions = resolveCardActions(
-        tapAction = row.tapAction,
-        holdAction = row.holdAction,
-        doubleTapAction = row.doubleTapAction,
-        cardEntityId = row.entityId,
+    val state = stateMap.byRaw(row.entityId)
+    val active = stateActive(row.entityId, state)
+    // HA dims the off/unavailable icon (#a9a9a9) and shows the active icon white;
+    // map onto R1's state accent for active, a muted ink for inactive.
+    val iconTint = when {
+        state != null && !state.isAvailable -> R1.StatusRed
+        active -> stateAccentFor(row.entityId, state)
+        else -> R1.InkMuted
+    }
+    val icon = R1Icons.forMdi(row.icon)
+        ?: R1Icons.forEntity(
+            entityId = row.entityId,
+            deviceClass = state?.deviceClass,
+            state = state?.rawState,
+        )
+
+    // Per-entity tap default: more-info (dialog) / toggle (toggle) unless an
+    // explicit tap_action is set. Hold default is more-info in HA.
+    val tap = row.tapAction?.boundTo(row.entityId)
+        ?: glanceChipDefaultTap(row.entityId, dialogGroup)
+    val hold = row.holdAction?.boundTo(row.entityId)
+        ?: LovelaceAction.Builtin("more-info", row.entityId)
+    val actions = CardActions(
+        tap = tap,
+        hold = hold,
+        doubleTap = row.doubleTapAction?.boundTo(row.entityId),
     )
-    Box(
+
+    // show_state: the card flag OR the per-entity flag turns the caption on.
+    val showState = cardShowState || (row.showState == true)
+    val stateText: String? = if (showState) {
+        if (row.attribute != null) {
+            val attrs = state?.attributesJson
+            val v = (attrs?.get(row.attribute) as? JsonPrimitive)?.content ?: ""
+            buildString {
+                if (!row.prefix.isNullOrEmpty()) append(row.prefix)
+                append(v)
+                if (!row.suffix.isNullOrEmpty()) append(row.suffix)
+            }
+        } else {
+            state?.let(::compactStateText)?.takeUnless { it.isBlank() }
+        }
+    } else {
+        null
+    }
+
+    Column(
         modifier = Modifier
             .clip(R1.ShapeRound)
-            .background(R1.SurfaceMuted.copy(alpha = 0.9f))
-            .r1CardActions(actions = actions, onAction = onAction)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .r1CardActions(actions = actions, onAction = onAction),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(
-            text = state?.let(::compactStateText)?.uppercase() ?: "·",
-            style = R1.labelMicro,
-            color = accent,
+        androidx.compose.material3.Icon(
+            imageVector = icon,
+            contentDescription = resolveName(row.name, state, row.entityId),
+            tint = iconTint,
+            modifier = Modifier.size(22.dp),
         )
+        if (!stateText.isNullOrBlank()) {
+            Text(
+                text = stateText,
+                style = R1.labelMicro,
+                color = R1.InkSoft,
+                maxLines = 1,
+            )
+        }
     }
 }
 

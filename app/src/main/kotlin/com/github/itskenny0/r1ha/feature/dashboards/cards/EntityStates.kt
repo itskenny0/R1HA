@@ -131,7 +131,9 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.Clock -> Unit
         is LovelaceCard.PictureElements -> {
             card.cameraImage?.let { sink.addEntity(it) }
-            card.elements.forEach { el -> el.entityId?.let { sink.addEntity(it) } }
+            card.entity?.let { sink.addEntity(it) }
+            card.imageEntity?.let { sink.addEntity(it) }
+            card.elements.forEach { collectElementEntities(it, sink) }
         }
         is LovelaceCard.Unsupported -> card.entityRefs.forEach { sink.addEntity(it) }
     }
@@ -179,6 +181,23 @@ internal fun collectConditionEntities(
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
     }
+}
+
+/**
+ * Collect every entity id a picture-element gates on or binds to, recursing into
+ * a `conditional` element's gate conditions and wrapped children. Keeping this
+ * exhaustive means a conditional overlay re-evaluates whenever any input changes
+ * and a deep image/state element is still observed.
+ */
+internal fun collectElementEntities(
+    element: com.github.itskenny0.r1ha.core.lovelace.PictureElement,
+    sink: MutableSet<String>,
+) {
+    element.entityId?.let { sink.addEntity(it) }
+    element.imageEntity?.let { sink.addEntity(it) }
+    element.cameraImage?.let { sink.addEntity(it) }
+    element.conditions.forEach { collectConditionEntities(it, sink) }
+    element.children.forEach { collectElementEntities(it, sink) }
 }
 
 /** Add a raw entity id, keyed verbatim. Domain-agnostic: a `domain.object_id`
