@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.weather
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
@@ -126,16 +127,36 @@ fun WeatherScreen(
                 onRefresh = { vm.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = dimens.screenGutter, vertical = R1.space.s,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
-                ) {
-                    items(items = ui.weathers, key = { it.entityId }) { w ->
-                        WeatherRow(w)
+                if (ui.weathers.size == 1) {
+                    // The common install has exactly one weather entity; a
+                    // single compact list row left most of a phone screen
+                    // empty. Promote it to a hero layout that uses the page.
+                    val heroScroll = rememberScrollState()
+                    com.github.itskenny0.r1ha.ui.components.WheelScrollForScrollState(
+                        wheelInput = wheelInput,
+                        scrollState = heroScroll,
+                        settings = settings,
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(heroScroll)
+                            .padding(horizontal = dimens.screenGutter, vertical = R1.space.s),
+                    ) {
+                        WeatherHero(ui.weathers[0])
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = dimens.screenGutter, vertical = R1.space.s,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(dimens.sectionGap),
+                    ) {
+                        items(items = ui.weathers, key = { it.entityId }) { w ->
+                            WeatherRow(w)
+                        }
                     }
                 }
             }
@@ -144,13 +165,33 @@ fun WeatherScreen(
     }
 }
 
+/**
+ * Label → value pairs for the secondary readings, in a stable order. Shared
+ * by the compact row (dot-joined line) and the single-entity hero (stat
+ * grid) so the two presentations can never drift. Only reported readings
+ * appear; integrations that omit an attribute produce no blank cell.
+ */
+internal fun weatherStatPairs(w: WeatherViewModel.Weather): List<Pair<String, String>> = buildList {
+    if (w.humidity != null) add("HUMIDITY" to "${w.humidity}%")
+    if (w.windSpeed != null) {
+        val bearing = w.windBearingText ?: w.windBearingDeg?.let { degreesToCompass(it) }
+        val windStr = "${formatNumber(w.windSpeed)} ${w.windUnit ?: ""}".trim()
+        val gust = w.windGust?.let { " G${formatNumber(it)}" } ?: ""
+        add("WIND" to (if (bearing != null) "$windStr $bearing" else windStr) + gust)
+    }
+    if (w.pressure != null) add("PRESSURE" to "${formatNumber(w.pressure)} ${w.pressureUnit ?: ""}".trim())
+    if (w.visibility != null) add("VISIBILITY" to "${formatNumber(w.visibility)} ${w.visibilityUnit ?: ""}".trim())
+    if (w.uvIndex != null) add("UV INDEX" to formatNumber(w.uvIndex))
+    if (w.dewPoint != null) add("DEW POINT" to formatTemp(w.dewPoint, w.temperatureUnit))
+    if (w.cloudCoverage != null) add("CLOUD" to "${w.cloudCoverage}%")
+}
+
 @Composable
 private fun WeatherRow(w: WeatherViewModel.Weather) {
-    // Which forecast cadence the strip shows. Defaults to whichever the
-    // entity reports; when both are present the toggle flips between them.
+    // Which forecast cadence the strip shows; daily-first (see defaultForecastKind).
     var mode by androidx.compose.runtime.remember(w.entityId) {
         androidx.compose.runtime.mutableStateOf(
-            if (w.hourly.isNotEmpty()) ForecastKind.Hourly else ForecastKind.Daily,
+            defaultForecastKind(hasHourly = w.hourly.isNotEmpty(), hasDaily = w.daily.isNotEmpty()),
         )
     }
     Column(
@@ -211,29 +252,19 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
                 )
             }
         }
-        // Secondary readings: only render when present. Avoids blank
-        // columns when HA's integration omits an attribute (e.g. some
-        // sensors only report temperature + condition).
-        val parts = buildList {
-            if (w.humidity != null) add("${w.humidity}% RH")
-            if (w.windSpeed != null) {
-                val bearing = w.windBearingText
-                    ?: w.windBearingDeg?.let { degreesToCompass(it) }
-                val windStr = "${formatNumber(w.windSpeed)} ${w.windUnit ?: ""}".trim()
-                val gust = w.windGust?.let { " G${formatNumber(it)}" } ?: ""
-                add((if (bearing != null) "$windStr $bearing" else windStr) + gust)
+        // Secondary readings: only render when present. Shares the pair
+        // builder with the hero grid so the two presentations agree.
+        val parts = weatherStatPairs(w).map { (label, value) ->
+            when (label) {
+                "HUMIDITY" -> "$value RH"
+                "WIND" -> value
+                "PRESSURE" -> value
+                "VISIBILITY" -> "VIS $value"
+                "UV INDEX" -> "UV $value"
+                "DEW POINT" -> "DEW $value"
+                "CLOUD" -> "$value CLOUD"
+                else -> "$label $value"
             }
-            if (w.pressure != null) {
-                add("${formatNumber(w.pressure)} ${w.pressureUnit ?: ""}".trim())
-            }
-            if (w.visibility != null) {
-                add("VIS ${formatNumber(w.visibility)} ${w.visibilityUnit ?: ""}".trim())
-            }
-            if (w.uvIndex != null) add("UV ${formatNumber(w.uvIndex)}")
-            if (w.dewPoint != null) {
-                add("DEW ${formatTemp(w.dewPoint, w.temperatureUnit)}")
-            }
-            if (w.cloudCoverage != null) add("${w.cloudCoverage}% CLOUD")
         }
         if (parts.isNotEmpty()) {
             Spacer(Modifier.size(R1.space.xxs))
@@ -294,6 +325,125 @@ private fun WeatherRow(w: WeatherViewModel.Weather) {
     }
 }
 
+/**
+ * Full-page treatment for the single-weather-entity install: big condition +
+ * temperature up top, the secondary readings as a legible two-column stat
+ * grid, and the forecast strip with roomier tiles. Multi-entity installs
+ * keep the compact [WeatherRow] cards instead.
+ */
+@Composable
+private fun WeatherHero(w: WeatherViewModel.Weather) {
+    var mode by androidx.compose.runtime.remember(w.entityId) {
+        androidx.compose.runtime.mutableStateOf(
+            defaultForecastKind(hasHourly = w.hourly.isNotEmpty(), hasDaily = w.daily.isNotEmpty()),
+        )
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = w.name,
+            style = responsiveType(R1.bodyEmph),
+            color = R1.InkSoft,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.size(R1.space.m))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = R1Icons.conditionIcon(w.condition),
+                contentDescription = conditionLabel(w.condition),
+                tint = conditionAccent(w.condition),
+                modifier = Modifier.size(64.dp),
+            )
+            Spacer(Modifier.width(R1.space.l))
+            Column {
+                if (w.temperature != null) {
+                    Text(
+                        text = formatTemp(w.temperature, w.temperatureUnit),
+                        style = responsiveType(R1.numeralXl),
+                        color = R1.Ink,
+                        maxLines = 1,
+                    )
+                }
+                Text(
+                    text = conditionDisplayLabel(w.condition),
+                    style = responsiveType(R1.label),
+                    color = conditionAccent(w.condition),
+                    maxLines = 1,
+                )
+                if (w.apparentTemperature != null && w.apparentTemperature != w.temperature) {
+                    Text(
+                        text = "FEELS ${formatTemp(w.apparentTemperature, w.temperatureUnit)}",
+                        style = responsiveType(R1.labelMicro),
+                        color = R1.InkSoft,
+                    )
+                }
+            }
+        }
+        // Secondary readings as a two-column grid: each value gets a labelled
+        // slot instead of competing inside one dot-joined micro line.
+        val pairs = weatherStatPairs(w)
+        if (pairs.isNotEmpty()) {
+            Spacer(Modifier.size(R1.space.l))
+            for (rowPair in pairs.chunked(2)) {
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = R1.space.xs)) {
+                    for (stat in rowPair) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stat.first,
+                                style = responsiveType(R1.labelMicro),
+                                color = R1.InkMuted,
+                            )
+                            Text(
+                                text = stat.second,
+                                style = responsiveType(R1.numeralM),
+                                color = R1.Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                    if (rowPair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        val entries = if (mode == ForecastKind.Hourly) w.hourly else w.daily
+        if (w.hourly.isNotEmpty() || w.daily.isNotEmpty()) {
+            Spacer(Modifier.size(R1.space.l))
+            if (w.hasBothForecasts) {
+                Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+                    R1Chip(
+                        text = "DAILY",
+                        variant = R1ChipVariant.Filter,
+                        selected = mode == ForecastKind.Daily,
+                        onClick = { mode = ForecastKind.Daily },
+                        contentDescription = "Show daily forecast",
+                    )
+                    R1Chip(
+                        text = "HOURLY",
+                        variant = R1ChipVariant.Filter,
+                        selected = mode == ForecastKind.Hourly,
+                        onClick = { mode = ForecastKind.Hourly },
+                        contentDescription = "Show hourly forecast",
+                    )
+                }
+                Spacer(Modifier.size(R1.space.s))
+            }
+            val tier = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current.tier
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(R1.space.m),
+            ) {
+                for (entry in entries) {
+                    ForecastTile(entry, mode, w.temperatureUnit, w.windUnit, tier, large = true)
+                }
+            }
+        }
+        Spacer(Modifier.size(R1.space.xl))
+    }
+}
+
 @Composable
 private fun ForecastTile(
     entry: ForecastEntry,
@@ -302,18 +452,22 @@ private fun ForecastTile(
     windUnit: String?,
     tier: com.github.itskenny0.r1ha.ui.components.WindowTier =
         com.github.itskenny0.r1ha.ui.components.WindowTier.R1,
+    /** Hero-strip tiles get the roomy treatment regardless of tier. */
+    large: Boolean = false,
 ) {
     // Breathe on bigger tiers: a wider floor + roomier inset keep each tile
     // legible across a large panel, while the R1 keeps its tight 56dp tiles
     // so the whole strip still fits the narrow panel's scroll.
-    val isWide = tier.isAtLeast(com.github.itskenny0.r1ha.ui.components.WindowTier.MEDIUM)
+    val isWide = large || tier.isAtLeast(com.github.itskenny0.r1ha.ui.components.WindowTier.MEDIUM)
     val tileMinWidth = if (isWide) 76.dp else 56.dp
     val tileInset = if (isWide) R1.space.m else R1.space.s
     Column(
         modifier = Modifier
             .widthIn(min = tileMinWidth)
             .clip(R1.ShapeS)
-            .background(R1.Bg)
+            // Inside a card the tiles cut darker wells into SurfaceMuted; on
+            // the hero (which sits on Bg directly) they need the inverse.
+            .background(if (large) R1.SurfaceMuted else R1.Bg)
             .padding(horizontal = tileInset, vertical = tileInset),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

@@ -29,6 +29,15 @@ import java.util.Locale
 enum class ForecastKind { Hourly, Daily }
 
 /**
+ * Which cadence a forecast UI opens on. Daily wins whenever the entity
+ * reports it: a day-level outlook is the planning view every weather app
+ * leads with, and hourly is one tap away. Hourly is only the default when
+ * it is all the integration provides.
+ */
+internal fun defaultForecastKind(hasHourly: Boolean, hasDaily: Boolean): ForecastKind =
+    if (hasDaily) ForecastKind.Daily else ForecastKind.Hourly
+
+/**
  * A single normalised forecast entry. All temperature / wind values
  * stay in HA's reported units; the UI appends the entity's unit string.
  * Nulls are preserved so the UI can omit absent fields rather than
