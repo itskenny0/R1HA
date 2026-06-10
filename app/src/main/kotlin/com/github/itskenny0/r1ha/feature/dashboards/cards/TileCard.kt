@@ -62,17 +62,24 @@ fun TileCard(
     modifier: Modifier = Modifier,
 ) {
     val state = stateMap.byRaw(card.entityId)
-    // HA's tile tints the icon with a configured `color` while the entity is
-    // active, falling back to the state-derived accent otherwise (and always
-    // for an unavailable entity, so a dead tile reads red rather than its
-    // decorative colour).
-    val stateAccent = stateAccentFor(card.entityId, state)
-    val accent = if (state?.isOn == true && state.isAvailable) {
-        haColorAccent(card.color) ?: stateAccent
-    } else {
-        stateAccent
+    // HA renders a hui-warning when the configured entity has no state object.
+    // Match that with the shared not-found card naming the entity, rather than
+    // a normal-looking tile showing a prettified id and a dead grey accent.
+    if (state == null) {
+        EntityNotFoundCard(card.entityId, modifier)
+        return
     }
-    val name = resolveDisplayName(card.name, card.nameType, state, card.entityId)
+    // HA's tile tints the icon with a configured `color`, a light's live
+    // `rgb_color` when on, then the state-derived accent (gated by `state_color`).
+    // An unavailable tile always reads red. The precedence lives in the pure
+    // [tileIconAccent] so it is unit-tested directly.
+    val accent = tileIconAccent(
+        entityId = card.entityId,
+        state = state,
+        configAccent = haColorAccent(card.color),
+        stateColor = card.stateColor,
+    )
+    val name = resolveStructuredName(card.name, card.nameItems, card.nameType, state, card.entityId)
     val icon = cardEntityIcon(card.entityId, state, card.icon)
     // Body tap (with HA's domain-default fallback) plus hold / double-tap.
     val actions = resolveCardActions(
@@ -86,10 +93,10 @@ fun TileCard(
     // is inert and the body action still fires from the surrounding surface.
     val iconActions = resolveIconActions(card)
     val stateText = when {
-        card.stateContent.isNotEmpty() && state != null ->
+        card.stateContent.isNotEmpty() ->
             resolveStateContent(card.stateContent, state).takeUnless { it.isBlank() }
         else ->
-            state?.let(::compactStateText)?.takeUnless { it.isBlank() }
+            compactStateText(state).takeUnless { it.isBlank() }
     }
 
     // HA's tile renders its `features:` as a control row below the body. We
@@ -115,7 +122,7 @@ fun TileCard(
         .padding(horizontal = 14.dp, vertical = 12.dp)
 
     Column(modifier = modifier.then(cardSurface)) {
-        if (inlineFeatures && hasFeatures && state != null) {
+        if (inlineFeatures && hasFeatures) {
             // Body and a compact trailing feature column share one row.
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TileBody(
@@ -151,7 +158,7 @@ fun TileCard(
                 onAction = onAction,
                 modifier = bodyTap,
             )
-            if (hasFeatures && state != null) {
+            if (hasFeatures) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

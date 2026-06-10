@@ -30,10 +30,19 @@ fun ButtonCard(
     modifier: Modifier = Modifier,
 ) {
     val state = card.entityId?.let { stateMap.byRaw(it) }
+    // HA renders a hui-warning when the button is bound to an entity the backend
+    // doesn't serve. A bare action button (no entity) is fine and skips this.
+    if (card.entityId != null && state == null) {
+        EntityNotFoundCard(card.entityId, modifier)
+        return
+    }
     // HA precedence: an explicit `color` wins; else `state_color` gates the
     // state-derived tint; else the button stays neutral.
     val accent = buttonAccent(card.color, card.stateColor, card.entityId, state)
-    val label = card.name ?: card.entityId?.let { resolveName(null, state, it) } ?: "Action"
+    val label = card.name?.takeUnless { it.isBlank() }
+        ?: card.entityId?.let { resolveStructuredName(null, card.nameItems, null, state, it) }
+        ?: "Action"
+    val discSize = iconHeightDp(card.iconHeight)?.dp ?: 48.dp
     // Resolve tap (with HA's domain-default fallback) plus hold / double-tap,
     // all bound to the card entity, in one shot via the shared action layer.
     val actions = resolveCardActions(
@@ -58,7 +67,9 @@ fun ButtonCard(
         // the disc rather than drawing a meaningless placeholder.
         if (card.showIcon && card.entityId != null) {
             val icon = cardEntityIcon(card.entityId, state, card.icon)
-            CardIconDisc(icon = icon, accent = accent, discSize = 48.dp, iconSize = 24.dp)
+            // HA's `icon_height` sizes the glyph; the disc and inner glyph scale
+            // together so a taller icon reads proportionally on the small screen.
+            CardIconDisc(icon = icon, accent = accent, discSize = discSize, iconSize = discSize * 0.5f)
             Spacer(Modifier.height(10.dp))
         }
         if (card.showName) {

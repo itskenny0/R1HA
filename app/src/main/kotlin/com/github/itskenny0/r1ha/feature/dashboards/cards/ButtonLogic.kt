@@ -34,3 +34,24 @@ fun buttonAccent(
         (!raw.equals("off", ignoreCase = true) && !raw.equals("unknown", ignoreCase = true) && raw.isNotBlank())
     return if (active) stateAccentFor(entityId, state) else R1.InkSoft
 }
+
+/**
+ * Convert HA's `icon_height` CSS length to a dp value for the button icon.
+ * Accepts a bare number ("48"), pixels ("48px"), or em ("2.5em", treated as
+ * multiples of HA's 24px base icon). Anything unparseable returns null so the
+ * caller keeps its default disc size. The result is clamped to a sane on-screen
+ * range so a typo'd "9999px" can't blow out the 640x480 layout.
+ *
+ * Pure; returns a Float so the renderer wraps it in `.dp` without depending on
+ * Compose units here.
+ */
+internal fun iconHeightDp(raw: String?): Float? {
+    val s = raw?.trim()?.lowercase()?.takeUnless { it.isBlank() } ?: return null
+    val px = when {
+        s.endsWith("px") -> s.removeSuffix("px").trim().toFloatOrNull()
+        s.endsWith("em") -> s.removeSuffix("em").trim().toFloatOrNull()?.let { it * 24f }
+        else -> s.toFloatOrNull()
+    } ?: return null
+    if (px <= 0f) return null
+    return px.coerceIn(16f, 96f)
+}

@@ -51,7 +51,14 @@ fun ThermostatCard(
 ) {
     val eid = safeEntityId(card.entityId)
     val state = eid?.let { stateMap[it] }
-    val name = resolveName(card.name, state, card.entityId)
+    // HA renders a hui-warning when the climate / water_heater entity has no
+    // state object. Match that instead of a card full of "-" readings with dead
+    // steppers, which gives no signal the entity is missing.
+    if (state == null) {
+        EntityNotFoundCard(card.entityId, modifier)
+        return
+    }
+    val name = resolveStructuredName(card.name, card.nameItems, null, state, card.entityId)
     // water_heater shares the climate parser branch: its operation_mode lands in
     // climateHvacMode and its operation_list in climateHvacModes. The service
     // domain differs, so branch on the entity domain for the call namespace.

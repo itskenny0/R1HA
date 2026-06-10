@@ -447,6 +447,7 @@ object LovelaceParser {
             stateContent = parseStringList(item["state_content"]),
             showEntityPicture = item["show_entity_picture"]?.asBooleanOrNull() ?: false,
             conditions = conditions,
+            nameItems = parseStructuredName(item["name"]),
         )
     }
 
@@ -542,6 +543,7 @@ object LovelaceParser {
                 showName = obj["show_name"]?.asBooleanOrNull() ?: true,
                 showState = obj["show_state"]?.asBooleanOrNull() ?: true,
                 showIcon = obj["show_icon"]?.asBooleanOrNull() ?: true,
+                stateColor = obj["state_color"]?.asBooleanOrNull() ?: true,
             )
             "button", "entity-button" -> LovelaceCard.Button(
                 raw = obj,
@@ -556,6 +558,8 @@ object LovelaceParser {
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 color = obj["color"]?.asStringOrNull(),
                 stateColor = obj["state_color"]?.asBooleanOrNull() ?: true,
+                nameItems = parseStructuredName(obj["name"]),
+                iconHeight = obj["icon_height"]?.asStringOrNull(),
             )
             "shortcut" -> LovelaceCard.Shortcut(
                 raw = obj,
@@ -579,6 +583,7 @@ object LovelaceParser {
                     hideState = obj["hide_state"]?.asBooleanOrNull() ?: false,
                     vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
                     color = obj["color"]?.asStringOrNull(),
+                    stateColor = obj["state_color"]?.asBooleanOrNull() ?: true,
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     holdAction = parseAction(obj["hold_action"] as? JsonObject),
                     doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
@@ -590,6 +595,7 @@ object LovelaceParser {
                     features = parseTileFeatures(obj["features"]),
                     stateContent = parseStringList(obj["state_content"]),
                     nameType = obj["name_type"]?.asStringOrNull(),
+                    nameItems = parseStructuredName(obj["name"]),
                 )
             }
             "light" -> {
@@ -820,6 +826,7 @@ object LovelaceParser {
                     states = (obj["states"] as? JsonArray)
                         ?.mapNotNull { it.asStringOrNull() }
                         ?: emptyList(),
+                    nameItems = parseStructuredName(obj["name"]),
                 )
             }
             "map" -> LovelaceCard.Map(
@@ -842,6 +849,7 @@ object LovelaceParser {
                     showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
                     showCurrentAsPrimary = obj["show_current_as_primary"]?.asBooleanOrNull() ?: false,
                     features = parseTileFeatures(obj["features"]),
+                    nameItems = parseStructuredName(obj["name"]),
                 )
             }
             "media-control" -> {
@@ -912,6 +920,7 @@ object LovelaceParser {
                 clockSize = obj["clock_size"]?.asStringOrNull(),
                 timeFormat = obj["time_format"]?.asStringOrNull(),
                 timeZone = obj["time_zone"]?.asStringOrNull(),
+                noBackground = obj["no_background"]?.asBooleanOrNull() ?: false,
             )
             "distribution" -> LovelaceCard.Distribution(
                 raw = obj,
@@ -1577,6 +1586,8 @@ object LovelaceParser {
             attribute = item["attribute"]?.asStringOrNull(),
             prefix = item["prefix"]?.asStringOrNull(),
             suffix = item["suffix"]?.asStringOrNull(),
+            stateColor = item["state_color"]?.asBooleanOrNull(),
+            nameItems = parseStructuredName(item["name"]),
         )
     }
 
@@ -1634,6 +1645,7 @@ object LovelaceParser {
                                     actionName = item["action_name"]?.asStringOrNull(),
                                     image = item["image"]?.asStringOrNull(),
                                     explicitType = type,
+                                    nameItems = parseStructuredName(item["name"]),
                                 ),
                             )
                         } else if (type != null) {
@@ -1834,6 +1846,33 @@ object LovelaceParser {
         "time" -> TimestampFormat.TIME
         "datetime" -> TimestampFormat.DATETIME
         else -> null
+    }
+
+    /**
+     * Parse HA 2025.11+ structured `name` into a list of [EntityNameItem]. A
+     * plain-string name returns an empty list (the existing string `name:` path
+     * handles it). An object `{type: ...}` or an array of such objects is parsed
+     * into parts:
+     *  - `{type: entity|device|area|floor}` -> [EntityNameItem.Part]
+     *  - `{type: text, text: "..."}` -> [EntityNameItem.Text]
+     * Unknown item shapes are dropped. The resulting list is resolved at render
+     * time against the entity's registry data; an empty list means "no structured
+     * name", so callers keep their plain-string / friendly-name behaviour.
+     */
+    private fun parseStructuredName(el: JsonElement?): List<EntityNameItem> {
+        fun parseItem(o: JsonObject): EntityNameItem? {
+            val itemType = o["type"]?.asStringOrNull()?.trim()?.lowercase() ?: return null
+            return when (itemType) {
+                "text" -> o["text"]?.asStringOrNull()?.let { EntityNameItem.Text(it) }
+                "entity", "device", "area", "floor" -> EntityNameItem.Part(itemType)
+                else -> null
+            }
+        }
+        return when (el) {
+            is JsonObject -> listOfNotNull(parseItem(el))
+            is JsonArray -> el.mapNotNull { (it as? JsonObject)?.let(::parseItem) }
+            else -> emptyList()
+        }
     }
 
     /**
@@ -2303,6 +2342,12 @@ object LovelaceParser {
      *  key (e.g. the entity card, which renders off its raw JSON). Mirrors the
      *  internal [parseAction] used by the typed-card parse paths. */
     fun parseActionConfig(obj: JsonObject?): LovelaceAction? = parseAction(obj)
+
+    /** Public entry point for parsing a structured `name:` (EntityNameItem
+     *  object/array) out of a raw card config key, for cards (entity / sensor)
+     *  that render off their raw JSON rather than a typed model. Empty list when
+     *  `name:` was a plain string / absent. */
+    fun parseStructuredNameConfig(el: JsonElement?): List<EntityNameItem> = parseStructuredName(el)
 
     private fun parseAction(obj: JsonObject?): LovelaceAction? {
         if (obj == null) return null

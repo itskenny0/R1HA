@@ -86,6 +86,49 @@ class DashboardNameResolver(
         return if (parts.isEmpty()) null else parts.joinToString(" ")
     }
 
+    /**
+     * Resolve a single name part token ("device" / "area" / "floor") for
+     * [entityId]. "entity" returns null because it means the friendly_name,
+     * which the caller already has. Returns null when the registry data needed
+     * for the token is absent.
+     */
+    fun resolveToken(token: String, entityId: String): String? = when (token.trim().lowercase()) {
+        "device" -> deviceName(entityId)
+        "area" -> areaName(entityId)
+        "floor" -> floorName(entityId)
+        else -> null
+    }
+
+    /**
+     * Compose a structured `name` ([EntityNameItem] list) into a display string.
+     * Each [EntityNameItem.Text] contributes its literal text; each
+     * [EntityNameItem.Part] resolves via [resolveToken], except the "entity" part
+     * which contributes [entityFriendlyName] (the friendly_name the caller holds).
+     * Parts that resolve to null/blank are dropped, then the surviving fragments
+     * are joined with a space. Returns null when nothing resolves, so the caller
+     * degrades to the friendly name.
+     */
+    fun resolveNameItems(
+        items: List<com.github.itskenny0.r1ha.core.lovelace.EntityNameItem>,
+        entityId: String,
+        entityFriendlyName: String?,
+    ): String? {
+        if (items.isEmpty()) return null
+        val fragments = items.mapNotNull { item ->
+            when (item) {
+                is com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Text ->
+                    item.text.takeUnless { it.isBlank() }
+                is com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part ->
+                    if (item.type.trim().lowercase() == "entity") {
+                        entityFriendlyName?.takeUnless { it.isBlank() }
+                    } else {
+                        resolveToken(item.type, entityId)
+                    }
+            }
+        }
+        return if (fragments.isEmpty()) null else fragments.joinToString(" ")
+    }
+
     private fun resolveAreaId(entityId: String): String? {
         entityToArea[entityId]?.let { return it }
         val deviceId = entityToDevice[entityId] ?: return null
