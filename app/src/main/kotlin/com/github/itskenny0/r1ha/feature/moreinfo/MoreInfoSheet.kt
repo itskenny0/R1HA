@@ -25,14 +25,19 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -43,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.Domain
+import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.MediaTransport
@@ -120,9 +126,14 @@ fun MoreInfoSheet(
      *  (the default) hides the chip, so callers without a nav host stay valid. */
     onOpenHistory: ((entityId: String) -> Unit)? = null,
 ) {
-    BackHandler(onBack = onDismiss)
+    // Internal back-stack: opening a group member's more-info pushes its id here so
+    // the system Back pops to the parent instead of dismissing the whole sheet.
+    // Mirrors HA's ha-more-info-dialog breadcrumb behaviour adapted to the sheet.
+    val stack = remember(entityId) { androidx.compose.runtime.mutableStateListOf(entityId) }
+    val currentEntityId = stack.last()
+    BackHandler(onBack = { if (stack.size > 1) stack.removeAt(stack.size - 1) else onDismiss() })
 
-    val stateHolder by rememberMoreInfoState(haRepository, entityId)
+    val stateHolder by rememberMoreInfoState(haRepository, currentEntityId)
     val entity = stateHolder.entity
 
     val scope = rememberCoroutineScope()
@@ -172,12 +183,15 @@ fun MoreInfoSheet(
                 entity != null -> CompositionLocalProvider(
                     LocalOnEntityCall provides dispatch,
                     LocalEntityOverrides provides overrides,
+                    // Group members push onto the stack; a no-op self-push is filtered
+                    // so a member that's already showing doesn't loop.
+                    LocalMoreInfoNavigate provides { id -> if (id != stack.last()) stack.add(id) },
                 ) {
                     MoreInfoContent(
                         haRepository = haRepository,
                         entity = entity,
                         dispatch = dispatch,
-                        onDismiss = onDismiss,
+                        onDismiss = { if (stack.size > 1) stack.removeAt(stack.size - 1) else onDismiss() },
                         onOpenHistory = onOpenHistory,
                     )
                 }
@@ -208,6 +222,12 @@ private fun MoreInfoContent(
         verticalArrangement = Arrangement.spacedBy(R1.space.m),
     ) {
         Header(entity = entity, accent = accent, onDismiss = onDismiss)
+
+        // ── Lifecycle alert ───────────────────────────────────────────────
+        // HA shows a banner when an entity is unavailable / restored / in an
+        // unknown state. The `restored` flag isn't surfaced into EntityState, so we
+        // drive the banner off the raw state alone (unavailable / unknown).
+        EntityAlertBanner(entity)
 
         // ── Primary control ───────────────────────────────────────────────
         // Cross-cutting gate (gap 11): every primary control disables when the
@@ -508,7 +528,7 @@ private fun PrimaryControl(
             Spacer(Modifier.height(R1.space.s))
             HumidifierPanel(state = entity, accent = accent)
         }
-        Domain.SWITCH, Domain.INPUT_BOOLEAN, Domain.AUTOMATION -> ToggleRow(
+        Domain.SWITCH, Domain.INPUT_BOOLEAN -> ToggleRow(
             entity = entity,
             accent = accent,
             onLabel = "ON",
@@ -517,22 +537,39 @@ private fun PrimaryControl(
             onOff = { dispatch(ServiceCall.setSwitch(entity.id, false)) },
             isOn = entity.isOn,
         )
+        Domain.AUTOMATION -> AutomationControl(entity, accent, dispatch)
         Domain.NUMBER, Domain.INPUT_NUMBER -> NumberStepper(entity, accent, dispatch)
         Domain.SELECT, Domain.INPUT_SELECT -> SelectControl(entity, accent, dispatch)
         Domain.VACUUM -> {
+            VacuumStatusLine(entity)
             VacuumButtons(entity, accent, dispatch)
             VacuumPanel(state = entity, accent = accent, modifier = Modifier.padding(top = R1.space.s))
         }
-        Domain.LAWN_MOWER -> LawnMowerPanel(state = entity, accent = accent)
-        Domain.REMOTE -> RemotePanel(state = entity, accent = accent)
+        Domain.LAWN_MOWER -> {
+            VacuumStatusLine(entity)
+            LawnMowerPanel(state = entity, accent = accent)
+        }
+        Domain.REMOTE -> {
+            RemoteActivityControl(entity, accent, dispatch)
+            RemotePanel(state = entity, accent = accent)
+        }
         // Alarm panels previously fell through to the no-control branch. The
         // AlarmPanel renders the disarm + arm-mode keypad section (PIN-gated when
         // the integration sets code_format), bringing parity with HA's
-        // more-info-alarm_control_panel.
-        Domain.ALARM_CONTROL_PANEL -> AlarmPanel(state = entity, accent = accent)
-        Domain.SCENE, Domain.SCRIPT -> ActionButton("ACTIVATE", accent) {
+        // more-info-alarm_control_panel. The phase banner above adds the
+        // arming/pending/triggered countdown HA shows during a transition.
+        Domain.ALARM_CONTROL_PANEL -> {
+            AlarmPhaseBanner(entity, accent)
+            AlarmPanel(state = entity, accent = accent)
+        }
+        Domain.SCRIPT -> ScriptControl(entity, accent, dispatch)
+        Domain.SCENE -> ActionButton("ACTIVATE", accent) {
             dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap())))
         }
+        Domain.COUNTER -> CounterControl(entity, accent, dispatch)
+        Domain.TIMER -> TimerControl(entity, accent, dispatch)
+        Domain.UPDATE -> UpdateControl(haRepository, entity, accent, dispatch)
+        Domain.PERSON -> PersonLocationControl(entity, accent)
         Domain.BUTTON, Domain.INPUT_BUTTON -> ActionButton("PRESS", accent) {
             dispatch(ServiceCall(entity.id, "press", kotlinx.serialization.json.JsonObject(emptyMap())))
         }
@@ -547,6 +584,16 @@ private fun PrimaryControl(
         Domain.EVENT -> Unit
         // weather: read-only; the forecast strip renders in its own section below attributes.
         Domain.WEATHER -> Unit
+        // OTHER covers domains the app has no archetype for (camera, group, sun,
+        // device_tracker, ...). Branch on the raw prefix so those still get the
+        // high-value control HA's more-info shows.
+        Domain.OTHER -> when (entity.id.value.substringBefore('.')) {
+            "camera" -> CameraControl(entity, accent)
+            "group" -> GroupControl(haRepository, entity, accent, dispatch)
+            "sun" -> SunControl(entity)
+            "device_tracker" -> PersonLocationControl(entity, accent)
+            else -> UnmodelledToggle(entity, accent, dispatch)
+        }
         // No primary control for read-only / unmodelled domains — the section
         // simply renders nothing (the host SectionWrap collapses it).
         else -> Unit
@@ -883,6 +930,10 @@ private fun MediaControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                 }
             }
         }
+        // Position / seek — HA's more-info shows a draggable progress bar when the
+        // player advertises SEEK and reports a duration. We interpolate the live
+        // position off the last-reported anchor and fire media_seek on release.
+        MediaSeekControl(entity, accent, dispatch)
         // Volume + mute.
         val volPct = entity.percent
         if (volPct != null && entity.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_SET)) {
@@ -892,6 +943,35 @@ private fun MediaControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                 accent = accent,
                 onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
             )
+        } else if (entity.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_STEP)) {
+            // Step-only players (no absolute set): up/down buttons, matching HA's
+            // fallback when VOLUME_SET is absent but VOLUME_STEP is advertised.
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s), modifier = Modifier.fillMaxWidth()) {
+                TransportButton("VOL −", "Volume down", accent, weighted = true) {
+                    dispatch(ServiceCall.mediaTransport(entity.id, MediaTransport.VOLUME_DOWN))
+                }
+                TransportButton("VOL +", "Volume up", accent, weighted = true) {
+                    dispatch(ServiceCall.mediaTransport(entity.id, MediaTransport.VOLUME_UP))
+                }
+            }
+        }
+        // Power — HA shows turn_on / turn_off when the player advertises them, so a
+        // player that's off can be woken and a playing one fully powered down.
+        val hasOn = entity.hasMediaFeature(EntityState.MediaPlayerFeature.TURN_ON)
+        val hasOff = entity.hasMediaFeature(EntityState.MediaPlayerFeature.TURN_OFF)
+        if (hasOn || hasOff) {
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s), modifier = Modifier.fillMaxWidth()) {
+                if (hasOn) {
+                    DetailChip(label = "TURN ON", accent = accent, selected = entity.isOn, modifier = Modifier.weight(1f)) {
+                        dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap())))
+                    }
+                }
+                if (hasOff) {
+                    DetailChip(label = "TURN OFF", accent = accent, selected = !entity.isOn, modifier = Modifier.weight(1f)) {
+                        dispatch(ServiceCall(entity.id, "turn_off", kotlinx.serialization.json.JsonObject(emptyMap())))
+                    }
+                }
+            }
         }
         if (entity.hasMediaFeature(EntityState.MediaPlayerFeature.VOLUME_MUTE)) {
             ChipStrip {
@@ -2278,6 +2358,78 @@ private fun EntityState.attrIntList(key: String): List<Int>? =
         ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content?.toIntOrNull() }
         ?.takeIf { it.isNotEmpty() }
 
+private fun EntityState.attrStringList(key: String): List<String> =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+        ?: emptyList()
+
+/**
+ * Navigation seam for the more-info back-stack: opening a group member's own
+ * more-info pushes it onto the sheet's internal stack so the system Back returns to
+ * the parent. Null when the sheet has no stack wired (then member rows just toggle).
+ */
+internal val LocalMoreInfoNavigate = compositionLocalOf<((entityId: String) -> Unit)?> { null }
+
+/**
+ * Parse a script entity's `fields:` attribute into typed [MoreInfoDomainControls.ScriptField]s.
+ * HA exposes each field as `{ name, description, required, selector: { <kind>: {...} } }`;
+ * a `select` selector carries `options`. Unknown selectors fall back to a text input.
+ */
+private fun parseScriptFields(attrs: kotlinx.serialization.json.JsonObject?): List<MoreInfoDomainControls.ScriptField> {
+    val fields = attrs?.get("fields") as? kotlinx.serialization.json.JsonObject ?: return emptyList()
+    return fields.entries.mapNotNull { (key, spec) ->
+        val obj = spec as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+        fun str(k: String): String? =
+            (obj[k] as? kotlinx.serialization.json.JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+        val selector = obj["selector"] as? kotlinx.serialization.json.JsonObject
+        val selectorKey = selector?.keys?.firstOrNull()
+        val selectorBody = selectorKey?.let { selector[it] as? kotlinx.serialization.json.JsonObject }
+        val options = (selectorBody?.get("options") as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { el ->
+                when (el) {
+                    is kotlinx.serialization.json.JsonPrimitive -> el.content
+                    is kotlinx.serialization.json.JsonObject ->
+                        (el["value"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                    else -> null
+                }
+            }
+            ?: emptyList()
+        val type = MoreInfoDomainControls.classifyScriptField(selectorKey, hasOptions = options.isNotEmpty())
+        val required = (obj["required"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
+        MoreInfoDomainControls.ScriptField(
+            key = key,
+            name = str("name") ?: key,
+            description = str("description"),
+            type = type,
+            required = required,
+            options = options,
+            defaultText = (obj["default"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
+        )
+    }
+}
+
+/** Collect entered script-field values into the `variables`-style service data for
+ *  `script.turn_on`. Numbers are emitted as JSON numbers, booleans as booleans, the
+ *  rest as strings. Fields with no entered value and no default are omitted. */
+private fun buildScriptServiceData(
+    fields: List<MoreInfoDomainControls.ScriptField>,
+    values: Map<String, String>,
+): kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.buildJsonObject {
+    val vars = kotlinx.serialization.json.buildJsonObject {
+        fields.forEach { field ->
+            val raw = values[field.key] ?: field.defaultText ?: return@forEach
+            when (field.type) {
+                MoreInfoDomainControls.ScriptFieldType.NUMBER ->
+                    raw.toDoubleOrNull()?.let { put(field.key, kotlinx.serialization.json.JsonPrimitive(it)) }
+                MoreInfoDomainControls.ScriptFieldType.BOOLEAN ->
+                    put(field.key, kotlinx.serialization.json.JsonPrimitive(raw.equals("true", ignoreCase = true)))
+                else -> put(field.key, kotlinx.serialization.json.JsonPrimitive(raw))
+            }
+        }
+    }
+    if (vars.isNotEmpty()) put("variables", vars)
+}
+
 // ── New-domain inline controls ────────────────────────────────────────────────────────
 
 /**
@@ -2558,6 +2710,737 @@ private fun ImageControl(entity: EntityState) {
                 .clip(R1.ShapeS),
             contentDescription = entity.friendlyName,
         )
+    }
+}
+
+// ── Batch O2: media seek / camera / counter / timer / update / domain controls ─────────
+
+private val O2 = MoreInfoDomainControls
+
+/**
+ * Draggable position / seek bar for a media player that advertises SEEK and reports
+ * a duration. The live position is interpolated off the last-reported anchor
+ * ([EntityState.mediaPosition] + [EntityState.mediaPositionUpdatedAt]) while playing,
+ * so the bar tracks playback without a per-second WS push. Releasing the thumb fires
+ * `media_player.media_seek {seek_position: <seconds>}`. Renders nothing when the
+ * player can't seek or has no duration.
+ */
+@Composable
+private fun MediaSeekControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val duration = entity.mediaDuration?.takeIf { it > 0 } ?: return
+    if (!entity.hasMediaFeature(EntityState.MediaPlayerFeature.SEEK)) return
+    // Interpolate: anchor position + wall-clock elapsed since the anchor while playing.
+    val playing = entity.rawState.equals("playing", ignoreCase = true)
+    val anchor = entity.mediaPosition ?: 0
+    val anchorAt = entity.mediaPositionUpdatedAt
+    // Per-second tick so the readout advances while playing.
+    var tick by remember(entity.id) { mutableIntStateOf(0) }
+    LaunchedEffect(entity.id, playing) {
+        while (playing) {
+            kotlinx.coroutines.delay(1_000L)
+            tick++
+        }
+    }
+    val livePos = remember(anchor, anchorAt, tick, playing, duration) {
+        val elapsed = if (playing && anchorAt != null) {
+            (java.time.Instant.now().epochSecond - anchorAt.epochSecond).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        (anchor + elapsed).coerceIn(0L, duration.toLong()).toInt()
+    }
+    // Local drag override: while the finger is down, show the dragged value.
+    var dragging by remember(entity.id) { mutableStateOf(false) }
+    var dragPos by remember(entity.id) { mutableFloatStateOf(livePos.toFloat()) }
+    val shown = if (dragging) dragPos.toInt() else livePos
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "POSITION", style = responsiveType(R1.labelMicro), color = R1.InkMuted, modifier = Modifier.weight(1f))
+            Text(
+                text = "${O2.formatRemaining(shown.toLong())} / ${O2.formatRemaining(duration.toLong())}",
+                style = responsiveType(R1.labelMicro),
+                color = accent,
+            )
+        }
+        Slider(
+            value = shown.toFloat().coerceIn(0f, duration.toFloat()),
+            onValueChange = { dragging = true; dragPos = it },
+            onValueChangeFinished = {
+                dragging = false
+                dispatch(
+                    ServiceCall(
+                        entity.id,
+                        "media_seek",
+                        kotlinx.serialization.json.buildJsonObject {
+                            put("seek_position", kotlinx.serialization.json.JsonPrimitive(dragPos.toInt()))
+                        },
+                    ),
+                )
+            },
+            valueRange = 0f..duration.toFloat(),
+            colors = sliderColors(accent),
+            modifier = Modifier.semantics { contentDescription = "Seek position" },
+        )
+    }
+}
+
+/**
+ * Live camera view for a `camera.*` more-info: a fast JPEG poll via [CameraSnapshot]
+ * with a download button that saves the current frame to the device Downloads
+ * collection (MediaStore, API 29+). The download button greys on older Android
+ * where the no-permission MediaStore write is unavailable.
+ */
+@Composable
+private fun CameraControl(entity: EntityState, accent: Color) {
+    val serverUrl = LocalHaServerUrl.current.orEmpty()
+    val bearerToken = LocalHaBearerToken.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var status by remember(entity.id) { mutableStateOf<String?>(null) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 260.dp)
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted),
+        ) {
+            com.github.itskenny0.r1ha.ui.components.CameraSnapshot(
+                serverUrl = serverUrl,
+                bearerToken = bearerToken,
+                entityId = entity.id.value,
+                // Snappier poll than the card grid: a more-info is a focused live look.
+                intervalMillis = 1_500L,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
+            )
+        }
+        if (CameraSnapshotDownload.isSupported) {
+            DetailChip(label = "SAVE SNAPSHOT", accent = accent, modifier = Modifier.fillMaxWidth()) {
+                status = "Saving…"
+                scope.launch {
+                    val result = CameraSnapshotDownload.save(
+                        context = context,
+                        serverUrl = serverUrl,
+                        bearerToken = bearerToken,
+                        entityId = entity.id.value,
+                    )
+                    status = when (result) {
+                        is CameraSnapshotDownload.DownloadResult.Saved -> "Saved to Downloads"
+                        is CameraSnapshotDownload.DownloadResult.Failed -> result.reason
+                        CameraSnapshotDownload.DownloadResult.Unsupported -> "Not supported on this device"
+                    }
+                }
+            }
+            status?.let { Text(text = it, style = responsiveType(R1.labelMicro), color = R1.InkSoft) }
+        }
+    }
+}
+
+/**
+ * `counter.*` more-info: increment / decrement / reset, gated on the configured
+ * minimum / maximum the way HA's more-info-counter is.
+ */
+@Composable
+private fun CounterControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val value = entity.rawState?.toLongOrNull()
+    val minimum = entity.attrDouble("minimum")?.toLong()
+    val maximum = entity.attrDouble("maximum")?.toLong()
+    val buttons = O2.counterButtons(value, minimum, maximum)
+    fun fire(service: String) = dispatch(ServiceCall(entity.id, service, kotlinx.serialization.json.JsonObject(emptyMap())))
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StepperButton("−", "Decrement", accent, enabled = buttons.canDecrement) { fire("decrement") }
+            Spacer(Modifier.width(R1.space.m))
+            Text(
+                text = value?.toString() ?: (entity.rawState ?: "-"),
+                style = responsiveType(R1.numeralM),
+                color = accent,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(R1.space.m))
+            StepperButton("+", "Increment", accent, enabled = buttons.canIncrement) { fire("increment") }
+        }
+        DetailChip(label = "RESET", accent = accent, modifier = Modifier.fillMaxWidth()) { fire("reset") }
+    }
+}
+
+/**
+ * `timer.*` more-info: start / pause / cancel / finish gated on state, plus a live
+ * remaining countdown that ticks every second while the timer is active.
+ */
+@Composable
+private fun TimerControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val state = entity.rawState
+    val buttons = O2.timerButtons(state)
+    val finishesAt = entity.attrStr("finishes_at")
+        ?.let { com.github.itskenny0.r1ha.core.ha.parseHaInstant(it) }
+        ?.epochSecond
+    // Tick every second while active so the countdown advances.
+    var tick by remember(entity.id, state) { mutableIntStateOf(0) }
+    LaunchedEffect(entity.id, state) {
+        while (state.equals("active", ignoreCase = true)) {
+            kotlinx.coroutines.delay(1_000L)
+            tick++
+        }
+    }
+    val remaining = remember(state, tick, finishesAt) {
+        O2.timerRemainingSeconds(
+            state = state,
+            nowEpochSeconds = java.time.Instant.now().epochSecond,
+            finishesAtEpochSeconds = finishesAt,
+            remaining = entity.attrStr("remaining"),
+            duration = entity.attrStr("duration"),
+        )
+    }
+    fun fire(service: String) = dispatch(ServiceCall(entity.id, service, kotlinx.serialization.json.JsonObject(emptyMap())))
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        if (remaining != null) {
+            Text(
+                text = O2.formatRemaining(remaining),
+                style = responsiveType(R1.numeralM).copy(fontWeight = FontWeight.SemiBold),
+                color = accent,
+            )
+        }
+        ChipStrip(wrap = true) {
+            if (buttons.showStart) DetailChip("START", accent) { fire("start") }
+            if (buttons.showPause) DetailChip("PAUSE", accent) { fire("pause") }
+            if (buttons.showCancel) DetailChip("CANCEL", accent) { fire("cancel") }
+            if (buttons.showFinish) DetailChip("FINISH", accent) { fire("finish") }
+        }
+    }
+}
+
+/**
+ * `update.*` more-info: installed / latest version readout, install + skip actions
+ * gated on supported_features, an optional install-specific-version input, a backup
+ * awareness note, and the full release notes fetched via the `update/release_notes`
+ * WS command (falling back to the `release_summary` attribute) rendered through the
+ * shared markdown view.
+ */
+@Composable
+private fun UpdateControl(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+) {
+    val inProgress = entity.attrStr("in_progress").let { it != null && it != "false" } ||
+        entity.attrDouble("update_percentage") != null
+    val controls = O2.updateControls(entity.rawState, entity.supportedFeatures, inProgress)
+    val installed = entity.attrStr("installed_version")
+    val latest = entity.attrStr("latest_version")
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Column(verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
+            if (installed != null) DetailRow("Installed", installed)
+            if (latest != null) DetailRow("Latest", latest)
+        }
+        if (controls.inProgress) {
+            val pct = entity.attrDouble("update_percentage")?.toInt()
+            Text(
+                text = if (pct != null) "Installing $pct%" else "Installing…",
+                style = responsiveType(R1.labelMicro),
+                color = accent,
+            )
+        }
+        if (controls.canInstall || controls.canSkip) {
+            ChipStrip(wrap = true) {
+                if (controls.canInstall) {
+                    DetailChip("INSTALL", accent) {
+                        dispatch(ServiceCall(entity.id, "install", kotlinx.serialization.json.JsonObject(emptyMap())))
+                    }
+                }
+                if (controls.canSkip) {
+                    DetailChip("SKIP", accent) {
+                        dispatch(ServiceCall(entity.id, "skip", kotlinx.serialization.json.JsonObject(emptyMap())))
+                    }
+                }
+            }
+        }
+        // Specific-version install: the R1 has no keyboard, so we surface the
+        // capability as a note rather than a free-text box (HA's input would need
+        // typing). Documents the SPECIFIC_VERSION support without a dead control.
+        if (controls.supportsSpecificVersion && latest != null) {
+            Text(
+                text = "Installs $latest. This update supports installing a specific version from the HA frontend.",
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkMuted,
+            )
+        }
+        if (controls.supportsBackup) {
+            Text(
+                text = "A backup is created before this update installs.",
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkMuted,
+            )
+        }
+        UpdateReleaseNotes(haRepository, entity, controls.supportsReleaseNotes)
+    }
+}
+
+/**
+ * Release notes for an update entity. Fetches the full markdown via the
+ * `update/release_notes` WS command when the entity supports RELEASE_NOTES; falls
+ * back to the `release_summary` attribute otherwise. Rendered through the shared
+ * markdown view. Collapsed behind a toggle so it never crowds the install action.
+ */
+@Composable
+private fun UpdateReleaseNotes(haRepository: HaRepository, entity: EntityState, supportsReleaseNotes: Boolean) {
+    var expanded by remember(entity.id) { mutableStateOf(false) }
+    val notes by androidx.compose.runtime.produceState<String?>(
+        initialValue = null,
+        entity.id,
+        expanded,
+        supportsReleaseNotes,
+    ) {
+        if (!expanded) {
+            value = null
+            return@produceState
+        }
+        value = if (supportsReleaseNotes) {
+            haRepository.fetchUpdateReleaseNotes(entity.id.value).getOrNull()
+                ?: entity.attrStr("release_summary")
+        } else {
+            entity.attrStr("release_summary")
+        }
+    }
+    // No notes available at all and no WS support — nothing to expand.
+    if (!supportsReleaseNotes && entity.attrStr("release_summary") == null) return
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .r1Pressable(
+                    onClick = { expanded = !expanded },
+                    hapticOnClick = false,
+                    contentDescription = if (expanded) "Collapse release notes" else "Expand release notes",
+                ),
+        ) {
+            Text(text = "RELEASE NOTES", style = responsiveType(R1.sectionHeader), color = R1.InkSoft, modifier = Modifier.weight(1f))
+            Text(text = if (expanded) "−" else "+", style = R1.numeralM, color = R1.InkSoft)
+        }
+        if (expanded) {
+            when (val md = notes) {
+                null -> SectionLoadingPlaceholder("Loading release notes")
+                else -> {
+                    if (md.isBlank()) {
+                        Text(text = "No release notes", style = responsiveType(R1.body), color = R1.InkMuted)
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(R1.ShapeS)
+                                .background(R1.Surface)
+                                .padding(R1.space.m),
+                        ) {
+                            com.github.itskenny0.r1ha.ui.components.MarkdownView(
+                                nodes = remember(md) { com.github.itskenny0.r1ha.ui.components.parseMarkdown(md) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * `automation.*` more-info: a 'Run actions' trigger (automation.trigger), an
+ * enable/disable toggle (turn_on/turn_off), and a last-triggered readout.
+ */
+@Composable
+private fun AutomationControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        ActionButton("RUN ACTIONS", accent) {
+            dispatch(ServiceCall(entity.id, "trigger", kotlinx.serialization.json.JsonObject(emptyMap())))
+        }
+        ToggleRow(
+            entity = entity,
+            accent = accent,
+            onLabel = "ENABLED",
+            offLabel = "DISABLED",
+            isOn = entity.isOn,
+            onOn = { dispatch(ServiceCall.setSwitch(entity.id, true)) },
+            onOff = { dispatch(ServiceCall.setSwitch(entity.id, false)) },
+        )
+        val last = entity.attrStr("last_triggered")?.let { com.github.itskenny0.r1ha.core.ha.parseHaInstant(it) }
+        if (last != null) {
+            val ago = rememberRelativeTime(last)
+            if (ago.isNotEmpty()) {
+                Text(text = "TRIGGERED ${ago.uppercase()}", style = R1.labelMicro, color = R1.InkMuted)
+            }
+        }
+    }
+}
+
+/**
+ * `script.*` more-info: a run-state line, a run button (or cancel while running),
+ * and a typed fields form derived from the script's `fields:` attribute. Each field
+ * renders as a text / number / boolean / select input; running the script collects
+ * the entered values into the service data.
+ */
+@Composable
+private fun ScriptControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val running = O2.scriptIsRunning(entity.rawState)
+    val fields = remember(entity.attributesJson) { parseScriptFields(entity.attributesJson) }
+    // Per-field entered values, keyed by field key.
+    val values = remember(entity.id) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
+        if (running) {
+            Text(text = "RUNNING", style = responsiveType(R1.labelMicro), color = accent)
+        }
+        fields.forEach { field ->
+            ScriptFieldInput(field = field, accent = accent, value = values[field.key], onChange = { values[field.key] = it })
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s), modifier = Modifier.fillMaxWidth()) {
+            DetailChip(label = "RUN", accent = accent, modifier = Modifier.weight(1f)) {
+                val data = buildScriptServiceData(fields, values)
+                dispatch(ServiceCall(entity.id, "turn_on", data))
+            }
+            if (running) {
+                DetailChip(label = "CANCEL", accent = accent, modifier = Modifier.weight(1f)) {
+                    dispatch(ServiceCall(entity.id, "turn_off", kotlinx.serialization.json.JsonObject(emptyMap())))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScriptFieldInput(
+    field: MoreInfoDomainControls.ScriptField,
+    accent: Color,
+    value: String?,
+    onChange: (String) -> Unit,
+) {
+    val current = value ?: field.defaultText
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xxs)) {
+        Text(
+            text = field.name.ifBlank { field.key }.uppercase() + if (field.required) " *" else "",
+            style = responsiveType(R1.labelMicro),
+            color = R1.InkMuted,
+        )
+        when (field.type) {
+            MoreInfoDomainControls.ScriptFieldType.BOOLEAN -> {
+                val on = current.equals("true", ignoreCase = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                    DetailChip("TRUE", accent, selected = on) { onChange("true") }
+                    DetailChip("FALSE", accent, selected = current != null && !on) { onChange("false") }
+                }
+            }
+            MoreInfoDomainControls.ScriptFieldType.SELECT -> {
+                ChipStrip(wrap = true) {
+                    field.options.forEach { opt ->
+                        DetailChip(label = optionLabel(opt), accent = accent, selected = current == opt) { onChange(opt) }
+                    }
+                }
+            }
+            else -> {
+                // text / number: the R1 has no soft keyboard in the sheet, so show the
+                // default (or entered) value read-only with the description hint. The
+                // value still flows into the run call.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = R1.MinTarget)
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeS)
+                        .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                ) {
+                    Text(
+                        text = current?.ifBlank { "-" } ?: "-",
+                        style = responsiveType(R1.body),
+                        color = if (current.isNullOrBlank()) R1.InkMuted else R1.Ink,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+        field.description?.takeIf { it.isNotBlank() }?.let {
+            Text(text = it, style = responsiveType(R1.labelMicro), color = R1.InkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * `group.*` more-info: a member entity list with a compact toggle for switchable
+ * members (light / switch / fan / ...) and a tap-through to each member's own
+ * more-info via the back-stack push. Non-toggleable members show their state with
+ * a tap-through only.
+ */
+@Composable
+private fun GroupControl(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color,
+    dispatch: (ServiceCall) -> Unit,
+) {
+    val members = entity.attrStringList("entity_id")
+    if (members.isEmpty()) return
+    val push = LocalMoreInfoNavigate.current
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = "MEMBERS", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        members.forEach { memberId ->
+            GroupMemberRow(
+                haRepository = haRepository,
+                memberId = memberId,
+                accent = accent,
+                onToggle = { on -> dispatch(ServiceCall.setSwitch(EntityId(memberId), on)) },
+                onOpen = push?.let { open -> { open(memberId) } },
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupMemberRow(
+    haRepository: HaRepository,
+    memberId: String,
+    accent: Color,
+    onToggle: (Boolean) -> Unit,
+    onOpen: (() -> Unit)?,
+) {
+    val member by haRepository.observeRaw(setOf(memberId))
+        .collectAsState(initial = emptyMap())
+    val state = member[memberId]
+    val toggleable = O2.memberIsToggleable(memberId)
+    val isOn = state?.isOn == true
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(R1.space.s),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.Surface)
+            .then(if (onOpen != null) Modifier.r1Pressable(onClick = onOpen, hapticOnClick = false, contentDescription = "Open $memberId") else Modifier)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = state?.friendlyName?.ifBlank { memberId } ?: memberId,
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val word = state?.rawState?.let { optionLabel(it) }
+            if (word != null) {
+                Text(text = word, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (toggleable && state != null) {
+            DetailChip(label = if (isOn) "ON" else "OFF", accent = accent, selected = isOn) { onToggle(!isOn) }
+        }
+    }
+}
+
+/**
+ * `sun.sun` more-info: next-rising / next-setting times (sooner event first) plus
+ * elevation and azimuth, mirroring HA's more-info-sun read-only block.
+ */
+@Composable
+private fun SunControl(entity: EntityState) {
+    val rising = entity.attrStr("next_rising")?.let { com.github.itskenny0.r1ha.core.ha.parseHaInstant(it) }
+    val setting = entity.attrStr("next_setting")?.let { com.github.itskenny0.r1ha.core.ha.parseHaInstant(it) }
+    val order = O2.sunEventOrder(rising?.epochSecond, setting?.epochSecond)
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        order.forEach { event ->
+            val instant = if (event == MoreInfoDomainControls.SunEvent.RISING) rising else setting
+            val label = if (event == MoreInfoDomainControls.SunEvent.RISING) "Rising" else "Setting"
+            if (instant != null) {
+                val ago = rememberRelativeTime(instant)
+                DetailRow(label, ago.ifEmpty { "-" })
+            }
+        }
+        entity.attrDouble("elevation")?.let { DetailRow("Elevation", "${formatNumber(it)}°") }
+        entity.attrDouble("azimuth")?.let { DetailRow("Azimuth", "${formatNumber(it)}°") }
+    }
+}
+
+/**
+ * Location map for a `person.*` / `device_tracker.*` more-info. When the entity
+ * reports latitude/longitude a compact single-marker canvas plots it; otherwise the
+ * zone state word is shown. Mirrors HA's more-info-person map + zone state line.
+ */
+@Composable
+private fun PersonLocationControl(entity: EntityState, accent: Color) {
+    val lat = entity.attrDouble("latitude")
+    val lon = entity.attrDouble("longitude")
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        // Zone state word (home / not_home / a named zone).
+        entity.rawState?.takeIf { it.isNotBlank() }?.let {
+            DetailRow("Zone", optionLabel(it))
+        }
+        if (lat != null && lon != null) {
+            MiniLocationMap(lat = lat, lon = lon, accent = accent)
+            Text(
+                text = "%.4f, %.4f".format(java.util.Locale.US, lat, lon),
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+}
+
+/** Compact single-marker map canvas. Self-contained projection (the MapCard's own
+ *  canvas is private); centres the marker in a fixed viewport so a lone person reads
+ *  as "here" without a bounding-box zoom. */
+@Composable
+private fun MiniLocationMap(lat: Double, lon: Double, accent: Color) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted),
+    ) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            val w = size.width
+            val h = size.height
+            drawLine(R1.Hairline, androidx.compose.ui.geometry.Offset(w * 0.5f, 0f), androidx.compose.ui.geometry.Offset(w * 0.5f, h), strokeWidth = 1f)
+            drawLine(R1.Hairline, androidx.compose.ui.geometry.Offset(0f, h * 0.5f), androidx.compose.ui.geometry.Offset(w, h * 0.5f), strokeWidth = 1f)
+            val centre = androidx.compose.ui.geometry.Offset(w * 0.5f, h * 0.5f)
+            drawCircle(color = accent.copy(alpha = 0.24f), radius = 14f, center = centre)
+            drawCircle(color = accent, radius = 5f, center = centre)
+        }
+    }
+}
+
+/** `remote.*` more-info: an activity chip row when the integration reports a
+ *  current activity + an activity list. Each chip switches activity via
+ *  remote.turn_on {activity: <name>}. Renders nothing when no activity list. */
+@Composable
+private fun RemoteActivityControl(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val activities = entity.attrStringList("activity_list")
+    if (activities.isEmpty()) return
+    val current = entity.attrStr("current_activity")
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = "ACTIVITY", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+        ChipStrip(wrap = true) {
+            activities.forEach { act ->
+                DetailChip(
+                    label = optionLabel(act),
+                    accent = accent,
+                    selected = current.equals(act, ignoreCase = true),
+                    onClick = {
+                        dispatch(
+                            ServiceCall(
+                                entity.id,
+                                "turn_on",
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put("activity", kotlinx.serialization.json.JsonPrimitive(act))
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(R1.space.s))
+}
+
+/** Live remaining-status line for vacuum / lawn_mower, surfacing the integration's
+ *  richer `status` attribute (battery + status). Mirrors HA's more-info-vacuum
+ *  state-override + battery row. */
+@Composable
+private fun VacuumStatusLine(entity: EntityState) {
+    val battery = O2.vacuumBatteryPercent(entity.vacuumBatteryLevel, entity.attrDouble("battery_level"))
+    val status = O2.vacuumStatusLabel(entity.attrStr("status") ?: entity.vacuumStatus, entity.rawState)
+    val parts = buildList {
+        if (status != null) add(status)
+        if (battery != null) add("BATT $battery%")
+    }
+    if (parts.isEmpty()) return
+    Text(
+        text = parts.joinToString("  ·  "),
+        style = responsiveType(R1.labelMicro),
+        color = R1.InkSoft,
+        modifier = Modifier.padding(bottom = R1.space.xs),
+    )
+}
+
+/**
+ * Arming / pending / triggered phase banner above the alarm keypad. Shows a
+ * countdown when the integration reports the matching delay (arming_time /
+ * delay_time); otherwise just the phase word. Renders nothing in the normal
+ * armed / disarmed phase.
+ */
+@Composable
+private fun AlarmPhaseBanner(entity: EntityState, accent: Color) {
+    val phase = O2.alarmPhase(entity.rawState)
+    if (phase == MoreInfoDomainControls.AlarmPhase.ACTIVE) return
+    val total = O2.alarmPhaseTotalSeconds(
+        phase = phase,
+        armingTime = entity.attrDouble("arming_time")?.toLong(),
+        delayTime = entity.attrDouble("delay_time")?.toLong(),
+    )
+    val label = when (phase) {
+        MoreInfoDomainControls.AlarmPhase.ARMING -> "ARMING"
+        MoreInfoDomainControls.AlarmPhase.PENDING -> "PENDING"
+        MoreInfoDomainControls.AlarmPhase.TRIGGERED -> "TRIGGERED"
+        MoreInfoDomainControls.AlarmPhase.ACTIVE -> ""
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(accent.copy(alpha = 0.15f))
+            .border(1.dp, accent, R1.ShapeS)
+            .padding(R1.space.m),
+    ) {
+        val text = if (total != null) "$label · ${O2.formatRemaining(total)}" else label
+        Text(text = text, style = responsiveType(R1.label), color = accent)
+    }
+    Spacer(Modifier.height(R1.space.s))
+}
+
+/** Fallback power toggle for an unmodelled OTHER-domain entity that nonetheless
+ *  reports an on/off state, mirroring HA routing an unknown toggleable domain to a
+ *  plain toggle. Renders nothing for a non-on/off state. */
+@Composable
+private fun UnmodelledToggle(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    val raw = entity.rawState?.lowercase()
+    if (raw != "on" && raw != "off") return
+    ToggleRow(
+        entity = entity,
+        accent = accent,
+        onLabel = "ON",
+        offLabel = "OFF",
+        isOn = entity.isOn,
+        onOn = { dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+        onOff = { dispatch(ServiceCall(entity.id, "turn_off", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+    )
+}
+
+/** Top-of-sheet lifecycle banner for an unavailable / unknown / restored entity,
+ *  mirroring HA's more-info alert. Renders nothing when the entity is live. */
+@Composable
+private fun EntityAlertBanner(entity: EntityState) {
+    val alert = O2.entityAlert(entity.rawState, restored = false)
+    if (alert == MoreInfoDomainControls.EntityAlert.NONE) return
+    val (text, color) = when (alert) {
+        MoreInfoDomainControls.EntityAlert.UNAVAILABLE ->
+            "This entity is not currently available." to R1.StatusAmber
+        MoreInfoDomainControls.EntityAlert.UNKNOWN ->
+            "This entity's state is unknown." to R1.InkSoft
+        MoreInfoDomainControls.EntityAlert.RESTORED ->
+            "This entity was restored and may be stale." to R1.StatusAmber
+        MoreInfoDomainControls.EntityAlert.NONE -> return
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(color.copy(alpha = 0.15f))
+            .border(1.dp, color.copy(alpha = 0.5f), R1.ShapeS)
+            .padding(R1.space.m),
+    ) {
+        Text(text = text, style = responsiveType(R1.body), color = color)
     }
 }
 
