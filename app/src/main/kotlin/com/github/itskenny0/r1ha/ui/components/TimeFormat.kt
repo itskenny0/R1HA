@@ -1,7 +1,6 @@
 package com.github.itskenny0.r1ha.ui.components
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import com.github.itskenny0.r1ha.core.prefs.ClockFormat
 import com.github.itskenny0.r1ha.core.theme.LocalUiOptions
@@ -89,15 +88,17 @@ fun formatAbsoluteTimestamp(at: Instant, now: Instant, zone: ZoneId, use24h: Boo
 /**
  * Composable sugar: the resolved 12/24-hour decision for the current
  * composition — the user's [ClockFormat] setting with AUTO resolved against
- * the Android system clock preference. Recomposes when the setting changes
- * (LocalUiOptions is a tracked CompositionLocal); a system-setting flip while
- * the app is alive is picked up on the next recomposition of the caller.
+ * the Android system clock preference. Deliberately NOT remembered: a
+ * remember keyed on (format, context) would cache the system flag until the
+ * call site left composition, which on an always-on kiosk is forever. The
+ * read is a cheap per-process settings-cache hit, so re-resolving every
+ * recomposition is the correct trade; a system-setting flip is then picked
+ * up by whatever recomposition next touches the caller (ticking clocks
+ * recompose every minute anyway).
  */
 @Composable
 fun rememberUse24HourClock(): Boolean {
     val format = LocalUiOptions.current.clockFormat
     val context = LocalContext.current
-    return remember(format, context) {
-        use24HourClock(format, android.text.format.DateFormat.is24HourFormat(context))
-    }
+    return use24HourClock(format, android.text.format.DateFormat.is24HourFormat(context))
 }

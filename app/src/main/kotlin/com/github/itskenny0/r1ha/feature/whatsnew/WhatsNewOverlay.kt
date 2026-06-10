@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -90,14 +92,18 @@ fun WhatsNewOverlay(
                 if (onDisable != null) {
                     Box(
                         modifier = Modifier
+                            // Full 48dp target: the glyph is small but the panel
+                            // sits on a 240dp-wide touch panel where a 30dp
+                            // target is a coin-flip.
+                            .sizeIn(minWidth = R1.MinTarget, minHeight = R1.MinTarget)
                             .clip(R1.ShapeS)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClickLabel = "More options",
                                 onClick = { menuOpen.value = !menuOpen.value },
-                            )
-                            .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+                            ),
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "⋯", style = R1.numeralM, color = R1.InkMuted)
                     }
@@ -107,6 +113,7 @@ fun WhatsNewOverlay(
                 Spacer(Modifier.height(R1.space.s))
                 Box(
                     modifier = Modifier
+                        .heightIn(min = R1.MinTarget)
                         .clip(R1.ShapeS)
                         .background(R1.SurfaceMuted)
                         .border(1.dp, R1.Hairline, R1.ShapeS)
@@ -117,6 +124,7 @@ fun WhatsNewOverlay(
                             onClick = onDisable,
                         )
                         .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                    contentAlignment = Alignment.CenterStart,
                 ) {
                     Text(
                         text = "DON'T SHOW THESE AGAIN",

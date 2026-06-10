@@ -107,6 +107,9 @@ data class AppBackup(
     val behaviorStartOnDashboard: Boolean = false,
     val behaviorWheelTogglesSwitches: Boolean = true,
     val behaviorToastLogLevel: ToastLogLevel = ToastLogLevel.OFF,
+    /** What's-new opt-in. Older backups without this field decode as true
+     *  (the panel shows after updates), the historical behaviour. */
+    val behaviorShowWhatsNew: Boolean = true,
 
     val advanced: AdvancedSettings = AdvancedSettings(),
     val dashboard: DashboardSettings = DashboardSettings(),
@@ -191,6 +194,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     behaviorStartOnDashboard = behavior.startOnDashboard,
     behaviorWheelTogglesSwitches = behavior.wheelTogglesSwitches,
     behaviorToastLogLevel = behavior.toastLogLevel,
+    behaviorShowWhatsNew = behavior.showWhatsNew,
     advanced = advanced,
     dashboard = dashboard,
     navPanel = navPanel,
@@ -267,7 +271,12 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             timestampStyle = uiTimestampStyle,
             reduceMotion = uiReduceMotion,
         ),
-        behavior = Behavior(
+        // copy() from prev, not Behavior(): fields this format doesn't
+        // serialize (quick-tile bindings, the per-device what's-new stamp,
+        // the wheel-tutorial flag) must survive a restore and the HA
+        // settings-sync pull that rides this same codec, instead of
+        // snapping back to data-class defaults.
+        behavior = prev.behavior.copy(
             haptics = behaviorHaptics,
             keepScreenOn = behaviorKeepScreenOn,
             tapToToggle = behaviorTapToToggle,
@@ -276,6 +285,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             startOnDashboard = behaviorStartOnDashboard,
             wheelTogglesSwitches = behaviorWheelTogglesSwitches,
             toastLogLevel = behaviorToastLogLevel,
+            showWhatsNew = behaviorShowWhatsNew,
         ),
         advanced = advanced,
         dashboard = dashboard,
