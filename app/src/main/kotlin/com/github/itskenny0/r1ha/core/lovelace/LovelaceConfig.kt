@@ -225,6 +225,18 @@ sealed class LovelaceCard {
         val entityId: String,
         val name: String?,
         val icon: String?,
+        /**
+         * HA's `tap_action` / `hold_action` / `double_tap_action`. HA's light
+         * card defaults the icon tap to `toggle` and the hold to `more-info`
+         * (hui-light-card.ts getStubConfig); a null here means "use that
+         * default", resolved centrally in [ActionDispatcher].
+         */
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
+        /** Per-card `theme:` key. Stored only; theme application is a later
+         *  batch. Null = inherit the dashboard/global theme. */
+        val theme: String? = null,
     ) : LovelaceCard() {
         override val type: String = "light"
     }
@@ -558,6 +570,21 @@ sealed class LovelaceCard {
          * framing. Empty = all entities drive the bounding box.
          */
         val focusEntities: Set<String> = emptySet(),
+        /**
+         * Per-entity marker config (HA's `entities: [{entity, color, label_mode,
+         * attribute, focus}]`). One [MapMarkerConfig] per configured entity in
+         * declaration order so the renderer can assign palette colours by index
+         * the way HA does (getColorByIndex). Entity ids match [entities] order.
+         */
+        val markers: List<MapMarkerConfig> = emptyList(),
+        /**
+         * Card-level `label_mode` attribute key (HA's `attribute:`). Used when
+         * [labelMode] is "attribute" to pick which attribute the marker label
+         * shows. Null = entity state.
+         */
+        val labelAttribute: String? = null,
+        /** Per-card `theme:` key. Stored only; applied by a later batch. */
+        val theme: String? = null,
     ) : LovelaceCard() {
         override val type: String = "map"
     }
@@ -621,6 +648,21 @@ sealed class LovelaceCard {
          * large value and hide the current humidity reading.
          */
         val showCurrentTemperature: Boolean = true,
+        /**
+         * HA's `show_current_as_primary`: when true the current humidity reading
+         * becomes the dominant hero value and the target moves to the secondary
+         * line, swapping the default emphasis.
+         */
+        val showCurrentAsPrimary: Boolean = false,
+        /**
+         * Card features rendered below the humidifier body (HA's card-features
+         * slot: humidifier-modes, humidifier-toggle, toggle, target-humidity).
+         * Parsed via the shared [parseTileFeatures] path, hosted with the same
+         * [TileFeatureRows] slot the thermostat card uses.
+         */
+        val features: List<LovelaceTileFeature> = emptyList(),
+        /** Per-card `theme:` key. Stored only; applied by a later batch. */
+        val theme: String? = null,
     ) : LovelaceCard() {
         override val type: String = "humidifier"
     }
@@ -756,6 +798,23 @@ sealed class LovelaceCard {
         /** Entity ids to scope the feed to. Empty = show the whole logbook. */
         val entities: List<String>,
         val hoursToShow: Int,
+        /**
+         * HA `target:` group selectors (`device_id` / `area_id` / `floor_id` /
+         * `label_id`) that resolve to additional entity ids. Direct `entity_id`
+         * targets already merge into [entities]; these need a registry join the
+         * client may or may not have. Stored verbatim so the renderer can
+         * resolve what it can against the area/device registries the repository
+         * exposes and document the rest.
+         */
+        val target: LogbookTarget = LogbookTarget(),
+        /**
+         * HA `state_filter:` (a list of raw state strings). When non-empty, only
+         * entries whose entity's resulting state is in this list are shown.
+         * Empty = no state filtering.
+         */
+        val stateFilter: List<String> = emptyList(),
+        /** Per-card `theme:` key. Stored only; applied by a later batch. */
+        val theme: String? = null,
     ) : LovelaceCard() {
         override val type: String = "logbook"
     }
@@ -854,8 +913,59 @@ sealed class LovelaceCard {
         val entityRefs: List<String> = emptyList(),
         val url: String? = null,
         val friendlyType: String = type,
+        /**
+         * HA iframe card `title:` — rendered as the card header above the
+         * embedded frame. Null = no header. Only meaningful for the iframe
+         * substrate; other unsupported cards ignore it.
+         */
+        val iframeTitle: String? = null,
+        /**
+         * HA iframe card `hide_background:` — drops the card surface (background,
+         * border, shadow) so the frame floats transparently. Defaults false.
+         */
+        val hideBackground: Boolean = false,
+        /** Per-card `theme:` key. Stored only; applied by a later batch. */
+        val theme: String? = null,
     ) : LovelaceCard()
 }
+
+/**
+ * HA `target:` group selectors on a [LovelaceCard.Logbook]. Each list holds the
+ * raw ids of that registry group. The renderer resolves these to entity ids
+ * client-side where the repository exposes the registry data (areas, devices)
+ * and documents what it cannot resolve.
+ */
+@Immutable
+data class LogbookTarget(
+    val deviceIds: List<String> = emptyList(),
+    val areaIds: List<String> = emptyList(),
+    val floorIds: List<String> = emptyList(),
+    val labelIds: List<String> = emptyList(),
+) {
+    val isEmpty: Boolean
+        get() = deviceIds.isEmpty() && areaIds.isEmpty() && floorIds.isEmpty() && labelIds.isEmpty()
+}
+
+/**
+ * Per-entity marker config on a [LovelaceCard.Map]. Mirrors HA's map-card
+ * entity object (`{entity, color, label_mode, attribute, focus}`).
+ *
+ *  - [color]: explicit marker colour (a `#rrggbb` hex or a theme-colour name).
+ *    Null means "assign from the default palette by declaration index", which
+ *    the renderer resolves via the same ordering HA uses (getColorByIndex).
+ *  - [labelMode] / [attribute]: per-entity label override (falls back to the
+ *    card-level label_mode / attribute when null).
+ *  - [focus]: when false the marker is plotted but excluded from the
+ *    bounding-box auto-fit. Defaults true.
+ */
+@Immutable
+data class MapMarkerConfig(
+    val entityId: String,
+    val color: String? = null,
+    val labelMode: String? = null,
+    val attribute: String? = null,
+    val focus: Boolean = true,
+)
 
 /**
  * One candidate entry of an [LovelaceCard.EntityFilter]. Carries the entity

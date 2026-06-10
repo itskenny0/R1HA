@@ -319,6 +319,10 @@ object LovelaceParser {
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
                     icon = obj["icon"]?.asStringOrNull(),
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                    theme = obj["theme"]?.asStringOrNull(),
                 )
             }
             "gauge" -> {
@@ -514,6 +518,9 @@ object LovelaceParser {
                 hoursToShow = obj["hours_to_show"]?.asIntOrNull(),
                 labelMode = obj["label_mode"]?.asStringOrNull(),
                 focusEntities = parseFocusEntities(obj["focus_entities"]),
+                markers = parseMapMarkers(obj["entities"]),
+                labelAttribute = obj["attribute"]?.asStringOrNull(),
+                theme = obj["theme"]?.asStringOrNull(),
             )
             "thermostat" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -540,6 +547,9 @@ object LovelaceParser {
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
                     showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
+                    showCurrentAsPrimary = obj["show_current_as_primary"]?.asBooleanOrNull() ?: false,
+                    features = parseTileFeatures(obj["features"]),
+                    theme = obj["theme"]?.asStringOrNull(),
                 )
             }
             "entity-filter" -> {
@@ -578,6 +588,9 @@ object LovelaceParser {
                 title = obj["title"]?.asStringOrNull(),
                 entities = parseLogbookEntities(obj),
                 hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 12,
+                target = parseLogbookTarget(obj["target"] as? JsonObject),
+                stateFilter = parseStringList(obj["state_filter"]),
+                theme = obj["theme"]?.asStringOrNull(),
             )
             "clock" -> LovelaceCard.Clock(
                 raw = obj,
@@ -856,12 +869,18 @@ object LovelaceParser {
         // Strip a leading "custom:" so the caption reads "mushroom-light"
         // rather than "custom:mushroom-light".
         val friendly = type.removePrefix("custom:").ifBlank { type }
+        // The iframe substrate honours `title:` / `hide_background:`. Other
+        // unsupported cards ignore these (the renderer only reads them on the
+        // iframe path), so capturing them unconditionally is harmless.
         return LovelaceCard.Unsupported(
             raw = obj,
             type = type,
             entityRefs = refs.toList(),
             url = url,
             friendlyType = friendly,
+            iframeTitle = obj["title"]?.asStringOrNull(),
+            hideBackground = obj["hide_background"]?.asBooleanOrNull() ?: false,
+            theme = obj["theme"]?.asStringOrNull(),
         )
     }
 
@@ -1019,6 +1038,59 @@ object LovelaceParser {
             }
         }
         return out
+    }
+
+    /**
+     * Parse the map card's `entities:` list into per-marker config (declaration
+     * order preserved so palette indices match HA's getColorByIndex). A bare
+     * string entity gets a default [MapMarkerConfig]; an object pulls `color`,
+     * `label_mode`, `attribute`, and `focus`. Entries without an `entity:` key
+     * are dropped (mirrors [parseEntityRows]).
+     */
+    private fun parseMapMarkers(el: JsonElement?): List<MapMarkerConfig> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) MapMarkerConfig(entityId = item.content) else null
+                is JsonObject -> {
+                    val entity = item["entity"]?.asStringOrNull() ?: return@mapNotNull null
+                    MapMarkerConfig(
+                        entityId = entity,
+                        color = item["color"]?.asStringOrNull(),
+                        labelMode = item["label_mode"]?.asStringOrNull(),
+                        attribute = item["attribute"]?.asStringOrNull(),
+                        focus = item["focus"]?.asBooleanOrNull() ?: true,
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Parse a logbook card `target:` block into [LogbookTarget]. Reads the four
+     * registry-group selectors (`device_id` / `area_id` / `floor_id` /
+     * `label_id`), each accepting a single string or a list. The `entity_id`
+     * selector is handled by [parseLogbookEntities] (it merges straight into the
+     * entity list), so it is intentionally skipped here.
+     */
+    private fun parseLogbookTarget(obj: JsonObject?): LogbookTarget {
+        if (obj == null) return LogbookTarget()
+        fun ids(key: String): List<String> {
+            val out = LinkedHashSet<String>()
+            when (val v = obj[key]) {
+                is JsonPrimitive -> if (v.isString) out.add(v.content)
+                is JsonArray -> v.forEach { it.asStringOrNull()?.let(out::add) }
+                else -> Unit
+            }
+            return out.toList()
+        }
+        return LogbookTarget(
+            deviceIds = ids("device_id"),
+            areaIds = ids("area_id"),
+            floorIds = ids("floor_id"),
+            labelIds = ids("label_id"),
+        )
     }
 
     private fun parseEntityRows(el: JsonElement?): List<EntityRow> {
