@@ -16,6 +16,8 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceView
 import com.github.itskenny0.r1ha.core.lovelace.OverrideOp
 import com.github.itskenny0.r1ha.core.lovelace.ViewOverride
 import com.github.itskenny0.r1ha.core.lovelace.haThemeVariablesToOverlay
+import com.github.itskenny0.r1ha.core.lovelace.strategies.StrategyDataLoader
+import com.github.itskenny0.r1ha.core.lovelace.strategies.StrategyEngine
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -179,10 +181,25 @@ class DashboardsViewModel(
      * served on subsequent calls; pass [force] = true to bypass the
      * cache (used by the editor after the user re-imports).
      */
+    /**
+     * Cache keys whose config is strategy-driven. HA regenerates a strategy
+     * dashboard whenever the area/entity registry changes; R1HA's cheap
+     * equivalent is to re-expand on every dashboard re-entry (plus the existing
+     * 60s [com.github.itskenny0.r1ha.feature.dashboards.cards.AreaRegistryCache]
+     * TTL the cards already honour, and the lovelace_updated / reconnect
+     * refetches). This is a coarser cadence than HA's live registry events, but
+     * it keeps a strategy dashboard fresh without a registry-event subscription.
+     */
+    private val strategyKeys = mutableSetOf<String>()
+
     fun loadConfig(urlPath: String?, force: Boolean = false) {
         viewModelScope.launch {
             val cacheKey = urlPath ?: DEFAULT_KEY
-            if (!force && _state.value.configs.containsKey(cacheKey)) return@launch
+            // A strategy dashboard always re-expands on (re-)entry so a registry
+            // change since the last visit is reflected; concrete dashboards serve
+            // the cache.
+            val bypassCache = force || cacheKey in strategyKeys
+            if (!bypassCache && _state.value.configs.containsKey(cacheKey)) return@launch
             _state.update { it.copy(isLoadingConfig = true, configError = null) }
             // Subscribe to live config updates for this dashboard (idempotent) so
             // an external edit / YAML reload refetches without a manual reload.
@@ -193,7 +210,25 @@ class DashboardsViewModel(
             val result = haRepository.fetchLovelaceConfig(urlPath, forceRefresh = force)
             result.fold(
                 onSuccess = { raw ->
-                    val parsed = runCatching { LovelaceParser.parseConfig(raw) }
+                    // Client-side strategy expansion (HA's auto dashboards): when the
+                    // config references a strategy anywhere, expand it against a fresh
+                    // registry/state snapshot into ordinary card configs the existing
+                    // parser + renderer draw, instead of the "open in Lovelace"
+                    // fallback. Unknown/custom strategies expand to a labelled card.
+                    val effectiveRaw = if (StrategyEngine.hasAnyStrategy(raw)) {
+                        strategyKeys.add(cacheKey)
+                        runCatching {
+                            val data = StrategyDataLoader(haRepository)
+                                .load(needsUsagePrediction = StrategyEngine.referencesUsagePrediction(raw))
+                            StrategyEngine.expand(raw, data)
+                        }.onFailure {
+                            R1Log.w("Dashboards", "strategy expand failed: ${it.message}")
+                        }.getOrDefault(raw)
+                    } else {
+                        strategyKeys.remove(cacheKey)
+                        raw
+                    }
+                    val parsed = runCatching { LovelaceParser.parseConfig(effectiveRaw) }
                         .onFailure { R1Log.w("Dashboards", "parse failed: ${it.message}") }
                         .getOrElse { LovelaceConfig(title = null, views = emptyList()) }
                     _state.update { s ->

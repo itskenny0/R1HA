@@ -28,9 +28,15 @@ data class LovelaceConfig(
      * (the `strategy:` key at the config root, with no concrete `views`).
      * HA's default auto-dashboard is the canonical example: the server only
      * returns `{ "strategy": { "type": "original-states" } }` and expects the
-     * frontend to expand it client-side, which R1HA can't do natively. The
-     * screen reads this flag to show an "open in Lovelace" affordance instead
-     * of silently rendering an empty dashboard.
+     * frontend to expand it client-side.
+     *
+     * R1HA now expands the common strategies natively before parsing (see
+     * [com.github.itskenny0.r1ha.core.lovelace.strategies.StrategyEngine]); the
+     * expanded config carries concrete views and this flag is therefore false.
+     * The flag only survives when the engine could not expand at all (a parse of
+     * the raw strategy config, e.g. after a registry-fetch failure), so the
+     * screen can still offer the "open in Lovelace" affordance as a last resort
+     * rather than rendering an empty dashboard.
      */
     val isStrategyGenerated: Boolean = false,
     /**

@@ -3608,10 +3608,46 @@ class DefaultHaRepository(
                 val id = (o["area_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
                 val name = (o["name"] as? JsonPrimitive)?.content ?: id
                 val floorId = (o["floor_id"] as? JsonPrimitive)?.content
-                AreaInfo(areaId = id, name = name, floorId = floorId)
+                fun s(k: String): String? = (o[k] as? JsonPrimitive)?.content?.takeUnless { it.isBlank() }
+                AreaInfo(
+                    areaId = id,
+                    name = name,
+                    floorId = floorId,
+                    icon = s("icon"),
+                    picture = s("picture"),
+                    temperatureEntityId = s("temperature_entity_id"),
+                    humidityEntityId = s("humidity_entity_id"),
+                )
             }.sortedBy { it.name.lowercase() }
         }.onFailure { t ->
             R1Log.w("HaRepo.area", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun listFloors(): Result<List<FloorInfo>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("config/floor_registry/list").mapCatching { payload ->
+            val arr = payload as? kotlinx.serialization.json.JsonArray ?: return@mapCatching emptyList()
+            arr.mapNotNull { el ->
+                val o = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                val id = (o["floor_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
+                val name = (o["name"] as? JsonPrimitive)?.content ?: id
+                val level = (o["level"] as? JsonPrimitive)?.content?.toIntOrNull()
+                val icon = (o["icon"] as? JsonPrimitive)?.content?.takeUnless { it.isBlank() }
+                FloorInfo(floorId = id, name = name, level = level, icon = icon)
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.floor", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun predictCommonControls(): Result<List<String>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("usage_prediction/common_control").mapCatching { payload ->
+            val o = payload as? kotlinx.serialization.json.JsonObject
+                ?: return@mapCatching emptyList()
+            val arr = o["entities"] as? kotlinx.serialization.json.JsonArray ?: return@mapCatching emptyList()
+            arr.mapNotNull { (it as? JsonPrimitive)?.content }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.usagePrediction", "common_control failed: ${t.message}")
         }
     }
 
@@ -3728,6 +3764,7 @@ class DefaultHaRepository(
                     platform = str("platform"),
                     disabledBy = str("disabled_by"),
                     hiddenBy = str("hidden_by"),
+                    entityCategory = str("entity_category"),
                 )
             }
         }.onFailure { t ->

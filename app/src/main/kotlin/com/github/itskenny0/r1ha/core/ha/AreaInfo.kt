@@ -20,4 +20,33 @@ data class AreaInfo(
      * the `floor_id` field in HA's `config/area_registry/list` payload.
      */
     val floorId: String? = null,
+    /** HA area-registry `icon`. Null when the area uses the default. */
+    val icon: String? = null,
+    /** HA area-registry `picture` (a static URL). Null when unset. */
+    val picture: String? = null,
+    /**
+     * HA area-registry `temperature_entity_id`: the user-chosen representative
+     * temperature sensor for the area. The areas strategy renders this as a red
+     * badge on the per-area subview. Null when no representative sensor is set.
+     */
+    val temperatureEntityId: String? = null,
+    /** HA area-registry `humidity_entity_id`: the representative humidity sensor.
+     *  Rendered as an indigo badge on the per-area subview. Null when unset. */
+    val humidityEntityId: String? = null,
+)
+
+/**
+ * One entry from HA's `config/floor_registry/list` reply (HA 2024.x). Floors
+ * organise areas into levels (Ground Floor, First Floor, Basement). Carried so
+ * the areas / home strategies can section their area-card overview by floor.
+ */
+data class FloorInfo(
+    /** Stable server-assigned id, e.g. "ground_floor". */
+    val floorId: String,
+    /** Human-friendly label, e.g. "Ground Floor". */
+    val name: String,
+    /** HA `level` ordering integer (lower = lower floor). Null when unset. */
+    val level: Int? = null,
+    /** HA floor-registry `icon`. Null when the floor uses HA's level default. */
+    val icon: String? = null,
 )
