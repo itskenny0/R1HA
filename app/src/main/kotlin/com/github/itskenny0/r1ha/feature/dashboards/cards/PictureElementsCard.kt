@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +27,8 @@ import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
 import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
+import com.github.itskenny0.r1ha.ui.components.HuiImage
+import com.github.itskenny0.r1ha.ui.components.ImageEngine
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.serialization.json.JsonPrimitive
@@ -38,11 +39,13 @@ import kotlin.math.roundToInt
  * overlay elements (icons, state chips, labels, images) each positioned by a
  * percentage offset over the image box.
  *
- * Supported element types: `state-badge`, `state-icon`, `state-label`, `icon`, `image`.
- * Unknown types are skipped gracefully. Missing entities render a neutral placeholder.
+ * The background is sized by [LovelaceCard.PictureElements.aspectRatio] when set,
+ * else intrinsically. This ensures percentage-positioned elements are truthful to
+ * the actual image dimensions (with a fixed-height box + ContentScale.Crop, elements
+ * were offset from the cropped region rather than the full image).
  *
- * Background image resolves the same way as PictureGlance: static [LovelaceCard.PictureElements.image]
- * URL first, then the cameraImage entity's `entity_picture` attribute.
+ * Supported element types: `state-badge`, `state-icon`, `state-label`, `icon`, `image`.
+ * Unknown types are skipped gracefully.
  */
 @Composable
 fun PictureElementsCard(
@@ -51,48 +54,37 @@ fun PictureElementsCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cameraState = card.cameraImage?.let { stateMap.byRaw(it) }
-    val imageUrl = card.image ?: entityPictureOf(cameraState)
+    val cameraEntityId = card.cameraImage?.takeUnless { it.isBlank() }
+    val camState = cameraEntityId?.let { stateMap.byRaw(it) }
+    val imageUrl = card.image ?: entityPictureOf(camState)
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(200.dp)
             .clip(R1.ShapeM)
             .border(1.dp, R1.Hairline, R1.ShapeM),
     ) {
-        // Background layer
-        if (imageUrl.isNullOrBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(R1.SurfaceMuted),
-            )
-        } else {
-            AsyncBitmap(
-                url = imageUrl,
-                serverUrl = LocalHaServerUrl.current,
-                bearerToken = LocalHaBearerToken.current,
-                modifier = Modifier.fillMaxSize(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-            )
-        }
+        // Background: HuiImage handles aspect-ratio sizing and camera polling.
+        // The overlay Box must be the same size so percentage positions are truthful.
+        HuiImage(
+            imageUrl = imageUrl,
+            cameraEntityId = if (cameraEntityId != null && ImageEngine.cameraMode(cameraEntityId, card.cameraView) != ImageEngine.CameraMode.Static) cameraEntityId else null,
+            cameraView = card.cameraView,
+            aspectRatioStr = card.aspectRatio,
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
-        // Overlay elements
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Overlay elements: positioned against the same HuiImage box dimensions.
+        BoxWithConstraints(modifier = Modifier.matchParentSize()) {
             val density = LocalDensity.current
             val maxWidthPx = with(density) { maxWidth.toPx() }
             val maxHeightPx = with(density) { maxHeight.toPx() }
-            // Half-size constant used to centre each element on its anchor point.
-            // Using a fixed 16dp half-size keeps the layout simple and robust.
             val halfSizePx = with(density) { 16.dp.toPx() }.roundToInt()
 
             card.elements.forEach { element ->
                 val anchorX = (element.leftPct / 100.0 * maxWidthPx).roundToInt()
                 val anchorY = (element.topPct / 100.0 * maxHeightPx).roundToInt()
-                val offsetX = anchorX - halfSizePx
-                val offsetY = anchorY - halfSizePx
 
                 PictureOverlayElement(
                     element = element,
@@ -100,7 +92,7 @@ fun PictureElementsCard(
                     onAction = onAction,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .offset { IntOffset(offsetX, offsetY) },
+                        .offset { IntOffset(anchorX - halfSizePx, anchorY - halfSizePx) },
                 )
             }
         }
@@ -125,8 +117,6 @@ private fun PictureOverlayElement(
     val state = entityId?.let { stateMap.byRaw(it) }
     val accent = stateAccentFor(entityId ?: "", state)
 
-    // Resolve the action: configured tap_action wins, then entity domain default,
-    // then no-op (icon-only elements with no entity).
     val effectiveAction: LovelaceAction? = when {
         element.tapAction != null -> element.tapAction.boundTo(entityId)
         entityId != null -> defaultTapAction(entityId)
@@ -139,11 +129,8 @@ private fun PictureOverlayElement(
 
     when (element.type) {
         "state-badge" -> {
-            // Small pill showing the entity's state, coloured by state accent.
             val displayName = element.name
-                ?: state?.let { s ->
-                    entityId?.let { resolveName(null, s, it) }
-                }
+                ?: state?.let { s -> entityId?.let { resolveName(null, s, it) } }
                 ?: entityId?.substringAfter('.', "") ?: ""
             val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() }
                 ?: if (entityId != null) "..." else ""
@@ -188,7 +175,6 @@ private fun PictureOverlayElement(
         }
 
         "state-label" -> {
-            // Show prefix + (attribute or compact state) + suffix.
             val rawValue: String = when {
                 element.attribute != null && entityId != null -> {
                     val attrs = state?.attributesJson
@@ -259,9 +245,6 @@ private fun PictureOverlayElement(
             }
         }
 
-        // All other element types have been filtered out by the parser.
-        // This branch is unreachable in practice but silences the exhaustive
-        // when warning if the type set is ever widened.
         else -> Unit
     }
 }

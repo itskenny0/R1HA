@@ -401,6 +401,13 @@ object LovelaceParser {
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 fitMode = obj["fit_mode"]?.asStringOrNull(),
+                aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+                cameraView = obj["camera_view"]?.asStringOrNull(),
+                stateImage = parseStateImageMap(obj["state_image"]),
+                filter = obj["filter"]?.asStringOrNull(),
+                stateFilter = parseStateFilterMap(obj["state_filter"]),
+                darkModeImage = obj["dark_mode_image"]?.asStringOrNull(),
+                darkModeFilter = obj["dark_mode_filter"]?.asStringOrNull(),
             )
             "picture-entity" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -416,6 +423,14 @@ object LovelaceParser {
                     holdAction = parseAction(obj["hold_action"] as? JsonObject),
                     doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                     fitMode = obj["fit_mode"]?.asStringOrNull(),
+                    aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+                    cameraImage = obj["camera_image"]?.asStringOrNull(),
+                    cameraView = obj["camera_view"]?.asStringOrNull(),
+                    stateImage = parseStateImageMap(obj["state_image"]),
+                    filter = obj["filter"]?.asStringOrNull(),
+                    stateFilter = parseStateFilterMap(obj["state_filter"]),
+                    darkModeImage = obj["dark_mode_image"]?.asStringOrNull(),
+                    darkModeFilter = obj["dark_mode_filter"]?.asStringOrNull(),
                 )
             }
             "area" -> {
@@ -533,7 +548,8 @@ object LovelaceParser {
             "picture" -> {
                 val image = obj["image"]?.asStringOrNull()
                 val imageEntity = obj["image_entity"]?.asStringOrNull()
-                if (image.isNullOrBlank() && imageEntity.isNullOrBlank()) {
+                val cameraImage = obj["camera_image"]?.asStringOrNull()
+                if (image.isNullOrBlank() && imageEntity.isNullOrBlank() && cameraImage.isNullOrBlank()) {
                     return bestEffortUnsupported(obj, type)
                 }
                 LovelaceCard.Picture(
@@ -543,6 +559,14 @@ object LovelaceParser {
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     holdAction = parseAction(obj["hold_action"] as? JsonObject),
                     doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                    aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+                    cameraImage = cameraImage?.takeUnless { it.isBlank() },
+                    cameraView = obj["camera_view"]?.asStringOrNull(),
+                    stateImage = parseStateImageMap(obj["state_image"]),
+                    filter = obj["filter"]?.asStringOrNull(),
+                    stateFilter = parseStateFilterMap(obj["state_filter"]),
+                    darkModeImage = obj["dark_mode_image"]?.asStringOrNull(),
+                    darkModeFilter = obj["dark_mode_filter"]?.asStringOrNull(),
                 )
             }
             "picture-elements" -> LovelaceCard.PictureElements(
@@ -552,6 +576,8 @@ object LovelaceParser {
                     ?: obj["image_entity"]?.asStringOrNull()
                     ?: obj["entity"]?.asStringOrNull(),
                 elements = parseElements(obj["elements"] as? JsonArray),
+                aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+                cameraView = obj["camera_view"]?.asStringOrNull(),
             )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
@@ -1028,6 +1054,35 @@ object LovelaceParser {
                 else -> null
             }
         }
+    }
+
+    /**
+     * Parse a `state_image:` map: keys are entity state strings, values are
+     * image URLs. HA YAML looks like `state_image: {on: "/local/on.png", off: "/local/off.png"}`.
+     * Returns null when the element is absent or not an object.
+     */
+    private fun parseStateImageMap(el: JsonElement?): Map<String, String>? {
+        val obj = el as? JsonObject ?: return null
+        val result = mutableMapOf<String, String>()
+        obj.entries.forEach { (key, value) ->
+            val url = value.asStringOrNull()
+            if (!url.isNullOrBlank()) result[key] = url
+        }
+        return result.takeUnless { it.isEmpty() }
+    }
+
+    /**
+     * Parse a `state_filter:` map: keys are entity state strings, values are
+     * CSS-ish filter strings. Absent or non-object elements return null.
+     */
+    private fun parseStateFilterMap(el: JsonElement?): Map<String, String>? {
+        val obj = el as? JsonObject ?: return null
+        val result = mutableMapOf<String, String>()
+        obj.entries.forEach { (key, value) ->
+            val filter = value.asStringOrNull()
+            if (!filter.isNullOrBlank()) result[key] = filter
+        }
+        return result.takeUnless { it.isEmpty() }
     }
 
     /** Parse the statistics-graph `entities:` list. Each entry is either a bare
