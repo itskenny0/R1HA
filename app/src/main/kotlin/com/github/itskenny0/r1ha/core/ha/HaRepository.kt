@@ -523,6 +523,15 @@ interface HaRepository {
     suspend fun listEntityRegistry(): Result<List<EntityRegistryEntry>>
 
     /**
+     * Fetch one entity's extended registry entry via `config/entity_registry/get`
+     * and narrow it to the options the Lovelace card-features need (favorite
+     * positions / colours, default code). Returns [ExtEntityRegistryOptions.EMPTY]
+     * on older servers or when the entity has no registry entry, so callers fall
+     * back to their built-in defaults rather than failing.
+     */
+    suspend fun getExtendedEntityRegistryOptions(entityId: String): Result<ExtEntityRegistryOptions>
+
+    /**
      * List every configured integration instance via `config_entries/get`.
      * Powers the native Integrations browser which groups by domain and
      * surfaces a reload affordance per row. Setup / removal flows live
