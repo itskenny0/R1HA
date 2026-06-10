@@ -1069,15 +1069,15 @@ internal fun LightControlsRow(
                         .let { m ->
                             if (onSetMode != null) {
                                 m.r1Pressable(onClick = {
-                                    onSetMode(entityId, mode)
-                                    // HUE does double duty: it still flips the wheel
-                                    // mode (so the R1's physical wheel cycles hue while
-                                    // the overlay is up; wheel and touch drive the
-                                    // same hs_color) AND spawns the screen-level colour
-                                    // wheel, which is the only colour affordance on
-                                    // wheel-less phones.
+                                    // HUE is an action, not a mode: it spawns the
+                                    // colour-wheel overlay and leaves the card's value
+                                    // bar exactly as it was (flipping the slider to a
+                                    // hue track on top of opening the wheel read as a
+                                    // bug). BRIGHT and WHITE keep switching the bar.
                                     if (mode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE) {
                                         onOpenColorWheel?.invoke(entityId)
+                                    } else {
+                                        onSetMode(entityId, mode)
                                     }
                                 })
                             } else {
