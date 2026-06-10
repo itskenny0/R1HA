@@ -15,54 +15,77 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.StatisticPeriodConfig
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
-import java.time.Duration
+import com.github.itskenny0.r1ha.ui.components.StatisticPeriodSpec
+import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.components.resolveStatisticWindow
+import kotlinx.coroutines.delay
 import java.time.Instant
 import java.util.Locale
 
 /**
- * Renderer for HA's `statistic` card. Fetches long-term-statistics buckets
- * for the configured entity over the card's period and shows the requested
- * aggregate (mean / min / max / sum / change / state) as a single big
- * readout. An entity the recorder doesn't track, or a transport failure,
- * falls back to a quiet placeholder rather than an error.
+ * Renderer for HA's `statistic` card. Resolves the configured period
+ * (calendar / fixed_period / rolling_window) into a concrete window via the
+ * shared period engine, fetches long-term-statistics buckets for that window,
+ * and shows the requested aggregate (mean / min / max / sum / change / state)
+ * as a single big readout. Tapping the card opens more-info (the dispatcher
+ * default). Auto-refreshes on a sensible cadence.
+ *
+ * An entity the recorder doesn't track, or a transport failure, falls back to a
+ * quiet placeholder rather than an error.
  */
 @Composable
 fun StatisticCard(
     card: LovelaceCard.Statistic,
     stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalHaRepository.current
     val eid = remember(card.entityId) { safeEntityId(card.entityId) }
     val name = resolveName(card.name, eid?.let { stateMap[it] }, card.entityId)
-    val unit = eid?.let { stateMap[it]?.unit }
-    var value by remember(card.entityId, card.statType, card.period) {
+    val unit = card.unit ?: eid?.let { stateMap[it]?.unit }
+    var value by remember(card.entityId, card.statType, card.periodSpec) {
         mutableStateOf<Double?>(null)
     }
-    var loaded by remember(card.entityId, card.statType, card.period) { mutableStateOf(false) }
+    var loaded by remember(card.entityId, card.statType, card.periodSpec) { mutableStateOf(false) }
 
     if (repo != null) {
-        LaunchedEffect(card.entityId, card.statType, card.period) {
-            val end = Instant.now()
-            val start = end.minus(lookbackFor(card.period))
-            repo.getStatisticsDuringPeriod(
-                statisticIds = listOf(card.entityId),
-                start = start,
-                end = end,
-                period = bucketPeriodFor(card.period),
-            ).onSuccess { byId ->
-                value = reduceStatistic(byId[card.entityId].orEmpty(), card.statType)
+        LaunchedEffect(card.entityId, card.statType, card.periodSpec) {
+            while (true) {
+                val window = resolveStatisticWindow(card.periodSpec.toSpec(), Instant.now())
+                repo.getStatisticsDuringPeriod(
+                    statisticIds = listOf(card.entityId),
+                    start = window.start,
+                    end = window.end,
+                    period = window.bucket,
+                ).onSuccess { byId ->
+                    value = reduceStatistic(byId[card.entityId].orEmpty(), card.statType)
+                }
+                loaded = true
+                // HA refetches statistics on a coarse cadence; 5 minutes keeps
+                // a dashboard fresh without hammering the recorder.
+                delay(300_000L)
             }
-            loaded = true
         }
     }
 
-    CardSurface(modifier = modifier) {
+    CardSurface(
+        modifier = modifier.then(
+            if (eid != null) {
+                Modifier.r1Pressable(onClick = {
+                    onAction(LovelaceAction.Builtin("more-info", card.entityId))
+                })
+            } else Modifier,
+        ),
+    ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -81,7 +104,7 @@ fun StatisticCard(
             val display = when {
                 v != null -> formatStatistic(v) + (unit?.let { " $it" } ?: "")
                 repo == null -> "STATISTICS UNAVAILABLE"
-                !loaded -> "LOADING…"
+                !loaded -> "LOADING..."
                 else -> "NO STATISTICS"
             }
             Text(
@@ -93,6 +116,13 @@ fun StatisticCard(
             )
         }
     }
+}
+
+/** Bridge the config-layer period to the engine's spec type. */
+internal fun StatisticPeriodConfig.toSpec(): StatisticPeriodSpec = when (this) {
+    is StatisticPeriodConfig.Calendar -> StatisticPeriodSpec.Calendar(period, offset)
+    is StatisticPeriodConfig.Fixed -> StatisticPeriodSpec.Fixed(startMillis, endMillis)
+    is StatisticPeriodConfig.Rolling -> StatisticPeriodSpec.Rolling(durationMillis, offsetMillis)
 }
 
 /**
@@ -123,23 +153,4 @@ internal fun formatStatistic(value: Double): String {
     } else {
         String.format(Locale.US, "%.2f", rounded).trimEnd('0').trimEnd('.')
     }
-}
-
-/** Lookback window for the card's coarse period label. */
-internal fun lookbackFor(period: String): Duration = when (period.lowercase(Locale.US)) {
-    "hour", "5minute" -> Duration.ofDays(1)
-    "day" -> Duration.ofDays(7)
-    "week" -> Duration.ofDays(30)
-    "month" -> Duration.ofDays(365)
-    "year" -> Duration.ofDays(365 * 3L)
-    else -> Duration.ofDays(7)
-}
-
-/** Recorder bucket resolution to request for the card's period label. */
-internal fun bucketPeriodFor(period: String): String = when (period.lowercase(Locale.US)) {
-    "hour", "5minute" -> "hour"
-    "week" -> "day"
-    "month" -> "week"
-    "year" -> "month"
-    else -> "day"
 }

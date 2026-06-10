@@ -23,9 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
@@ -33,19 +32,32 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.nav.Routes
+import com.github.itskenny0.r1ha.ui.components.ChartSample
+import com.github.itskenny0.r1ha.ui.components.ChartScale
+import com.github.itskenny0.r1ha.ui.components.Sparkline
+import com.github.itskenny0.r1ha.ui.components.SparklineSeries
+import com.github.itskenny0.r1ha.ui.components.computeScale
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.components.scaleYFraction
+import com.github.itskenny0.r1ha.ui.components.selectStatColumn
+import com.github.itskenny0.r1ha.ui.components.xFraction
 import java.time.Duration
 import java.time.Instant
 
+private const val DEFAULT_STAT_DAYS = 30
+
 /**
- * Renderer for HA's `statistics-graph` card (HA 2022.11). Fetches long-term-statistics
- * buckets for each configured entity and overlays the requested aggregate series on a
- * shared canvas. Mirrors the multi-series canvas idiom from [HistoryGraphCard] and the
- * fetch pattern from [StatisticCard].
+ * Renderer for HA's `statistics-graph` card. Fetches long-term-statistics
+ * buckets over a `days_to_show` window at the configured `period` bucket size
+ * and renders each entity's series for every requested stat_type, either as
+ * lines (default, through the shared [Sparkline]) or as bars
+ * (`chart_type: bar`). Per-entity name and colour overrides are honoured, plus
+ * y-axis pinning and legend options. A "history" shortcut opens the Statistics
+ * screen.
  *
- * Only the first stat_type is plotted per entity (the mean series by default). A
- * "history" shortcut navigates to the Statistics screen. Gracefully shows a placeholder
- * when no numeric data is available.
+ * The energy date-range binding (`energy_date_selection` / `collection_key`) is
+ * parsed but deferred to the energy batch; until then the window comes from
+ * days_to_show.
  */
 @Composable
 fun StatisticsGraphCard(
@@ -55,35 +67,59 @@ fun StatisticsGraphCard(
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalHaRepository.current
-    val statType = card.statTypes.firstOrNull() ?: "mean"
-    var series by remember(card.entityIds, statType, card.period, card.daysToShow) {
-        mutableStateOf<List<Pair<String, List<Pair<Instant, Double>>>>>(emptyList())
+    // One drawable series per (entity, stat_type) pair.
+    var series by remember(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+        mutableStateOf<List<StatSeries>>(emptyList())
     }
-    var loaded by remember(card.entityIds, statType, card.period, card.daysToShow) { mutableStateOf(false) }
+    var loaded by remember(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+        mutableStateOf(false)
+    }
+    var nowMillis by remember(card.entityIds, card.period, card.daysToShow) {
+        mutableStateOf(System.currentTimeMillis())
+    }
 
     if (repo != null) {
-        LaunchedEffect(card.entityIds, statType, card.period, card.daysToShow) {
-            val end = Instant.now()
-            val lookback = card.daysToShow?.let { Duration.ofDays(it.toLong()) } ?: lookbackFor(card.period)
-            val start = end.minus(lookback)
-            repo.getStatisticsDuringPeriod(
-                statisticIds = card.entityIds,
-                start = start,
-                end = end,
-                period = bucketPeriodFor(card.period),
-            ).onSuccess { byId ->
-                series = card.entityIds.mapNotNull { eid ->
-                    val buckets = byId[eid] ?: return@mapNotNull null
-                    val pts = buckets.mapNotNull { b ->
-                        val v = statisticBucketValue(b, statType) ?: return@mapNotNull null
-                        b.start to v
+        LaunchedEffect(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+            while (true) {
+                val end = Instant.now()
+                val days = card.daysToShow ?: DEFAULT_STAT_DAYS
+                val start = end.minus(Duration.ofDays(days.toLong()))
+                repo.getStatisticsDuringPeriod(
+                    statisticIds = card.entityIds,
+                    start = start,
+                    end = end,
+                    period = card.period,
+                ).onSuccess { byId ->
+                    val out = ArrayList<StatSeries>()
+                    card.entityIds.forEachIndexed { ei, eid ->
+                        val buckets = byId[eid] ?: return@forEachIndexed
+                        card.statTypes.forEachIndexed { si, statType ->
+                            val pts = buckets.mapNotNull { b ->
+                                val v = selectStatColumn(
+                                    statType, b.mean, b.min, b.max, b.sum, b.state, b.change,
+                                ) ?: return@mapNotNull null
+                                ChartSample(b.start.toEpochMilli(), v)
+                            }
+                            if (pts.isNotEmpty()) {
+                                val name = card.entityNames[eid]
+                                    ?: resolveName(null, stateMap.byRaw(eid), eid)
+                                val color = haColorAccent(card.entityColors[eid])
+                                    ?: lineColor(ei * card.statTypes.size + si)
+                                out.add(StatSeries(eid, statType, name, pts, color))
+                            }
+                        }
                     }
-                    if (pts.isEmpty()) null else eid to pts
+                    series = out
                 }
+                loaded = true
+                nowMillis = System.currentTimeMillis()
+                kotlinx.coroutines.delay(300_000L)
             }
-            loaded = true
         }
     }
+
+    val windowEnd = nowMillis
+    val windowStart = windowEnd - (card.daysToShow ?: DEFAULT_STAT_DAYS).toLong() * 86_400_000L
 
     CardSurface(modifier = modifier, title = card.title?.takeUnless { it.isBlank() }) {
         Column(modifier = Modifier.padding(horizontal = 14.dp)) {
@@ -92,7 +128,7 @@ fun StatisticsGraphCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                StateChip(text = statType.uppercase(), accent = R1.InkSoft)
+                StateChip(text = card.statTypes.joinToString("/") { it.uppercase() }, accent = R1.InkSoft)
                 Text(
                     text = "HISTORY",
                     style = R1.labelMicro,
@@ -124,29 +160,41 @@ fun StatisticsGraphCard(
                     )
                 }
             } else {
-                StatisticsMultiLineChart(series)
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    series.forEachIndexed { idx, (eid, _) ->
-                        val name = resolveName(null, stateMap.byRaw(eid), eid)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(lineColor(idx)),
-                            )
-                            Spacer(Modifier.size(4.dp))
-                            Text(
-                                text = name,
-                                style = R1.labelMicro,
-                                color = R1.InkSoft,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
+                if (card.chartType == "bar") {
+                    StatisticsBarChart(series, windowStart, windowEnd, card.minYAxis, card.maxYAxis)
+                } else {
+                    Sparkline(
+                        series = series.map { SparklineSeries(samples = it.points, color = it.color, fill = false) },
+                        height = 96.dp,
+                        windowStartMillis = windowStart,
+                        windowEndMillis = windowEnd,
+                        limitMin = card.minYAxis,
+                        limitMax = card.maxYAxis,
+                    )
+                }
+                if (!card.hideLegend) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        series.forEach { s ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(s.color),
+                                )
+                                Spacer(Modifier.size(4.dp))
+                                Text(
+                                    text = if (card.statTypes.size > 1) "${s.name} ${s.statType}" else s.name,
+                                    style = R1.labelMicro,
+                                    color = R1.InkSoft,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }
@@ -155,18 +203,33 @@ fun StatisticsGraphCard(
     }
 }
 
-@Composable
-private fun StatisticsMultiLineChart(series: List<Pair<String, List<Pair<Instant, Double>>>>) {
-    val allPts = series.flatMap { it.second }
-    if (allPts.size < 2) return
-    val allValues = allPts.map { it.second }
-    val yMin = allValues.min()
-    val yMax = allValues.max()
-    val allTimes = allPts.map { it.first }
-    val tStart = allTimes.min()
-    val tEnd = allTimes.max()
-    val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
+/** One drawable statistics series: an (entity, stat_type) pair's points. */
+private data class StatSeries(
+    val entityId: String,
+    val statType: String,
+    val name: String,
+    val points: List<ChartSample>,
+    val color: Color,
+)
 
+/**
+ * Bar rendering for `chart_type: bar`: one bar per bucket, grouped per series
+ * within each time slot. Bars grow from the scale's zero origin so a mix of
+ * positive and negative changes reads correctly.
+ */
+@Composable
+private fun StatisticsBarChart(
+    series: List<StatSeries>,
+    windowStart: Long,
+    windowEnd: Long,
+    limitMin: Double?,
+    limitMax: Double?,
+) {
+    val allValues = remember(series, limitMin, limitMax) { series.flatMap { s -> s.points.map { it.value } } }
+    if (allValues.size < 2) return
+    val scale: ChartScale = remember(allValues, limitMin, limitMax) {
+        computeScale(allValues, limitMin, limitMax)
+    }
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,40 +240,27 @@ private fun StatisticsMultiLineChart(series: List<Pair<String, List<Pair<Instant
     ) {
         val w = size.width
         val h = size.height
-        drawLine(R1.Hairline, Offset(0f, h), Offset(w, h), strokeWidth = 1.dp.toPx())
-        drawLine(
-            R1.Hairline,
-            Offset(0f, h / 2f),
-            Offset(w, h / 2f),
-            strokeWidth = 1.dp.toPx(),
-            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f),
-        )
-        series.forEachIndexed { idx, (_, pts) ->
-            if (pts.size < 2) return@forEachIndexed
-            val path = Path()
-            pts.forEachIndexed { i, (instant, value) ->
-                val elapsed = Duration.between(tStart, instant).toMillis().toFloat()
-                val x = (elapsed / tSpan) * w
-                val yFrac = com.github.itskenny0.r1ha.ui.components.chartYFraction(value, yMin, yMax)
-                val y = h - (yFrac * h)
-                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        val originY = h - scaleYFraction(0.0, scale) * h
+        drawLine(R1.Hairline, Offset(0f, originY), Offset(w, originY), strokeWidth = 1.dp.toPx())
+        // Bar slot width: split each bucket's slot across the series count.
+        val slotCount = series.firstOrNull()?.points?.size ?: return@Canvas
+        if (slotCount == 0) return@Canvas
+        val slotW = w / slotCount
+        val barW = (slotW / (series.size + 1)).coerceAtLeast(1f)
+        series.forEachIndexed { si, s ->
+            s.points.forEach { p ->
+                val xf = xFraction(p.tMillis, windowStart, windowEnd)
+                val cx = xf * w + (si - series.size / 2f) * barW
+                val yf = scaleYFraction(p.value, scale)
+                val barTop = h - yf * h
+                val top = minOf(barTop, originY)
+                val barH = kotlin.math.abs(barTop - originY).coerceAtLeast(1f)
+                drawRect(
+                    color = s.color,
+                    topLeft = Offset(cx, top),
+                    size = Size(barW.coerceAtLeast(1f), barH),
+                )
             }
-            drawPath(
-                path = path,
-                color = lineColor(idx),
-                style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Butt),
-            )
         }
     }
-}
-
-/** Extract one numeric value from a [StatisticsBucket] for a given [statType]. */
-private fun statisticBucketValue(b: StatisticsBucket, statType: String): Double? = when (statType.lowercase()) {
-    "mean" -> b.mean
-    "min" -> b.min
-    "max" -> b.max
-    "sum" -> b.sum
-    "state" -> b.state
-    "change" -> b.change
-    else -> b.mean ?: b.state
 }

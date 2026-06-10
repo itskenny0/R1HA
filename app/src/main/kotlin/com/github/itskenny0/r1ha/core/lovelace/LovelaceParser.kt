@@ -366,6 +366,7 @@ object LovelaceParser {
             }
             "sensor" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                val limits = obj["limits"] as? JsonObject
                 LovelaceCard.Sensor(
                     raw = obj,
                     entityId = entity,
@@ -377,6 +378,10 @@ object LovelaceParser {
                     graph = obj["graph"]?.asStringOrNull()?.equals("line", ignoreCase = true) ?: false,
                     hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
                     detail = obj["detail"]?.asIntOrNull(),
+                    limitMin = limits?.get("min")?.asDoubleOrNull(),
+                    limitMax = limits?.get("max")?.asDoubleOrNull(),
+                    stateColor = obj["state_color"]?.asBooleanOrNull() ?: false,
+                    attribute = obj["attribute"]?.asStringOrNull(),
                 )
             }
             "picture-glance" -> LovelaceCard.PictureGlance(
@@ -415,12 +420,24 @@ object LovelaceParser {
                     navigationPath = obj["navigation_path"]?.asStringOrNull(),
                 )
             }
-            "history-graph" -> LovelaceCard.HistoryGraph(
-                raw = obj,
-                title = obj["title"]?.asStringOrNull(),
-                entities = parseEntityRows(obj["entities"]),
-                hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
-            )
+            "history-graph" -> {
+                val hoursExact = obj["hours_to_show"]?.asDoubleOrNull() ?: 24.0
+                LovelaceCard.HistoryGraph(
+                    raw = obj,
+                    title = obj["title"]?.asStringOrNull(),
+                    entities = parseEntityRows(obj["entities"]),
+                    hoursToShowExact = hoursExact,
+                    hoursToShow = hoursExact.coerceAtLeast(1.0).toInt(),
+                    splitDeviceClasses = obj["split_device_classes"]?.asBooleanOrNull() ?: false,
+                    entityColors = parseEntityColors(obj["entities"]),
+                    showNames = obj["show_names"]?.asBooleanOrNull() ?: true,
+                    logarithmicScale = obj["logarithmic_scale"]?.asBooleanOrNull() ?: false,
+                    minYAxis = obj["min_y_axis"]?.asDoubleOrNull(),
+                    maxYAxis = obj["max_y_axis"]?.asDoubleOrNull(),
+                    fitYData = obj["fit_y_data"]?.asBooleanOrNull() ?: false,
+                    expandLegend = obj["expand_legend"]?.asBooleanOrNull() ?: false,
+                )
+            }
             "alarm-panel" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
                 LovelaceCard.AlarmPanel(
@@ -482,6 +499,10 @@ object LovelaceParser {
                     name = obj["name"]?.asStringOrNull(),
                     statType = obj["stat_type"]?.asStringOrNull()?.lowercase() ?: "mean",
                     period = parseStatisticPeriod(obj["period"]),
+                    periodSpec = parseStatisticPeriodConfig(obj["period"]),
+                    icon = obj["icon"]?.asStringOrNull(),
+                    unit = obj["unit"]?.asStringOrNull(),
+                    collectionKey = parseCollectionKey(obj),
                 )
             }
             "logbook" -> LovelaceCard.Logbook(
@@ -506,14 +527,29 @@ object LovelaceParser {
             "statistics-graph" -> {
                 val ids = parseStatisticsGraphEntities(obj)
                 if (ids.isEmpty()) return bestEffortUnsupported(obj, type)
+                // HA accepts stat_types as a single string or a list.
+                val statTypes = (obj["stat_types"]?.asStringOrNull()?.let { listOf(it.lowercase()) }
+                    ?: parseStringList(obj["stat_types"]).map { it.lowercase() })
+                    .takeIf { it.isNotEmpty() } ?: listOf("mean")
                 LovelaceCard.StatisticsGraph(
                     raw = obj,
                     title = obj["title"]?.asStringOrNull(),
                     entityIds = ids,
-                    statTypes = parseStringList(obj["stat_types"]).takeIf { it.isNotEmpty() } ?: listOf("mean"),
-                    period = parseStatisticPeriod(obj["period"]),
+                    statTypes = statTypes,
+                    // statistics-graph `period:` is a recorder bucket size string.
+                    period = obj["period"]?.asStringOrNull()?.lowercase() ?: "hour",
                     chartType = obj["chart_type"]?.asStringOrNull()?.lowercase() ?: "line",
                     daysToShow = obj["days_to_show"]?.asIntOrNull(),
+                    entityNames = parseStatisticsGraphEntityNames(obj),
+                    entityColors = parseEntityColors(obj["entities"]),
+                    minYAxis = obj["min_y_axis"]?.asDoubleOrNull(),
+                    maxYAxis = obj["max_y_axis"]?.asDoubleOrNull(),
+                    fitYData = obj["fit_y_data"]?.asBooleanOrNull() ?: false,
+                    logarithmicScale = obj["logarithmic_scale"]?.asBooleanOrNull() ?: false,
+                    unit = obj["unit"]?.asStringOrNull(),
+                    hideLegend = obj["hide_legend"]?.asBooleanOrNull() ?: false,
+                    expandLegend = obj["expand_legend"]?.asBooleanOrNull() ?: false,
+                    collectionKey = parseCollectionKey(obj),
                 )
             }
             "picture" -> {
@@ -1023,6 +1059,98 @@ object LovelaceParser {
                 else -> null
             }
         }
+    }
+
+    /** Per-entity display-name overrides for a statistics-graph card, keyed by
+     *  entity id. Only object entries carrying both `entity` and `name`
+     *  contribute. */
+    private fun parseStatisticsGraphEntityNames(obj: JsonObject): Map<String, String> {
+        val arr = obj["entities"] as? JsonArray ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        arr.forEach { item ->
+            val o = item as? JsonObject ?: return@forEach
+            val id = o["entity"]?.asStringOrNull() ?: return@forEach
+            o["name"]?.asStringOrNull()?.let { out[id] = it }
+        }
+        return out
+    }
+
+    /** Per-entity colour overrides for a history-graph / statistics-graph card,
+     *  keyed by entity id. Only object entries carrying both `entity` and
+     *  `color` contribute (the bare-string entity form has no colour). */
+    private fun parseEntityColors(el: JsonElement?): Map<String, String> {
+        val arr = el as? JsonArray ?: return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        arr.forEach { item ->
+            val o = item as? JsonObject ?: return@forEach
+            val id = o["entity"]?.asStringOrNull() ?: return@forEach
+            o["color"]?.asStringOrNull()?.let { out[id] = it }
+        }
+        return out
+    }
+
+    /** HA `energy_date_selection` (boolean) / `collection_key` (string). When
+     *  energy_date_selection is true and no explicit key is given, HA uses the
+     *  default energy collection; we surface a sentinel so the energy batch can
+     *  bind it later. Null when neither is set. */
+    private fun parseCollectionKey(obj: JsonObject): String? {
+        obj["collection_key"]?.asStringOrNull()?.let { return it }
+        if (obj["energy_date_selection"]?.asBooleanOrNull() == true) return "energy_date_selection"
+        return null
+    }
+
+    /**
+     * Parse the statistic card's `period:` into a [StatisticPeriodConfig].
+     * Accepts the rich object forms (calendar / fixed_period / rolling_window)
+     * and the legacy bare-string labels. The string-collapsing [parseStatisticPeriod]
+     * stays for the coarse label; this is the precise resolution path.
+     */
+    private fun parseStatisticPeriodConfig(el: JsonElement?): StatisticPeriodConfig {
+        when (el) {
+            is JsonPrimitive -> if (el.isString) {
+                return StatisticPeriodConfig.Calendar(el.content.lowercase(), 0)
+            }
+            is JsonObject -> {
+                (el["calendar"] as? JsonObject)?.let { cal ->
+                    val period = cal["period"]?.asStringOrNull()?.lowercase() ?: "day"
+                    val offset = cal["offset"]?.asIntOrNull() ?: 0
+                    return StatisticPeriodConfig.Calendar(period, offset)
+                }
+                (el["fixed_period"] as? JsonObject)?.let { fp ->
+                    return StatisticPeriodConfig.Fixed(
+                        startMillis = parseIsoMillis(fp["start"]?.asStringOrNull()),
+                        endMillis = parseIsoMillis(fp["end"]?.asStringOrNull()),
+                    )
+                }
+                (el["rolling_window"] as? JsonObject)?.let { rw ->
+                    return StatisticPeriodConfig.Rolling(
+                        durationMillis = parseDurationMillis(rw["duration"] as? JsonObject),
+                        offsetMillis = parseDurationMillis(rw["offset"] as? JsonObject),
+                    )
+                }
+            }
+            else -> Unit
+        }
+        return StatisticPeriodConfig.Rolling(604_800_000L)
+    }
+
+    /** Parse an ISO-8601 instant string to epoch millis, or null. Uses the
+     *  app's desugar-safe parser rather than Instant.parse so HA's +00:00
+     *  offset is accepted on minSdk-23 devices. */
+    private fun parseIsoMillis(s: String?): Long? {
+        if (s.isNullOrBlank()) return null
+        return com.github.itskenny0.r1ha.core.ha.parseHaInstant(s)?.toEpochMilli()
+    }
+
+    /** Parse HA's `{hours, minutes, seconds, days}` duration object to millis.
+     *  Absent keys count as zero; an all-absent object yields zero. */
+    private fun parseDurationMillis(o: JsonObject?): Long {
+        if (o == null) return 0L
+        val days = o["days"]?.asDoubleOrNull() ?: 0.0
+        val hours = o["hours"]?.asDoubleOrNull() ?: 0.0
+        val minutes = o["minutes"]?.asDoubleOrNull() ?: 0.0
+        val seconds = o["seconds"]?.asDoubleOrNull() ?: 0.0
+        return ((days * 86_400 + hours * 3_600 + minutes * 60 + seconds) * 1000).toLong()
     }
 
     /** Resolve the statistic card's entity id, accepting either the modern

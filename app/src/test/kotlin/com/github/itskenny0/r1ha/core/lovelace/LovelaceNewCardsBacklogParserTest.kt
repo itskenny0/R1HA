@@ -18,7 +18,8 @@ class LovelaceNewCardsBacklogParserTest {
         ) as LovelaceCard.StatisticsGraph
         assertThat(c.entityIds).containsExactly("sensor.energy_a", "sensor.energy_b")
         assertThat(c.statTypes).containsExactly("mean")
-        assertThat(c.period).isEqualTo("day")
+        // statistics-graph `period:` is a recorder bucket size; absent defaults to hour.
+        assertThat(c.period).isEqualTo("hour")
         assertThat(c.chartType).isEqualTo("line")
         assertThat(c.daysToShow).isNull()
         assertThat(c.title).isNull()
@@ -30,7 +31,7 @@ class LovelaceNewCardsBacklogParserTest {
             {"type":"statistics-graph","title":"Usage","entities":[
               {"entity":"sensor.energy_a","name":"A"},
               "sensor.energy_b"
-            ],"stat_types":["min","max"],"period":{"calendar":{"period":"month"}},
+            ],"stat_types":["min","max"],"period":"month",
              "chart_type":"bar","days_to_show":14}
             """.trimIndent(),
         ) as LovelaceCard.StatisticsGraph
