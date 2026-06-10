@@ -110,7 +110,15 @@ fun PictureElementsCard(
                 val boxWidthPx = with(density) { maxWidth.toPx() }
                 val boxHeightPx = with(density) { maxHeight.toPx() }
                 card.elements.forEach { element ->
-                    PositionedElement(element, boxWidthPx, boxHeightPx, stateMap, onAction)
+                    // A conditional element is a transparent container with its
+                    // own hooks (it remembers a condition context); routing it to
+                    // a distinct composable keeps each branch's call structure
+                    // stable across recompositions.
+                    if (element.type == "conditional") {
+                        ConditionalElement(element, boxWidthPx, boxHeightPx, stateMap, onAction)
+                    } else {
+                        PositionedElement(element, boxWidthPx, boxHeightPx, stateMap, onAction)
+                    }
                 }
             }
         }
@@ -118,10 +126,39 @@ fun PictureElementsCard(
 }
 
 /**
- * Place one element (and a conditional's children) at its anchor over the image
- * box, applying HA's default centring transform. The element is sized by its
- * intrinsic content; when it carries a `style.transform` other than the default
- * translate, we anchor at the raw point (top-left) instead of centring.
+ * A `conditional` element is a transparent container: it carries no position of
+ * its own (HA keeps it static), so its children render at THEIR positions only
+ * when the gate passes. The condition context drives a live re-evaluation when a
+ * gating entity / the clock / the current user changes.
+ */
+@Composable
+private fun ConditionalElement(
+    element: PictureElement,
+    boxWidthPx: Float,
+    boxHeightPx: Float,
+    stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val context = rememberLovelaceConditionContext(element.conditions)
+    val visible = remember(element.conditions, stateMap, context) {
+        evaluateConditions(element.conditions, stateMap, context)
+    }
+    if (visible) {
+        element.children.forEach { child ->
+            if (child.type == "conditional") {
+                ConditionalElement(child, boxWidthPx, boxHeightPx, stateMap, onAction)
+            } else {
+                PositionedElement(child, boxWidthPx, boxHeightPx, stateMap, onAction)
+            }
+        }
+    }
+}
+
+/**
+ * Place one element at its anchor over the image box, applying HA's default
+ * centring transform. The element is sized by its intrinsic content; when it
+ * carries a `style.transform` other than the default translate, we anchor at the
+ * raw point (top-left) instead of centring.
  */
 @Composable
 private fun PositionedElement(
@@ -131,21 +168,6 @@ private fun PositionedElement(
     stateMap: EntityStates,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    // A conditional element is a transparent container: it carries no position of
-    // its own (HA keeps it static), so its children render at THEIR positions.
-    if (element.type == "conditional") {
-        val context = rememberLovelaceConditionContext(element.conditions)
-        val visible = remember(element.conditions, stateMap, context) {
-            evaluateConditions(element.conditions, stateMap, context)
-        }
-        if (visible) {
-            element.children.forEach { child ->
-                PositionedElement(child, boxWidthPx, boxHeightPx, stateMap, onAction)
-            }
-        }
-        return
-    }
-
     val anchorX = anchorPx(element.left, boxWidthPx)
     val anchorY = anchorPx(element.top, boxHeightPx)
     val center = elementCentersOnAnchor(element.transformOverride)
