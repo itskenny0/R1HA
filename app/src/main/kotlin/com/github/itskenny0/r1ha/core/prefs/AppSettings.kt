@@ -63,6 +63,18 @@ enum class UiTextScale(val factor: Float) {
 }
 
 /**
+ * Global UI font face (typeface, not size — that's [UiTextScale]). DEFAULT is
+ * today's hand-tuned mix: monospace numerals with sans-serif labels, titles,
+ * and body. CONDENSED and SERIF swap the labels / titles / body to the
+ * matching system family while numerals stay monospace (tabular digits keep
+ * readouts steady while values tick); MONO goes monospace everywhere for the
+ * full terminal look. System typefaces only — the app bundles no font assets,
+ * so the public-domain dedication stays clean. The face → role → family
+ * mapping lives in [com.github.itskenny0.r1ha.core.theme.buildTypeRamp].
+ */
+enum class FontFace { DEFAULT, CONDENSED, SERIF, MONO }
+
+/**
  * How clock-style time-of-day readouts are rendered (the TODAY greeting
  * clock, sensor-history row times, hourly forecast labels, chart time axes,
  * absolute timestamps). AUTO follows the Android system 12/24-hour setting;
@@ -272,6 +284,12 @@ data class UiOptions(
      * a font-scale multiplier rather than a responsive-pipeline-only knob.
      */
     val textScale: UiTextScale = UiTextScale.DEFAULT,
+    /**
+     * Global font face. DEFAULT keeps today's monospace-numerals + sans mix;
+     * CONDENSED / SERIF restyle labels, titles, and body while numerals stay
+     * monospace; MONO is monospace everywhere. See [FontFace].
+     */
+    val fontFace: FontFace = FontFace.DEFAULT,
     /**
      * 12 vs 24-hour style for clock readouts the app composes itself (TODAY
      * greeting clock, sensor-history times, hourly forecast labels, chart
@@ -748,9 +766,12 @@ data class IntegrationsSettings(
      *  by default because N tiles each polling at this cadence is
      *  N requests per interval. */
     val cameraGridPollSec: Int = 8,
-    /** Default time window for the Logbook on entry (hours). The
-     *  user can still flip between 12 h / 24 h / 3 d window chips. */
-    val logbookDefaultWindowHours: Int = 12,
+    /** Default time window for the Logbook on entry (hours). 1 h: a busy
+     *  install produces enough events per hour that the wider windows took
+     *  noticeably long to fetch and parse on entry, and the 12 h / 24 h /
+     *  3 d / 7 d chips stay one tap away. Users who explicitly set a wider
+     *  default keep it (the stored value wins over this constant). */
+    val logbookDefaultWindowHours: Int = 1,
     /** Camera grid default — open in GRID view rather than LIST. Off
      *  by default because the polling stampede on big installs
      *  surprised early testers. */

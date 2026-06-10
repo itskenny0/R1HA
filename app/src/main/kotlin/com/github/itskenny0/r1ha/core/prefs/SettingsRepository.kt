@@ -172,6 +172,13 @@ class SettingsRepository private constructor(
         val dashboardJson = stringPreferencesKey("dashboard.json")
         val navpanelJson = stringPreferencesKey("navpanel.json")
         val integrationsJson = stringPreferencesKey("integrations.json")
+        /** One-shot guard for the 12 h -> 1 h logbook default change. The
+         *  integrations blob is written with encodeDefaults, so every
+         *  pre-change install carries an explicit 12 that is
+         *  indistinguishable from a deliberate choice; until the first
+         *  post-change settings write lands (which records the user's real
+         *  current value and sets this flag), reads remap stored 12 -> 1. */
+        val logbookWindowMigrated = booleanPreferencesKey("integrations.logbook_window_default_migrated")
         val connectionJson = stringPreferencesKey("connection.json")
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
@@ -218,6 +225,10 @@ class SettingsRepository private constructor(
          *  Absent / unknown → DEFAULT (1.0×) so existing installs render
          *  byte-for-byte unchanged. */
         val uiTextScale = stringPreferencesKey("ui.text_scale")
+        /** Global font face. Stored as the [FontFace] enum name. Absent /
+         *  unknown → DEFAULT (the monospace-numerals + sans mix) so existing
+         *  installs render byte-for-byte unchanged. */
+        val uiFontFace = stringPreferencesKey("ui.font_face")
         /** 12/24-hour clock style for app-composed time readouts. Stored as
          *  the [ClockFormat] enum name. Absent / unknown → AUTO (follow the
          *  Android system setting, the historical behaviour). */
@@ -337,6 +348,9 @@ class SettingsRepository private constructor(
                     textScale = p[K.uiTextScale]
                         ?.let { runCatching { UiTextScale.valueOf(it) }.getOrNull() }
                         ?: UiTextScale.DEFAULT,
+                    fontFace = p[K.uiFontFace]
+                        ?.let { runCatching { FontFace.valueOf(it) }.getOrNull() }
+                        ?: FontFace.DEFAULT,
                     clockFormat = p[K.uiClockFormat]
                         ?.let { runCatching { ClockFormat.valueOf(it) }.getOrNull() }
                         ?: ClockFormat.AUTO,
@@ -415,13 +429,22 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: NavPanelSettings(),
-                integrations = p[K.integrationsJson]
-                    ?.let {
-                        runCatching {
-                            advancedJson.decodeFromString(IntegrationsSettings.serializer(), it)
-                        }.getOrNull()
-                    }
-                    ?: IntegrationsSettings(),
+                integrations = (
+                    p[K.integrationsJson]
+                        ?.let {
+                            runCatching {
+                                advancedJson.decodeFromString(IntegrationsSettings.serializer(), it)
+                            }.getOrNull()
+                        }
+                        ?: IntegrationsSettings()
+                    ).let { integ ->
+                        // See K.logbookWindowMigrated: remap the old baked-in
+                        // 12 h default to the new 1 h until a post-change
+                        // write records the user's actual choice.
+                        if (p[K.logbookWindowMigrated] != true && integ.logbookDefaultWindowHours == 12) {
+                            integ.copy(logbookDefaultWindowHours = 1)
+                        } else integ
+                    },
                 connection = p[K.connectionJson]
                     ?.let {
                         runCatching {
@@ -571,6 +594,7 @@ class SettingsRepository private constructor(
                 p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
                 p[K.uiMoreInfoEnabledDefault] = next.ui.moreInfoEnabledDefault
                 p[K.uiTextScale] = next.ui.textScale.name
+                p[K.uiFontFace] = next.ui.fontFace.name
                 p[K.uiClockFormat] = next.ui.clockFormat.name
                 p[K.uiListDensity] = next.ui.listDensity.name
                 p[K.uiTimestampStyle] = next.ui.timestampStyle.name
@@ -597,6 +621,7 @@ class SettingsRepository private constructor(
                     NavPanelSettings.serializer(),
                     next.navPanel,
                 )
+                p[K.logbookWindowMigrated] = true
                 p[K.integrationsJson] = advancedJson.encodeToString(
                     IntegrationsSettings.serializer(),
                     next.integrations,

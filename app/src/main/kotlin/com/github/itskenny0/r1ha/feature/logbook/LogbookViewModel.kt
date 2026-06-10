@@ -61,7 +61,7 @@ class LogbookViewModel(
         /** True while a user-initiated refresh (pull gesture) is in flight;
          *  drives the pull-to-refresh indicator. Auto-ticks keep it false. */
         val refreshing: Boolean = false,
-        val window: Window = Window.H12,
+        val window: Window = Window.H1,
         /** Full set of entries from the last fetch. [visibleEntries] applies
          *  the search filter on top so we don't have to re-fetch from HA on
          *  every keystroke. */
