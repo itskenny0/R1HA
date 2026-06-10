@@ -648,6 +648,12 @@ sealed class LovelaceCard {
          */
         val showCurrentTemperature: Boolean = true,
         /**
+         * HA `show_current_as_primary`: when true, the current temperature is the
+         * dominant large value and the setpoint becomes the secondary readout
+         * (the reverse of the default emphasis).
+         */
+        val showCurrentAsPrimary: Boolean = false,
+        /**
          * HA 2023.12: tile features rendered below the card body (e.g.
          * climate-hvac-modes, target-temperature). Parsed via the shared
          * [parseTileFeatures] path.

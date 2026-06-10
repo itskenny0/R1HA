@@ -551,6 +551,7 @@ object LovelaceParser {
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
                     showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
+                    showCurrentAsPrimary = obj["show_current_as_primary"]?.asBooleanOrNull() ?: false,
                     features = parseTileFeatures(obj["features"]),
                 )
             }

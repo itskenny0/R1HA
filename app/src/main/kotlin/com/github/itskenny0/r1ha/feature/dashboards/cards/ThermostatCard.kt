@@ -52,6 +52,11 @@ fun ThermostatCard(
     val eid = safeEntityId(card.entityId)
     val state = eid?.let { stateMap[it] }
     val name = resolveName(card.name, state, card.entityId)
+    // water_heater shares the climate parser branch: its operation_mode lands in
+    // climateHvacMode and its operation_list in climateHvacModes. The service
+    // domain differs, so branch on the entity domain for the call namespace.
+    val domain = card.entityId.substringBefore('.', missingDelimiterValue = "climate")
+    val isWaterHeater = domain == "water_heater"
     val mode = state?.climateHvacMode ?: state?.rawState
     val active = mode != null && !mode.equals("off", ignoreCase = true) && !mode.equals("unavailable", ignoreCase = true)
     val accent = if (active) R1.AccentWarm else R1.InkSoft
@@ -61,6 +66,11 @@ fun ThermostatCard(
     val current = state?.climateCurrentTemperature
     val minTemp = state?.climateMinTemp
     val maxTemp = state?.climateMaxTemp
+    // Dual setpoint (heat_cool): two independent low / high bounds. Active only
+    // when the entity reports both target_temp_low and target_temp_high.
+    val targetLow = state?.climateTargetTempLow
+    val targetHigh = state?.climateTargetTempHigh
+    val dualSetpoint = targetLow != null && targetHigh != null
 
     Column(
         modifier = modifier
@@ -81,50 +91,92 @@ fun ThermostatCard(
             )
             Spacer(Modifier.width(10.dp))
             StateChip(text = (mode?.takeUnless { it.isBlank() } ?: "-").replace('_', ' '), accent = accent)
+            // HA's more-info affordance: a small button opening the detail sheet.
+            Spacer(Modifier.width(8.dp))
+            MoreInfoDot(accent = accent) { onAction(LovelaceAction.Builtin("more-info", card.entityId)) }
         }
         Spacer(Modifier.height(12.dp))
-        // Setpoint stepper. When show_current_temperature is false, render the
-        // target as the dominant large value and suppress the current reading.
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (card.showCurrentTemperature) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
-                        style = R1.numeralM,
-                        color = R1.Ink,
+        when {
+            // ── Dual setpoint (heat_cool): a low and a high stepper. ──────────
+            dualSetpoint -> {
+                if (card.showCurrentTemperature || card.showCurrentAsPrimary) {
+                    CurrentReadout(current, unit, primary = card.showCurrentAsPrimary)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DualSetpointColumn(
+                        label = "LOW",
+                        value = targetLow!!,
+                        unit = unit,
+                        accent = R1.AccentCool,
+                        enabled = active,
+                        modifier = Modifier.weight(1f),
+                        onNudge = { dir ->
+                            val next = nudgeDualSetpoint(targetLow, targetHigh!!, editingLow = true, direction = dir, step = step, min = minTemp, max = maxTemp)
+                            onAction(setTempRangeAction(domain, card.entityId, low = next, high = targetHigh))
+                        },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    DualSetpointColumn(
+                        label = "HIGH",
+                        value = targetHigh!!,
+                        unit = unit,
+                        accent = R1.StatusRed,
+                        enabled = active,
+                        modifier = Modifier.weight(1f),
+                        onNudge = { dir ->
+                            val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = false, direction = dir, step = step, min = minTemp, max = maxTemp)
+                            onAction(setTempRangeAction(domain, card.entityId, low = targetLow, high = next))
+                        },
                     )
                 }
             }
-            if (target != null) {
-                StepperButton(label = "−", accent = accent, enabled = active) {
-                    val next = (target - step).let { if (minTemp != null) it.coerceAtLeast(minTemp) else it }
-                    onAction(setTemperatureAction(card.entityId, next))
+            // ── Single setpoint stepper. ─────────────────────────────────────
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                // The current reading is the dominant value when
+                // show_current_as_primary, else the secondary left column.
+                if (card.showCurrentTemperature || card.showCurrentAsPrimary) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
+                            style = if (card.showCurrentAsPrimary) R1.numeralM else R1.numeralM,
+                            color = if (card.showCurrentAsPrimary) accent else R1.Ink,
+                        )
+                    }
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = if (!card.showCurrentTemperature) Modifier.weight(1f) else Modifier,
-                ) {
-                    Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = "${fmtTemp(target)}$unit", style = R1.numeralM, color = accent)
-                }
-                Spacer(Modifier.width(10.dp))
-                StepperButton(label = "+", accent = accent, enabled = active) {
-                    val next = (target + step).let { if (maxTemp != null) it.coerceAtMost(maxTemp) else it }
-                    onAction(setTemperatureAction(card.entityId, next))
-                }
-            } else if (!card.showCurrentTemperature) {
-                // No target temperature known; show placeholder centred.
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = "-", style = R1.numeralM, color = accent)
+                if (target != null) {
+                    StepperButton(label = "−", accent = accent, enabled = active) {
+                        val next = (target - step).let { if (minTemp != null) it.coerceAtLeast(minTemp) else it }
+                        onAction(setTemperatureAction(domain, card.entityId, next))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = if (!card.showCurrentTemperature && !card.showCurrentAsPrimary) Modifier.weight(1f) else Modifier,
+                    ) {
+                        Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
+                        Spacer(Modifier.height(2.dp))
+                        Text(text = "${fmtTemp(target)}$unit", style = R1.numeralM, color = if (card.showCurrentAsPrimary) R1.Ink else accent)
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    StepperButton(label = "+", accent = accent, enabled = active) {
+                        val next = (target + step).let { if (maxTemp != null) it.coerceAtMost(maxTemp) else it }
+                        onAction(setTemperatureAction(domain, card.entityId, next))
+                    }
+                } else if (!card.showCurrentTemperature && !card.showCurrentAsPrimary) {
+                    // No target temperature known; show placeholder centred.
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
+                        Spacer(Modifier.height(2.dp))
+                        Text(text = "-", style = R1.numeralM, color = accent)
+                    }
                 }
             }
         }
+        // HVAC modes (climate) or operation list (water_heater): the same chip row,
+        // dispatching to the domain-appropriate set service.
         val modes = state?.climateHvacModes.orEmpty()
         if (modes.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
@@ -138,7 +190,7 @@ fun ThermostatCard(
                         label = m.replace('_', ' '),
                         accent = accent,
                         selected = m.equals(mode, ignoreCase = true),
-                    ) { onAction(setHvacModeAction(card.entityId, m)) }
+                    ) { onAction(setModeAction(domain, card.entityId, m, isWaterHeater)) }
                 }
             }
         }
@@ -195,18 +247,96 @@ internal fun fmtTemp(value: Double): String {
     else String.format(Locale.US, "%.1f", rounded)
 }
 
-private fun setTemperatureAction(entityId: String, temperature: Double): LovelaceAction.CallService {
+/** The current-temperature readout, rendered large when [primary]. */
+@Composable
+private fun CurrentReadout(current: Double?, unit: String, primary: Boolean) {
+    Column {
+        Text(text = "CURRENT", style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = current?.let { "${fmtTemp(it)}$unit" } ?: "-",
+            style = R1.numeralM,
+            color = if (primary) R1.AccentWarm else R1.Ink,
+        )
+    }
+}
+
+/** A single low/high setpoint column with its own −/+ steppers. [onNudge] is
+ *  called with -1 / +1 for the requested direction. */
+@Composable
+private fun DualSetpointColumn(
+    label: String,
+    value: Double,
+    unit: String,
+    accent: Color,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onNudge: (Int) -> Unit,
+) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
+        Spacer(Modifier.height(2.dp))
+        Text(text = "${fmtTemp(value)}$unit", style = R1.numeralM, color = accent)
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StepperButton(label = "−", accent = accent, enabled = enabled) { onNudge(-1) }
+            Spacer(Modifier.width(8.dp))
+            StepperButton(label = "+", accent = accent, enabled = enabled) { onNudge(+1) }
+        }
+    }
+}
+
+/** HA's more-info affordance: a small "i" dot opening the entity's detail sheet. */
+@Composable
+internal fun MoreInfoDot(accent: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, accent.copy(alpha = 0.5f), CircleShape)
+            .r1Pressable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = "i", style = R1.labelMicro, color = accent)
+    }
+}
+
+private fun setTemperatureAction(domain: String, entityId: String, temperature: Double): LovelaceAction.CallService {
     val clean = Math.round(temperature * 10.0) / 10.0
     return LovelaceAction.CallService(
-        service = "climate.set_temperature",
+        service = "$domain.set_temperature",
         entityId = entityId,
         data = buildJsonObject { put("temperature", JsonPrimitive(clean)) },
     )
 }
 
-private fun setHvacModeAction(entityId: String, mode: String): LovelaceAction.CallService =
-    LovelaceAction.CallService(
-        service = "climate.set_hvac_mode",
+/** Dual-setpoint (heat_cool) call: both bounds in one set_temperature call. */
+private fun setTempRangeAction(domain: String, entityId: String, low: Double, high: Double): LovelaceAction.CallService {
+    val cleanLow = Math.round(low * 10.0) / 10.0
+    val cleanHigh = Math.round(high * 10.0) / 10.0
+    return LovelaceAction.CallService(
+        service = "$domain.set_temperature",
         entityId = entityId,
-        data = buildJsonObject { put("hvac_mode", JsonPrimitive(mode)) },
+        data = buildJsonObject {
+            put("target_temp_low", JsonPrimitive(cleanLow))
+            put("target_temp_high", JsonPrimitive(cleanHigh))
+        },
     )
+}
+
+/** Set the HVAC mode (climate) or operation mode (water_heater). */
+private fun setModeAction(domain: String, entityId: String, mode: String, isWaterHeater: Boolean): LovelaceAction.CallService =
+    if (isWaterHeater) {
+        LovelaceAction.CallService(
+            service = "water_heater.set_operation_mode",
+            entityId = entityId,
+            data = buildJsonObject { put("operation_mode", JsonPrimitive(mode)) },
+        )
+    } else {
+        LovelaceAction.CallService(
+            service = "$domain.set_hvac_mode",
+            entityId = entityId,
+            data = buildJsonObject { put("hvac_mode", JsonPrimitive(mode)) },
+        )
+    }
