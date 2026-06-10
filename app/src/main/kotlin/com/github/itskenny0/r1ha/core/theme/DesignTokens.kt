@@ -4,11 +4,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * "Mission Control" design tokens. Sharp-edged industrial dashboard language: orange-on-near-
@@ -37,8 +33,10 @@ object R1 {
     /** Muted callouts (labels, sub-text). */
     val InkMuted = Color(0xFF6E6E6E)
 
-    /** The R1 orange. Used sparingly — accent only. */
-    val AccentWarm = Color(0xFFF36F21)
+    /** The R1 orange. Used sparingly — accent only. Delegates to [R1Dynamic]
+     *  so the user's theme-settings accent override tints every call site
+     *  (chips, buttons, spinners, top bars); the default is the stock orange. */
+    val AccentWarm: Color get() = R1Dynamic.accent
     /** Domain-cool — media players. */
     val AccentCool = Color(0xFF41BDF5)
     /** Domain-green — fans / fresh-air. */
@@ -136,92 +134,44 @@ object R1 {
      *  Body:
      *   - [body]     standard reading text, secondary row text
      *   - [bodyEmph] primary row label, interactive emphasis
+     *
+     * Every style delegates to the swappable ramp in [R1Dynamic] so the user's
+     * font-face choice (Settings → Appearance → Font) reaches every call site;
+     * the numbers themselves live in [buildTypeRamp] and never change per face.
      */
     /** A monospace numeric readout — punchy, big. Used for the percentage on cards. */
-    val numeralXl: TextStyle = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 72.sp,
-        letterSpacing = (-2).sp,
-        lineHeight = 72.sp,
-    )
+    val numeralXl: TextStyle get() = R1Dynamic.ramp.numeralXl
 
     /** Medium monospace numeric — used for unit suffixes and small readouts. */
-    val numeralM: TextStyle = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        fontSize = 20.sp,
-    )
+    val numeralM: TextStyle get() = R1Dynamic.ramp.numeralM
 
     /** Small monospace — used for entity IDs, tick labels. */
-    val numeralS: TextStyle = TextStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Normal,
-        fontSize = 11.sp,
-        letterSpacing = 0.5.sp,
-    )
+    val numeralS: TextStyle get() = R1Dynamic.ramp.numeralS
 
     /** All-caps section header — letter-spaced, mid-weight. Section dividers on most screens. */
-    val sectionHeader: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 10.sp,
-        letterSpacing = 2.5.sp,
-    )
+    val sectionHeader: TextStyle get() = R1Dynamic.ramp.sectionHeader
 
     /** All-caps micro callout — used for domain badges, status pill text. */
-    val labelMicro: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Bold,
-        fontSize = 9.sp,
-        letterSpacing = 2.sp,
-    )
+    val labelMicro: TextStyle get() = R1Dynamic.ramp.labelMicro
 
     /**
      * All-caps standard label — one step up from [labelMicro] for chip text and field
      * captions that need to read at arm's length without shouting. Used by [R1Chip].
      */
-    val label: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
-        letterSpacing = 1.5.sp,
-    )
+    val label: TextStyle get() = R1Dynamic.ramp.label
 
     /** Friendly-name title on the card. */
-    val titleCard: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 18.sp,
-        letterSpacing = 0.sp,
-    )
+    val titleCard: TextStyle get() = R1Dynamic.ramp.titleCard
 
     /** Standard body — settings rows, info text. */
-    val body: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-    )
+    val body: TextStyle get() = R1Dynamic.ramp.body
 
     /** Stronger body — interactive rows, primary screen titles. */
-    val bodyEmph: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
-    )
+    val bodyEmph: TextStyle get() = R1Dynamic.ramp.bodyEmph
 
     /** Top-bar / screen-title style — bigger than body, still sentence-case. */
-    val screenTitle: TextStyle = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        letterSpacing = 0.sp,
-    )
+    val screenTitle: TextStyle get() = R1Dynamic.ramp.screenTitle
 
     /** Span used inline for monospace fragments inside body text (e.g. "PORT 8123"). */
-    val monoSpan: SpanStyle = SpanStyle(
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Medium,
-        textDecoration = TextDecoration.None,
-    )
+    val monoSpan: SpanStyle get() = R1Dynamic.ramp.monoSpan
 }

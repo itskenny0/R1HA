@@ -129,6 +129,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { uiTextScaleLabel(it.ui.textScale) },
     ),
     SettingEntry(
+        id = "ui.fontFace",
+        category = SettingCategory.APPEARANCE,
+        label = "Font",
+        description = "Font face (typeface) for labels, titles, and body text; condensed, serif, or full monospace",
+        isDefault = { it.ui.fontFace == defaults.ui.fontFace },
+        currentDisplay = { fontFaceLabel(it.ui.fontFace) },
+    ),
+    SettingEntry(
         id = "ui.clockFormat",
         category = SettingCategory.APPEARANCE,
         label = "Clock format",
@@ -950,6 +958,18 @@ fun uiTextScaleLabel(scale: UiTextScale): String = when (scale) {
     UiTextScale.DEFAULT -> "DEFAULT"
     UiTextScale.LARGE -> "LARGE"
     UiTextScale.EXTRA_LARGE -> "XL"
+}
+
+/**
+ * Compact human label for a [FontFace] value. Shared by the Settings font
+ * selector and the registry `currentDisplay` so the diff screen shows the
+ * same word the user picked.
+ */
+fun fontFaceLabel(face: FontFace): String = when (face) {
+    FontFace.DEFAULT -> "DEFAULT"
+    FontFace.CONDENSED -> "NARROW"
+    FontFace.SERIF -> "SERIF"
+    FontFace.MONO -> "MONO"
 }
 
 /**

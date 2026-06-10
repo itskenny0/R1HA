@@ -41,7 +41,9 @@ data class AgendaDay(
  * accent across launches without persisting anything. Drawn from the existing
  * R1 accent tokens so the agenda stays on-palette.
  */
-val AGENDA_ACCENTS: List<Color> = listOf(
+// A getter so the warm slot follows the user's live accent override (R1.AccentWarm
+// is a swappable token; a top-level val would freeze the accent at class-load).
+val AGENDA_ACCENTS: List<Color> get() = listOf(
     R1.AccentWarm,
     R1.AccentCool,
     R1.AccentGreen,

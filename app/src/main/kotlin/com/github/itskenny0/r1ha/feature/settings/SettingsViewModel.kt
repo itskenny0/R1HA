@@ -102,6 +102,8 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(cardScrollSensitivity = percent.coerceIn(0, 100))) }
     fun setTextScale(scale: com.github.itskenny0.r1ha.core.prefs.UiTextScale) =
         update { it.copy(ui = it.ui.copy(textScale = scale)) }
+    fun setFontFace(face: com.github.itskenny0.r1ha.core.prefs.FontFace) =
+        update { it.copy(ui = it.ui.copy(fontFace = face)) }
     fun setClockFormat(format: com.github.itskenny0.r1ha.core.prefs.ClockFormat) =
         update { it.copy(ui = it.ui.copy(clockFormat = format)) }
     fun setListDensity(density: com.github.itskenny0.r1ha.core.prefs.ListDensity) =

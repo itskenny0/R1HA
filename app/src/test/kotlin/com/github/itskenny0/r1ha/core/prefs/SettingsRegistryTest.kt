@@ -146,6 +146,15 @@ class SettingsRegistryTest {
     }
 
     @Test
+    fun `font face entry is reachable by label and by typeface terms`() {
+        // The label is just "Font"; the description carries the words a user
+        // is likely to type when hunting for a typeface option.
+        assertThat(searchSettings("Font").map { it.id }).contains("ui.fontFace")
+        assertThat(searchSettings("font face").map { it.id }).contains("ui.fontFace")
+        assertThat(searchSettings("typeface").map { it.id }).contains("ui.fontFace")
+    }
+
+    @Test
     fun `query matches substring inside the description`() {
         // Description-only match: 'spring-animated' isn't in any label but
         // should be in a wheel-step description… actually it's not. Test

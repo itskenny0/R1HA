@@ -48,7 +48,8 @@ object ColorfulCardsTheme : R1Theme {
     override val id = ThemeId.COLORFUL_CARDS
     override val displayName = "Colourful Cards"
     override val systemBars = SystemBarColors(status = Color.Black, nav = Color.Black)
-    override val baseline = sharedDarkBaseline
+    // Getter so the Material primary follows the live accent token (see sharedDarkBaseline).
+    override val baseline get() = sharedDarkBaseline
 
     // Six palettes, hashed per entity_id. Each runs bright→deep along the TL→BR
     // diagonal so the darkest stop anchors the bottom-right corner where the value

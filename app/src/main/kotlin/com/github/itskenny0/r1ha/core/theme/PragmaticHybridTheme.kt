@@ -54,7 +54,8 @@ object PragmaticHybridTheme : R1Theme {
     override val id = ThemeId.PRAGMATIC_HYBRID
     override val displayName = "Pragmatic Hybrid"
     override val systemBars = SystemBarColors(status = R1.Bg, nav = R1.Bg)
-    override val baseline = sharedDarkBaseline
+    // Getter so the Material primary follows the live accent token (see sharedDarkBaseline).
+    override val baseline get() = sharedDarkBaseline
 
     private fun accentColor(role: CardRenderModel.AccentRole) = when (role) {
         CardRenderModel.AccentRole.WARM -> R1.AccentWarm

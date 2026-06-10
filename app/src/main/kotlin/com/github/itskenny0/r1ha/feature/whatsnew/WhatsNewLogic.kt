@@ -49,9 +49,10 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Colourful Cards now paints every card type: sensors, scenes, switches, and selects get their gradient.",
-    "Appearance options are easier to find: search for font, AM/PM, or animations in Settings.",
-    "Smarter onboarding: bad URLs, proxies, and certificate problems now explain themselves.",
-    "Favourites picker: ADD ALL adds every match of a search or filter in one tap.",
-    "More-info sheets put forecasts and history above the attribute dump.",
+    "Pick a font for the whole UI in Settings: the stock mix, a narrow face, serif, or full monospace.",
+    "The accent colour in theme settings now tints the whole app: buttons, chips, and chrome, not just cards.",
+    "Weather grows up on phones: a full-page view with a stat grid, and forecasts open on DAILY.",
+    "Colourful Cards: a per-card colour override now recolours the card's gradient itself.",
+    "Recent Activity opens on a fast 1-hour window; the wider ranges stay one tap away.",
+    "Smarter onboarding errors, ADD ALL in the favourites picker, forecasts above attributes in more-info.",
 )

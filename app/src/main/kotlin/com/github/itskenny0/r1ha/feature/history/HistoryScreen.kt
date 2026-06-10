@@ -323,7 +323,9 @@ private fun WindowChips(
 
 /** Series accent palette, indexed by Series.colorIndex. Distinct hues so
  *  overlaid lines stay separable; capped at MAX_SERIES entries. */
-internal val SERIES_COLORS: List<Color> = listOf(
+// A getter so the warm slot follows the user's live accent override (R1.AccentWarm
+// is a swappable token; a top-level val would freeze the accent at class-load).
+internal val SERIES_COLORS: List<Color> get() = listOf(
     R1.AccentWarm,
     R1.AccentCool,
     R1.AccentGreen,

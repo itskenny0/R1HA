@@ -988,6 +988,24 @@ private fun LazyListScope.appearanceRoot(
         }
     }
     item {
+        LabeledControl(label = "Font") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.FontFace.entries,
+                selected = s.ui.fontFace,
+                label = { com.github.itskenny0.r1ha.core.prefs.fontFaceLabel(it) },
+                onSelect = { vm.setFontFace(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Typeface for labels, titles, and body text app-wide. Numeric " +
+                    "readouts stay monospace on every choice except MONO, which goes " +
+                    "monospace everywhere. System fonts only; nothing is downloaded.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
         LabeledControl(label = "Clock format") {
             SegmentedEnumPicker(
                 options = com.github.itskenny0.r1ha.core.prefs.ClockFormat.entries,

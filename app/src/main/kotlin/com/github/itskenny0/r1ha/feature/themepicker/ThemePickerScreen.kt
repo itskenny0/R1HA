@@ -262,7 +262,8 @@ private fun AccentPickerSection(
         )
         Spacer(Modifier.height(R1.space.xxs))
         Text(
-            text = "Override every theme's accent colour. Reset = use the theme's own palette.",
+            text = "Tints the whole app: buttons, chips, top bars, and every theme's " +
+                "card accents. Reset = the stock orange and each theme's own palette.",
             style = responsiveType(R1.body),
             color = R1.InkMuted,
         )

@@ -33,9 +33,12 @@ object MinimalDarkTheme : R1Theme {
     override val id = ThemeId.MINIMAL_DARK
     override val displayName = "Minimal Dark"
     override val systemBars = SystemBarColors(status = Color.Black, nav = Color.Black)
-    override val baseline = sharedDarkBaseline.copy(background = Color.Black, surface = Color.Black)
+    // Getters, not init-time vals: both depend on the swappable accent token, and an
+    // object-level val would freeze whichever accent was active when the object first
+    // loaded (the activity's key() rebuild re-composes but never re-runs object init).
+    override val baseline get() = sharedDarkBaseline.copy(background = Color.Black, surface = Color.Black)
 
-    private val themeAccent = R1.AccentWarm
+    private val themeAccent get() = R1.AccentWarm
 
     private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
         CardRenderModel.Glyph.LIGHT -> "LIGHT"

@@ -48,4 +48,25 @@ class AppBackupTest {
 
         assertThat(applied.behavior.showWhatsNew).isTrue()
     }
+
+    /** The font face is an explicit preference, so it travels with the backup. */
+    @Test fun `fontFace round-trips through encode and apply`() {
+        val source = AppSettings(ui = UiOptions(fontFace = FontFace.SERIF))
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(AppSettings())
+
+        assertThat(applied.ui.fontFace).isEqualTo(FontFace.SERIF)
+    }
+
+    /** Old backups predate the field; they must decode as DEFAULT (today's mix). */
+    @Test fun `backups without fontFace decode as DEFAULT`() {
+        val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))
+        val stripped = raw.replace(Regex("\"uiFontFace\"\\s*:\\s*\"\\w+\",?"), "")
+        assertThat(stripped).doesNotContain("uiFontFace")
+
+        val applied = decodeBackup(stripped).applyOnto(AppSettings())
+
+        assertThat(applied.ui.fontFace).isEqualTo(FontFace.DEFAULT)
+    }
 }

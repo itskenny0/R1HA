@@ -232,9 +232,12 @@ interface R1Theme {
     ): AuxCardStyle? = null
 }
 
-/** Shared baseline used by all three themes for non-card screens (settings, picker, about, onboarding). */
-internal val sharedDarkBaseline: ColorScheme = darkColorScheme(
-    primary = Color(0xFFF36F21),
+/** Shared baseline used by all three themes for non-card screens (settings, picker, about,
+ *  onboarding). A getter (and read through [R1.AccentWarm]) so the Material primary follows
+ *  the user's accent override live — a top-level val would bake in whichever accent was
+ *  active at class-load and survive the activity's `key()` rebuild. */
+internal val sharedDarkBaseline: ColorScheme get() = darkColorScheme(
+    primary = R1.AccentWarm,
     onPrimary = Color(0xFF1A0E04),
     background = Color(0xFF0A0A0A),
     onBackground = Color(0xFFEDEDED),

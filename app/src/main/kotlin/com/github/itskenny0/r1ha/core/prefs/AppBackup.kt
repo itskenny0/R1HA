@@ -86,6 +86,9 @@ data class AppBackup(
     /** Global text-size step. Older backups without this field decode as
      *  DEFAULT (1.0×), the unchanged historical rendering. */
     val uiTextScale: UiTextScale = UiTextScale.DEFAULT,
+    /** Global font face. Older backups without this field decode as DEFAULT
+     *  (the monospace-numerals + sans mix), the unchanged historical look. */
+    val uiFontFace: FontFace = FontFace.DEFAULT,
     /** 12/24-hour clock style. Older backups without this field decode as
      *  AUTO (follow the Android system setting). */
     val uiClockFormat: ClockFormat = ClockFormat.AUTO,
@@ -182,6 +185,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiCardScrollSensitivity = ui.cardScrollSensitivity,
     uiMoreInfoEnabledDefault = ui.moreInfoEnabledDefault,
     uiTextScale = ui.textScale,
+    uiFontFace = ui.fontFace,
     uiClockFormat = ui.clockFormat,
     uiListDensity = ui.listDensity,
     uiTimestampStyle = ui.timestampStyle,
@@ -266,6 +270,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             cardScrollSensitivity = uiCardScrollSensitivity,
             moreInfoEnabledDefault = uiMoreInfoEnabledDefault,
             textScale = uiTextScale,
+            fontFace = uiFontFace,
             clockFormat = uiClockFormat,
             listDensity = uiListDensity,
             timestampStyle = uiTimestampStyle,
