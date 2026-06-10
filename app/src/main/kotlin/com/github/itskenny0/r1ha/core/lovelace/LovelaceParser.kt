@@ -963,6 +963,9 @@ object LovelaceParser {
                         tapAction = parseAction(item["tap_action"] as? JsonObject),
                         holdAction = parseAction(item["hold_action"] as? JsonObject),
                         doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
+                        confirmation = parseConfirmation(item["confirmation"]),
+                        actionName = item["action_name"]?.asStringOrNull(),
+                        image = item["image"]?.asStringOrNull(),
                     )
                 }
                 else -> null
