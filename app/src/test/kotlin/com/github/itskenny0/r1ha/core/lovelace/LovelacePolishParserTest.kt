@@ -42,6 +42,41 @@ class LovelacePolishParserTest {
         assertThat(c.badges[0].entityId).isEqualTo("sensor.temp")
     }
 
+    @Test fun `badge display_type complete shows name, minimal hides state`() {
+        val cfg = LovelaceParser.parseConfig(
+            Json.parseToJsonElement(
+                """
+                {"views":[{"path":"p","badges":[
+                  {"entity":"sensor.a","display_type":"complete"},
+                  {"entity":"sensor.b","display_type":"minimal"},
+                  {"entity":"sensor.c","display_type":"standard"}
+                ]}]}
+                """.trimIndent(),
+            ) as JsonObject,
+        )
+        val badges = cfg.views.single().badges
+        // complete -> name on (state stays on by default)
+        assertThat(badges[0].showName).isTrue()
+        assertThat(badges[0].showState).isTrue()
+        // minimal -> state off (name stays off by default)
+        assertThat(badges[1].showState).isFalse()
+        assertThat(badges[1].showName).isFalse()
+        // standard -> defaults: name off, state on
+        assertThat(badges[2].showName).isFalse()
+        assertThat(badges[2].showState).isTrue()
+    }
+
+    @Test fun `explicit show_name overrides display_type complete`() {
+        val cfg = LovelaceParser.parseConfig(
+            Json.parseToJsonElement(
+                """{"views":[{"path":"p","badges":[
+                  {"entity":"sensor.a","display_type":"complete","show_name":false}
+                ]}]}""".trimIndent(),
+            ) as JsonObject,
+        )
+        assertThat(cfg.views.single().badges[0].showName).isFalse()
+    }
+
     @Test fun `parses markdown tap hold and double-tap actions`() {
         val c = card(
             """

@@ -2289,24 +2289,34 @@ sealed class LovelaceTileFeature {
 
     /** Weather temperature-forecast bar strip. [forecastType] is daily /
      *  twice_daily / hourly; [showLabels] toggles the axis labels; [color] is
-     *  an optional theme colour / hex override. */
+     *  an optional theme colour / hex override. [daysToShow] / [hoursToShow]
+     *  window the entries (HA defaults 7 days / 24 hours); null means the HA
+     *  default for the resolved cadence. */
     @Immutable
     data class TemperatureForecast(
-        val forecastType: String,
+        /** Configured forecast type, or null to resolve from the entity's
+         *  supported WeatherEntityFeature bits (daily > twice_daily > hourly). */
+        val forecastType: String?,
         val color: String?,
         val showLabels: Boolean,
+        val daysToShow: Int? = null,
+        val hoursToShow: Int? = null,
     ) : LovelaceTileFeature() {
         override val type: String = "temperature-forecast"
     }
 
     /** Weather precipitation-forecast bar strip. [precipitationType] is amount /
-     *  probability. */
+     *  probability. [daysToShow] / [hoursToShow] window the entries as on
+     *  [TemperatureForecast]. */
     @Immutable
     data class PrecipitationForecast(
-        val forecastType: String,
+        /** Configured forecast type, or null to resolve from supported bits. */
+        val forecastType: String?,
         val precipitationType: String,
         val color: String?,
         val showLabels: Boolean,
+        val daysToShow: Int? = null,
+        val hoursToShow: Int? = null,
     ) : LovelaceTileFeature() {
         override val type: String = "precipitation-forecast"
     }
@@ -2502,9 +2512,14 @@ sealed class LovelaceTileFeature {
     // ── Trend-graph (HA 2025.9) ──────────────────────────────────────────────
 
     /** trend-graph tile feature: a compact history sparkline.
-     *  [hoursToShow] is the lookback window (default 24). */
+     *  [hoursToShow] is the lookback window (default 24). [detail] true (HA
+     *  default) draws every fetched point; false downsamples to ~1 point/hour
+     *  via per-hour means. */
     @Immutable
-    data class TrendGraph(val hoursToShow: Int) : LovelaceTileFeature() {
+    data class TrendGraph(
+        val hoursToShow: Int,
+        val detail: Boolean = true,
+    ) : LovelaceTileFeature() {
         override val type: String = "trend-graph"
     }
 

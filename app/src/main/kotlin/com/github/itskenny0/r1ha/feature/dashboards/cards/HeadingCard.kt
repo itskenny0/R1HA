@@ -67,7 +67,7 @@ fun HeadingCard(
         }
         if (card.badges.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
-            LovelaceBadgeRow(badges = card.badges, states = stateMap, onAction = onAction)
+            LovelaceBadgeRow(badges = card.badges, states = stateMap, onAction = onAction, headingContext = true)
         }
     }
 }

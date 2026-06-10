@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -208,7 +209,7 @@ private fun renderFeature(
             val modes = filterModes(state.climateHvacModes, feature.modes)
             if (modes.isEmpty()) return false
             val current = state.climateHvacMode ?: state.rawState
-            ModeChipRow(modes, current, accent) { m ->
+            ModeChipRow(modes, current, accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "climate.set_hvac_mode",
@@ -232,7 +233,7 @@ private fun renderFeature(
             if (domain != "select" && domain != "input_select") return false
             val options = filterModes(state.selectOptions, feature.options)
             if (options.isEmpty()) return false
-            ModeChipRow(options, state.currentOption ?: state.rawState, accent) { opt ->
+            ModeChipRow(options, state.currentOption ?: state.rawState, accent, enabled = state.isAvailable) { opt ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "$domain.select_option",
@@ -250,7 +251,7 @@ private fun renderFeature(
             if (domain != "media_player") return false
             val sources = filterModes(state.mediaSourceList, feature.sources)
             if (sources.isEmpty()) return false
-            ModeChipRow(sources, state.mediaSource, accent) { src ->
+            ModeChipRow(sources, state.mediaSource, accent, enabled = state.isAvailable) { src ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "media_player.select_source",
@@ -264,7 +265,7 @@ private fun renderFeature(
             if (domain != "media_player") return false
             val modes = filterModes(state.attrStringList("sound_mode_list"), feature.soundModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.attrString("sound_mode"), accent) { mode ->
+            ModeChipRow(modes, state.attrString("sound_mode"), accent, enabled = state.isAvailable) { mode ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "media_player.select_sound_mode",
@@ -286,20 +287,30 @@ private fun renderFeature(
             if (domain != "weather") return false
             WeatherForecastFeature(
                 entityId = entityId,
-                forecastType = feature.forecastType,
+                configuredForecastType = feature.forecastType,
+                supportedFeatures = state.supportedFeatures,
                 series = ForecastSeries.TEMPERATURE,
                 accent = haColorAccent(feature.color) ?: accent,
                 showLabels = feature.showLabels,
+                daysToShow = feature.daysToShow,
+                hoursToShow = feature.hoursToShow,
+                currentTemperature = state.attrString("temperature")?.toDoubleOrNull(),
+                precipitationImperial = state.attrString("precipitation_unit") == "in",
             )
         }
         is LovelaceTileFeature.PrecipitationForecast -> {
             if (domain != "weather") return false
             WeatherForecastFeature(
                 entityId = entityId,
-                forecastType = feature.forecastType,
+                configuredForecastType = feature.forecastType,
+                supportedFeatures = state.supportedFeatures,
                 series = if (feature.precipitationType == "probability") ForecastSeries.PRECIP_PROBABILITY else ForecastSeries.PRECIP_AMOUNT,
                 accent = haColorAccent(feature.color) ?: accent,
                 showLabels = feature.showLabels,
+                daysToShow = feature.daysToShow,
+                hoursToShow = feature.hoursToShow,
+                currentTemperature = null,
+                precipitationImperial = state.attrString("precipitation_unit") == "in",
             )
         }
         // ── Climate mode-pickers ─────────────────────────────────────────────
@@ -307,7 +318,7 @@ private fun renderFeature(
             if (domain != "climate") return false
             val modes = filterModes(state.climateFanModes, feature.fanModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.climateFanMode, accent) { m ->
+            ModeChipRow(modes, state.climateFanMode, accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "climate.set_fan_mode",
@@ -321,7 +332,7 @@ private fun renderFeature(
             if (domain != "climate") return false
             val modes = filterModes(state.climatePresetModes, feature.presetModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.climatePresetMode, accent) { m ->
+            ModeChipRow(modes, state.climatePresetMode, accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "climate.set_preset_mode",
@@ -336,7 +347,7 @@ private fun renderFeature(
             val available = state.attrStringList("swing_modes")
             val modes = filterModes(available, feature.swingModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.attrString("swing_mode"), accent) { m ->
+            ModeChipRow(modes, state.attrString("swing_mode"), accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "climate.set_swing_mode",
@@ -347,11 +358,11 @@ private fun renderFeature(
             }
         }
         is LovelaceTileFeature.ClimateSwingHorizontalModes -> {
-            if (domain != "climate") return false
+            if (domain != "climate" || !state.hasClimateFeature(EntityState.ClimateFeature.SWING_HORIZONTAL_MODE)) return false
             val available = state.attrStringList("swing_horizontal_modes")
             val modes = filterModes(available, feature.swingModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.attrString("swing_horizontal_mode"), accent) { m ->
+            ModeChipRow(modes, state.attrString("swing_horizontal_mode"), accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "climate.set_swing_horizontal_mode",
@@ -366,7 +377,7 @@ private fun renderFeature(
             if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.PRESET_MODE)) return false
             val modes = filterModes(state.fanPresetModes, feature.presetModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.fanPresetMode, accent) { m ->
+            ModeChipRow(modes, state.fanPresetMode, accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "fan.set_preset_mode",
@@ -433,7 +444,7 @@ private fun renderFeature(
             val available = state.attrStringList("available_modes")
             val modes = filterModes(available, feature.modes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.attrString("mode"), accent) { m ->
+            ModeChipRow(modes, state.attrString("mode"), accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "humidifier.set_mode",
@@ -464,7 +475,7 @@ private fun renderFeature(
             // climateHvacModes / climateHvacMode for water_heater (same parser branch).
             val modes = filterModes(state.climateHvacModes, feature.operationModes)
             if (modes.isEmpty()) return false
-            ModeChipRow(modes, state.climateHvacMode, accent) { m ->
+            ModeChipRow(modes, state.climateHvacMode, accent, enabled = state.isAvailable) { m ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "water_heater.set_operation_mode",
@@ -873,17 +884,36 @@ private fun renderFeature(
         // ── Trend-graph (HA 2025.9) ──────────────────────────────────────────
         is LovelaceTileFeature.TrendGraph -> {
             val repo = LocalHaRepository.current ?: return false
-            var points by remember(entityId, feature.hoursToShow) {
-                mutableStateOf<List<HistoryPoint>>(emptyList())
+            // null = still loading; non-null Result captures success or failure so
+            // the placeholder can distinguish loading / error / no-history.
+            var fetch by remember(entityId, feature.hoursToShow) {
+                mutableStateOf<Result<List<HistoryPoint>>?>(null)
             }
+            // Periodic redraw so the sparkline advances on a long-lived kiosk
+            // screen rather than going permanently stale (HA's 60s window tick).
             LaunchedEffect(entityId, feature.hoursToShow) {
-                safeEntityId(entityId)?.let { eid ->
-                    repo.fetchHistory(eid, hours = feature.hoursToShow)
-                        .onSuccess { points = it }
+                val eid = safeEntityId(entityId) ?: run { fetch = Result.success(emptyList()); return@LaunchedEffect }
+                while (true) {
+                    fetch = repo.fetchHistory(eid, hours = feature.hoursToShow)
+                    delay(60_000L)
                 }
             }
-            val numericPts = points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
-            if (numericPts.size < 2) return false
+            val current = fetch
+            if (current == null) {
+                Text(text = "...", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
+            if (current.isFailure) {
+                Text(text = "No history", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
+            val points = current.getOrDefault(emptyList())
+            val rawPts = points.mapNotNull { p -> p.numeric?.let { p.timestamp to it } }
+            val numericPts = downsampleTrendPoints(rawPts, feature.detail)
+            if (numericPts.size < 2) {
+                Text(text = "No history", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                return true
+            }
             val yMin = numericPts.map { it.second }.min()
             val yMax = numericPts.map { it.second }.max()
             val tStart = numericPts.map { it.first }.min()
@@ -1451,14 +1481,18 @@ private fun LightColorFavoritesFeature(
     }
 }
 
-/** A FlowRow of [ModeChip]s, highlighting the chip matching [current]. */
+/** A FlowRow of [ModeChip]s, highlighting the chip matching [current]. When
+ *  [enabled] is false (entity unavailable) the chips dim and ignore taps, so a
+ *  mode-select feature never fires a service call HA would reject. */
 @Composable
 private fun ModeChipRow(
     modes: List<String>,
     current: String?,
     accent: Color,
+    enabled: Boolean = true,
     onSelect: (String) -> Unit,
 ) {
+    val chipAccent = if (enabled) accent else R1.InkMuted
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1467,9 +1501,9 @@ private fun ModeChipRow(
         modes.forEach { mode ->
             ModeChip(
                 label = mode.replace('_', ' '),
-                accent = accent,
+                accent = chipAccent,
                 selected = mode.equals(current, ignoreCase = true),
-            ) { onSelect(mode) }
+            ) { if (enabled) onSelect(mode) }
         }
     }
 }

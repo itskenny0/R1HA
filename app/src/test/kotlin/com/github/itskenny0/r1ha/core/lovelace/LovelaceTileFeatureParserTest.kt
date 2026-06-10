@@ -48,17 +48,38 @@ class LovelaceTileFeatureParserTest {
         val t = tile(
             """
             {"type":"tile","entity":"weather.home","features":[
-              {"type":"temperature-forecast","forecast_type":"daily","show_labels":true},
-              {"type":"precipitation-forecast","forecast_type":"hourly","precipitation_type":"probability"}
+              {"type":"temperature-forecast","forecast_type":"daily","show_labels":true,"days_to_show":5},
+              {"type":"precipitation-forecast","forecast_type":"hourly","precipitation_type":"probability","hours_to_show":12}
             ]}
             """.trimIndent(),
         )
         val tf = t.features[0] as LovelaceTileFeature.TemperatureForecast
         assertThat(tf.forecastType).isEqualTo("daily")
         assertThat(tf.showLabels).isTrue()
+        assertThat(tf.daysToShow).isEqualTo(5)
         val pf = t.features[1] as LovelaceTileFeature.PrecipitationForecast
         assertThat(pf.forecastType).isEqualTo("hourly")
         assertThat(pf.precipitationType).isEqualTo("probability")
+        assertThat(pf.hoursToShow).isEqualTo(12)
+    }
+
+    @Test fun `forecast features default show_labels true and forecast_type null`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"weather.home","features":[
+              {"type":"temperature-forecast"},
+              {"type":"precipitation-forecast"}
+            ]}
+            """.trimIndent(),
+        )
+        val tf = t.features[0] as LovelaceTileFeature.TemperatureForecast
+        // HA defaults show_labels to true and resolves forecast_type from the
+        // entity's supported bits (null = resolve at render time).
+        assertThat(tf.showLabels).isTrue()
+        assertThat(tf.forecastType).isNull()
+        val pf = t.features[1] as LovelaceTileFeature.PrecipitationForecast
+        assertThat(pf.showLabels).isTrue()
+        assertThat(pf.forecastType).isNull()
     }
 
     @Test fun `parses the registry-favorite feature types`() {

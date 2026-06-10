@@ -3,57 +3,23 @@ package com.github.itskenny0.r1ha.feature.moreinfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
+import com.github.itskenny0.r1ha.core.ha.ExtEntityRegistryOptions
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.feature.dashboards.cards.EntityRegistryOptionsCache
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Small TTL cache + decoder for an entity's registry `options` blob, used by the
- * more-info favourites controls. Reads come through
- * [HaRepository.getEntityRegistryOptions] (`config/entity_registry/get`); the
- * decoded shape is the per-domain favourites HA stores under `options[<domain>]`.
+ * Decoder + Compose holder for an entity's registry favourites, used by the
+ * more-info sheet's favourites controls.
  *
- * NOTE: a sibling batch (parity-j1-features) is expected to land a general
- * `EntityRegistryOptionsCache`. That cache does not exist at this batch's base,
- * so this is a deliberately narrow, non-colliding stand-in (named
- * MoreInfoRegistryOptions) scoped to the favourites the more-info sheet needs.
- * It should be consolidated into the shared cache once that batch merges.
+ * Caching is delegated to the shared [EntityRegistryOptionsCache] (the J1
+ * card-features cache over `config/entity_registry/get`); this file no longer
+ * carries its own TTL cache. It keeps only the pure decode from the registry
+ * `options` blob into the [RegistryFavorites] shape (positions / tilt positions
+ * / typed colour swatches) the sheet renders, plus the holder that resolves it.
  */
-object MoreInfoRegistryOptions {
-
-    private const val TTL_MILLIS = 60_000L
-
-    private data class CacheEntry(val options: JsonObject?, val fetchedAtMillis: Long)
-
-    private val cache = HashMap<String, CacheEntry>()
-
-    /** Fetch (cached) the registry options for [entityId]. Best-effort: a failed
-     *  WS call returns null and is NOT cached, so a transient disconnect doesn't
-     *  pin an empty result for the whole TTL. */
-    suspend fun fetch(haRepository: HaRepository, entityId: String, nowMillis: Long): JsonObject? {
-        val cached = cache[entityId]
-        if (cached != null && nowMillis - cached.fetchedAtMillis < TTL_MILLIS) {
-            return cached.options
-        }
-        val result = haRepository.getEntityRegistryOptions(entityId)
-        return result.fold(
-            onSuccess = { opts ->
-                cache[entityId] = CacheEntry(opts, nowMillis)
-                opts
-            },
-            onFailure = { cached?.options },
-        )
-    }
-
-    /** Drop the cached entry for [entityId] so the next read re-fetches (used
-     *  after a successful favourites write). */
-    fun invalidate(entityId: String) {
-        cache.remove(entityId)
-    }
-
-    internal fun clearForTest() = cache.clear()
-}
 
 /**
  * The favourites the more-info sheet reads off an entity's registry options.
@@ -66,7 +32,20 @@ data class RegistryFavorites(
     /** Light favourites as opaque ARGB swatches (rgb / rgbw / rgbww flattened to
      *  RGB) plus colour-temperature kelvin entries, decoded in stored order. */
     val colors: List<FavoriteColor> = emptyList(),
-)
+) {
+    companion object {
+        /**
+         * Adapt the shared cache's [ExtEntityRegistryOptions] (which carries the
+         * raw favourite-colour objects) into the more-info [RegistryFavorites]
+         * shape with typed colour swatches.
+         */
+        fun from(ext: ExtEntityRegistryOptions): RegistryFavorites = RegistryFavorites(
+            positions = ext.favoritePositions,
+            tiltPositions = ext.favoriteTiltPositions,
+            colors = ext.favoriteColors.mapNotNull { decodeFavoriteColor(it) },
+        )
+    }
+}
 
 /**
  * Decode the per-domain favourites out of a registry `options` object for
@@ -114,8 +93,9 @@ private fun decodeFavoriteColor(obj: JsonObject?): FavoriteColor? {
 /**
  * Compose holder that resolves an entity's [RegistryFavorites] for [domain],
  * substituting the computed defaults when the user has stored none. Returns null
- * while the first fetch is in flight. [computedDefault] supplies the fallback
- * (cover/valve positions or light colours) so the holder stays domain-agnostic.
+ * while the first fetch is in flight. Reads through the shared
+ * [EntityRegistryOptionsCache] so a card-feature and the more-info sheet share
+ * one fetch per entity per TTL window.
  */
 @Composable
 fun rememberRegistryFavorites(
@@ -132,6 +112,6 @@ fun rememberRegistryFavorites(
         value = null
         return@produceState
     }
-    val options = MoreInfoRegistryOptions.fetch(haRepository, entityId, System.currentTimeMillis())
-    value = decodeRegistryFavorites(options, domain)
+    val ext = EntityRegistryOptionsCache.get(haRepository, entityId, System.currentTimeMillis())
+    value = RegistryFavorites.from(ext)
 }

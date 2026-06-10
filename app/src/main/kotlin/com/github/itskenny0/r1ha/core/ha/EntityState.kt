@@ -425,6 +425,7 @@ data class EntityState(
         const val AUX_HEAT = 64
         const val TURN_OFF = 128
         const val TURN_ON = 256
+        const val SWING_HORIZONTAL_MODE = 512
     }
 
     fun hasClimateFeature(featureBit: Int): Boolean =

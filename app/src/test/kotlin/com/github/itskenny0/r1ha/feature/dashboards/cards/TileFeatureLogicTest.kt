@@ -320,4 +320,34 @@ class TileFeatureLogicTest {
         val mower = entity("lawn_mower.x", supportedFeatures = f.START_MOWING or f.PAUSE)
         assertEquals(listOf("start_pause"), lawnMowerVisibleCommands(mower, emptyList()))
     }
+
+    // ── trend-graph downsampling (detail: false) ────────────────────────────
+
+    @Test fun `detail true returns points unchanged`() {
+        val pts = listOf(
+            Instant.ofEpochSecond(0) to 1.0,
+            Instant.ofEpochSecond(100) to 2.0,
+        )
+        assertEquals(pts, downsampleTrendPoints(pts, detail = true))
+    }
+
+    @Test fun `detail false averages per hour bucket`() {
+        val pts = listOf(
+            // hour 0: 0s, 1800s -> mean value 2.0 at 900s
+            Instant.ofEpochSecond(0) to 1.0,
+            Instant.ofEpochSecond(1800) to 3.0,
+            // hour 1: 3600s -> 10.0 at 3600s
+            Instant.ofEpochSecond(3600) to 10.0,
+        )
+        val out = downsampleTrendPoints(pts, detail = false)
+        assertEquals(2, out.size)
+        assertEquals(2.0, out[0].second, 0.0)
+        assertEquals(900L, out[0].first.epochSecond)
+        assertEquals(10.0, out[1].second, 0.0)
+    }
+
+    @Test fun `detail false leaves a single point alone`() {
+        val pts = listOf(Instant.ofEpochSecond(0) to 5.0)
+        assertEquals(pts, downsampleTrendPoints(pts, detail = false))
+    }
 }

@@ -485,3 +485,27 @@ fun hsToRgb(hue: Double, sat: Double): Triple<Int, Int, Int> {
         Math.round((b1 + m) * 255).toInt(),
     )
 }
+
+/**
+ * Downsample a numeric trend series to ~one point per hour using per-hour means,
+ * mirroring HA's trend-graph `detail: false`. Points are bucketed by their
+ * epoch-hour; each bucket emits its mean value at its mean timestamp. Bucket
+ * order is preserved (input is assumed time-ascending). [detail] true returns
+ * the input unchanged (HA's default 1-point-per-pixel behaviour).
+ */
+fun downsampleTrendPoints(
+    points: List<Pair<java.time.Instant, Double>>,
+    detail: Boolean,
+): List<Pair<java.time.Instant, Double>> {
+    if (detail || points.size < 2) return points
+    val buckets = LinkedHashMap<Long, MutableList<Pair<java.time.Instant, Double>>>()
+    for (p in points) {
+        val hour = p.first.epochSecond / 3600L
+        buckets.getOrPut(hour) { ArrayList() }.add(p)
+    }
+    return buckets.values.map { bucket ->
+        val meanV = bucket.sumOf { it.second } / bucket.size
+        val meanT = java.time.Instant.ofEpochSecond(bucket.sumOf { it.first.epochSecond } / bucket.size)
+        meanT to meanV
+    }
+}
