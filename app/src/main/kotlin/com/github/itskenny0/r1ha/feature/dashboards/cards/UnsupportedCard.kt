@@ -394,8 +394,15 @@ private fun GenericEntityRow(
 }
 
 /**
- * Original placeholder for cards with no entity refs and no url. Surfaces the
+ * Placeholder for cards with no entity refs and no url. Surfaces the
  * card's type string + an expandable raw-JSON body.
+ *
+ * HA's hui-error-card shows the error title only to admins and the full
+ * message only in editor preview. R1HA shows the type and the SHOW JSON
+ * expander to every user because the audience of the R1 companion is the
+ * HA owner, who is always an admin; there is no multi-tenant guest audience
+ * to gate detail from. This is intentional: surfacing config problems helps
+ * the owner fix them.
  */
 @Composable
 private fun RawJsonCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modifier) {
@@ -419,16 +426,24 @@ private fun RawJsonCard(card: LovelaceCard.Unsupported, modifier: Modifier = Mod
                 color = R1.StatusAmber,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                text = if (expanded) "HIDE" else "SHOW JSON",
-                style = R1.labelMicro,
-                color = R1.InkSoft,
-                modifier = Modifier.r1Pressable(onClick = { expanded = !expanded }),
-            )
+            // Only offer the JSON expander when there is a raw payload to show;
+            // a config-error card (non-object entry) has an empty raw object.
+            if (card.raw.isNotEmpty()) {
+                Text(
+                    text = if (expanded) "HIDE" else "SHOW JSON",
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                    modifier = Modifier.r1Pressable(onClick = { expanded = !expanded }),
+                )
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(
-            text = humanizeCardType(card.type),
+            // friendlyType carries a human-readable label (e.g. the config-error
+            // message "Config is not an object: ...") when it differs from the raw
+            // type; fall back to the humanized type token otherwise.
+            text = card.friendlyType.takeUnless { it == card.type }
+                ?: humanizeCardType(card.type),
             style = R1.body,
             color = R1.Ink,
         )
