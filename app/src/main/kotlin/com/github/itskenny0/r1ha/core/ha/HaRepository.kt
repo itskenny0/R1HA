@@ -554,6 +554,17 @@ interface HaRepository {
     suspend fun setUserData(key: String, value: kotlinx.serialization.json.JsonElement): Result<Unit>
 
     /**
+     * Fetch the full release notes for an `update.*` entity via the
+     * `update/release_notes` WS command. HA returns the notes as a
+     * single markdown string (or null when the integration provides no
+     * notes); the more-info sheet renders it through the shared markdown
+     * view. A failed [Result] (entity doesn't support RELEASE_NOTES,
+     * transport error) lets the caller fall back to the `release_summary`
+     * attribute.
+     */
+    suspend fun fetchUpdateReleaseNotes(entityId: String): Result<String?>
+
+    /**
      * List every device HA's device registry knows about via
      * `config/device_registry/list`. Powers the native Devices browser
      * which sections devices by area / manufacturer and drills into the

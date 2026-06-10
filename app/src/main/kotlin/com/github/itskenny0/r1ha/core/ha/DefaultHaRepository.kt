@@ -3236,6 +3236,18 @@ class DefaultHaRepository(
         callWsExpectingPayload("frontend/set_user_data", extras).map { }
     }
 
+    override suspend fun fetchUpdateReleaseNotes(entityId: String): Result<String?> =
+        withContext(Dispatchers.IO) {
+            val extras = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+            }
+            // HA returns the notes as a bare markdown string under `result`; a null
+            // result (integration provides no notes) maps to a null payload.
+            callWsExpectingPayload("update/release_notes", extras).map { payload ->
+                (payload as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+            }
+        }
+
     override suspend fun listRepairs(): Result<List<RepairIssue>> = withContext(Dispatchers.IO) {
         callWsExpectingPayload("repairs/list_issues").mapCatching { payload ->
             val obj = payload as? kotlinx.serialization.json.JsonObject ?: return@mapCatching emptyList()
