@@ -119,4 +119,24 @@ class StructuredNameParserTest {
         val nb = card("""{"type":"clock","no_background":true}""") as LovelaceCard.Clock
         assertThat(nb.noBackground).isTrue()
     }
+
+    // ── new small cards land as typed Unsupported with their dispatch hooks ───
+
+    @Test fun `plant-status keeps its type and scrapes the entity ref`() {
+        val c = card("""{"type":"plant-status","entity":"plant.fern"}""") as LovelaceCard.Unsupported
+        assertThat(c.type).isEqualTo("plant-status")
+        assertThat(c.entityRefs).containsExactly("plant.fern")
+    }
+
+    @Test fun `discovered-devices keeps its type`() {
+        val c = card("""{"type":"discovered-devices","title":"New"}""") as LovelaceCard.Unsupported
+        assertThat(c.type).isEqualTo("discovered-devices")
+    }
+
+    @Test fun `error card keeps its type and raw config`() {
+        val c = card("""{"type":"error","error":"boom","origConfig":{"type":"bogus"}}""") as LovelaceCard.Unsupported
+        assertThat(c.type).isEqualTo("error")
+        assertThat(c.raw["error"]).isNotNull()
+        assertThat(c.raw["origConfig"]).isNotNull()
+    }
 }
