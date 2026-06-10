@@ -118,6 +118,16 @@ interface HaRepository {
     suspend fun fetchHistory(entityId: EntityId, hours: Int = 24): Result<List<HistoryPoint>>
 
     /**
+     * Attribute-bearing history fetch for the map card's location trail. Unlike
+     * [fetchHistory] (which uses `no_attributes` for a compact numeric series),
+     * this keeps the `latitude`/`longitude` attributes so the past positions of a
+     * device_tracker / person can be plotted as a trail. Returns one
+     * [LocationFix] per state change carrying coordinates, in chronological order;
+     * samples lacking coordinates are dropped.
+     */
+    suspend fun fetchLocationHistory(entityId: EntityId, hours: Int = 24): Result<List<LocationFix>>
+
+    /**
      * HA's conversation/process endpoint — sends a natural-language [text]
      * prompt and returns the plain-text response. Powers the Assist text
      * surface. [conversationId] threads multi-turn context; null starts a

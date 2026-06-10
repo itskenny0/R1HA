@@ -139,4 +139,32 @@ class StructuredNameParserTest {
         assertThat(c.raw["error"]).isNotNull()
         assertThat(c.raw["origConfig"]).isNotNull()
     }
+
+    // ── map card new options ─────────────────────────────────────────────────
+
+    @Test fun `map parses show_all fit_zones cluster and geo sources`() {
+        val c = card(
+            """{"type":"map","show_all":true,"fit_zones":true,"cluster":false,
+                "geo_location_sources":["usgs","nsw_rural_fire"]}""",
+        ) as LovelaceCard.Map
+        assertThat(c.showAll).isTrue()
+        assertThat(c.fitZones).isTrue()
+        assertThat(c.cluster).isFalse()
+        assertThat(c.geoLocationSources).containsExactly("usgs", "nsw_rural_fire").inOrder()
+    }
+
+    @Test fun `map cluster defaults true and conditions default empty`() {
+        val c = card("""{"type":"map","entities":["person.a"]}""") as LovelaceCard.Map
+        assertThat(c.cluster).isTrue()
+        assertThat(c.showAll).isFalse()
+        assertThat(c.conditions).isEmpty()
+    }
+
+    @Test fun `map parses per-entity visibility conditions`() {
+        val c = card(
+            """{"type":"map","entities":["person.a"],
+                "conditions":[{"condition":"state","entity":"person.a","state":"home"}]}""",
+        ) as LovelaceCard.Map
+        assertThat(c.conditions).hasSize(1)
+    }
 }

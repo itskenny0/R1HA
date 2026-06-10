@@ -1065,6 +1065,30 @@ sealed class LovelaceCard {
         val labelAttribute: String? = null,
         /** Per-card `theme:` key. Stored only; applied by a later batch. */
         val theme: String? = null,
+        /**
+         * HA `hours_to_show` history-trail toggle is driven by [hoursToShow]; this
+         * is HA's `show_all`: when true (and no explicit entities are configured),
+         * the card plots every locatable device_tracker / person. */
+        val showAll: Boolean = false,
+        /**
+         * HA `fit_zones`: include zone entities in the bounding-box auto-fit so
+         * the framing accounts for nearby zones, not just markers. Defaults false.
+         */
+        val fitZones: Boolean = false,
+        /**
+         * HA `cluster`: merge overlapping markers into a count chip. Defaults true
+         * in HA; on the abstract canvas this groups near-coincident dots into a
+         * single labelled count when enabled. */
+        val cluster: Boolean = true,
+        /**
+         * HA `geo_location_sources`: plot geo_location entities whose `source`
+         * attribute is in this list. The special token "all" plots every
+         * geo_location entity. Empty = no geo-location plotting. */
+        val geoLocationSources: List<String> = emptyList(),
+        /**
+         * HA `conditions:` filtering plotted entities per entity (the Batch B
+         * evaluator runs each marker through these). Empty = no condition gating. */
+        val conditions: List<LovelaceCondition> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "map"
     }

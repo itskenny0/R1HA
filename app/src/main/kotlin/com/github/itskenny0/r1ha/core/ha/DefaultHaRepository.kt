@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -1697,6 +1698,46 @@ class DefaultHaRepository(
             }
             Result.failure(t)
         }
+
+    override suspend fun fetchLocationHistory(entityId: EntityId, hours: Int): Result<List<LocationFix>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val s = settings.settings.first()
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val since = Instant.now().minusSeconds(hours.toLong() * 3600L)
+                // Keep the attribute payload (no `no_attributes`) so latitude /
+                // longitude survive; `minimal_response` would strip them after the
+                // first sample, so it is intentionally omitted here.
+                val url = "${server.url.trimEnd('/')}/api/history/period/$since" +
+                    "?filter_entity_id=${java.net.URLEncoder.encode(entityId.value, "UTF-8")}"
+                val body = fetchHistoryBody(url) ?: run {
+                    if (refresher?.forceRefresh() == true) fetchHistoryBody(url) else null
+                } ?: error("Home Assistant returned no history for ${entityId.value}")
+                val outer = listStatesJson.decodeFromString<List<List<LocationHistoryRow>>>(body)
+                outer.firstOrNull().orEmpty().mapNotNull { row ->
+                    val lat = row.attributes?.get("latitude")?.let { (it as? JsonPrimitive)?.doubleOrNull }
+                    val lon = row.attributes?.get("longitude")?.let { (it as? JsonPrimitive)?.doubleOrNull }
+                    val ts = row.last_changed ?: row.last_updated
+                    if (lat != null && lon != null && ts != null) {
+                        parseHaInstant(ts)?.let { LocationFix(it, lat, lon) }
+                    } else {
+                        null
+                    }
+                }
+            }.onFailure { t ->
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                R1Log.d("HaRepo.fetchLocationHistory", "${entityId.value}: ${t.message}")
+            }
+        }
+
+    /** Row shape for the attribute-bearing location history (keeps `attributes`). */
+    @kotlinx.serialization.Serializable
+    private data class LocationHistoryRow(
+        val attributes: kotlinx.serialization.json.JsonObject? = null,
+        val last_changed: String? = null,
+        val last_updated: String? = null,
+    )
 
     /** One attempt of the [fetchHistory] REST GET + parse. Throws on any failure (HTTP error,
      *  breaker short-circuit 503, parse error); the caller's retry loop decides whether to

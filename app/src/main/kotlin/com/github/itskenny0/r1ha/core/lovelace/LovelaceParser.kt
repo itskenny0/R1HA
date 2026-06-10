@@ -839,6 +839,11 @@ object LovelaceParser {
                 markers = parseMapMarkers(obj["entities"]),
                 labelAttribute = obj["attribute"]?.asStringOrNull(),
                 theme = obj["theme"]?.asStringOrNull(),
+                showAll = obj["show_all"]?.asBooleanOrNull() ?: false,
+                fitZones = obj["fit_zones"]?.asBooleanOrNull() ?: false,
+                cluster = obj["cluster"]?.asBooleanOrNull() ?: true,
+                geoLocationSources = parseStringList(obj["geo_location_sources"]),
+                conditions = (obj["conditions"] as? JsonArray)?.let { parseConditions(it) } ?: emptyList(),
             )
             "thermostat" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
