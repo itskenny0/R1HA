@@ -68,9 +68,13 @@ class EntityRowLogicTest {
         assertThat(rowKindFor("number.n")).isEqualTo(RowKind.Number)
         assertThat(rowKindFor("input_number.n")).isEqualTo(RowKind.InputNumber)
         assertThat(rowKindFor("select.s")).isEqualTo(RowKind.Select)
-        // sensor-style domains a sibling batch owns fall through to display.
+        // event / weather / timer route to their dedicated read-only display rows.
+        assertThat(rowKindFor("event.doorbell")).isEqualTo(RowKind.Event)
+        assertThat(rowKindFor("weather.home")).isEqualTo(RowKind.Weather)
+        assertThat(rowKindFor("timer.laundry")).isEqualTo(RowKind.Timer)
+        // remaining sensor-style domains fall through to the generic display row.
         assertThat(rowKindFor("sensor.temp")).isEqualTo(RowKind.Display)
-        assertThat(rowKindFor("weather.home")).isEqualTo(RowKind.Display)
+        assertThat(rowKindFor("date.x")).isEqualTo(RowKind.Display)
     }
 
     // ── cover gating ────────────────────────────────────────────────────────

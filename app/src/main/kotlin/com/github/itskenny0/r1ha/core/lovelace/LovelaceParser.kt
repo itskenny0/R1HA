@@ -12,6 +12,12 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+// Special-row type keys (from HA's create-row-element dispatch table).
+private val SPECIAL_ROW_TYPES = setOf(
+    "section", "divider", "attribute", "button", "buttons",
+    "call-service", "perform-action", "conditional", "text", "weblink", "cast",
+)
+
 /**
  * Pure parser turning HA's raw `lovelace/config` JSON into the typed
  * [LovelaceConfig] tree. Stateless: no IO, no caching, no Compose.
@@ -254,7 +260,7 @@ object LovelaceParser {
                 raw = obj,
                 title = obj["title"]?.asStringOrNull(),
                 showHeaderToggle = obj["show_header_toggle"]?.asBooleanOrNull(),
-                entities = parseEntityRows(obj["entities"]),
+                rowItems = parseEntitiesItems(obj["entities"]),
             )
             "glance" -> LovelaceCard.Glance(
                 raw = obj,
@@ -990,13 +996,253 @@ object LovelaceParser {
     }
 
     /**
+     * Parse the `entities:` array of an entities card into a mixed list of
+     * [EntitiesItem.Entity] and [EntitiesItem.Special] items. Preserves the
+     * original order so dividers / section headers land between the entity rows
+     * they were placed between in the config.
+     *
+     * An object with a `type:` matching a special-row type is parsed as a
+     * [SpecialRow] even when it also carries an `entity:` key (HA's explicit
+     * type always wins). An object without `type:` that has no `entity:` is
+     * kept as an [EntitiesItem.Special] with [SpecialRow.Unknown] so it doesn't
+     * silently vanish — that matches HA's warning-row behaviour for unresolvable
+     * entries.
+     */
+    private fun parseEntitiesItems(el: JsonElement?): List<EntitiesItem> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) {
+                    EntitiesItem.Entity(
+                        EntityRow(
+                            entityId = item.content,
+                            name = null,
+                            icon = null,
+                            secondaryInfo = null,
+                        ),
+                    )
+                } else null
+                is JsonObject -> {
+                    val type = item["type"]?.asStringOrNull()?.lowercase()
+                    if (type != null && type in SPECIAL_ROW_TYPES) {
+                        parseSpecialRow(item, type)?.let { EntitiesItem.Special(it) }
+                    } else {
+                        val entity = item["entity"]?.asStringOrNull()
+                        if (entity != null) {
+                            // Regular entity row; explicit `type:` (e.g. "simple") stored for
+                            // the renderer to enforce the explicit row variant. The full
+                            // generic-row contract (per-row tap / hold / double-tap,
+                            // confirmation, action_name, image) parses the same way it does
+                            // for the list-only [parseEntityRows] path.
+                            EntitiesItem.Entity(
+                                EntityRow(
+                                    entityId = entity,
+                                    name = item["name"]?.asStringOrNull(),
+                                    icon = item["icon"]?.asStringOrNull(),
+                                    secondaryInfo = item["secondary_info"]?.asStringOrNull(),
+                                    nameType = item["name_type"]?.asStringOrNull(),
+                                    tapAction = parseAction(item["tap_action"] as? JsonObject),
+                                    holdAction = parseAction(item["hold_action"] as? JsonObject),
+                                    doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
+                                    format = parseTimestampFormat(item["format"]?.asStringOrNull()),
+                                    confirmation = parseConfirmation(item["confirmation"]),
+                                    actionName = item["action_name"]?.asStringOrNull(),
+                                    image = item["image"]?.asStringOrNull(),
+                                    explicitType = type,
+                                ),
+                            )
+                        } else if (type != null) {
+                            // Has a type we don't know, but no entity — keep as Unknown special row
+                            // rather than dropping so the user sees something rather than nothing.
+                            EntitiesItem.Special(SpecialRow.Unknown(raw = item, typeName = type))
+                        } else {
+                            null
+                        }
+                    }
+                }
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Parse one special row object. Returns null only when the required fields
+     * for that type are missing (e.g. a `button` row with no name and no entity),
+     * otherwise always returns a [SpecialRow] so the card preserves the item's
+     * position in the list.
+     */
+    private fun parseSpecialRow(obj: JsonObject, type: String): SpecialRow? {
+        return when (type) {
+        "section" -> SpecialRow.Section(
+            raw = obj,
+            label = obj["label"]?.asStringOrNull(),
+        )
+        "divider" -> SpecialRow.Divider(raw = obj)
+        "attribute" -> {
+            val entity = obj["entity"]?.asStringOrNull() ?: return null
+            val attribute = obj["attribute"]?.asStringOrNull() ?: return null
+            SpecialRow.Attribute(
+                raw = obj,
+                entityId = entity,
+                attribute = attribute,
+                name = obj["name"]?.asStringOrNull(),
+                icon = obj["icon"]?.asStringOrNull(),
+                prefix = obj["prefix"]?.asStringOrNull(),
+                suffix = obj["suffix"]?.asStringOrNull(),
+                format = obj["format"]?.asStringOrNull()?.let(::parseTimestampFormat),
+            )
+        }
+        // button row and call-service / perform-action share the same rendering shape.
+        // call-service wires its `action`/`service` + `data`/`service_data` fields onto
+        // a tap_action of type perform-action before handing off to the button renderer.
+        "button" -> {
+            val name = obj["name"]?.asStringOrNull()
+            val entity = obj["entity"]?.asStringOrNull()
+            if (name.isNullOrBlank() && entity.isNullOrBlank()) return null
+            SpecialRow.Button(
+                raw = obj,
+                entityId = entity,
+                name = name,
+                icon = obj["icon"]?.asStringOrNull(),
+                actionName = obj["action_name"]?.asStringOrNull(),
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+            )
+        }
+        "call-service", "perform-action" -> {
+            val name = obj["name"]?.asStringOrNull()
+            if (name.isNullOrBlank()) return null
+            val service = obj["action"]?.asStringOrNull() ?: obj["service"]?.asStringOrNull()
+            val tapAction: LovelaceAction? = if (service != null) {
+                val target = obj["target"] as? JsonObject
+                val entityId = target?.get("entity_id")?.asStringOrNull()
+                    ?: obj["entity_id"]?.asStringOrNull()
+                LovelaceAction.CallService(
+                    service = service,
+                    entityId = entityId,
+                    data = (obj["data"] as? JsonObject) ?: (obj["service_data"] as? JsonObject),
+                )
+            } else {
+                parseAction(obj["tap_action"] as? JsonObject)
+            }
+            SpecialRow.Button(
+                raw = obj,
+                entityId = obj["entity"]?.asStringOrNull(),
+                name = name,
+                icon = obj["icon"]?.asStringOrNull(),
+                actionName = obj["action_name"]?.asStringOrNull(),
+                tapAction = tapAction,
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+            )
+        }
+        "buttons" -> {
+            val entries = parseButtonsEntries(obj["entities"])
+            SpecialRow.Buttons(raw = obj, entries = entries)
+        }
+        "conditional" -> {
+            val rowPayload = parseConditionalRowPayload(obj["row"]) ?: return null
+            SpecialRow.Conditional(
+                raw = obj,
+                conditions = parseConditions(obj["conditions"]),
+                row = rowPayload,
+            )
+        }
+        "text" -> {
+            val name = obj["name"]?.asStringOrNull() ?: return null
+            val text = obj["text"]?.asStringOrNull() ?: return null
+            SpecialRow.Text(
+                raw = obj,
+                name = name,
+                text = text,
+                icon = obj["icon"]?.asStringOrNull(),
+            )
+        }
+        "weblink" -> {
+            val url = obj["url"]?.asStringOrNull() ?: return null
+            SpecialRow.Weblink(
+                raw = obj,
+                name = obj["name"]?.asStringOrNull() ?: url,
+                url = url,
+                icon = obj["icon"]?.asStringOrNull() ?: "mdi:link",
+            )
+        }
+        "cast" -> SpecialRow.Cast(raw = obj)
+        else -> SpecialRow.Unknown(raw = obj, typeName = type)
+        }
+    }
+
+    /** Parse the `entities:` array of a `type: buttons` row. Each entry may be a bare
+     *  entity-id string or an object carrying entity/icon/name/tap_action. */
+    private fun parseButtonsEntries(el: JsonElement?): List<SpecialRow.Buttons.ButtonEntry> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) {
+                    SpecialRow.Buttons.ButtonEntry(
+                        entityId = item.content,
+                        icon = null,
+                        name = null,
+                        tapAction = null,
+                    )
+                } else null
+                is JsonObject -> SpecialRow.Buttons.ButtonEntry(
+                    entityId = item["entity"]?.asStringOrNull(),
+                    icon = item["icon"]?.asStringOrNull(),
+                    name = item["name"]?.asStringOrNull(),
+                    tapAction = parseAction(item["tap_action"] as? JsonObject),
+                )
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Parse the `row:` key of a `type: conditional` special row. Returns null when the
+     * `row:` key is absent or unparseable so the conditional row itself is dropped.
+     * Accepts both entity rows (has `entity:` or is a bare string) and special rows
+     * (has a `type:` in SPECIAL_ROW_TYPES).
+     */
+    private fun parseConditionalRowPayload(el: JsonElement?): ConditionalRowPayload? {
+        return when (el) {
+            is JsonPrimitive -> if (el.isString) {
+                ConditionalRowPayload.EntityRowPayload(
+                    EntityRow(entityId = el.content, name = null, icon = null, secondaryInfo = null),
+                )
+            } else null
+            is JsonObject -> {
+                val type = el["type"]?.asStringOrNull()?.lowercase()
+                if (type != null && type in SPECIAL_ROW_TYPES) {
+                    val sr = parseSpecialRow(el, type) ?: return null
+                    ConditionalRowPayload.SpecialRowPayload(sr)
+                } else {
+                    val entity = el["entity"]?.asStringOrNull() ?: return null
+                    ConditionalRowPayload.EntityRowPayload(
+                        EntityRow(
+                            entityId = entity,
+                            name = el["name"]?.asStringOrNull(),
+                            icon = el["icon"]?.asStringOrNull(),
+                            secondaryInfo = el["secondary_info"]?.asStringOrNull(),
+                            nameType = el["name_type"]?.asStringOrNull(),
+                            format = el["format"]?.asStringOrNull()?.let(::parseTimestampFormat),
+                            explicitType = type,
+                        ),
+                    )
+                }
+            }
+            else -> null
+        }
+    }
+
+    /**
      * Parse HA's `format:` key on entity rows and badge rows. Accepts the five
      * values from `TimestampRenderingFormat` (hui-timestamp-display.ts):
      * relative | total | date | time | datetime. Unknown values and null yield
      * null (the renderer applies the device-class default: timestamp -> relative,
      * uptime -> total, everything else -> raw state).
      */
-    private fun parseTimestampFormat(raw: String?): TimestampFormat? = when (raw?.lowercase()) {
+    private fun parseTimestampFormat(raw: String?): TimestampFormat? = when (raw?.trim()?.lowercase()) {
         "relative" -> TimestampFormat.RELATIVE
         "total" -> TimestampFormat.TOTAL
         "date" -> TimestampFormat.DATE
