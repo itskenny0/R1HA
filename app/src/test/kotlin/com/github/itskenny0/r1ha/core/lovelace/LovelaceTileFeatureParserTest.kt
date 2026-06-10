@@ -40,7 +40,8 @@ class LovelaceTileFeatureParserTest {
         assertThat(vb.step).isEqualTo(10)
         assertThat(vb.showMute).isTrue()
         val vs = t.features[3] as LovelaceTileFeature.MediaVolumeSlider
-        assertThat(vs.showMute).isFalse()
+        // show_mute_button was not set in the config, so it defaults to true (HA's default).
+        assertThat(vs.showMute).isTrue()
     }
 
     @Test fun `parses weather forecast features with options`() {
@@ -97,5 +98,69 @@ class LovelaceTileFeatureParserTest {
         )
         val f = t.features.single() as LovelaceTileFeature.AreaControls
         assertThat(f.controls).isEmpty()
+    }
+
+    @Test fun `parses button feature with and without action_name`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"button.doorbell","features":[
+              {"type":"button","action_name":"Ring"},
+              {"type":"button"}
+            ]}
+            """.trimIndent(),
+        )
+        val named = t.features[0] as LovelaceTileFeature.ButtonFeature
+        assertThat(named.actionName).isEqualTo("Ring")
+        val unnamed = t.features[1] as LovelaceTileFeature.ButtonFeature
+        assertThat(unnamed.actionName).isNull()
+    }
+
+    @Test fun `parses update-actions with string backup options`() {
+        val yes = tile("""{"type":"tile","entity":"update.x","features":[{"type":"update-actions","backup":"yes"}]}""")
+        assertThat((yes.features.single() as LovelaceTileFeature.UpdateActions).backup).isEqualTo("yes")
+        val ask = tile("""{"type":"tile","entity":"update.x","features":[{"type":"update-actions","backup":"ask"}]}""")
+        assertThat((ask.features.single() as LovelaceTileFeature.UpdateActions).backup).isEqualTo("ask")
+        val no = tile("""{"type":"tile","entity":"update.x","features":[{"type":"update-actions"}]}""")
+        assertThat((no.features.single() as LovelaceTileFeature.UpdateActions).backup).isEqualTo("no")
+        // Legacy boolean true is coerced to "yes".
+        val legacyTrue = tile("""{"type":"tile","entity":"update.x","features":[{"type":"update-actions","backup":true}]}""")
+        assertThat((legacyTrue.features.single() as LovelaceTileFeature.UpdateActions).backup).isEqualTo("yes")
+    }
+
+    @Test fun `parses lawn-mower-commands with optional commands list`() {
+        val all = tile("""{"type":"tile","entity":"lawn_mower.robot","features":[{"type":"lawn-mower-commands"}]}""")
+        assertThat((all.features.single() as LovelaceTileFeature.LawnMowerCommands).commands).isEmpty()
+        val filtered = tile(
+            """
+            {"type":"tile","entity":"lawn_mower.robot","features":[
+              {"type":"lawn-mower-commands","commands":["dock"]}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((filtered.features.single() as LovelaceTileFeature.LawnMowerCommands).commands).containsExactly("dock")
+    }
+
+    @Test fun `show_mute_button defaults to true when absent`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"media_player.x","features":[
+              {"type":"media-player-volume-buttons"},
+              {"type":"media-player-volume-slider"}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((t.features[0] as LovelaceTileFeature.MediaVolumeButtons).showMute).isTrue()
+        assertThat((t.features[1] as LovelaceTileFeature.MediaVolumeSlider).showMute).isTrue()
+    }
+
+    @Test fun `show_mute_button explicit false overrides the default`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"media_player.x","features":[
+              {"type":"media-player-volume-buttons","show_mute_button":false}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((t.features.single() as LovelaceTileFeature.MediaVolumeButtons).showMute).isFalse()
     }
 }

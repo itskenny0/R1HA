@@ -1297,6 +1297,10 @@ object LovelaceParser {
                 "alarm-modes" -> LovelaceTileFeature.AlarmModes(parseStringList(obj["modes"]))
                 "lock-commands" -> LovelaceTileFeature.LockCommands
                 "toggle" -> LovelaceTileFeature.Toggle
+                // button / input_button / scene / script: a labeled press-button row.
+                "button" -> LovelaceTileFeature.ButtonFeature(
+                    actionName = obj["action_name"]?.asStringOrNull()?.takeUnless { it.isBlank() },
+                )
                 "target-temperature" -> LovelaceTileFeature.TargetTemperature
                 "select-options" -> LovelaceTileFeature.SelectOptions(parseStringList(obj["options"]))
                 "media-player-playback" -> LovelaceTileFeature.MediaPlayback(parseStringList(obj["controls"]))
@@ -1304,10 +1308,12 @@ object LovelaceParser {
                 "media-player-sound-mode" -> LovelaceTileFeature.MediaSoundMode(parseStringList(obj["sound_modes"]))
                 "media-player-volume-buttons" -> LovelaceTileFeature.MediaVolumeButtons(
                     step = obj["step"]?.asIntOrNull() ?: 5,
-                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: false,
+                    // HA default is true (renderMuteButton: showMuteButton ?? true).
+                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: true,
                 )
                 "media-player-volume-slider" -> LovelaceTileFeature.MediaVolumeSlider(
-                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: false,
+                    // HA default is true (renderMuteButton: showMuteButton ?? true).
+                    showMute = obj["show_mute_button"]?.asBooleanOrNull() ?: true,
                 )
                 "temperature-forecast" -> LovelaceTileFeature.TemperatureForecast(
                     forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase() ?: "daily",
@@ -1335,7 +1341,7 @@ object LovelaceParser {
                 // Water heater
                 "water-heater-operation-modes" -> LovelaceTileFeature.WaterHeaterOperationModes(parseStringList(obj["operation_modes"]))
                 // Lawn mower and vacuum
-                "lawn-mower-commands" -> LovelaceTileFeature.LawnMowerCommands
+                "lawn-mower-commands" -> LovelaceTileFeature.LawnMowerCommands(parseStringList(obj["commands"]))
                 "vacuum-commands" -> LovelaceTileFeature.VacuumCommands(parseStringList(obj["commands"]))
                 // Cover tilt
                 "cover-tilt" -> LovelaceTileFeature.CoverTilt
@@ -1347,8 +1353,18 @@ object LovelaceParser {
                 "lock-open-door" -> LovelaceTileFeature.LockOpenDoor
                 // Counter
                 "counter-actions" -> LovelaceTileFeature.CounterActions(parseStringList(obj["actions"]))
-                // Update
-                "update-actions" -> LovelaceTileFeature.UpdateActions(backup = obj["backup"]?.asBooleanOrNull() ?: false)
+                // Update: backup is "yes"/"no"/"ask" (HA UpdateActionsCardFeatureConfig).
+                // A bare boolean true/false from old configs is coerced to "yes"/"no".
+                "update-actions" -> LovelaceTileFeature.UpdateActions(
+                    backup = when (val raw = obj["backup"]) {
+                        is kotlinx.serialization.json.JsonPrimitive -> when {
+                            raw.isString -> raw.content.lowercase().takeIf { it in setOf("yes", "no", "ask") } ?: "no"
+                            raw.booleanOrNull == true -> "yes"
+                            else -> "no"
+                        }
+                        else -> "no"
+                    },
+                )
                 // Humidifier target humidity
                 "target-humidity" -> LovelaceTileFeature.TargetHumidity
                 // Number / input_number

@@ -2175,6 +2175,15 @@ sealed class LovelaceTileFeature {
         override val type: String = "toggle"
     }
 
+    /** button / input_button / scene / script: a labeled press-button row.
+     *  [actionName] is the optional button label override (HA `action_name:`).
+     *  Pressing fires `{domain}.press` for button/input_button or
+     *  `{domain}.turn_on` for scene/script.  Disabled when unavailable. */
+    @Immutable
+    data class ButtonFeature(val actionName: String?) : LovelaceTileFeature() {
+        override val type: String = "button"
+    }
+
     @Immutable
     data object TargetTemperature : LovelaceTileFeature() {
         override val type: String = "target-temperature"
@@ -2319,9 +2328,12 @@ sealed class LovelaceTileFeature {
 
     // ── Lawn-mower commands ──────────────────────────────────────────────────
 
-    /** lawn_mower: START / PAUSE / DOCK buttons gated on LawnMowerFeature bits. */
+    /** lawn_mower: start_pause and/or dock buttons matching HA's two-command
+     *  model. [commands] optionally filters which of the two show; empty = both
+     *  supported commands (HA's default). start_pause is context-sensitive:
+     *  PAUSE while mowing (when PAUSE is supported), else START. */
     @Immutable
-    data object LawnMowerCommands : LovelaceTileFeature() {
+    data class LawnMowerCommands(val commands: List<String>) : LovelaceTileFeature() {
         override val type: String = "lawn-mower-commands"
     }
 
@@ -2369,9 +2381,11 @@ sealed class LovelaceTileFeature {
 
     // ── Update actions ───────────────────────────────────────────────────────
 
-    /** update: INSTALL / SKIP buttons. [backup] adds {backup: true} to install. */
+    /** update: INSTALL / SKIP buttons. [backup] mirrors HA's "yes"/"no"/"ask"
+     *  option: "yes" always sends {backup: true}, "no" (default) omits the flag,
+     *  "ask" prompts the user before installing. */
     @Immutable
-    data class UpdateActions(val backup: Boolean) : LovelaceTileFeature() {
+    data class UpdateActions(val backup: String) : LovelaceTileFeature() {
         override val type: String = "update-actions"
     }
 

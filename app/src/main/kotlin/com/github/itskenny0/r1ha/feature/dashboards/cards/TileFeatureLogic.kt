@@ -74,6 +74,58 @@ fun coverOpenCloseGate(state: EntityState): CoverOpenCloseGate {
     )
 }
 
+// ── Lawn-mower commands (HA card-features/hui-lawn-mower-commands-card-feature.ts) ──
+
+/** HA's two lawn-mower commands in display order. */
+val LAWN_MOWER_COMMAND_KEYS = listOf("start_pause", "dock")
+
+/** Whether the lawn-mower advertises any feature backing a command key. */
+fun lawnMowerSupportsCommand(state: EntityState, key: String): Boolean =
+    when (key) {
+        "start_pause" -> state.hasFeature(EntityState.LawnMowerFeature.PAUSE) ||
+            state.hasFeature(EntityState.LawnMowerFeature.START_MOWING)
+        "dock" -> state.hasFeature(EntityState.LawnMowerFeature.DOCK)
+        else -> false
+    }
+
+/** The resolved button for one lawn-mower command key.
+ *  start_pause is context-sensitive: PAUSE while mowing (when PAUSE supported),
+ *  else START. dock is disabled when the mower is already docked/idle/error. */
+data class LawnMowerButton(val key: String, val service: String, val label: String, val enabled: Boolean)
+
+fun lawnMowerButtonFor(state: EntityState, key: String): LawnMowerButton {
+    val raw = state.rawState.orEmpty().lowercase()
+    val unavailable = raw == "unavailable"
+    return when (key) {
+        "start_pause" -> {
+            val mowing = raw == "mowing"
+            val canPause = mowing && state.hasFeature(EntityState.LawnMowerFeature.PAUSE)
+            if (canPause) {
+                LawnMowerButton(key, "pause", "PAUSE", !unavailable)
+            } else {
+                // START is enabled whenever not mowing and not unavailable.
+                LawnMowerButton(key, "start_mowing", "START", !unavailable && !mowing)
+            }
+        }
+        "dock" -> {
+            // canDock: not already docked, idle, or error. Mirrors HA's canDock.
+            val canDock = !unavailable && raw !in setOf("docked", "idle", "error")
+            LawnMowerButton(key, "dock", "DOCK", canDock)
+        }
+        else -> LawnMowerButton(key, key, key.uppercase(), !unavailable)
+    }
+}
+
+/**
+ * The lawn-mower commands to display. [configCommands] is the optional `commands:`
+ * filter from the feature config; empty = all supported commands (HA's default).
+ */
+fun lawnMowerVisibleCommands(state: EntityState, configCommands: List<String>): List<String> {
+    val supported = LAWN_MOWER_COMMAND_KEYS.filter { lawnMowerSupportsCommand(state, it) }
+    if (configCommands.isEmpty()) return supported
+    return LAWN_MOWER_COMMAND_KEYS.filter { it in configCommands && it in supported }
+}
+
 // ── Vacuum commands (HA card-features/hui-vacuum-commands-card-feature.ts) ───
 
 /** HA's `VACUUM_COMMANDS` config-key order. */

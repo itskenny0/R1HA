@@ -21,6 +21,7 @@ class TileFeatureLogicTest {
         deviceClass: String? = null,
         supportedColorModes: List<String> = emptyList(),
         vacuumSupportedFeatures: Int = 0,
+        supportedFeatures: Int = 0,
         minColorTempK: Int? = null,
         maxColorTempK: Int? = null,
         attrs: JsonObject? = null,
@@ -37,6 +38,7 @@ class TileFeatureLogicTest {
         deviceClass = deviceClass,
         supportedColorModes = supportedColorModes,
         vacuumSupportedFeatures = vacuumSupportedFeatures,
+        supportedFeatures = supportedFeatures,
         minColorTempK = minColorTempK,
         maxColorTempK = maxColorTempK,
         attributesJson = attrs,
@@ -270,5 +272,52 @@ class TileFeatureLogicTest {
         val ct = buildJsonObject { put("color_temp_kelvin", JsonPrimitive(4000)) }
         // A kelvin swatch yields some opaque colour (exact value is an approximation).
         assertTrue((favoriteColorSwatchArgb(ct) ?: 0L) and 0xFF000000L == 0xFF000000L)
+    }
+
+    // ── Lawn-mower commands ─────────────────────────────────────────────────
+
+    @Test fun `lawn-mower start_pause is PAUSE while mowing and START otherwise`() {
+        val f = EntityState.LawnMowerFeature
+        val mowing = entity("lawn_mower.x", rawState = "mowing",
+            supportedFeatures = f.PAUSE or f.START_MOWING)
+        assertEquals("pause", lawnMowerButtonFor(mowing, "start_pause").service)
+        val docked = entity("lawn_mower.x", rawState = "docked",
+            supportedFeatures = f.PAUSE or f.START_MOWING)
+        val startBtn = lawnMowerButtonFor(docked, "start_pause")
+        assertEquals("start_mowing", startBtn.service)
+        assertTrue(startBtn.enabled)
+    }
+
+    @Test fun `lawn-mower start disabled while mowing when PAUSE is not supported`() {
+        val f = EntityState.LawnMowerFeature
+        val mowing = entity("lawn_mower.x", rawState = "mowing",
+            supportedFeatures = f.START_MOWING)
+        val btn = lawnMowerButtonFor(mowing, "start_pause")
+        assertEquals("start_mowing", btn.service)
+        assertFalse(btn.enabled)
+    }
+
+    @Test fun `lawn-mower dock disabled when already docked or idle`() {
+        val f = EntityState.LawnMowerFeature
+        assertFalse(lawnMowerButtonFor(entity("lawn_mower.x", rawState = "docked", supportedFeatures = f.DOCK), "dock").enabled)
+        assertFalse(lawnMowerButtonFor(entity("lawn_mower.x", rawState = "idle", supportedFeatures = f.DOCK), "dock").enabled)
+        assertTrue(lawnMowerButtonFor(entity("lawn_mower.x", rawState = "mowing", supportedFeatures = f.DOCK), "dock").enabled)
+    }
+
+    @Test fun `lawn-mower visible commands respects config filter`() {
+        val f = EntityState.LawnMowerFeature
+        val all = entity("lawn_mower.x", supportedFeatures = f.START_MOWING or f.PAUSE or f.DOCK)
+        // Empty config = all supported.
+        assertEquals(listOf("start_pause", "dock"), lawnMowerVisibleCommands(all, emptyList()))
+        // Filtered to dock only.
+        assertEquals(listOf("dock"), lawnMowerVisibleCommands(all, listOf("dock")))
+        // Unknown key in config is ignored.
+        assertEquals(listOf("start_pause"), lawnMowerVisibleCommands(all, listOf("start_pause", "unknown")))
+    }
+
+    @Test fun `lawn-mower with no dock support omits dock button`() {
+        val f = EntityState.LawnMowerFeature
+        val mower = entity("lawn_mower.x", supportedFeatures = f.START_MOWING or f.PAUSE)
+        assertEquals(listOf("start_pause"), lawnMowerVisibleCommands(mower, emptyList()))
     }
 }
