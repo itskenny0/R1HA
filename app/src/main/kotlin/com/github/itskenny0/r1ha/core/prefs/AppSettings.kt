@@ -72,7 +72,24 @@ enum class UiTextScale(val factor: Float) {
  * so the public-domain dedication stays clean. The face → role → family
  * mapping lives in [com.github.itskenny0.r1ha.core.theme.buildTypeRamp].
  */
-enum class FontFace { DEFAULT, CONDENSED, SERIF, MONO }
+enum class FontFace {
+    /** Today's mix: monospace numerals, sans chrome and prose. */
+    DEFAULT,
+    /** Plain system sans everywhere, numerals included: the 'normal font'. */
+    SANS,
+    /** sans-serif-condensed chrome and prose; numerals stay monospace. */
+    CONDENSED,
+    /** sans-serif-light everywhere. */
+    LIGHT,
+    /** System serif chrome and prose; numerals stay monospace. */
+    SERIF,
+    /** The system 'casual' handwritten face everywhere (the comic one). */
+    CASUAL,
+    /** The system 'cursive' script face everywhere. */
+    CURSIVE,
+    /** Monospace everywhere. */
+    MONO,
+}
 
 /**
  * How clock-style time-of-day readouts are rendered (the TODAY greeting

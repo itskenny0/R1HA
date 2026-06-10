@@ -989,17 +989,23 @@ private fun LazyListScope.appearanceRoot(
     }
     item {
         LabeledControl(label = "Font") {
-            SegmentedEnumPicker(
-                options = com.github.itskenny0.r1ha.core.prefs.FontFace.entries,
-                selected = s.ui.fontFace,
-                label = { com.github.itskenny0.r1ha.core.prefs.fontFaceLabel(it) },
-                onSelect = { vm.setFontFace(it) },
-            )
-            Spacer(Modifier.height(R1.space.s))
+            // Eight faces don't fit one segmented row on the R1's 240dp panel;
+            // stack two four-cell rows instead of shrinking cells to slivers.
+            for (rowFaces in com.github.itskenny0.r1ha.core.prefs.FontFace.entries.chunked(4)) {
+                SegmentedEnumPicker(
+                    options = rowFaces,
+                    selected = s.ui.fontFace,
+                    label = { com.github.itskenny0.r1ha.core.prefs.fontFaceLabel(it) },
+                    onSelect = { vm.setFontFace(it) },
+                )
+                Spacer(Modifier.height(R1.space.xs))
+            }
+            Spacer(Modifier.height(R1.space.xs))
             Text(
-                text = "Typeface for labels, titles, and body text app-wide. Numeric " +
-                    "readouts stay monospace on every choice except MONO, which goes " +
-                    "monospace everywhere. System fonts only; nothing is downloaded.",
+                text = "Typeface for the whole UI, system fonts only. SANS, LIGHT, " +
+                    "CASUAL, and SCRIPT replace everything including numbers; " +
+                    "DEFAULT, NARROW, and SERIF keep the monospace readouts; MONO " +
+                    "goes monospace everywhere.",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )

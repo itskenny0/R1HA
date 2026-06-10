@@ -36,7 +36,7 @@ enum class FontRole {
  * pure, JVM-testable mapping; turning a name into an actual [FontFamily] is the
  * thin platform layer in [systemFontFamily].
  */
-enum class RampFamily { SANS, SANS_CONDENSED, SERIF, MONO }
+enum class RampFamily { SANS, SANS_CONDENSED, SANS_LIGHT, SERIF, MONO, CASUAL, CURSIVE }
 
 /**
  * Pure face → role → family decision. The whole font-face feature reduces to
@@ -54,11 +54,23 @@ enum class RampFamily { SANS, SANS_CONDENSED, SERIF, MONO }
  * tabular digits are what keeps readouts steady while values tick.
  */
 fun rampFamilyFor(face: FontFace, role: FontRole): RampFamily = when (role) {
-    FontRole.NUMERAL -> RampFamily.MONO
+    // The mixed faces keep tabular monospace digits (readouts are the app's
+    // identity); the full-replacement faces swap numerals too, because 'give
+    // me a normal font' means everything, not everything-except-the-numbers.
+    FontRole.NUMERAL -> when (face) {
+        FontFace.DEFAULT, FontFace.CONDENSED, FontFace.SERIF, FontFace.MONO -> RampFamily.MONO
+        FontFace.SANS -> RampFamily.SANS
+        FontFace.LIGHT -> RampFamily.SANS_LIGHT
+        FontFace.CASUAL -> RampFamily.CASUAL
+        FontFace.CURSIVE -> RampFamily.CURSIVE
+    }
     FontRole.LABEL, FontRole.TITLE, FontRole.BODY -> when (face) {
-        FontFace.DEFAULT -> RampFamily.SANS
+        FontFace.DEFAULT, FontFace.SANS -> RampFamily.SANS
         FontFace.CONDENSED -> RampFamily.SANS_CONDENSED
+        FontFace.LIGHT -> RampFamily.SANS_LIGHT
         FontFace.SERIF -> RampFamily.SERIF
+        FontFace.CASUAL -> RampFamily.CASUAL
+        FontFace.CURSIVE -> RampFamily.CURSIVE
         FontFace.MONO -> RampFamily.MONO
     }
 }
@@ -173,14 +185,16 @@ fun buildTypeRamp(
  * must not trip over it). System typefaces only — the app deliberately bundles
  * no font assets.
  */
-private val condensedFontFamily: FontFamily by lazy {
-    FontFamily(
-        android.graphics.Typeface.create(
-            "sans-serif-condensed",
-            android.graphics.Typeface.NORMAL,
-        ),
-    )
-}
+private val condensedFontFamily: FontFamily by lazy { namedFontFamily("sans-serif-condensed") }
+private val lightFontFamily: FontFamily by lazy { namedFontFamily("sans-serif-light") }
+
+/** Android's bundled handwritten face (Coming Soon on AOSP): the closest the
+ *  system ships to the comic genre without bundling a font asset. */
+private val casualFontFamily: FontFamily by lazy { namedFontFamily("casual") }
+private val cursiveFontFamily: FontFamily by lazy { namedFontFamily("cursive") }
+
+private fun namedFontFamily(name: String): FontFamily =
+    FontFamily(android.graphics.Typeface.create(name, android.graphics.Typeface.NORMAL))
 
 /**
  * Thin platform layer: name → [FontFamily]. The generic three are Compose's
@@ -189,8 +203,11 @@ private val condensedFontFamily: FontFamily by lazy {
 fun systemFontFamily(family: RampFamily): FontFamily = when (family) {
     RampFamily.SANS -> FontFamily.SansSerif
     RampFamily.SANS_CONDENSED -> condensedFontFamily
+    RampFamily.SANS_LIGHT -> lightFontFamily
     RampFamily.SERIF -> FontFamily.Serif
     RampFamily.MONO -> FontFamily.Monospace
+    RampFamily.CASUAL -> casualFontFamily
+    RampFamily.CURSIVE -> cursiveFontFamily
 }
 
 /**

@@ -27,9 +27,28 @@ class TypeRampTest {
 
     // ── rampFamilyFor: the pure decision table ──────────────────────────────
 
-    @Test fun `numerals stay monospace on every face`() {
-        FontFace.entries.forEach { face ->
+    @Test fun `numerals stay monospace on the mixed faces`() {
+        // The mixed faces keep tabular digits: readouts are the app's identity.
+        listOf(FontFace.DEFAULT, FontFace.CONDENSED, FontFace.SERIF, FontFace.MONO).forEach { face ->
             assertThat(rampFamilyFor(face, FontRole.NUMERAL)).isEqualTo(RampFamily.MONO)
+        }
+    }
+
+    @Test fun `full-replacement faces swap numerals too`() {
+        // 'A normal font' means everything, numerals included: that is the
+        // point of these faces versus the mixed DEFAULT.
+        assertThat(rampFamilyFor(FontFace.SANS, FontRole.NUMERAL)).isEqualTo(RampFamily.SANS)
+        assertThat(rampFamilyFor(FontFace.LIGHT, FontRole.NUMERAL)).isEqualTo(RampFamily.SANS_LIGHT)
+        assertThat(rampFamilyFor(FontFace.CASUAL, FontRole.NUMERAL)).isEqualTo(RampFamily.CASUAL)
+        assertThat(rampFamilyFor(FontFace.CURSIVE, FontRole.NUMERAL)).isEqualTo(RampFamily.CURSIVE)
+    }
+
+    @Test fun `full-replacement faces map chrome and prose to their family`() {
+        listOf(FontRole.LABEL, FontRole.TITLE, FontRole.BODY).forEach { role ->
+            assertThat(rampFamilyFor(FontFace.SANS, role)).isEqualTo(RampFamily.SANS)
+            assertThat(rampFamilyFor(FontFace.LIGHT, role)).isEqualTo(RampFamily.SANS_LIGHT)
+            assertThat(rampFamilyFor(FontFace.CASUAL, role)).isEqualTo(RampFamily.CASUAL)
+            assertThat(rampFamilyFor(FontFace.CURSIVE, role)).isEqualTo(RampFamily.CURSIVE)
         }
     }
 

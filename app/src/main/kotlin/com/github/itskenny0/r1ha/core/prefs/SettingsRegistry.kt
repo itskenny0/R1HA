@@ -132,7 +132,7 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         id = "ui.fontFace",
         category = SettingCategory.APPEARANCE,
         label = "Font",
-        description = "Font face (typeface) for labels, titles, and body text; condensed, serif, or full monospace",
+        description = "Font face / typeface for the whole UI: plain sans, narrow, light, serif, casual (comic), script, mono",
         isDefault = { it.ui.fontFace == defaults.ui.fontFace },
         currentDisplay = { fontFaceLabel(it.ui.fontFace) },
     ),
@@ -967,8 +967,12 @@ fun uiTextScaleLabel(scale: UiTextScale): String = when (scale) {
  */
 fun fontFaceLabel(face: FontFace): String = when (face) {
     FontFace.DEFAULT -> "DEFAULT"
+    FontFace.SANS -> "SANS"
     FontFace.CONDENSED -> "NARROW"
+    FontFace.LIGHT -> "LIGHT"
     FontFace.SERIF -> "SERIF"
+    FontFace.CASUAL -> "CASUAL"
+    FontFace.CURSIVE -> "SCRIPT"
     FontFace.MONO -> "MONO"
 }
 
