@@ -332,7 +332,7 @@ sealed class LovelaceCard {
         /** Hours of history the line graph spans (HA's `hours_to_show`). */
         val hoursToShow: Int,
         val detail: Int?,
-        /** HA's `limits: {min, max}` — pins the sparkline Y axis. Null = autoscale. */
+        /** HA's `limits: {min, max}`: pins the sparkline Y axis. Null = autoscale. */
         val limitMin: Double? = null,
         val limitMax: Double? = null,
         /** HA entity-card inherited options: state-coloured value text and an
