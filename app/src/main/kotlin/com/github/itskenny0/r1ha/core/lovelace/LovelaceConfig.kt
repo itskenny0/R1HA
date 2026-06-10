@@ -115,6 +115,10 @@ sealed class LovelaceCard {
          * backward compatibility and returns only the entity rows.
          */
         val rowItems: List<EntitiesItem>,
+        /** HA `header:` slot rendered above the card body. Null = no header. */
+        val header: LovelaceHeaderFooter? = null,
+        /** HA `footer:` slot rendered below the card body. Null = no footer. */
+        val footer: LovelaceHeaderFooter? = null,
     ) : LovelaceCard() {
         override val type: String = "entities"
         /** Backward-compat view: only the entity rows. */
@@ -613,26 +617,48 @@ sealed class LovelaceCard {
     }
 
     /**
-     * Entity-filter card: a list of candidate [entities] narrowed at render
-     * time to only those whose live state matches one of [stateFilter]. HA's
-     * card supports rich per-condition filters; we model the common
-     * "string state equals" form (the `state_filter: ["on", "home"]`
-     * shorthand) since that covers the bulk of real configs. The surviving
-     * entities render as an entities-style list. An empty [stateFilter]
-     * leaves every entity visible (HA's behaviour when no filter is given).
+     * Entity-filter card: a list of candidate [entries] narrowed at render time
+     * to only those that pass the card's filter. HA accepts two mutually
+     * exclusive filter forms (hui-entity-filter-card.ts):
+     *
+     *  - the modern `conditions:` form, where each candidate is run through the
+     *    full Batch B condition evaluator with the candidate substituted as the
+     *    condition's `entity:` (HA's `addEntityToCondition`); carried in
+     *    [conditions].
+     *  - the legacy `state_filter:` form, a list of operator rules (==, !=, <,
+     *    <=, >, >=, in, not in, regex) plus the bare-string shorthand; carried
+     *    in [stateFilter].
+     *
+     * Each [entries] entry may also carry its OWN `conditions:` / `state_filter:`
+     * which overrides the card-level filter for that entity (HA's per-entity
+     * override). The survivors render as the wrapped [wrappedCard] type (default
+     * `entities`) with the survivor entity list injected. An entity-filter that
+     * wraps another entity-filter is rejected at parse time (it would recurse);
+     * [wrappedCard] then falls back to the entities card.
      */
     @Immutable
     data class EntityFilter(
         override val raw: JsonObject,
         val title: String?,
-        val entities: List<EntityRow>,
-        /** State strings an entity must currently match to be shown. */
-        val stateFilter: List<String>,
+        /** Candidate entries, each with optional per-entity filter overrides. */
+        val entries: List<EntityFilterEntry>,
+        /** Card-level operator-form `state_filter:` rules. Empty when the card
+         *  uses `conditions:` or has no card-level filter. */
+        val stateFilter: List<StateFilterRule>,
+        /** Card-level `conditions:` (Batch B evaluator). Empty when the card uses
+         *  `state_filter:` or has no card-level filter. */
+        val conditions: List<LovelaceCondition>,
         /** HA's `show_empty`: when false the whole card hides if nothing
          *  passes the filter. Defaults true (HA's default). */
         val showEmpty: Boolean,
+        /** The wrapped `card:` config the survivors render into. Defaults to an
+         *  entities card. The parser injects the survivor entity list at render
+         *  time. Never itself an entity-filter (rejected to avoid recursion). */
+        val wrappedCard: JsonObject? = null,
     ) : LovelaceCard() {
         override val type: String = "entity-filter"
+        /** Back-compat view: just the entity rows (no per-entry filters). */
+        val entities: List<EntityRow> get() = entries.map { it.row }
     }
 
     /**
@@ -808,6 +834,115 @@ sealed class LovelaceCard {
         val url: String? = null,
         val friendlyType: String = type,
     ) : LovelaceCard()
+}
+
+/**
+ * One candidate entry of an [LovelaceCard.EntityFilter]. Carries the entity
+ * [row] plus an optional per-entity filter override. HA lets an entry override
+ * the card-level filter with its own `state_filter:` or `conditions:` (the two
+ * are mutually exclusive on an entry, matching HA's setConfig validation). When
+ * both override lists are empty the entry inherits the card-level filter.
+ */
+@Immutable
+data class EntityFilterEntry(
+    val row: EntityRow,
+    /** Per-entity operator-form `state_filter:` override. Empty = inherit. */
+    val stateFilter: List<StateFilterRule> = emptyList(),
+    /** Per-entity `conditions:` override. Empty = inherit. */
+    val conditions: List<LovelaceCondition> = emptyList(),
+)
+
+/**
+ * One operator rule of an entity-filter card / badge `state_filter:` (HA's
+ * `LegacyStateFilter`, evaluated by `evaluateStateFilter`). Mirrors the object
+ * form `{operator, value, attribute}` and the bare-string shorthand (which HA
+ * treats as `operator: ==`, comparing the entity state).
+ *
+ * [operator] is one of ==, !=, <, <=, >, >=, in, not in, regex. [values] holds
+ * the comparison operand(s): a single value for the scalar operators / regex,
+ * the list members for in / not in (HA stringifies list members). [attribute]
+ * compares the named attribute instead of the entity state when set.
+ */
+@Immutable
+data class StateFilterRule(
+    val operator: StateFilterOperator,
+    val values: List<String>,
+    val attribute: String? = null,
+) {
+    /** The single operand for scalar / regex operators (the first value). */
+    val value: String get() = values.firstOrNull().orEmpty()
+}
+
+/** The operators an entity-filter `state_filter:` rule can use. */
+enum class StateFilterOperator(val token: String) {
+    EQ("=="), NE("!="), LT("<"), LTE("<="), GT(">"), GTE(">="),
+    IN("in"), NOT_IN("not in"), REGEX("regex");
+
+    companion object {
+        /** Resolve an HA operator token to the enum, or null when unrecognised. */
+        fun fromToken(token: String): StateFilterOperator? =
+            entries.firstOrNull { it.token == token.trim() }
+    }
+}
+
+/**
+ * A card-level header or footer slot (HA's `LovelaceHeaderFooterConfig`, one
+ * small subsystem reused by the entities + entity cards). HA models three
+ * concrete types: a row of icon buttons, a one-entity history sparkline, and a
+ * tappable picture. A `type:` we don't model parses to [Unsupported] and the
+ * slot renders nothing.
+ */
+@Immutable
+sealed class LovelaceHeaderFooter {
+    abstract val type: String
+
+    /** `type: buttons` — a horizontal row of icon buttons, one per entry. Each
+     *  entry's tap defaults to `toggle` (scene entries default to
+     *  `scene.turn_on`), matching hui-buttons-header-footer. */
+    @Immutable
+    data class Buttons(val entries: List<ButtonEntry>) : LovelaceHeaderFooter() {
+        override val type: String = "buttons"
+
+        @Immutable
+        data class ButtonEntry(
+            val entityId: String,
+            val icon: String?,
+            val name: String?,
+            val tapAction: LovelaceAction?,
+            val holdAction: LovelaceAction? = null,
+        )
+    }
+
+    /** `type: graph` — a compact history sparkline of one sensor-ish entity,
+     *  drawn through the shared Sparkline/ChartEngine. [detail] is HA's 1 (mean)
+     *  or 2 (raw) sampling; [limitMin]/[limitMax] pin the Y axis. */
+    @Immutable
+    data class Graph(
+        val entityId: String,
+        val hoursToShow: Int,
+        val detail: Int,
+        val limitMin: Double? = null,
+        val limitMax: Double? = null,
+    ) : LovelaceHeaderFooter() {
+        override val type: String = "graph"
+    }
+
+    /** `type: picture` — an image (HuiImage) with an optional whole-image tap /
+     *  hold / double-tap action and alt text. */
+    @Immutable
+    data class Picture(
+        val image: String,
+        val altText: String?,
+        val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
+    ) : LovelaceHeaderFooter() {
+        override val type: String = "picture"
+    }
+
+    /** A header/footer `type:` we don't model; renders nothing. */
+    @Immutable
+    data class Unsupported(override val type: String) : LovelaceHeaderFooter()
 }
 
 /**
