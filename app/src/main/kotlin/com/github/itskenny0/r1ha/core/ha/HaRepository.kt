@@ -778,6 +778,33 @@ interface HaRepository {
      * documented energy websocket API.
      */
     suspend fun getEnergyPrefs(): Result<Map<String, String>>
+
+    /**
+     * Fetch the full HA theme catalogue via `frontend/get_themes` and return a
+     * [HaThemeCatalogue] with the theme map and the default theme selection.
+     *
+     * Result is best-effort: a transport error or a disconnected WS returns
+     * [HaThemeCatalogue.EMPTY] so callers gracefully skip the overlay when
+     * themes are unavailable (the R1 design system applies unchanged). The
+     * catalogue is session-scoped and should be fetched once per connection
+     * rather than per-dashboard view.
+     */
+    suspend fun fetchThemes(): Result<HaThemeCatalogue>
+
+    /**
+     * Subscribe to `themes_updated` events. Each event fires [onUpdate] with
+     * the fresh [HaThemeCatalogue] so changes made in HA's appearance settings
+     * propagate live without requiring a reconnect. Returns an [EventSubscription]
+     * handle; cancel it when the subscriber is torn down. Uses the same
+     * reconnect-safe live-subscription machinery as template subscriptions.
+     *
+     * Best-effort: if the initial subscribe fails (WS disconnected), returns a
+     * no-op subscription and logs. The dashboard theme overlay stays on whatever
+     * was last fetched.
+     */
+    suspend fun subscribeThemesUpdated(
+        onUpdate: (HaThemeCatalogue) -> Unit,
+    ): Result<EventSubscription>
 }
 
 /**
