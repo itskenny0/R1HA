@@ -1034,6 +1034,7 @@ internal fun LightControlsRow(
 ) {
     val onSetMode = com.github.itskenny0.r1ha.core.theme.LocalOnSetLightWheelMode.current
     val onOpenPicker = com.github.itskenny0.r1ha.core.theme.LocalOnOpenEffectPicker.current
+    val onOpenColorWheel = com.github.itskenny0.r1ha.core.theme.LocalOnOpenColorWheel.current
     // Filter the available modes through the per-card hidden set. The mapping from
     // LightWheelMode to LightCardButton is one-to-one for BRIGHTNESS/COLOR_TEMP/HUE
     // (the three wheel modes); FX is handled separately below as a non-mode button.
@@ -1066,7 +1067,22 @@ internal fun LightControlsRow(
                         .clip(R1.ShapeS)
                         .background(if (active) accent else R1.SurfaceMuted)
                         .let { m ->
-                            if (onSetMode != null) m.r1Pressable(onClick = { onSetMode(entityId, mode) }) else m
+                            if (onSetMode != null) {
+                                m.r1Pressable(onClick = {
+                                    onSetMode(entityId, mode)
+                                    // HUE does double duty: it still flips the wheel
+                                    // mode (so the R1's physical wheel cycles hue while
+                                    // the overlay is up; wheel and touch drive the
+                                    // same hs_color) AND spawns the screen-level colour
+                                    // wheel, which is the only colour affordance on
+                                    // wheel-less phones.
+                                    if (mode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE) {
+                                        onOpenColorWheel?.invoke(entityId)
+                                    }
+                                })
+                            } else {
+                                m
+                            }
                         }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 ) {

@@ -223,6 +223,40 @@ data class ServiceCall(
         }
 
         /**
+         * Light hue + saturation setter: `light.turn_on` with the full
+         * `hs_color: [hue, saturation]` pair. Unlike [setLightHue] (the wheel's hue
+         * scan, which pins saturation at 100%), this carries the saturation the user
+         * actually picked; the 2-D colour wheel encodes saturation as distance from
+         * centre, so pastels and near-whites must survive the round trip. Bundles
+         * brightness when supplied for the same keep-the-bulb-on reason as
+         * [setLightColorTemp].
+         */
+        fun setLightHs(
+            target: EntityId,
+            hueDegrees: Double,
+            saturationPct: Double,
+            brightnessPct: Int? = null,
+        ): ServiceCall {
+            // Same defensive modular clamp as setLightHue; a drag can momentarily
+            // report hue just past the 0/360 seam.
+            val h = ((hueDegrees % 360.0) + 360.0) % 360.0
+            return ServiceCall(
+                target,
+                "turn_on",
+                buildJsonObject {
+                    put(
+                        "hs_color",
+                        kotlinx.serialization.json.buildJsonArray {
+                            add(JsonPrimitive(h))
+                            add(JsonPrimitive(saturationPct.coerceIn(0.0, 100.0)))
+                        },
+                    )
+                    if (brightnessPct != null) put("brightness_pct", JsonPrimitive(brightnessPct.coerceIn(0, 100)))
+                },
+            )
+        }
+
+        /**
          * Light effect setter — `light.turn_on` with `effect: "<name>"`. Pass null /
          * empty to clear the effect (HA accepts the literal string "None" for "no
          * effect"). The bulb stays in whatever mode it was in; only the effect changes.

@@ -324,6 +324,40 @@ class CardStackViewModel(
         haRepository.call(call)
     }
 
+    /**
+     * Second debouncer for the colour-wheel overlay's live hs drags. Separate from
+     * [debounced] (which carries the wheel's 0..100 percent) because the payload is a
+     * full (hue, saturation) pair; the overlay's 2-D picker can't be squeezed through
+     * the percent channel without losing saturation. Same 60/150 ms windows, so a
+     * continuous finger drag lands on HA at the same ~5-8 calls/sec the physical
+     * wheel does, with the trailing edge guaranteeing the exact release value.
+     */
+    private val hsDebounced = DebouncedCaller<EntityId, Pair<Double, Double>>(
+        scope = viewModelScope,
+        debounceMillis = 60L,
+        maxIntervalMillis = 150L,
+    ) { entityId, hs ->
+        // Carry current brightness so tinting doesn't dim the bulb; omit when off so
+        // the call can't accidentally flip it (same contract as the CT/HUE branches
+        // of [debounced]).
+        val carryBright = _state.value.cardsById[entityId]?.percent?.takeIf { it > 0 }
+        R1Log.i(
+            "CardStack.hsDebounced",
+            "sending setLightHs($entityId, ${"%.0f".format(java.util.Locale.US, hs.first)}°, " +
+                "${"%.0f".format(java.util.Locale.US, hs.second)}%, bright=$carryBright)",
+        )
+        haRepository.call(ServiceCall.setLightHs(entityId, hs.first, hs.second, brightnessPct = carryBright))
+    }
+
+    /**
+     * Live hs setter for the colour-wheel overlay (hue 0..360, saturation 0..100).
+     * Throttled via [hsDebounced]; safe to call per-move during a drag.
+     */
+    fun setLightHs(entityId: EntityId, hueDegrees: Double, saturationPct: Double) {
+        if (entityId.domain != Domain.LIGHT) return
+        viewModelScope.launch { hsDebounced.submit(entityId, hueDegrees to saturationPct) }
+    }
+
     init {
         observeFavorites()
         // Keep a non-suspend snapshot of WheelSettings so onWheel() never has to hit the

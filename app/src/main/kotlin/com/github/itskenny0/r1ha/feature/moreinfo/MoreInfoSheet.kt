@@ -474,30 +474,110 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
             accent = accent,
             onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
         )
-        // Colour temperature — only when the bulb advertises color_temp and reports a
-        // range to scale against.
-        val supportsCt = entity.supportedColorModes.any { it.equals("color_temp", ignoreCase = true) }
-        val minK = entity.minColorTempK
-        val maxK = entity.maxColorTempK
-        if (supportsCt && minK != null && maxK != null && maxK > minK) {
-            val current = entity.colorTempK?.coerceIn(minK, maxK) ?: ((minK + maxK) / 2)
-            Text(text = "WHITE TEMP", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
-            var pos by remember(current) { mutableFloatStateOf(current.toFloat()) }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Slider(
-                    value = pos,
-                    onValueChange = { pos = it },
-                    onValueChangeFinished = {
-                        dispatch(ServiceCall.setLightColorTemp(entity.id, pos.toInt()))
+        val colorModes = entity.supportedColorModes.map { it.lowercase() }
+        val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
+        val supportsCt = colorModes.any { it == "color_temp" }
+        // HA-style continuous colour controls: a circular HS wheel for colour-capable
+        // bulbs and a black-body gradient slider for CCT bulbs. Both update LIVE
+        // while the finger moves; per-move positions are funnelled through a
+        // DebouncedCaller with the same 60 ms trailing / 150 ms force-fire windows
+        // as the card stack's wheel debouncer, so HA sees ~6-8 service calls/sec
+        // mid-drag and the trailing edge guarantees the exact release value.
+        if (supportsColor || supportsCt) {
+            val scope = rememberCoroutineScope()
+            val throttled = remember(entity.id) {
+                com.github.itskenny0.r1ha.core.ha.DebouncedCaller<String, ServiceCall>(
+                    scope = scope,
+                    debounceMillis = 60L,
+                    maxIntervalMillis = 150L,
+                ) { _, call -> dispatch(call) }
+            }
+            // Carry current brightness so tinting doesn't dim the bulb; omitted when
+            // the bulb is off so the call can't accidentally flip it (same contract
+            // as the card stack's CT/HUE dispatch).
+            val carryBright = entity.percent?.takeIf { it > 0 }
+            // Both axes supported: a small COLOR / TEMP toggle picks which control is
+            // visible, defaulting to whichever matches the bulb's current color_mode
+            // so opening the sheet shows the control that's actually driving the bulb.
+            var showColorTab by remember(entity.id) {
+                mutableStateOf(
+                    when {
+                        !supportsColor -> false
+                        !supportsCt -> true
+                        else -> !entity.attrStr("color_mode").equals("color_temp", ignoreCase = true)
                     },
-                    valueRange = minK.toFloat()..maxK.toFloat(),
-                    colors = sliderColors(accent),
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics { contentDescription = "Colour temperature" },
                 )
-                Spacer(Modifier.width(R1.space.s))
-                Text(text = "${pos.toInt()}K", style = responsiveType(R1.labelMicro), color = accent)
+            }
+            if (supportsColor && supportsCt) {
+                ChipStrip {
+                    DetailChip(label = "COLOR", accent = accent, selected = showColorTab) { showColorTab = true }
+                    DetailChip(label = "TEMP", accent = accent, selected = !showColorTab) { showColorTab = false }
+                }
+            }
+            if (showColorTab && supportsColor) {
+                val hs = com.github.itskenny0.r1ha.ui.components.hsFromAttributes(entity.attributesJson)
+                val onHs: (Float, Float) -> Unit = { h, s ->
+                    scope.launch {
+                        throttled.submit(
+                            "hs",
+                            ServiceCall.setLightHs(
+                                entity.id,
+                                h.toDouble(),
+                                (s * 100f).toDouble(),
+                                brightnessPct = carryBright,
+                            ),
+                        )
+                    }
+                }
+                // Diameter capped at 260 dp so the wheel doesn't swallow the whole
+                // sheet on larger tiers and the R1 keeps room to scroll past it.
+                androidx.compose.foundation.layout.BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val wheelSize = if (maxWidth < 260.dp) maxWidth else 260.dp
+                    com.github.itskenny0.r1ha.ui.components.ColorWheel(
+                        // Saturation 0 (centred / white) when the bulb isn't currently
+                        // reporting a colour; the wheel reconciles to the entity's
+                        // echoed hs_color whenever a finger isn't down.
+                        hue = hs?.first ?: entity.hue?.toFloat() ?: 0f,
+                        saturation = hs?.second ?: 0f,
+                        onHsChange = onHs,
+                        onHsChangeFinished = onHs,
+                        modifier = Modifier
+                            .size(wheelSize)
+                            .align(Alignment.Center),
+                    )
+                }
+            }
+            if (!showColorTab && supportsCt) {
+                // Range falls back to HA's conventional 2000-6500 K when the
+                // integration omits the min/max attributes.
+                val minK = entity.minColorTempK ?: 2000
+                val maxK = (entity.maxColorTempK ?: 6500).let { if (it > minK) it else minK + 1 }
+                val current = entity.colorTempK?.coerceIn(minK, maxK) ?: ((minK + maxK) / 2)
+                // Live readout beside the slider; resets to the echoed value whenever
+                // HA confirms (same remember(current) idiom as PercentControl).
+                var shownK by remember(current) { mutableStateOf(current) }
+                val onKelvin: (Int) -> Unit = { k ->
+                    shownK = k
+                    scope.launch {
+                        throttled.submit(
+                            "ct",
+                            ServiceCall.setLightColorTemp(entity.id, k, brightnessPct = carryBright),
+                        )
+                    }
+                }
+                Text(text = "WHITE TEMP", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    com.github.itskenny0.r1ha.ui.components.ColorTempSlider(
+                        kelvin = current,
+                        minKelvin = minK,
+                        maxKelvin = maxK,
+                        onKelvinChange = onKelvin,
+                        onKelvinChangeFinished = onKelvin,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(R1.space.s))
+                    Text(text = "${shownK}K", style = responsiveType(R1.labelMicro), color = accent)
+                }
             }
         }
         // Colour swatches — HA's more-info exposes an RGB/HS picker plus favorite
@@ -505,8 +585,6 @@ private fun LightControl(entity: EntityState, accent: Color, dispatch: (ServiceC
         // state attributes the sheet can see), so we surface a fixed palette of useful
         // hues plus a small white-reset, dispatching via hs_color. Shown only when the
         // bulb advertises a colour mode beyond on/off + colour-temp.
-        val colorModes = entity.supportedColorModes.map { it.lowercase() }
-        val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
         if (supportsColor) {
             Text(text = "COLOR", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
             val currentRgb = entity.attrIntList("rgb_color")

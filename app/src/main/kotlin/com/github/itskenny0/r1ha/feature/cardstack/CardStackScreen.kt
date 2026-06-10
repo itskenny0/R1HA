@@ -303,6 +303,16 @@ fun CardStackScreen(
     val fanPresetPickerFor = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
     }
+    // Colour-wheel overlay for light cards, opened by the HUE mode button. Hoisted to
+    // screen scope like the pickers above so the wheel renders full-screen. NOTE: this
+    // one is deliberately NOT in the wheel handler's modal gate below: the HUE button
+    // put the card into HUE wheel mode before opening the overlay, so the R1's physical
+    // wheel keeps cycling hue while the overlay is up. Touch (the wheel thumb) and the
+    // physical wheel both write hs_color and the overlay reconciles to the entity echo,
+    // so letting wheel events through is the synergy, not a leak.
+    val colorWheelFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
+    }
     // Entity whose ultra-detail more-info sheet is open; null = closed. Opened
     // from the card context menu's MORE INFO action AND from a wheel-spin on a
     // read-only card (sensor / action / wheel-disabled) when the effective
@@ -634,6 +644,9 @@ fun CardStackScreen(
     val onOpenFanPresetPicker = androidx.compose.runtime.remember(fanPresetPickerFor) {
         { id: com.github.itskenny0.r1ha.core.ha.EntityId -> fanPresetPickerFor.value = id }
     }
+    val onOpenColorWheel = androidx.compose.runtime.remember(colorWheelFor) {
+        { id: com.github.itskenny0.r1ha.core.ha.EntityId -> colorWheelFor.value = id }
+    }
     val onCustomServiceCall = androidx.compose.runtime.remember(vm) {
         { domain: String, service: String, data: kotlinx.serialization.json.JsonObject ->
             vm.callRawService(domain, service, data)
@@ -676,6 +689,7 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnMediaTransport provides onMediaTransport,
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenSelectPicker provides onOpenSelectPicker,
         com.github.itskenny0.r1ha.core.theme.LocalOnOpenFanPresetPicker provides onOpenFanPresetPicker,
+        com.github.itskenny0.r1ha.core.theme.LocalOnOpenColorWheel provides onOpenColorWheel,
         com.github.itskenny0.r1ha.core.theme.LocalOnCustomServiceCall provides onCustomServiceCall,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetSelectOption provides onSetSelectOption,
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
@@ -1379,6 +1393,38 @@ fun CardStackScreen(
                 )
             } else {
                 fanPresetPickerFor.value = null
+            }
+        }
+
+        // ── Colour-wheel overlay ────────────────────────────────────────────────────
+        // Spawned by the HUE mode button on light cards. Same hosting shape as the
+        // effect picker; the picker content is the live HS colour wheel instead of a
+        // list. Current hs is read fresh from the entity each recomposition, so when
+        // the user is NOT dragging, the thumb tracks HA's echoed hs_color, including
+        // changes made by the R1's physical wheel, which keeps cycling hue while this
+        // overlay is up (the HUE button set the wheel mode before opening us).
+        val wheelEntityId = colorWheelFor.value
+        if (wheelEntityId != null) {
+            val entity = state.displayedCards.firstOrNull { it.id == wheelEntityId }
+                ?: state.cards.firstOrNull { it.id == wheelEntityId }
+            if (entity != null) {
+                val hs = com.github.itskenny0.r1ha.ui.components.hsFromAttributes(entity.attributesJson)
+                com.github.itskenny0.r1ha.ui.components.ColorWheelOverlaySheet(
+                    title = entity.friendlyName.ifBlank { entity.id.value },
+                    // Saturation 0 (centred / white thumb) when the bulb isn't
+                    // currently reporting a colour; a neutral starting point that
+                    // doesn't pretend the bulb is red.
+                    hue = hs?.first ?: entity.hue?.toFloat() ?: 0f,
+                    saturation = hs?.second ?: 0f,
+                    // Per-move updates go through the VM's hs debouncer (~6-8
+                    // calls/sec mid-drag, exact value on the trailing edge), so we
+                    // can forward every position without flooding HA.
+                    onHsChange = { h, s -> vm.setLightHs(wheelEntityId, h.toDouble(), (s * 100f).toDouble()) },
+                    onHsChangeFinished = { h, s -> vm.setLightHs(wheelEntityId, h.toDouble(), (s * 100f).toDouble()) },
+                    onDismiss = { colorWheelFor.value = null },
+                )
+            } else {
+                colorWheelFor.value = null
             }
         }
 

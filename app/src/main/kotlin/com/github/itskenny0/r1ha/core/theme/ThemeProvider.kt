@@ -143,6 +143,17 @@ val LocalOnOpenEffectPicker = staticCompositionLocalOf<
 > { null }
 
 /**
+ * Open the colour-wheel overlay for [entityId]. The HUE mode button on light cards
+ * calls this in addition to setting the wheel mode, so colour picking works by touch
+ * on wheel-less phones while the R1's physical wheel keeps cycling hue underneath.
+ * CardStackScreen owns the visibility state and renders the wheel at the top of its
+ * layer stack, same hosting pattern as [LocalOnOpenEffectPicker].
+ */
+val LocalOnOpenColorWheel = staticCompositionLocalOf<
+    ((com.github.itskenny0.r1ha.core.ha.EntityId) -> Unit)?
+> { null }
+
+/**
  * Open the fan-preset picker overlay for [entityId]. FanPanel calls this so the
  * preset chips aren't a horizontally-scrolling row that competes with the card
  * stack's left/right tab-swipe gesture. CardStackScreen owns the visibility
