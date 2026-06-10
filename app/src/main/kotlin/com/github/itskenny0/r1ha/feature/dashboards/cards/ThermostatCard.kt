@@ -286,22 +286,6 @@ private fun DualSetpointColumn(
     }
 }
 
-/** HA's more-info affordance: a small "i" dot opening the entity's detail sheet. */
-@Composable
-internal fun MoreInfoDot(accent: Color, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(R1.SurfaceMuted)
-            .border(1.dp, accent.copy(alpha = 0.5f), CircleShape)
-            .r1Pressable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = "i", style = R1.labelMicro, color = accent)
-    }
-}
-
 private fun setTemperatureAction(domain: String, entityId: String, temperature: Double): LovelaceAction.CallService {
     val clean = Math.round(temperature * 10.0) / 10.0
     return LovelaceAction.CallService(
