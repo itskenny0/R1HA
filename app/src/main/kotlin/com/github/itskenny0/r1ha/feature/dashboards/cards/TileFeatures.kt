@@ -233,7 +233,8 @@ private fun renderFeature(
             if (domain != "select" && domain != "input_select") return false
             val options = filterModes(state.selectOptions, feature.options)
             if (options.isEmpty()) return false
-            ModeChipRow(options, state.currentOption ?: state.rawState, accent, enabled = state.isAvailable) { opt ->
+            val current = state.currentOption ?: state.rawState
+            val onPick: (String) -> Unit = { opt ->
                 onAction(
                     LovelaceAction.CallService(
                         service = "$domain.select_option",
@@ -241,6 +242,11 @@ private fun renderFeature(
                         data = buildJsonObject { put("option", JsonPrimitive(opt)) },
                     ),
                 )
+            }
+            if (feature.dropdown) {
+                ModeDropdown(options, current, accent, enabled = state.isAvailable, onPick = onPick)
+            } else {
+                ModeChipRow(options, current, accent, enabled = state.isAvailable, onSelect = onPick)
             }
         }
         is LovelaceTileFeature.MediaPlayback -> {
@@ -1505,6 +1511,57 @@ private fun ModeChipRow(
                 selected = mode.equals(current, ignoreCase = true),
             ) { if (enabled) onSelect(mode) }
         }
+    }
+}
+
+/** Compact dropdown trigger for a mode-select feature carrying `style: dropdown`.
+ *  Shows the current option with a chevron; tapping opens the shared
+ *  [OptionPickerDialog]. Mirrors HA's `ha-control-select-menu` idiom. */
+@Composable
+private fun ModeDropdown(
+    options: List<String>,
+    current: String?,
+    accent: Color,
+    enabled: Boolean = true,
+    onPick: (String) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val labelAccent = if (enabled) accent else R1.InkMuted
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeM)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeM)
+            .let { if (enabled) it.r1Pressable(onClick = { open = true }) else it }
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = (current ?: "").replace('_', ' '),
+                style = R1.body,
+                color = if (enabled) R1.Ink else R1.InkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(text = "▾", style = R1.body, color = labelAccent)
+        }
+    }
+    if (open) {
+        OptionPickerDialog(
+            title = "Select option",
+            options = options,
+            current = current,
+            onDismiss = { open = false },
+            onPick = { option ->
+                open = false
+                onPick(option)
+            },
+        )
     }
 }
 

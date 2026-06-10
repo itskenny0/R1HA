@@ -25,6 +25,32 @@ class LovelaceCardOptionParserTest {
         assertThat(c.tapAction).isNull()
     }
 
+    @Test fun `legacy heading entities migrate to badges`() {
+        val c = card(
+            """{"type":"heading","heading":"Lights","entities":["light.kitchen","light.hall"]}""",
+        ) as LovelaceCard.Heading
+        assertThat(c.badges.map { it.entityId })
+            .containsExactly("light.kitchen", "light.hall").inOrder()
+    }
+
+    @Test fun `legacy heading entities append after explicit badges`() {
+        val c = card(
+            """{"type":"heading","heading":"H","badges":["sensor.a"],"entities":["light.b"]}""",
+        ) as LovelaceCard.Heading
+        // HA's migrateHeadingCardConfig: badges = [...badges, ...entities].
+        assertThat(c.badges.map { it.entityId })
+            .containsExactly("sensor.a", "light.b").inOrder()
+    }
+
+    @Test fun `heading entities accept entity-object shape`() {
+        val c = card(
+            """{"type":"heading","heading":"H","entities":[{"type":"entity","entity":"sensor.power","name":"Power"}]}""",
+        ) as LovelaceCard.Heading
+        val b = c.badges.single()
+        assertThat(b.entityId).isEqualTo("sensor.power")
+        assertThat(b.name).isEqualTo("Power")
+    }
+
     // ── Item 2: Tile card state_content ───────────────────────────────────────
 
     @Test fun `tile card parses state_content list`() {

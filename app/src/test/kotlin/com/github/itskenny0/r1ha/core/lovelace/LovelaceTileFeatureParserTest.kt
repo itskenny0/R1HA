@@ -184,4 +184,39 @@ class LovelaceTileFeatureParserTest {
         )
         assertThat((t.features.single() as LovelaceTileFeature.MediaVolumeButtons).showMute).isFalse()
     }
+
+    @Test fun `select-options defaults to chip row when no style`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"select.mode","features":[
+              {"type":"select-options","options":["A","B"]}
+            ]}
+            """.trimIndent(),
+        )
+        val f = t.features.single() as LovelaceTileFeature.SelectOptions
+        assertThat(f.options).containsExactly("A", "B").inOrder()
+        assertThat(f.dropdown).isFalse()
+    }
+
+    @Test fun `select-options style dropdown sets the dropdown flag`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"select.mode","features":[
+              {"type":"select-options","style":"dropdown","options":["A","B"]}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((t.features.single() as LovelaceTileFeature.SelectOptions).dropdown).isTrue()
+    }
+
+    @Test fun `select-options style icons keeps the chip row`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"select.mode","features":[
+              {"type":"select-options","style":"icons","options":["A","B"]}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((t.features.single() as LovelaceTileFeature.SelectOptions).dropdown).isFalse()
+    }
 }

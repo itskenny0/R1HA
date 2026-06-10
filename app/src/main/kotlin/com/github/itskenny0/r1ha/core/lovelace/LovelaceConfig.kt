@@ -2352,7 +2352,12 @@ sealed class LovelaceTileFeature {
     }
 
     @Immutable
-    data class SelectOptions(val options: List<String>) : LovelaceTileFeature() {
+    data class SelectOptions(
+        val options: List<String>,
+        /** HA's `style`: "dropdown" renders a compact option-picker, anything else
+         *  (the default) renders the chip row. */
+        val dropdown: Boolean = false,
+    ) : LovelaceTileFeature() {
         override val type: String = "select-options"
     }
 

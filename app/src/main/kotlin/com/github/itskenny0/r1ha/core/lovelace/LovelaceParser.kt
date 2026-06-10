@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -340,6 +341,24 @@ object LovelaceParser {
      * `disabled: true` (maps to a never-passing condition, hiding the badge).
      * An entry with neither entity, name, icon, nor a viable action is skipped.
      */
+    /**
+     * Legacy heading-card migration (HA's `migrateHeadingCardConfig`): an old
+     * heading config carrying `entities: [...]` had them rendered as heading
+     * badges. HA appends the legacy entities after any explicit `badges:`
+     * (`badges = [...(badges||[]), ...entities]`) and drops the `entities` key.
+     * We reproduce that by concatenating the two arrays; [parseBadges] then
+     * normalises each entry (string or object) into a [LovelaceBadge].
+     */
+    private fun mergeHeadingEntitiesIntoBadges(obj: JsonObject): JsonElement? {
+        val entities = obj["entities"] as? JsonArray
+        if (entities.isNullOrEmpty()) return obj["badges"]
+        val badges = obj["badges"] as? JsonArray
+        return buildJsonArray {
+            badges?.forEach { add(it) }
+            entities.forEach { add(it) }
+        }
+    }
+
     private fun parseBadges(el: JsonElement?): List<LovelaceBadge> {
         val arr = el as? JsonArray ?: return emptyList()
         return arr.flatMap { item ->
@@ -686,7 +705,7 @@ object LovelaceParser {
                 heading = obj["heading"]?.asStringOrNull().orEmpty(),
                 headingStyle = obj["heading_style"]?.asStringOrNull() ?: "title",
                 icon = obj["icon"]?.asStringOrNull(),
-                badges = parseBadges(obj["badges"]),
+                badges = parseBadges(mergeHeadingEntitiesIntoBadges(obj)),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
@@ -1349,7 +1368,10 @@ object LovelaceParser {
                     actionName = obj["action_name"]?.asStringOrNull()?.takeUnless { it.isBlank() },
                 )
                 "target-temperature" -> LovelaceTileFeature.TargetTemperature
-                "select-options" -> LovelaceTileFeature.SelectOptions(parseStringList(obj["options"]))
+                "select-options" -> LovelaceTileFeature.SelectOptions(
+                    options = parseStringList(obj["options"]),
+                    dropdown = obj["style"]?.asStringOrNull() == "dropdown",
+                )
                 "media-player-playback" -> LovelaceTileFeature.MediaPlayback(parseStringList(obj["controls"]))
                 "media-player-source" -> LovelaceTileFeature.MediaSource(parseStringList(obj["sources"]))
                 "media-player-sound-mode" -> LovelaceTileFeature.MediaSoundMode(parseStringList(obj["sound_modes"]))
