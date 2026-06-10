@@ -10,15 +10,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.TimestampFormat
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.formatTimestamp
+import com.github.itskenny0.r1ha.ui.components.rememberNowTick
+import com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock
+import com.github.itskenny0.r1ha.ui.components.resolveTimestampFormat
+import com.github.itskenny0.r1ha.ui.components.timestampInstantOrNull
 
 /**
  * Renderer for HA's `glance` card. A compact tile grid where each tile
@@ -120,18 +128,51 @@ private fun GlanceTile(
             )
         }
         if (showState) {
-            // A genuinely-absent state shows a single dash rather than a ". " stub
-            // (which reads as a rendering glitch); a blank readout from
-            // compactStateText collapses to the same dash.
-            val stateText = state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-"
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = stateText,
-                style = R1.labelMicro,
-                color = accent,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            GlanceTileState(
+                state = state,
+                rowFormat = row.format,
+                accent = accent,
             )
         }
     }
+}
+
+/**
+ * State text for a glance tile, extracted into its own composable so the
+ * 1-second ticker ([rememberNowTick]) is called unconditionally and Compose's
+ * hook ordering rule is respected. When the entity is a timestamp/uptime sensor
+ * the ticker drives live-updating relative/total text; otherwise a static
+ * [compactStateText] is shown.
+ */
+@Composable
+private fun GlanceTileState(
+    state: EntityState?,
+    rowFormat: TimestampFormat?,
+    accent: androidx.compose.ui.graphics.Color,
+) {
+    val now by rememberNowTick()
+    val use24h = rememberUse24HourClock()
+    val tsFormat = resolveTimestampFormat(rowFormat, state?.deviceClass)
+    val tsInstant = if (tsFormat != null) timestampInstantOrNull(state?.deviceClass, state?.rawState) else null
+    val stateText = if (tsInstant != null && tsFormat != null) {
+        runCatching {
+            formatTimestamp(
+                at = tsInstant,
+                format = tsFormat,
+                now = now,
+                zone = java.time.ZoneId.systemDefault(),
+                use24h = use24h,
+            )
+        }.getOrDefault(state?.rawState.orEmpty())
+    } else {
+        state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-"
+    }
+    Spacer(Modifier.height(3.dp))
+    Text(
+        text = stateText,
+        style = R1.labelMicro,
+        color = accent,
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
 }

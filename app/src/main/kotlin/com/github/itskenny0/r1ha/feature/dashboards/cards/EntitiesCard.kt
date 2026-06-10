@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,9 +23,15 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.TimestampFormat
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.formatTimestamp
 import com.github.itskenny0.r1ha.ui.components.formatWithPrecision
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import com.github.itskenny0.r1ha.ui.components.rememberNowTick
+import com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock
+import com.github.itskenny0.r1ha.ui.components.resolveTimestampFormat
+import com.github.itskenny0.r1ha.ui.components.timestampInstantOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -225,9 +232,46 @@ private fun EntityRowItem(
         }
         if (stateText != null) {
             Spacer(Modifier.width(10.dp))
-            StateChip(text = stateText, accent = accent)
+            // Timestamp/uptime sensors tick live; everything else is a plain chip.
+            val tsFormat = resolveTimestampFormat(row.format, state?.deviceClass)
+            val tsInstant = if (tsFormat != null) {
+                timestampInstantOrNull(state?.deviceClass, state?.rawState)
+            } else null
+            if (tsInstant != null && tsFormat != null) {
+                LiveTimestampChip(at = tsInstant, format = tsFormat, accent = accent)
+            } else {
+                StateChip(text = stateText, accent = accent)
+            }
         }
     }
+}
+
+/**
+ * A state chip whose text derives from a live 1-second ticker for RELATIVE
+ * and TOTAL formats; DATE / TIME / DATETIME don't need per-second refresh but
+ * still use this composable for a consistent call site (they simply ignore the
+ * tick's sub-minute changes). The ticker is tied to this composable's lifetime:
+ * once the row leaves the visible composition (e.g. scrolled off) the
+ * [rememberNowTick] coroutine pauses automatically.
+ */
+@Composable
+private fun LiveTimestampChip(
+    at: java.time.Instant,
+    format: TimestampFormat,
+    accent: androidx.compose.ui.graphics.Color,
+) {
+    val now by rememberNowTick()
+    val use24h = rememberUse24HourClock()
+    val text = runCatching {
+        formatTimestamp(
+            at = at,
+            format = format,
+            now = now,
+            zone = java.time.ZoneId.systemDefault(),
+            use24h = use24h,
+        )
+    }.getOrDefault(at.toString())
+    StateChip(text = text, accent = accent)
 }
 
 @Composable

@@ -357,6 +357,22 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /** HA aspect_ratio ("16:9", "50%", "1.78"). Null = intrinsic sizing. */
+        val aspectRatio: String? = null,
+        /** camera_image entity id for JPEG-poll background. */
+        val cameraImage: String? = null,
+        /** "auto" (10 s poll) or "live" (1 s poll). Null defaults to "auto". */
+        val cameraView: String? = null,
+        /** Per-state image URL map keyed by entity raw state. */
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        /** CSS-ish filter string applied to the image. */
+        val filter: String? = null,
+        /** Per-state filter override map, keyed by entity raw state. */
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        /** Dark-mode variant image URL. */
+        val darkModeImage: String? = null,
+        /** Additional filter applied only in dark mode. */
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture"
     }
@@ -381,6 +397,13 @@ sealed class LovelaceCard {
         val doubleTapAction: LovelaceAction? = null,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
+        val aspectRatio: String? = null,
+        val cameraView: String? = null,
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        val filter: String? = null,
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        val darkModeImage: String? = null,
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-glance"
     }
@@ -406,6 +429,15 @@ sealed class LovelaceCard {
         val doubleTapAction: LovelaceAction? = null,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
+        val aspectRatio: String? = null,
+        /** camera_image: separate camera entity overriding the card's main entity picture. */
+        val cameraImage: String? = null,
+        val cameraView: String? = null,
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        val filter: String? = null,
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        val darkModeImage: String? = null,
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-entity"
     }
@@ -679,6 +711,8 @@ sealed class LovelaceCard {
         val image: String?,
         val cameraImage: String?,
         val elements: List<PictureElement>,
+        val aspectRatio: String? = null,
+        val cameraView: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-elements"
     }
@@ -742,7 +776,26 @@ data class EntityRow(
     /** Per-row `hold_action` / `double_tap_action`. Null = gesture unbound. */
     val holdAction: LovelaceAction? = null,
     val doubleTapAction: LovelaceAction? = null,
+    /**
+     * HA timestamp display format for this row. Mirrors `hui-timestamp-display`'s
+     * `format:` option: relative / total / date / time / datetime. Null means auto:
+     * the row uses [TimestampFormat.RELATIVE] for timestamp device-class sensors and
+     * falls back to the raw state for everything else.
+     */
+    val format: TimestampFormat? = null,
 )
+
+/**
+ * Timestamp rendering format. Mirrors HA's `TimestampRenderingFormat` type
+ * (src/panels/lovelace/components/types.ts) used by `hui-timestamp-display`.
+ *
+ *  - [RELATIVE]: live-ticking "5m ago" / "in 2h" (default for timestamp sensors)
+ *  - [TOTAL]: elapsed/remaining as HH:MM:SS (uptime default in HA)
+ *  - [DATE]: locale-formatted date only ("3 Jun 2025")
+ *  - [TIME]: locale-formatted time only ("14:32" / "2:32 PM")
+ *  - [DATETIME]: locale-formatted date + time ("3 Jun 14:32")
+ */
+enum class TimestampFormat { RELATIVE, TOTAL, DATE, TIME, DATETIME }
 
 /** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */
 @Immutable
