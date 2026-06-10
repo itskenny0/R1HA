@@ -146,7 +146,13 @@ class DashboardsViewModel(
             val cacheKey = urlPath ?: DEFAULT_KEY
             if (!force && _state.value.configs.containsKey(cacheKey)) return@launch
             _state.update { it.copy(isLoadingConfig = true, configError = null) }
-            val result = haRepository.fetchLovelaceConfig(urlPath)
+            // Subscribe to live config updates for this dashboard (idempotent) so
+            // an external edit / YAML reload refetches without a manual reload.
+            subscribeLovelaceUpdated(urlPath)
+            // A forced reload (the manual RELOAD affordance, or a lovelace_updated
+            // event) sets HA's `force` flag so a YAML-mode dashboard re-reads its
+            // file from disk; a normal cache-miss load serves HA's cached config.
+            val result = haRepository.fetchLovelaceConfig(urlPath, forceRefresh = force)
             result.fold(
                 onSuccess = { raw ->
                     val parsed = runCatching { LovelaceParser.parseConfig(raw) }
@@ -170,6 +176,58 @@ class DashboardsViewModel(
                     }
                 },
             )
+        }
+    }
+
+    /**
+     * Active `lovelace_updated` subscriptions keyed by cache key, so a dashboard
+     * is subscribed at most once. HA fires `lovelace_updated` on its event bus
+     * whenever a dashboard's stored config changes (an edit from another client,
+     * a YAML reload). The handler refetches that dashboard's config live so the
+     * rendered view tracks the server without the user reloading.
+     */
+    private val lovelaceUpdatedSubs =
+        mutableMapOf<String, HaRepository.EventSubscription>()
+
+    /**
+     * Subscribe to `lovelace_updated` for the dashboard at [urlPath] (idempotent
+     * per cache key). HA's event carries a `url_path` in its data; we refetch
+     * only when it matches this dashboard (a null url_path is the default
+     * dashboard). Best-effort: a server that rejects the subscription just leaves
+     * the manual RELOAD affordance as the refresh path.
+     */
+    private fun subscribeLovelaceUpdated(urlPath: String?) {
+        val cacheKey = urlPath ?: DEFAULT_KEY
+        if (lovelaceUpdatedSubs.containsKey(cacheKey)) return
+        // Reserve the slot synchronously so a rapid re-call doesn't double-subscribe.
+        lovelaceUpdatedSubs[cacheKey] = NoopEventSubscription
+        viewModelScope.launch {
+            haRepository.subscribeEvents("lovelace_updated") { event ->
+                val data = event["data"] as? kotlinx.serialization.json.JsonObject
+                val eventUrlPath = (data?.get("url_path")
+                    as? kotlinx.serialization.json.JsonPrimitive)?.let {
+                    if (it is kotlinx.serialization.json.JsonNull) null else it.content
+                }
+                // HA omits url_path (or sends null) for the default dashboard.
+                if (eventUrlPath == urlPath) {
+                    loadConfig(urlPath, force = true)
+                }
+            }.onSuccess { sub -> lovelaceUpdatedSubs[cacheKey] = sub }
+                .onFailure {
+                    R1Log.w("Dashboards", "lovelace_updated subscribe failed: ${it.message}")
+                    lovelaceUpdatedSubs.remove(cacheKey)
+                }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        val subs = lovelaceUpdatedSubs.values.toList()
+        lovelaceUpdatedSubs.clear()
+        // cancel() is suspend; fire it on the (still-alive briefly) scope so the
+        // unsubscribe_events frames go out. Failures are ignored on teardown.
+        subs.forEach { sub ->
+            viewModelScope.launch { runCatching { sub.cancel() } }
         }
     }
 
@@ -363,7 +421,22 @@ class DashboardsViewModel(
         val out = LinkedHashSet<String>()
         view.cards.forEach { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
         view.badges.forEach { badge -> badge.entityId?.let(out::add) }
+        // The header/footer cards render outside the flat `cards` list (so the
+        // header's badge placement + the inline footer slot are honoured), so
+        // walk them here too or their entities would never be subscribed.
+        view.header?.card?.let { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
+        view.footer?.card?.let { com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, out) }
         return out
+    }
+
+    /**
+     * Placeholder subscription parked in the map while the real subscribe is in
+     * flight, so a rapid second [subscribeLovelaceUpdated] for the same dashboard
+     * doesn't double-subscribe. Its cancel is a no-op; the real handle replaces
+     * it on success or it is removed on failure.
+     */
+    private object NoopEventSubscription : com.github.itskenny0.r1ha.core.ha.HaRepository.EventSubscription {
+        override suspend fun cancel() {}
     }
 
     companion object {

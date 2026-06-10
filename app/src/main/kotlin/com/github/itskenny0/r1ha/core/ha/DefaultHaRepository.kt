@@ -3916,14 +3916,16 @@ class DefaultHaRepository(
 
     override suspend fun fetchLovelaceConfig(
         urlPath: String?,
+        forceRefresh: Boolean,
     ): Result<kotlinx.serialization.json.JsonObject> = withContext(Dispatchers.IO) {
         // HA's `lovelace/config` command accepts `url_path` (null = default
-        // dashboard) and a `force: false` flag. Force is always false on
-        // our side; the live dashboard data flows through state
-        // subscriptions, not through repeated config fetches.
+        // dashboard) and a `force` flag. `force: true` makes a YAML-mode
+        // dashboard re-read its file from disk (the manual RELOAD path); the
+        // default false serves HA's cached config. Live state still flows
+        // through the state subscriptions, not repeated config fetches.
         val extras = kotlinx.serialization.json.buildJsonObject {
             put("url_path", if (urlPath == null) kotlinx.serialization.json.JsonNull else JsonPrimitive(urlPath))
-            put("force", JsonPrimitive(false))
+            put("force", JsonPrimitive(forceRefresh))
         }
         callWsExpectingPayload("lovelace/config", extras).mapCatching { payload ->
             // Storage-mode dashboards that are still auto-generated return

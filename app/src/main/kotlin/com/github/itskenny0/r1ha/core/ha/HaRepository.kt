@@ -742,8 +742,16 @@ interface HaRepository {
      * Pass null to load HA's default dashboard. Returns the raw JsonObject
      * so the parser can stay in the lovelace module without R1HA's
      * repository layer having to know the card schema.
+     *
+     * [forceRefresh] maps to HA's `lovelace/config` `force` flag: for a
+     * YAML-mode dashboard it makes HA re-read the file from disk instead of
+     * serving the cached parse. The manual RELOAD affordance sets it; the
+     * default false serves HA's cached config (the common storage-mode path).
      */
-    suspend fun fetchLovelaceConfig(urlPath: String? = null): Result<kotlinx.serialization.json.JsonObject>
+    suspend fun fetchLovelaceConfig(
+        urlPath: String? = null,
+        forceRefresh: Boolean = false,
+    ): Result<kotlinx.serialization.json.JsonObject>
 
     /**
      * List the user-visible dashboards exposed by `lovelace/dashboards/list`.

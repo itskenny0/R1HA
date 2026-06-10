@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import com.github.itskenny0.r1ha.feature.dashboards.cards.DashboardNameResolver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -138,7 +139,14 @@ fun DashboardViewScreen(
 
     val configKey = dashboardUrlPath ?: DashboardsViewModel.DEFAULT_KEY
     val config = state.configs[configKey]
-    val view = config?.views?.firstOrNull { it.path == viewPath }
+    // Address the view by its `path`, or by numeric index ("0", "1") when no
+    // path matches (HA accepts the index as a path). The exact-path lookup runs
+    // first so the "_strategy_" sentinel and the not-found error scrim still fire
+    // for a genuinely unknown non-numeric path.
+    val view = config?.views?.let { views ->
+        views.firstOrNull { it.path == viewPath }
+            ?: viewPath.toIntOrNull()?.let { idx -> views.getOrNull(idx) }
+    }
     val viewOverrideKey = LovelaceOverrides.keyFor(dashboardUrlPath, viewPath)
     val viewOverride = if (state.showOriginal) ViewOverride() else (overrides.views[viewOverrideKey] ?: ViewOverride())
     val renderedCards: List<LovelaceCard> = remember(view, viewOverride) {
@@ -243,9 +251,17 @@ fun DashboardViewScreen(
             .background(R1.Bg)
             .systemBarsPadding(),
     ) {
+        // HA subview `back_path:` — a subview's back navigation goes to the
+        // configured view path in the same dashboard instead of the previous
+        // screen. Only honoured for a subview with a non-blank back_path; every
+        // other view uses the host's normal back stack.
+        val handleBack: () -> Unit = {
+            val backPath = view?.takeIf { it.subview }?.backPath?.takeUnless { it.isBlank() }
+            if (backPath != null) onOpenView(backPath) else onBack()
+        }
         R1TopBar(
             title = view?.title?.takeUnless { it.isBlank() } ?: viewPath,
-            onBack = onBack,
+            onBack = handleBack,
             action = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Pin / unpin THIS view to the side panel + phone drawer. Shown only
@@ -282,7 +298,13 @@ fun DashboardViewScreen(
         )
         when {
             state.isLoadingConfig && config == null -> LoadingScrim(text = "Loading dashboard…")
-            config == null -> ErrorScrim(text = state.configError ?: "Couldn't load dashboard.")
+            config == null -> ErrorScrim(
+                text = state.configError ?: "Couldn't load dashboard.",
+                // Retry affordance: refetch this dashboard's config. The config
+                // stays null until a fetch succeeds, so this is the user's way
+                // out of a transient WS hiccup without leaving the screen.
+                onRetry = { vm.loadConfig(dashboardUrlPath, force = true) },
+            )
             view == null && config.isStrategyGenerated -> StrategyFallback(onOpenLovelace = onOpenLovelace)
             view == null -> ErrorScrim(text = "View '$viewPath' not in dashboard.")
             isStrategy -> StrategyFallback(onOpenLovelace = onOpenLovelace)
@@ -300,6 +322,15 @@ fun DashboardViewScreen(
             else -> ViewModeBody(
                 cards = renderedCards,
                 badges = view.badges,
+                header = view.header,
+                footer = view.footer,
+                // View background, with HA's dashboard-level fallback when the
+                // view sets none. Rendered behind the cards via HuiImage.
+                background = com.github.itskenny0.r1ha.core.lovelace.resolveViewBackground(
+                    view.background, config.background,
+                ),
+                topMargin = view.topMargin,
+                panel = view.panel,
                 stateMap = entities,
                 // The view model carries no masonry-vs-sections distinction, so
                 // express no column preference and let dashboardColumnCount()
@@ -499,6 +530,21 @@ private fun ViewModeBody(
      *  tier default". Always clamped to the tier ceiling so a wide-config
      *  view never crams several cards into one row on a phone. */
     requestedColumns: Int? = null,
+    /** View `header:` (header card + badge placement + layout). Null = none. */
+    header: com.github.itskenny0.r1ha.core.lovelace.LovelaceViewHeader? = null,
+    /** View `footer:` (a card rendered inline after the last card). Null = none.
+     *  HA's sticky/max_width chrome is a wide-desktop affordance, documented as a
+     *  no-op on the 640px column. */
+    footer: com.github.itskenny0.r1ha.core.lovelace.LovelaceViewFooter? = null,
+    /** Resolved view background (with the dashboard-level fallback already
+     *  applied). Null = the plain surface. Rendered behind the cards. */
+    background: com.github.itskenny0.r1ha.core.lovelace.LovelaceViewBackground? = null,
+    /** HA view `top_margin:` — extra leading space above the first card. */
+    topMargin: Boolean = false,
+    /** HA view `panel: true` — render the single card full-bleed with no gutter
+     *  padding or inter-card chrome (any card type, not just maps). When set with
+     *  multiple cards HA shows only the first; we mirror that. */
+    panel: Boolean = false,
 ) {
     // Wrap the live map in a stable, value-equal holder once per emission.
     // A bare Map is an unstable Compose parameter, so without this every
@@ -522,6 +568,52 @@ private fun ViewModeBody(
     } else {
         Modifier
     }
+    // Resolve the header rendering plan (badge slot + alignment) once. Null when
+    // there is no header; the badge row then renders at the top as before.
+    val headerPlan = remember(header) {
+        com.github.itskenny0.r1ha.core.lovelace.resolveHeaderPlan(header)
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        // View background behind the cards. HuiImage handles authenticated
+        // fetch + the muted placeholder; opacity dims it. A background with only
+        // a non-image raw string (gradient / theme token) is left to the plain
+        // surface (resolveViewBackground already filtered inert backgrounds).
+        if (background?.image != null) {
+            val bgAlpha = ((background.opacity ?: 100).coerceIn(0, 100)) / 100f
+            com.github.itskenny0.r1ha.ui.components.HuiImage(
+                imageUrl = background.image,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(bgAlpha),
+            )
+        }
+    if (panel && cards.isNotEmpty()) {
+        // Panel view: a single full-bleed card filling the viewport, with no
+        // gutter padding or scroll chrome. HA renders cards[0] only (and warns
+        // on extras); we mirror that for ALL card types, not just maps. The card
+        // itself manages any internal scrolling. Badges/header still render above
+        // it when present so a panel view with a header isn't dropped.
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (badges.isNotEmpty()) {
+                LovelaceBadgeRow(
+                    badges = badges,
+                    states = states,
+                    onAction = onAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = dimens.screenGutter, vertical = 6.dp),
+                )
+            }
+            Box(modifier = Modifier.fillMaxSize()) {
+                val panelCard = cards.first()
+                LovelaceCardRenderer(
+                    card = panelCard,
+                    stateMap = states.sliceFor(panelCard),
+                    onAction = onAction,
+                )
+            }
+        }
+    } else {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -534,16 +626,57 @@ private fun ViewModeBody(
             .then(contentWidth)
             .padding(horizontal = dimens.screenGutter, vertical = dimens.sectionGap),
     ) {
-        // View badges ("chips on top"): a horizontal, scrollable row above the
-        // cards. Renders nothing (and adds no gap) when the view has none. The
-        // row itself scrolls horizontally so a 10+ badge view never clips on R1.
-        if (badges.isNotEmpty()) {
-            LovelaceBadgeRow(
-                badges = badges,
-                states = states,
-                onAction = onAction,
+        // HA `top_margin:` — extra leading space above the first element.
+        if (topMargin) Spacer(Modifier.height(16.dp))
+        // A reusable badge row composable so the header plan can place it above
+        // or below the header card (HA's `badges_position`).
+        val badgeRow: @Composable () -> Unit = {
+            if (badges.isNotEmpty()) {
+                LovelaceBadgeRow(
+                    badges = badges,
+                    states = states,
+                    onAction = onAction,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        val headerCard = header?.card
+        if (headerPlan != null) {
+            // Header present: place badges relative to the header card per HA's
+            // `badges_position`, honouring start/center alignment. "responsive"
+            // collapses to start on the single column (resolveHeaderPlan).
+            val align = if (headerPlan.alignment ==
+                com.github.itskenny0.r1ha.core.lovelace.HeaderAlignment.CENTER
+            ) Alignment.CenterHorizontally else Alignment.Start
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-            )
+                horizontalAlignment = align,
+            ) {
+                if (headerPlan.badgesSlot ==
+                    com.github.itskenny0.r1ha.core.lovelace.HeaderBadgesSlot.TOP
+                ) {
+                    badgeRow()
+                    if (badges.isNotEmpty()) Spacer(Modifier.height(8.dp))
+                }
+                if (headerCard != null) {
+                    LovelaceCardRenderer(
+                        card = headerCard,
+                        stateMap = states.sliceFor(headerCard),
+                        onAction = onAction,
+                    )
+                }
+                if (headerPlan.badgesSlot ==
+                    com.github.itskenny0.r1ha.core.lovelace.HeaderBadgesSlot.BOTTOM
+                ) {
+                    if (headerCard != null && badges.isNotEmpty()) Spacer(Modifier.height(8.dp))
+                    badgeRow()
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        } else if (badges.isNotEmpty()) {
+            // No header: badges render at the top, exactly as before. The row
+            // scrolls horizontally so a 10+ badge view never clips on R1.
+            badgeRow()
             Spacer(Modifier.height(12.dp))
         }
         // Expose the resolved column count to `view_columns` conditions nested
@@ -617,9 +750,23 @@ private fun ViewModeBody(
             }
         }
         } // end LocalLovelaceMaxColumns provider
+        // View footer card (HA's `footer:`). Rendered inline after the last card.
+        // HA pins it sticky to the viewport bottom on desktop and caps it at
+        // `max_width`; on the single 640px scroll column it renders non-sticky,
+        // full-width (a deliberate small-screen adaptation, not a dropped key).
+        footer?.card?.let { fc ->
+            Spacer(Modifier.height(10.dp))
+            LovelaceCardRenderer(
+                card = fc,
+                stateMap = states.sliceFor(fc),
+                onAction = onAction,
+            )
+        }
         Spacer(Modifier.height(28.dp))
     }
     }
+    } // end non-panel else
+    } // end background Box
 }
 
 /**
@@ -916,7 +1063,7 @@ private fun LoadingScrim(text: String) {
 }
 
 @Composable
-private fun ErrorScrim(text: String) {
+private fun ErrorScrim(text: String, onRetry: (() -> Unit)? = null) {
     Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -925,6 +1072,19 @@ private fun ErrorScrim(text: String) {
             Text(text = "Couldn't load", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.screenTitle), color = R1.StatusAmber)
             Spacer(Modifier.height(8.dp))
             Text(text, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            if (onRetry != null) {
+                Spacer(Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeRound)
+                        .background(R1.SurfaceMuted)
+                        .border(1.dp, R1.AccentWarm.copy(alpha = 0.6f), R1.ShapeRound)
+                        .r1Pressable(onClick = onRetry)
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                ) {
+                    Text(text = "RETRY", style = R1.labelMicro, color = R1.AccentWarm)
+                }
+            }
         }
     }
 }

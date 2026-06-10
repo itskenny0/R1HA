@@ -79,6 +79,10 @@ fun DashboardsListScreen(
     val pinnedRoutes: Set<String> = appSettings?.navPanel?.pinnedDashboards
         ?.map { it.route }?.toSet() ?: emptySet()
     val pinScope = androidx.compose.runtime.rememberCoroutineScope()
+    // Logged-in user id, used to drop per-user-hidden views from the listed
+    // tabs (HA's `visible: [{user}]` / `visible: false`). Null until fetched;
+    // a userless visibility list then hides the view (HA parity).
+    val currentUserId by haRepository.currentUserId.collectAsState()
     LaunchedEffect(Unit) { vm.loadDashboards() }
     // Auto-fetch the config for each listed dashboard so the view counts
     // appear without a per-row tap. Cheap on small installs; bounded at
@@ -129,6 +133,7 @@ fun DashboardsListScreen(
                         DashboardRow(
                             dashboard = d,
                             config = state.configs[d.urlPath ?: DashboardsViewModel.DEFAULT_KEY],
+                            currentUserId = currentUserId,
                             onPickView = { viewPath -> onOpenView(d.urlPath, viewPath) },
                             onReload = { vm.loadConfig(d.urlPath, force = true) },
                             // Pin affordance: only when settings is wired. routeFor builds the
@@ -181,6 +186,9 @@ private fun Hint() {
 private fun DashboardRow(
     dashboard: LovelaceDashboard,
     config: LovelaceConfig?,
+    /** Logged-in user id, for the per-user view-visibility tab filter. Null when
+     *  unknown; a `visible: [{user}]` view is then hidden (HA parity). */
+    currentUserId: String? = null,
     onPickView: (String) -> Unit,
     onReload: () -> Unit,
     /** When true each view row sprouts a pin / unpin toggle. */
@@ -235,9 +243,12 @@ private fun DashboardRow(
         }
         if (config != null && config.views.isNotEmpty()) {
             // Sub-views (HA 2022.10) are navigated to via actions, not listed as
-            // top-level tabs, so filter them out here. They remain fully renderable
-            // when navigated to directly by path.
-            val visibleViews = config.views.filter { !it.subview }
+            // top-level tabs. Per-user-hidden views (`visible: false` / a `[{user}]`
+            // list excluding the current user) also drop from the list. Both stay
+            // fully renderable when navigated to directly by path.
+            val visibleViews = config.views.filter {
+                com.github.itskenny0.r1ha.core.lovelace.isViewListed(it, currentUserId)
+            }
             Spacer(Modifier.height(10.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 visibleViews.forEach { v ->
