@@ -1306,17 +1306,45 @@ sealed class LovelaceTileFeature {
 }
 
 /**
+ * A validated HH:MM[:SS] time-of-day, 0..23 h / 0..59 m / 0..59 s. Used by the
+ * `time` condition's after/before bounds. Compared as a seconds-of-day scalar so
+ * window and wrap-across-midnight logic stays integer math, free of Date/zone
+ * objects. Built via [parse], which mirrors HA's `isValidTimeString` (digits
+ * only, two or three colon-separated parts, in-range) and returns null for any
+ * malformed string so the parser can drop an invalid bound.
+ */
+@Immutable
+data class TimeOfDay(val hour: Int, val minute: Int, val second: Int) {
+    /** Seconds since local midnight (0..86399). */
+    val secondsOfDay: Int get() = hour * 3600 + minute * 60 + second
+
+    companion object {
+        fun parse(raw: String): TimeOfDay? {
+            val parts = raw.trim().split(":")
+            if (parts.size < 2 || parts.size > 3) return null
+            if (parts.any { it.isEmpty() || it.any { ch -> !ch.isDigit() } }) return null
+            val h = parts[0].toIntOrNull() ?: return null
+            val m = parts[1].toIntOrNull() ?: return null
+            val s = if (parts.size == 3) parts[2].toIntOrNull() ?: return null else 0
+            if (h !in 0..23 || m !in 0..59 || s !in 0..59) return null
+            return TimeOfDay(h, m, s)
+        }
+    }
+}
+
+/**
  * Condition for [LovelaceCard.Conditional] and per-card `visibility:`. Mirrors
  * HA's `checkConditionsMet` (src/panels/lovelace/common/validate-condition.ts):
  * `state` / `state_not`, `numeric_state` (with attribute + cross-entity bound
- * support), the legacy entity+state shorthand, and the `and` / `or` / `not`
- * logical groups (nested arbitrarily deep). A condition shape we cannot
- * evaluate locally maps to [Never] so the wrapped card is hidden rather than
- * shown: a condition exists precisely to gate visibility, and showing a card
- * whose gate we cannot evaluate is the wrong default (it leaks cards HA would
- * hide). The two deliberate fail-open shapes are [AlwaysTrue] (used for
- * `screen` media-queries we can't evaluate) and [User] (the logged-in-user id
- * isn't reachable in the renderer today; see the evaluator).
+ * support), the legacy entity+state shorthand, the `and` / `or` / `not` logical
+ * groups (nested arbitrarily deep), and the runtime conditions `screen` (media
+ * query), `time` (after/before/weekday), `user`, `location`, and `view_columns`.
+ * A condition shape we still cannot evaluate locally maps to [Never] so the
+ * wrapped card is hidden rather than shown: a condition exists precisely to gate
+ * visibility, and showing a card whose gate we cannot evaluate would leak cards
+ * HA hides. [AlwaysTrue] is the one deliberate fail-open shape (a degenerate
+ * empty rule); the runtime conditions carry their own fail-open / fail-closed
+ * rules matching HA (see each type and the evaluator).
  */
 @Immutable
 sealed class LovelaceCondition {
@@ -1326,16 +1354,27 @@ sealed class LovelaceCondition {
      * When [negate] is true (a `state_not` condition) the rule passes when the
      * entity's state is NOT in [states]. [attribute] (HA's `attribute:` key)
      * compares the named attribute rather than the entity's state when set.
+     *
+     * [entityId] is null when the condition omits `entity:` and relies on the
+     * host card/badge's own entity (HA's `context.entity_id` fallback, used by
+     * entity-filter card conditions and conditional rows). The evaluator
+     * substitutes the context entity at evaluation time; a null entity with no
+     * context fails closed.
+     *
+     * An accepted state value that is itself an entity id is dereferenced to
+     * that entity's current state before comparing, matching HA's
+     * `getValueFromEntityId` (both the literal token AND the referenced state
+     * are accepted, so a config listing a raw entity id still works too).
      */
     @Immutable
     data class StateEquals(
-        val entityId: String,
+        val entityId: String?,
         val states: List<String>,
         val negate: Boolean = false,
         val attribute: String? = null,
     ) : LovelaceCondition() {
         /** Back-compat single-state constructor used by tests + simple call sites. */
-        constructor(entityId: String, state: String, negate: Boolean = false) :
+        constructor(entityId: String?, state: String, negate: Boolean = false) :
             this(entityId, listOf(state), negate, null)
     }
 
@@ -1346,10 +1385,14 @@ sealed class LovelaceCondition {
      * named attribute instead of the entity's state. When a bound is an entity
      * reference the literal counterpart is null and vice-versa; the evaluator
      * resolves the referenced entity at evaluation time.
+     *
+     * [entityId] is null when the condition omits `entity:` and relies on the
+     * host card's own entity (HA's `context.entity_id` fallback). The evaluator
+     * substitutes the context entity at evaluation time.
      */
     @Immutable
     data class NumericState(
-        val entityId: String,
+        val entityId: String?,
         val above: Double?,
         val below: Double?,
         val aboveEntity: String? = null,
@@ -1375,15 +1418,65 @@ sealed class LovelaceCondition {
     data class Not(val conditions: List<LovelaceCondition>) : LovelaceCondition()
 
     /**
-     * HA `user`: visible only to the listed user ids. The renderer can't read
-     * the logged-in user's id today (it lives behind a `core/ha` change we
-     * don't own), so the evaluator treats this as fail OPEN rather than hiding
-     * a card the user most likely should see. Modelled (rather than collapsed
-     * to [AlwaysTrue] at parse time) so a future change can supply the id and
-     * flip the evaluator to a real membership test without touching the parser.
+     * HA `user`: visible only to the listed user ids, matched against the
+     * current logged-in user (HA's `checkUserCondition`). The user id is
+     * supplied through the evaluation context; when it is unknown (the server
+     * predates `auth/current_user` or the fetch failed) the condition fails
+     * closed exactly as HA does when `hass.user?.id` is undefined.
      */
     @Immutable
     data class User(val userIds: List<String>) : LovelaceCondition()
+
+    /**
+     * HA `screen`: a CSS media query evaluated against the app window. Mirrors
+     * HA's `matchMedia(condition.media_query).matches`. R1HA evaluates the
+     * common dashboard forms ((min-width)/(max-width)/(min-height)/(max-height)/
+     * orientation, joined with `and`) against the real window metrics in
+     * dp-as-css-px terms; a query we can't parse fails OPEN (the card shows),
+     * matching the intent that an unparseable breakpoint should not hide content
+     * on a device whose single window is the only one a dashboard ever sees.
+     */
+    @Immutable
+    data class Screen(val mediaQuery: String) : LovelaceCondition()
+
+    /**
+     * HA `time`: an after/before window (HH:MM or HH:MM:SS, local time) and/or a
+     * weekday allow-list, evaluated against the current local time (HA's
+     * `checkTimeInRange`). A window where `before` is earlier than `after`
+     * wraps across midnight. An empty/degenerate time condition (no bounds, no
+     * weekdays) is vacuously true, matching HA.
+     *
+     * [weekdays] holds HA's three-letter lowercase tokens (sun..sat); an empty
+     * list means "any day". The renderer reschedules a re-evaluation at the next
+     * boundary so visibility flips live.
+     */
+    @Immutable
+    data class Time(
+        val after: TimeOfDay? = null,
+        val before: TimeOfDay? = null,
+        val weekdays: List<String> = emptyList(),
+    ) : LovelaceCondition()
+
+    /**
+     * HA `location`: passes when the current user's person entity is currently
+     * in one of the listed zones/states (HA's `checkLocationCondition` over
+     * `getUserPerson`). The person entity is resolved from the context's
+     * person-state lookup (the `person.*` entity whose `user_id` attribute is
+     * the current user). Fails closed when there is no current user, no matching
+     * person entity, or the locations list is empty.
+     */
+    @Immutable
+    data class Location(val locations: List<String>) : LovelaceCondition()
+
+    /**
+     * HA `view_columns`: passes when the hosting view's column count is within
+     * [min]/[max] (HA's `checkViewColumnsCondition`, gated on
+     * `context.max_columns`). R1HA renders single-column; the column count is
+     * supplied through the context (default 1). When the count is unavailable
+     * the condition passes, matching HA's `if (!context.max_columns) return true`.
+     */
+    @Immutable
+    data class ViewColumns(val min: Int?, val max: Int?) : LovelaceCondition()
 
     /** Catch-all for a condition shape we can't evaluate. Fails CLOSED
      *  (hides the card) so an unmodelled condition never leaks a card HA

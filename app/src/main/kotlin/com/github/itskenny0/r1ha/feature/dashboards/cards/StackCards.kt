@@ -32,8 +32,11 @@ fun VerticalStackCard(
 ) {
     // Drop children whose visibility conditions fail BEFORE laying out, so a
     // hidden conditional consumes no inter-row gap (a zero-height child would
-    // still pick up the spacedBy spacing on both sides).
-    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
+    // still pick up the spacedBy spacing on both sides). The shared context
+    // carries the live user / window / clock so runtime conditions gate the
+    // layout slot exactly as they gate the render.
+    val context = rememberLovelaceConditionContextForCards(card.cards)
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it), context) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -67,7 +70,8 @@ fun HorizontalStackCard(
     val tier = LocalWindowTier.current.tier
     // Hide cards whose conditions fail so they don't claim an equal-weight slot
     // that would shrink the surviving siblings (HA removes the card entirely).
-    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
+    val context = rememberLovelaceConditionContextForCards(card.cards)
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it), context) }
     val maxPerRow = horizontalStackMaxPerRow(visible.size, tier)
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -119,7 +123,8 @@ fun GridCard(
     val cols = responsiveColumnCount(card.columns, tier)
     // Hidden conditionals are removed before chunking so the grid doesn't leave
     // an empty weighted cell where a failed-condition card would have sat.
-    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it)) }
+    val context = rememberLovelaceConditionContextForCards(card.cards)
+    val visible = card.cards.filter { cardWillRender(it, stateMap.sliceFor(it), context) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (!card.title.isNullOrBlank()) {
             Text(text = card.title, style = R1.sectionHeader, color = R1.InkSoft)

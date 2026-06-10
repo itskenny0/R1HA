@@ -442,6 +442,12 @@ class DefaultHaRepository(
      * typed-cache write downstream is what filters by supported domain.
      */
     private val _dashboardEntityIds = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Cached logged-in user id (auth/current_user), populated on connect and
+     *  cleared on disconnect / server change. See [currentUserId]. */
+    private val _currentUserId = MutableStateFlow<String?>(null)
+    override val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
+
     private val pendingCalls = ConcurrentHashMap<Int, CompletableDeferred<Result<Unit>>>()
     /**
      * Parallel awaiter map keyed by the same request id space as [pendingCalls], but
@@ -713,7 +719,16 @@ class DefaultHaRepository(
                         // StateFlow would collapse a brief Connected → Disconnected → Connected
                         // bounce into a single observed Connected.
                         seedJob?.cancel()
-                        seedJob = scope.launch { seedCacheFromHa() }
+                        seedJob = scope.launch {
+                            // Seed the entity cache first (REST), THEN fetch the
+                            // logged-in user id. Doing the user fetch after the seed
+                            // keeps the post-connect WS frame order subscribe-first
+                            // (the subscribe_trigger goes out from resubscribe before
+                            // this REST-bound seed yields). Best-effort: the id stays
+                            // null when the command is unsupported / the call fails.
+                            seedCacheFromHa()
+                            refreshCurrentUser()
+                        }
                     }
                     is ConnectionState.Disconnected -> {
                         // The WS client always reports st.attempt=0 (it has no notion of
@@ -735,6 +750,9 @@ class DefaultHaRepository(
                             }
                             pendingPayloads.clear()
                         }
+                        // Drop the cached user id: the next connect re-fetches it
+                        // (and a server change must not bleed user A's id into B).
+                        _currentUserId.value = null
                         // If we just transitioned out of AuthLost (which fired its own
                         // refresh + connectFromSettings) the Disconnected handler must NOT
                         // also schedule a reconnect; both timers would otherwise race and
@@ -1958,6 +1976,34 @@ class DefaultHaRepository(
         }.onFailure { t ->
             R1Log.w("HaRepo.config", "fetch failed: ${t.message}")
         }
+    }
+
+    override suspend fun fetchCurrentUser(): Result<HaCurrentUser?> = withContext(Dispatchers.IO) {
+        // `auth/current_user` is available to any authenticated token (unlike the
+        // admin-only `config/auth/list`). An older server that doesn't recognise
+        // it returns an error frame; we map that to a null result so callers
+        // degrade silently rather than logging a scary failure.
+        callWsExpectingPayload("auth/current_user").map { payload ->
+            val obj = payload as? kotlinx.serialization.json.JsonObject ?: return@map null
+            val id = (obj["id"] as? JsonPrimitive)?.content ?: return@map null
+            HaCurrentUser(
+                id = id,
+                name = (obj["name"] as? JsonPrimitive)?.content.orEmpty(),
+                isAdmin = (obj["is_admin"] as? JsonPrimitive)?.booleanOrNull == true,
+            )
+        }.recover { t ->
+            // A command the server doesn't support, or a transient WS error: treat
+            // as "unknown user" without surfacing a failure to the caller.
+            R1Log.w("HaRepo.currentUser", "fetch failed: ${t.message}")
+            null
+        }
+    }
+
+    /** Refresh [_currentUserId] from the server. Best-effort: any failure leaves
+     *  the cache as-is null so user/location conditions fail closed. */
+    private suspend fun refreshCurrentUser() {
+        val user = fetchCurrentUser().getOrNull()
+        _currentUserId.value = user?.id
     }
 
     override suspend fun listServices(): Result<List<HaServiceDomain>> = withContext(Dispatchers.IO) {

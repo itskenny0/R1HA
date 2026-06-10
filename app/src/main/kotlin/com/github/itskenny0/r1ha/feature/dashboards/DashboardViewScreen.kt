@@ -219,10 +219,23 @@ fun DashboardViewScreen(
         }
     }
 
+    // Logged-in user id (cached from auth/current_user) for the Lovelace `user`
+    // / `location` conditions and confirmation exemptions. Null until fetched /
+    // when unsupported, in which case those conditions fail closed (HA parity).
+    val currentUserId by haRepository.currentUserId.collectAsState()
+    // Resolve the current user's person-entity state for the `location`
+    // condition: the `person.*` entity whose `user_id` attribute is the current
+    // user. Recomputed when the user id or the entity map changes.
+    val personStateForUser: () -> String? = remember(currentUserId, entities) {
+        { resolveUserPersonState(currentUserId, entities) }
+    }
+
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalHaRepository provides haRepository,
         com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl provides serverUrl,
         com.github.itskenny0.r1ha.core.theme.LocalNameResolver provides nameResolver,
+        com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceCurrentUserId provides currentUserId,
+        com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelacePersonStateForUser provides personStateForUser,
     ) {
     Column(
         modifier = Modifier
@@ -317,10 +330,12 @@ fun DashboardViewScreen(
                             // turn_off / open vs close).
                             stateLookup = { rawId -> entities?.get(rawId) },
                             confirmGate = { confirmation, act ->
-                                // No current-user id is available (see
-                                // isConfirmationExempt), so exemptions never apply;
-                                // every configured confirmation prompts.
-                                if (com.github.itskenny0.r1ha.feature.dashboards.cards.isConfirmationExempt(confirmation, null)) {
+                                // Skip the prompt when the current user is in the
+                                // action's exemptions (HA parity). The id comes from
+                                // the cached auth/current_user result; a null id (not
+                                // fetched / unsupported) is treated as non-exempt and
+                                // still prompts.
+                                if (com.github.itskenny0.r1ha.feature.dashboards.cards.isConfirmationExempt(confirmation, currentUserId)) {
                                     true
                                 } else {
                                     val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
@@ -531,6 +546,17 @@ private fun ViewModeBody(
             )
             Spacer(Modifier.height(12.dp))
         }
+        // Expose the resolved column count to `view_columns` conditions nested
+        // anywhere in the card tree (the per-card render reads this local).
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceMaxColumns provides columns,
+        ) {
+        // Shared runtime condition context (current user, window size, local
+        // clock, column count) so a top-level card's visibility gate decides the
+        // layout slot the same way the card's own render does, and a `time` gate
+        // flips the body live at its next boundary.
+        val conditionContext = com.github.itskenny0.r1ha.feature.dashboards.cards
+            .rememberLovelaceConditionContextForCards(cards)
         if (columns <= 1) {
             // Single column: render cards in order, one per row. This is the
             // R1 / compact-phone path and must stay a plain vertical list so
@@ -542,7 +568,7 @@ private fun ViewModeBody(
             // conditional toggles visibility (the surviving cards keep their key
             // even though their position in the visible list shifts).
             val visible = cards.withIndex().filter { (_, card) ->
-                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(card, states.sliceFor(card))
+                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(card, states.sliceFor(card), conditionContext)
             }
             visible.forEachIndexed { position, (originalIndex, card) ->
                 if (position > 0) Spacer(Modifier.height(10.dp))
@@ -565,7 +591,7 @@ private fun ViewModeBody(
             // spacedBy don't stack around a zero-height child). Original indices
             // are preserved for stable composition keys.
             val visibleIndices = cards.indices.filter {
-                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(cards[it], states.sliceFor(cards[it]))
+                com.github.itskenny0.r1ha.feature.dashboards.cards.cardWillRender(cards[it], states.sliceFor(cards[it]), conditionContext)
             }
             val lanes = distributeIndicesIntoLanes(visibleIndices, columns)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -590,9 +616,37 @@ private fun ViewModeBody(
                 }
             }
         }
+        } // end LocalLovelaceMaxColumns provider
         Spacer(Modifier.height(28.dp))
     }
     }
+}
+
+/**
+ * Resolve the state of the current user's person entity for the Lovelace
+ * `location` condition: the `person.*` entity whose `user_id` attribute matches
+ * [userId] (HA's getUserPerson), returning its state string. Returns null when
+ * there is no current user, no entity map, or no matching person entity is in
+ * the live set (the condition then fails closed, matching HA when getUserPerson
+ * yields nothing).
+ *
+ * Only person entities already in the dashboards entity stream are visible here;
+ * a `location` gate over a person nobody subscribed evaluates as "unknown" until
+ * that person is observed (the consumer wiring that subscribes location-condition
+ * entities lands in a sibling batch).
+ */
+private fun resolveUserPersonState(
+    userId: String?,
+    entities: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
+): String? {
+    if (userId == null || entities == null) return null
+    for ((rawId, state) in entities) {
+        if (!rawId.startsWith("person.")) continue
+        val attrUserId = (state.attributesJson?.get("user_id")
+            as? kotlinx.serialization.json.JsonPrimitive)?.content
+        if (attrUserId == userId) return state.rawState
+    }
+    return null
 }
 
 /**

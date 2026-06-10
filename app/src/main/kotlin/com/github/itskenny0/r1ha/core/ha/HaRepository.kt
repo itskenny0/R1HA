@@ -6,6 +6,25 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface HaRepository {
     val connection: StateFlow<ConnectionState>
+
+    /**
+     * The logged-in user's id, fetched via `auth/current_user` on each connect
+     * and cached for the session (cleared to null on disconnect / server change).
+     * Null when not yet fetched, the server doesn't support the command, or the
+     * fetch failed. Consumed by the Lovelace `user` / `location` conditions and
+     * the action confirmation-exemption check, which all fail closed for a null
+     * id exactly as HA does for an unknown user.
+     */
+    val currentUserId: StateFlow<String?>
+
+    /**
+     * One-shot fetch of the logged-in user via the `auth/current_user` WS
+     * command. Returns the [HaCurrentUser], or null when the server doesn't
+     * recognise the command (degrades silently). A transport failure is a
+     * [Result.failure]; callers that only need best-effort identity can treat
+     * both null and failure as "unknown user".
+     */
+    suspend fun fetchCurrentUser(): Result<HaCurrentUser?>
     /** Hot map of currently-known entity states for the subscribed set. */
     fun observe(entities: Set<EntityId>): Flow<Map<EntityId, EntityState>>
 

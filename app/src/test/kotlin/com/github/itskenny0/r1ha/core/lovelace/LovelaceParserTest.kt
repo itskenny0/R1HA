@@ -576,10 +576,12 @@ class LovelaceParserTest {
     }
 
     @Test
-    fun `state condition without an entity fails closed as Never`() {
+    fun `state condition without an entity keeps a null entity for the context fallback`() {
         Locale.setDefault(Locale.US)
         val parsed = conditions("""[{"condition":"state","state":"on"}]""")
-        assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
+        val s = parsed.single() as LovelaceCondition.StateEquals
+        assertThat(s.entityId).isNull()
+        assertThat(s.states).containsExactly("on")
     }
 
     @Test
@@ -632,14 +634,15 @@ class LovelaceParserTest {
     }
 
     @Test
-    fun `screen condition fails open as AlwaysTrue`() {
+    fun `screen condition parses to a Screen carrying the media query`() {
         Locale.setDefault(Locale.US)
         val parsed = conditions("""[{"condition":"screen","media_query":"(min-width: 600px)"}]""")
-        assertThat(parsed.single()).isEqualTo(LovelaceCondition.AlwaysTrue)
+        val s = parsed.single() as LovelaceCondition.Screen
+        assertThat(s.mediaQuery).isEqualTo("(min-width: 600px)")
     }
 
     @Test
-    fun `user condition parses to a modelled User (evaluator fails it open)`() {
+    fun `user condition parses to a modelled User with its id list`() {
         Locale.setDefault(Locale.US)
         val parsed = conditions("""[{"condition":"user","users":["abc","def"]}]""")
         val u = parsed.single() as LovelaceCondition.User
@@ -647,9 +650,18 @@ class LovelaceParserTest {
     }
 
     @Test
-    fun `unmodelled condition type (time) fails closed as Never`() {
+    fun `time condition parses to a Time with its after bound`() {
         Locale.setDefault(Locale.US)
         val parsed = conditions("""[{"condition":"time","after":"08:00:00"}]""")
+        val t = parsed.single() as LovelaceCondition.Time
+        assertThat(t.after).isEqualTo(TimeOfDay(8, 0, 0))
+        assertThat(t.before).isNull()
+    }
+
+    @Test
+    fun `an unmodelled condition type (template) still fails closed as Never`() {
+        Locale.setDefault(Locale.US)
+        val parsed = conditions("""[{"condition":"template","value_template":"{{ true }}"}]""")
         assertThat(parsed.single()).isEqualTo(LovelaceCondition.Never)
     }
 
@@ -717,12 +729,12 @@ class LovelaceParserTest {
         val parsed = conditions(
             """[{"condition":"and","conditions":[
                  {"condition":"state","entity":"a","state":"on"},
-                 {"condition":"time","after":"08:00:00"}
+                 {"condition":"template","value_template":"{{ true }}"}
                ]}]""",
         )
-        // The `time` child can't be evaluated locally, so it becomes Never. Keeping
-        // it (rather than dropping it) makes the AND fail closed the way HA would,
-        // instead of passing on the evaluable state sibling alone.
+        // The `template` child can't be evaluated locally, so it becomes Never.
+        // Keeping it (rather than dropping it) makes the AND fail closed the way
+        // HA would, instead of passing on the evaluable state sibling alone.
         val and = parsed.single() as LovelaceCondition.And
         assertThat(and.conditions).hasSize(2)
         assertThat(and.conditions[0]).isInstanceOf(LovelaceCondition.StateEquals::class.java)

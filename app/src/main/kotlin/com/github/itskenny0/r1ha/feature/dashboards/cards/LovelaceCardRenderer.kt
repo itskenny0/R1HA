@@ -19,6 +19,9 @@ import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceConditionContext
+import com.github.itskenny0.r1ha.core.lovelace.evaluateMediaQuery
+import com.github.itskenny0.r1ha.core.lovelace.evaluateTimeWindow
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.nav.Routes
 
@@ -76,8 +79,14 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Distribution -> DistributionCard(card, stateMap, onAction, modifier)
         is LovelaceCard.PictureElements -> PictureElementsCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Conditional -> {
-            val passes = remember(card.conditions, stateMap) {
-                evaluateConditions(card.conditions, stateMap)
+            // Read the live condition context (current user, window size, local
+            // clock, column count) and re-evaluate on every recomposition the
+            // context or state map triggers. The context's clock advances on each
+            // time-condition boundary tick (see rememberLovelaceConditionContext),
+            // so a `time` gate flips live without a per-card timer here.
+            val context = rememberLovelaceConditionContext(card.conditions)
+            val passes = remember(card.conditions, stateMap, context) {
+                evaluateConditions(card.conditions, stateMap, context)
             }
             if (passes) {
                 LovelaceCardRenderer(card.card, stateMap, onAction, modifier)
@@ -299,9 +308,13 @@ fun LovelaceAction.boundTo(entityId: String?): LovelaceAction = when (this) {
  * rather than leaving a hole. Recurses through a conditional that wraps
  * another conditional (e.g. a `visibility:` gate on a `type: conditional`).
  */
-fun cardWillRender(card: LovelaceCard, stateMap: EntityStates): Boolean =
+fun cardWillRender(
+    card: LovelaceCard,
+    stateMap: EntityStates,
+    context: LovelaceConditionContext = LovelaceConditionContext.EMPTY,
+): Boolean =
     if (card is LovelaceCard.Conditional) {
-        evaluateConditions(card.conditions, stateMap) && cardWillRender(card.card, stateMap)
+        evaluateConditions(card.conditions, stateMap, context) && cardWillRender(card.card, stateMap, context)
     } else {
         true
     }
@@ -311,39 +324,55 @@ fun cardWillRender(card: LovelaceCard, stateMap: EntityStates): Boolean =
 private val UNUSABLE_CONDITION_STATES = setOf("unavailable", "unknown", "none", "")
 
 /**
- * Pure helper: evaluate the (already-parsed) conditional rules against
- * the live state map. Empty conditions list → true (HA semantics). This is
- * the EntityStates-backed twin of [com.github.itskenny0.r1ha.core.lovelace.evaluateLovelaceConditions];
- * unlike the core (state-only) evaluator it can resolve `attribute:` comparisons
- * from the live attributes JSON, and it reads numeric values from the parsed
+ * Pure helper: evaluate the (already-parsed) conditional rules against the live
+ * state map and a runtime [context] (current user, window size, local time,
+ * column count, host-card entity fallback). Empty conditions list → true (HA
+ * semantics). This is the EntityStates-backed twin of
+ * [com.github.itskenny0.r1ha.core.lovelace.evaluateLovelaceConditions]; unlike
+ * the core (state-only) evaluator it resolves `attribute:` comparisons from the
+ * live attributes JSON and reads numeric values from the parsed
  * [com.github.itskenny0.r1ha.core.ha.EntityState] rather than re-parsing strings.
+ * The runtime conditions (`screen` / `time` / `user` / `location` /
+ * `view_columns`) delegate to the shared pure helpers so both evaluators agree.
  */
 fun evaluateConditions(
     conditions: List<LovelaceCondition>,
     stateMap: EntityStates,
+    context: LovelaceConditionContext = LovelaceConditionContext.EMPTY,
 ): Boolean {
     if (conditions.isEmpty()) return true
-    return conditions.all { evaluateOneCondition(it, stateMap) }
+    return conditions.all { evaluateOneCondition(it, stateMap, context) }
 }
 
-private fun evaluateOneCondition(cond: LovelaceCondition, stateMap: EntityStates): Boolean =
+private fun evaluateOneCondition(
+    cond: LovelaceCondition,
+    stateMap: EntityStates,
+    context: LovelaceConditionContext,
+): Boolean =
     when (cond) {
         is LovelaceCondition.StateEquals -> {
             // Fail closed when the gating entity has no live state: HA hides a
             // conditional whose entity is missing/unknown rather than showing it.
-            // Condition entities are subscribed (see the ViewModel + EntityStates
-            // traversal), so a genuinely-present entity will have state here; only
-            // truly-absent entities fail.
-            val current = conditionValue(stateMap, cond.entityId, cond.attribute)
+            // A null entity falls back to the host card's own entity (context).
+            val entityId = cond.entityId ?: context.contextEntityId
+            val current = entityId?.let { conditionValue(stateMap, it, cond.attribute) }
             if (current == null || current.lowercase() in UNUSABLE_CONDITION_STATES) {
                 false
             } else {
-                val matches = cond.states.any { current.equals(it, ignoreCase = true) }
+                // A listed value that is itself an entity id is ALSO accepted as
+                // that entity's current state (HA's getValueFromEntityId).
+                val accepted = cond.states.flatMap { value ->
+                    val deref = conditionValue(stateMap, value, null)
+                        ?.takeUnless { it.lowercase() in UNUSABLE_CONDITION_STATES }
+                    if (deref != null) listOf(value, deref) else listOf(value)
+                }
+                val matches = accepted.any { current.equals(it, ignoreCase = true) }
                 if (cond.negate) !matches else matches
             }
         }
         is LovelaceCondition.NumericState -> {
-            val value = conditionNumeric(stateMap, cond.entityId, cond.attribute)
+            val entityId = cond.entityId ?: context.contextEntityId
+            val value = entityId?.let { conditionNumeric(stateMap, it, cond.attribute) }
             if (value == null) {
                 false
             } else {
@@ -356,18 +385,45 @@ private fun evaluateOneCondition(cond: LovelaceCondition, stateMap: EntityStates
                 aboveOk && belowOk
             }
         }
-        is LovelaceCondition.And -> cond.conditions.all { evaluateOneCondition(it, stateMap) }
+        is LovelaceCondition.And -> cond.conditions.all { evaluateOneCondition(it, stateMap, context) }
         is LovelaceCondition.Or ->
-            cond.conditions.isEmpty() || cond.conditions.any { evaluateOneCondition(it, stateMap) }
+            cond.conditions.isEmpty() || cond.conditions.any { evaluateOneCondition(it, stateMap, context) }
         // HA's `not` is the negation of an AND over the group: it passes when NOT
         // every child passes (i.e. at least one fails). An empty group is all-pass,
         // so `not` over it is false-of-true = false... but HA returns true for an
         // absent group, so guard the empty case to match.
         is LovelaceCondition.Not ->
-            cond.conditions.isEmpty() || !cond.conditions.all { evaluateOneCondition(it, stateMap) }
-        // `user`: the logged-in user id isn't reachable in the renderer, so fail
-        // OPEN rather than hide a card the user likely should see.
-        is LovelaceCondition.User -> true
+            cond.conditions.isEmpty() || !cond.conditions.all { evaluateOneCondition(it, stateMap, context) }
+        // `user`: membership of the current user in the listed ids; unknown user
+        // fails closed (HA returns false when hass.user?.id is undefined).
+        is LovelaceCondition.User ->
+            context.currentUserId != null && cond.userIds.contains(context.currentUserId)
+        // `screen`: evaluate the media query against the window; an undecidable
+        // query fails open (single-window app).
+        is LovelaceCondition.Screen -> {
+            val outcome = evaluateMediaQuery(cond.mediaQuery, context.windowWidthPx, context.windowHeightPx)
+            if (!outcome.evaluable) true else outcome.matched
+        }
+        is LovelaceCondition.Time ->
+            evaluateTimeWindow(cond, context.nowSecondsOfDay, context.weekday)
+        is LovelaceCondition.Location -> {
+            if (context.currentUserId == null || cond.locations.isEmpty()) {
+                false
+            } else {
+                val personState = context.personStateForUser()
+                personState != null && cond.locations.contains(personState)
+            }
+        }
+        is LovelaceCondition.ViewColumns -> {
+            val columns = context.maxColumns
+            if (columns == null || columns == 0) {
+                true
+            } else {
+                val minOk = cond.min?.let { columns >= it } ?: true
+                val maxOk = cond.max?.let { columns <= it } ?: true
+                minOk && maxOk
+            }
+        }
         // Unmodelled condition shape: fail closed (hide the card).
         LovelaceCondition.Never -> false
         LovelaceCondition.AlwaysTrue -> true

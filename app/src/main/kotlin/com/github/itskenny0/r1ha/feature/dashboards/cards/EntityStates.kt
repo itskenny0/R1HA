@@ -149,10 +149,14 @@ internal fun collectConditionEntities(
     sink: MutableSet<String>,
 ) {
     when (condition) {
-        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals ->
-            sink.addEntity(condition.entityId)
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.StateEquals -> {
+            condition.entityId?.let { sink.addEntity(it) }
+            // A listed state value that is itself an entity id is dereferenced at
+            // eval time; observe it so its change re-triggers the gate.
+            condition.states.forEach { sink.addEntity(it) }
+        }
         is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.NumericState -> {
-            sink.addEntity(condition.entityId)
+            condition.entityId?.let { sink.addEntity(it) }
             condition.aboveEntity?.let { sink.addEntity(it) }
             condition.belowEntity?.let { sink.addEntity(it) }
         }
@@ -162,7 +166,16 @@ internal fun collectConditionEntities(
             condition.conditions.forEach { collectConditionEntities(it, sink) }
         is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Not ->
             condition.conditions.forEach { collectConditionEntities(it, sink) }
+        // `user` / `screen` / `time` / `view_columns` gate on non-entity inputs
+        // (current user, window size, clock, column count) supplied by the
+        // condition context, so they contribute no entity to observe. `location`
+        // gates on the current user's person entity, which isn't statically known
+        // here; its live re-evaluation rides the dashboards person-state stream.
         is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.User,
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Screen,
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Time,
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Location,
+        is com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.ViewColumns,
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.Never,
         com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition.AlwaysTrue -> Unit
     }

@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCondition
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceConditionContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -169,8 +170,14 @@ class ConditionEvaluationTest {
         assertFalse(evaluateConditions(not, mapOn))
     }
 
-    @Test fun `user condition fails open`() {
-        assertTrue(evaluateConditions(listOf(LovelaceCondition.User(listOf("uid"))), EntityStates.EMPTY))
+    @Test fun `user condition fails closed for an unknown current user`() {
+        assertFalse(evaluateConditions(listOf(LovelaceCondition.User(listOf("uid"))), EntityStates.EMPTY))
+    }
+
+    @Test fun `user condition matches via the context`() {
+        val ctx = LovelaceConditionContext(currentUserId = "uid")
+        assertTrue(evaluateConditions(listOf(LovelaceCondition.User(listOf("uid"))), EntityStates.EMPTY, ctx))
+        assertFalse(evaluateConditions(listOf(LovelaceCondition.User(listOf("other"))), EntityStates.EMPTY, ctx))
     }
 
     // --- attribute + cross-entity numeric bounds --------------------------
@@ -230,5 +237,59 @@ class ConditionEvaluationTest {
         // Unparseable falls back to 16:9.
         assertEquals(16f / 9f, parseAspectRatio("garbage"), 0.001f)
         assertEquals(16f / 9f, parseAspectRatio(null), 0.001f)
+    }
+
+    // --- runtime conditions through the renderer twin ----------------------
+
+    @Test fun `state condition without entity uses the context entity`() {
+        val map = states(state("light.host", "on"))
+        val ctx = LovelaceConditionContext(contextEntityId = "light.host")
+        val conds = listOf(LovelaceCondition.StateEquals(entityId = null, states = listOf("on")))
+        assertTrue(evaluateConditions(conds, map, ctx))
+        assertFalse(evaluateConditions(conds, map, ctx.copy(contextEntityId = "light.missing")))
+    }
+
+    @Test fun `state value that is an entity id is dereferenced`() {
+        val map = states(state("input_select.mode", "home"), state("sensor.target", "home"))
+        val conds = listOf(LovelaceCondition.StateEquals("input_select.mode", listOf("sensor.target")))
+        assertTrue(evaluateConditions(conds, map))
+        val mapMiss = states(state("input_select.mode", "away"), state("sensor.target", "home"))
+        assertFalse(evaluateConditions(conds, mapMiss))
+    }
+
+    @Test fun `screen condition evaluates against the context window size`() {
+        val wide = LovelaceConditionContext(windowWidthPx = 800, windowHeightPx = 480)
+        val narrow = LovelaceConditionContext(windowWidthPx = 320, windowHeightPx = 480)
+        val conds = listOf(LovelaceCondition.Screen("(min-width: 600px)"))
+        assertTrue(evaluateConditions(conds, EntityStates.EMPTY, wide))
+        assertFalse(evaluateConditions(conds, EntityStates.EMPTY, narrow))
+    }
+
+    @Test fun `time condition evaluates against the context clock`() {
+        val noon = LovelaceConditionContext(nowSecondsOfDay = 12 * 3600, weekday = "mon")
+        val conds = listOf(
+            LovelaceCondition.Time(
+                after = com.github.itskenny0.r1ha.core.lovelace.TimeOfDay.parse("08:00"),
+                before = com.github.itskenny0.r1ha.core.lovelace.TimeOfDay.parse("17:00"),
+            ),
+        )
+        assertTrue(evaluateConditions(conds, EntityStates.EMPTY, noon))
+        val evening = noon.copy(nowSecondsOfDay = 20 * 3600)
+        assertFalse(evaluateConditions(conds, EntityStates.EMPTY, evening))
+    }
+
+    @Test fun `location condition uses the person lookup`() {
+        val home = LovelaceConditionContext(currentUserId = "u1", personStateForUser = { "home" })
+        assertTrue(evaluateConditions(listOf(LovelaceCondition.Location(listOf("home"))), EntityStates.EMPTY, home))
+        assertFalse(evaluateConditions(listOf(LovelaceCondition.Location(listOf("work"))), EntityStates.EMPTY, home))
+    }
+
+    @Test fun `view_columns gates on the context column count`() {
+        val twoCols = LovelaceConditionContext(maxColumns = 2)
+        assertTrue(evaluateConditions(listOf(LovelaceCondition.ViewColumns(min = 2, max = null)), EntityStates.EMPTY, twoCols))
+        assertFalse(evaluateConditions(listOf(LovelaceCondition.ViewColumns(min = 3, max = null)), EntityStates.EMPTY, twoCols))
+        // unavailable column count passes (HA behaviour)
+        val unknown = LovelaceConditionContext(maxColumns = null)
+        assertTrue(evaluateConditions(listOf(LovelaceCondition.ViewColumns(min = 3, max = null)), EntityStates.EMPTY, unknown))
     }
 }

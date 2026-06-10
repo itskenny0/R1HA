@@ -36,6 +36,10 @@ object LovelaceParser {
      */
     private val ENTITY_ID_REGEX = Regex("""\b[a-z_]+\.[a-z0-9_]+\b""")
 
+    /** HA's three-letter lowercase weekday tokens (WEEKDAYS_SHORT). A `time`
+     *  condition's `weekdays:` list is validated against this set. */
+    private val VALID_WEEKDAYS = setOf("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+
     /** Parse the top-level dashboard config returned by `lovelace/config`. */
     fun parseConfig(root: JsonObject): LovelaceConfig {
         val title = root["title"]?.asStringOrNull()
@@ -214,6 +218,17 @@ object LovelaceParser {
      */
     fun parseCard(obj: JsonObject): LovelaceCard {
         val card = parseCardInner(obj)
+        // `disabled: true` (HA's card config key): the card renders nothing in
+        // view mode. Model it as a conditional gated on a never-passing rule so
+        // the existing "hidden conditional consumes no layout" path applies with
+        // no new card type; the editor still reaches the original config via raw.
+        if (obj["disabled"]?.asBooleanOrNull() == true) {
+            return LovelaceCard.Conditional(
+                raw = obj,
+                conditions = listOf(LovelaceCondition.Never),
+                card = card,
+            )
+        }
         // Per-card `visibility:` wraps ANY card in conditional gating. HA
         // applies these in addition to (and outside of) a conditional card's
         // own conditions, so wrapping here composes correctly even when the
@@ -1226,11 +1241,12 @@ object LovelaceParser {
         return when {
             // `state` / `state_not` — HA's most common gate. Accepts a single
             // `state:` value or a `state:` list; `state_not` negates the match.
-            // A state condition with no entity, or with neither state nor
-            // state_not, can't be evaluated, so it fails closed.
+            // A state condition with neither state nor state_not can't be
+            // evaluated, so it fails closed. `entity:` may be omitted: the
+            // evaluator then falls back to the host card's own entity (HA's
+            // `context.entity_id`), so a null entity is preserved, not rejected.
             condition == "state" || condition == "state_not" ||
                 (condition == null && entity != null) -> {
-                if (entity == null) return LovelaceCondition.Never
                 val negate = condition == "state_not" || obj["state_not"] != null
                 val raw = if (negate) obj["state_not"] else obj["state"]
                 val states = parseConditionStates(raw)
@@ -1242,12 +1258,12 @@ object LovelaceParser {
                     attribute = attribute,
                 )
             }
-            condition == "numeric_state" && entity != null -> {
+            condition == "numeric_state" -> {
                 // A bound is either a literal number or a reference to another
                 // entity's numeric state (HA's `above: sensor.x` form). We split
                 // the two: a numeric string / number becomes a literal bound, an
                 // entity-id-shaped string becomes an entity reference resolved at
-                // evaluation time.
+                // evaluation time. `entity:` may be omitted (context fallback).
                 val (above, aboveEntity) = parseNumericBound(obj["above"])
                 val (below, belowEntity) = parseNumericBound(obj["below"])
                 // A numeric_state with no usable bound at all can never be proven
@@ -1275,20 +1291,73 @@ object LovelaceParser {
             condition == "and" -> LovelaceCondition.And(parseConditions(obj["conditions"]))
             condition == "or" -> LovelaceCondition.Or(parseConditions(obj["conditions"]))
             condition == "not" -> LovelaceCondition.Not(parseConditions(obj["conditions"]))
-            // `user`: gated on the logged-in user id, which the renderer can't
-            // read today. Modelled so a future change can evaluate it; for now
-            // the evaluator fails it OPEN (see LovelaceCondition.User).
-            condition == "user" -> LovelaceCondition.User(parseConditionStates(obj["users"]))
-            // `screen` is a media-query breakpoint hint. We can't evaluate the
-            // query locally, but on a single-window app the card is meant to be
-            // visible, so fail OPEN rather than hiding content the user expects.
-            condition == "screen" -> LovelaceCondition.AlwaysTrue
-            // Conditions we can't evaluate locally — `time`, `location`,
-            // `view_columns`, a `template`, or a malformed rule. HA evaluates
-            // these server/client-side; we can't, so we fail closed and hide the
-            // card rather than leaking it.
+            // `user`: matched against the current logged-in user. HA's
+            // validateUserCondition requires the `users:` key be present (even
+            // if empty); an empty/absent list can never match, so fail closed.
+            condition == "user" -> {
+                val users = parseConditionStates(obj["users"])
+                if (users.isEmpty()) LovelaceCondition.Never else LovelaceCondition.User(users)
+            }
+            // `screen`: a CSS media query. HA requires the `media_query:` key
+            // (validateScreenCondition); a screen condition without one is
+            // degenerate. We keep the query string and evaluate it against the
+            // real window at render time.
+            condition == "screen" -> {
+                val mq = obj["media_query"]?.asStringOrNull()?.takeUnless { it.isBlank() }
+                if (mq == null) LovelaceCondition.Never else LovelaceCondition.Screen(mq)
+            }
+            // `time`: after/before window and/or weekday allow-list. HA's
+            // validateTimeCondition requires at least one bound or one weekday,
+            // valid HH:MM[:SS] strings, valid weekday tokens, and after != before;
+            // a config failing any of these is dropped to [Never].
+            condition == "time" -> parseTimeCondition(obj)
+            // `location`: passes when the current user's person entity sits in
+            // one of the listed zones. HA requires the `locations:` key; an empty
+            // list can never match, so fail closed.
+            condition == "location" -> {
+                val locations = parseConditionStates(obj["locations"])
+                if (locations.isEmpty()) LovelaceCondition.Never else LovelaceCondition.Location(locations)
+            }
+            // `view_columns`: min/max against the hosting view's column count.
+            // HA requires at least one of min/max (validateViewColumnsCondition).
+            condition == "view_columns" -> {
+                val min = obj["min"]?.asIntOrNull()
+                val max = obj["max"]?.asIntOrNull()
+                if (min == null && max == null) LovelaceCondition.Never
+                else LovelaceCondition.ViewColumns(min = min, max = max)
+            }
+            // A `template` condition or a malformed rule: HA evaluates templates
+            // server/client-side; we can't, so fail closed and hide the card
+            // rather than leaking it.
             else -> LovelaceCondition.Never
         }
+    }
+
+    /**
+     * Parse a `time` condition, mirroring HA's `validateTimeCondition` gates.
+     * Drops to [LovelaceCondition.Never] when nothing is constrained, a bound is
+     * not a valid HH:MM[:SS] string, a weekday token is unknown, or after equals
+     * before (a zero-length window). The weekday tokens are normalised to HA's
+     * lowercase three-letter form.
+     */
+    private fun parseTimeCondition(obj: JsonObject): LovelaceCondition {
+        val afterRaw = obj["after"]?.asStringOrNull()?.takeUnless { it.isBlank() }
+        val beforeRaw = obj["before"]?.asStringOrNull()?.takeUnless { it.isBlank() }
+        val weekdaysRaw = parseConditionStates(obj["weekdays"]).map { it.lowercase() }
+
+        val hasTime = afterRaw != null || beforeRaw != null
+        val hasWeekdays = weekdaysRaw.isNotEmpty()
+        if (!hasTime && !hasWeekdays) return LovelaceCondition.Never
+
+        if (hasWeekdays && weekdaysRaw.any { it !in VALID_WEEKDAYS }) return LovelaceCondition.Never
+
+        val after = afterRaw?.let { TimeOfDay.parse(it) ?: return LovelaceCondition.Never }
+        val before = beforeRaw?.let { TimeOfDay.parse(it) ?: return LovelaceCondition.Never }
+        // HA rejects after == before (a zero-length interval). Compare on the raw
+        // strings as HA does, so "08:00" and "08:00:00" stay distinct.
+        if (afterRaw != null && beforeRaw != null && afterRaw == beforeRaw) return LovelaceCondition.Never
+
+        return LovelaceCondition.Time(after = after, before = before, weekdays = weekdaysRaw)
     }
 
     /**

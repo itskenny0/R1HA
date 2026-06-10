@@ -82,12 +82,12 @@ fun resolveCardActions(
  * Whether [confirmation] should be skipped for [currentUserId]. HA skips the
  * confirm dialog when the current user's id is in the action's exemptions list.
  *
- * Constraint: R1HA does not currently fetch the logged-in user id (there is no
- * `auth/current_user` call wired; HaUser only comes from the admin-only
- * `config/auth/list`). When [currentUserId] is null we therefore treat every
- * action as NON-exempt, i.e. the confirmation always shows. This fails safe
- * (the gate is the whole point of confirmation) at the cost of not honouring
- * per-user exemptions until a current-user identity is available.
+ * [currentUserId] is supplied from the cached `auth/current_user` result (see
+ * [com.github.itskenny0.r1ha.core.ha.HaRepository.currentUserId]). When it is
+ * null (the server predates the command, the fetch failed, or we are not yet
+ * connected) we treat every action as NON-exempt, i.e. the confirmation always
+ * shows. This fails safe (the gate is the whole point of confirmation) while
+ * honouring per-user exemptions whenever the identity is known.
  */
 fun isConfirmationExempt(confirmation: ActionConfirmation, currentUserId: String?): Boolean {
     if (currentUserId == null) return false
