@@ -76,13 +76,23 @@ class OnboardingViewModel(
         _state.value = State.Probing
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                val httpCode = withContext(Dispatchers.IO) {
                     val req = Request.Builder()
                         .url("$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FR1HA%2F&redirect_uri=r1ha://auth-callback")
                         .head()
                         .build()
-                    val code = http.newCall(req).execute().use { it.code }
-                    R1Log.i("Onboarding.probe", "HEAD returned HTTP $code")
+                    http.newCall(req).execute().use { it.code }
+                }
+                R1Log.i("Onboarding.probe", "HEAD returned HTTP $httpCode")
+                // A response is not the same as a usable HA login page: a 404 from
+                // some other web server on the host, or a reverse proxy demanding
+                // its own auth, would previously sail into the WebView and strand
+                // the user on an error page with no hint. Fail here with one.
+                val statusProblem = probeStatusProblem(httpCode)
+                if (statusProblem != null) {
+                    Toaster.error("Probe failed: HTTP $httpCode")
+                    _state.value = State.Error(statusProblem)
+                    return@launch
                 }
                 // NB: we deliberately do NOT write settings.server here. Doing so triggered
                 // the URL-change observer in HaRepository which tried to connectFromSettings
@@ -94,21 +104,11 @@ class OnboardingViewModel(
             } catch (e: Exception) {
                 R1Log.e("Onboarding.probe", "failed", e)
                 Toaster.error("Probe failed: ${e.message}")
-                // Distinguish the two failure shapes the user can actually act
-                // on: a name/route problem ("can't find or reach the host") vs a
-                // generic transport error. Both are reachability failures rather
-                // than auth failures, since auth only happens later in the
-                // WebView, so frame them as "couldn't connect" not "login failed".
-                val detail = e.message ?: e.javaClass.simpleName
-                val message = when (e) {
-                    is java.net.UnknownHostException ->
-                        "Couldn't find that host. Check the address (and that you're on the same network as Home Assistant): $detail"
-                    is java.net.ConnectException, is java.net.SocketTimeoutException ->
-                        "Couldn't reach the server. It may be offline, or the port/protocol may be wrong: $detail"
-                    else ->
-                        "Couldn't connect to the server: $detail"
-                }
-                _state.value = State.Error(message)
+                // Exception → actionable-message mapping lives in
+                // ProbeDiagnostics.kt (pure, unit-tested): DNS vs route vs TLS
+                // vs generic transport, all framed as "couldn't connect" rather
+                // than "login failed" since auth only happens later in the WebView.
+                _state.value = State.Error(probeFailureMessage(e))
             }
         }
     }

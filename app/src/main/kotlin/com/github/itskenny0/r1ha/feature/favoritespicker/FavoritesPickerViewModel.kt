@@ -55,6 +55,20 @@ enum class PickerFilter(val label: String, val matches: (Domain) -> Boolean) {
     SELECTS("SELECTS", { it.isSelect }),
 }
 
+/**
+ * Whether the picker should offer the one-tap ADD ALL chip for the current view.
+ * Pure so the gating is unit-testable: the chip must only appear when the visible
+ * set is deliberately scoped — an active search, or a domain chip — never on the
+ * unfiltered ALL view where one reflexive tap could dump an entire installation's
+ * entity list into the deck. FAVS never offers it (everything there is already a
+ * favourite), and a single addable row isn't worth a bulk affordance over the
+ * row's own checkbox.
+ */
+internal fun shouldOfferBulkAdd(filter: PickerFilter, query: String, addableCount: Int): Boolean =
+    addableCount >= 2 &&
+        filter != PickerFilter.FAVS &&
+        (query.isNotBlank() || filter != PickerFilter.ALL)
+
 class FavoritesPickerViewModel(
     private val repo: HaRepository,
     private val settings: SettingsRepository,
@@ -444,6 +458,29 @@ class FavoritesPickerViewModel(
             }
             // Local re-render reads from the active page after the write completes.
             rebuildAfterFavMutation()
+        }
+    }
+
+    /**
+     * Favourite every currently-visible row that isn't one yet, in display order, in a
+     * single page write. Backs the ADD ALL chip (see [shouldOfferBulkAdd] for when the
+     * UI offers it). Snapshots the visible ids before hopping async so a filter/query
+     * change mid-write can't alter what "all" meant when the user tapped.
+     */
+    fun addAllShown() {
+        val ids = _ui.value.rows.filterNot { it.isFavorite }.map { it.state.id.value }
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            settings.updateActivePage { page ->
+                // Same defensive de-dupe as toggle(): collapse stale duplicates, then
+                // append only ids that still aren't present (another surface could
+                // have favourited one of them while this coroutine was queued).
+                val l = page.favorites.distinct().toMutableList()
+                ids.forEach { id -> if (id !in l) l.add(id) }
+                page.copy(favorites = l)
+            }
+            rebuildAfterFavMutation()
+            Toaster.show("Added ${ids.size} to this tab")
         }
     }
 

@@ -339,6 +339,16 @@ private fun UrlEntryForm(
                 .padding(horizontal = R1.space.xl, vertical = R1.space.xl),
             horizontalAlignment = Alignment.Start,
         ) {
+            // Identity line. This is the first screen a fresh install ever
+            // shows, so name the app and what it talks to before asking the
+            // user for anything. One muted line; the step callout below stays
+            // the visual anchor.
+            Text(
+                text = "R1HA · A NATIVE HOME ASSISTANT CLIENT",
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.height(R1.space.l))
             StepCallout(number = "01", label = "LINK")
             Spacer(Modifier.height(R1.space.m))
             Text(
@@ -365,6 +375,9 @@ private fun UrlEntryForm(
                 color = R1.InkMuted,
             )
             Spacer(Modifier.height(R1.space.s))
+            // Normalised early so both CONNECT and the IME's Go action gate on
+            // the same "would this probe anything?" check.
+            val normalised = remember(urlText) { normalizeServerUrl(urlText) }
             R1TextField(
                 value = urlText,
                 onValueChange = {
@@ -378,7 +391,11 @@ private fun UrlEntryForm(
                     keyboardType = KeyboardType.Uri,
                     imeAction = ImeAction.Go,
                 ),
-                keyboardActions = KeyboardActions(onGo = { onProbe(urlText) }),
+                // Mirror CONNECT's enabled gate: Go on a blank/whitespace entry
+                // would only manufacture a guaranteed "empty URL" error.
+                keyboardActions = KeyboardActions(
+                    onGo = { if (normalised.isNotBlank()) onProbe(urlText) },
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -386,7 +403,6 @@ private fun UrlEntryForm(
             // inference + default-port heuristic before CONNECT so
             // "why is it adding :8123?" has an immediate answer. Only
             // shown when the preview differs from the raw input.
-            val normalised = remember(urlText) { normalizeServerUrl(urlText) }
             if (normalised.isNotBlank() && normalised != urlText.trim().trimEnd('/')) {
                 Spacer(Modifier.height(R1.space.xs))
                 Row(

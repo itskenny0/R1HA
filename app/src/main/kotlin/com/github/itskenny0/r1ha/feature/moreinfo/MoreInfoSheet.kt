@@ -72,7 +72,10 @@ import com.github.itskenny0.r1ha.ui.components.MediaExtrasPanel
 import com.github.itskenny0.r1ha.ui.components.RemotePanel
 import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
 import com.github.itskenny0.r1ha.ui.components.SensorHistoryChart
+import com.github.itskenny0.r1ha.ui.components.SkeletonBlock
+import com.github.itskenny0.r1ha.ui.components.formatAbsoluteTimestamp
 import com.github.itskenny0.r1ha.ui.components.rememberRelativeTime
+import com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock
 import com.github.itskenny0.r1ha.ui.components.VacuumPanel
 import com.github.itskenny0.r1ha.ui.components.ValvePanel
 import com.github.itskenny0.r1ha.ui.components.WaterHeaterPanel
@@ -84,9 +87,8 @@ import com.github.itskenny0.r1ha.ui.components.formatSensorValue
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * Ultra-detail "more info" bottom sheet for a single HA entity. A dim-scrim overlay
@@ -95,8 +97,9 @@ import java.util.Locale
  *  - a header (icon + friendly name + big state value),
  *  - the primary per-domain control (reusing the card-stack's [EntityPanels] plus a
  *    handful of inline controls for the high-value domains),
- *  - a full attribute dump (humanised keys, single-line ellipsised values),
- *  - a compact history sparkline for numeric / sensor entities.
+ *  - a compact history sparkline for numeric / sensor entities (forecast strip for
+ *    weather, logbook-style recent activity for stateful on/off domains),
+ *  - a full attribute dump (humanised keys, single-line ellipsised values), last.
  *
  * The sheet provides [LocalOnEntityCall] + [LocalEntityOverrides] so the reused panels
  * dispatch straight through to [HaRepository.call] without any screen-level wiring.
@@ -203,9 +206,6 @@ private fun MoreInfoContent(
         val control: @Composable () -> Unit = { PrimaryControl(entity, accent, dispatch) }
         SectionWrap(control)
 
-        // ── Attributes ────────────────────────────────────────────────────
-        AttributesSection(entity)
-
         // ── Weather forecast strip ─────────────────────────────────────────
         WeatherForecastSection(haRepository = haRepository, entity = entity, accent = accent)
 
@@ -214,6 +214,14 @@ private fun MoreInfoContent(
 
         // ── Non-numeric recent activity ────────────────────────────────────
         RecentActivitySection(haRepository = haRepository, entity = entity)
+
+        // ── Attributes ────────────────────────────────────────────────────
+        // Last on purpose: the raw attribute dump is reference material, while
+        // forecast/history/activity answer the questions a long-press usually
+        // asks. Burying a weather entity's forecast below twenty attribute rows
+        // forced a scroll past noise to reach the payoff; HA's own more-info
+        // orders the same way (graph first, attributes at the bottom).
+        AttributesSection(entity)
 
         Spacer(Modifier.height(R1.space.l))
     }
@@ -282,16 +290,21 @@ private fun Header(entity: EntityState, accent: Color, onDismiss: () -> Unit) {
             val changedAgo = rememberRelativeTime(entity.lastChanged)
             if (changedAgo.isNotEmpty()) {
                 var showAbsolute by remember { mutableStateOf(false) }
-                val absoluteText = remember(entity.lastChanged) {
-                    entity.lastChanged
-                        .atZone(ZoneId.systemDefault())
-                        .format(
-                            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US),
-                        )
-                }
+                // Absolute rendering goes through the shared clock pipeline
+                // (formatAbsoluteTimestamp + rememberUse24HourClock) so it
+                // honours Settings, Appearance, Clock format like every other
+                // readout, instead of a hard-coded 24-hour pattern. Not
+                // remembered on purpose: the line already recomposes on every
+                // relative-time tick, and "now" should move with it.
+                val absoluteText = formatAbsoluteTimestamp(
+                    at = entity.lastChanged,
+                    now = Instant.now(),
+                    zone = ZoneId.systemDefault(),
+                    use24h = rememberUse24HourClock(),
+                )
                 Spacer(Modifier.height(R1.space.xxs))
                 Text(
-                    text = if (showAbsolute) absoluteText else "CHANGED ${changedAgo.uppercase()}",
+                    text = "CHANGED ${(if (showAbsolute) absoluteText else changedAgo).uppercase()}",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                     maxLines = 1,
@@ -902,17 +915,7 @@ private fun HistorySection(haRepository: HaRepository, entity: EntityState, acce
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         Text(text = "HISTORY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
         when (val pts = history) {
-            null -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .clip(R1.ShapeS)
-                    .background(R1.Surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "LOADING HISTORY", style = R1.labelMicro, color = R1.InkMuted)
-            }
-
+            null -> SectionLoadingPlaceholder("Loading history")
             else -> SensorHistoryChart(points = pts, accent = accent, unit = entity.unit)
         }
     }
@@ -946,16 +949,7 @@ private fun WeatherForecastSection(
         // Loading state: show the section header + placeholder while fetching.
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
             Text(text = "FORECAST", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .clip(R1.ShapeS)
-                    .background(R1.Surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "LOADING FORECAST", style = R1.labelMicro, color = R1.InkMuted)
-            }
+            SectionLoadingPlaceholder("Loading forecast")
         }
         return
     }
@@ -1007,7 +1001,7 @@ private fun ForecastSlot(
     val label = formatForecastLabel(
         entry.whenIso,
         kind,
-        use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock(),
+        use24h = rememberUse24HourClock(),
     )
     Column(
         modifier = Modifier
@@ -1140,16 +1134,7 @@ private fun RecentActivitySection(
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
         Text(text = "RECENT ACTIVITY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
         when (val pts = history) {
-            null -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .clip(R1.ShapeS)
-                    .background(R1.Surface),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "LOADING ACTIVITY", style = R1.labelMicro, color = R1.InkMuted)
-            }
+            null -> SectionLoadingPlaceholder("Loading activity")
             else -> {
                 val rows = pts
                     .filter { it.state != "unknown" && it.state != "unavailable" }
@@ -1221,6 +1206,24 @@ private val NON_LOGBOOK_DOMAINS = setOf(
 )
 
 // ── Shared primitives ─────────────────────────────────────────────────────────────────
+
+/**
+ * Pulsing skeleton placeholder for the lazily-fetched sections (history, forecast,
+ * recent activity). Same 40dp footprint the loaded content's surface starts at, so
+ * the section doesn't jump when data lands; the pulse reads as "loading" without a
+ * per-section spinner (matches the sprint-wide SkeletonList/SkeletonBlock idiom).
+ * [description] keeps the placeholder announced once to TalkBack instead of as a
+ * mute grey rectangle.
+ */
+@Composable
+private fun SectionLoadingPlaceholder(description: String) {
+    SkeletonBlock(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .semantics { contentDescription = description },
+    )
+}
 
 @Composable
 private fun PercentControl(label: String, pct: Int, accent: Color, onChange: (Int) -> Unit) {

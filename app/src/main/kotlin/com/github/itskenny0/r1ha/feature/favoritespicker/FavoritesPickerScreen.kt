@@ -3,7 +3,6 @@ package com.github.itskenny0.r1ha.feature.favoritespicker
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,7 +25,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,12 +43,17 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
+import com.github.itskenny0.r1ha.ui.components.R1EmptyState
+import com.github.itskenny0.r1ha.ui.components.R1ErrorState
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
+import com.github.itskenny0.r1ha.ui.components.SkeletonList
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.components.r1RowPressable
 import com.github.itskenny0.r1ha.ui.layout.AdaptiveContent
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 
 @Composable
@@ -171,6 +174,34 @@ fun FavoritesPickerScreen(
                                 color = R1.InkSoft,
                             )
                         }
+                        // Bulk add. Favouriting fifteen lights one checkbox at a
+                        // time is the picker's biggest friction point; when the
+                        // visible set is scoped (a search or a domain chip, never
+                        // the unfiltered ALL view) offer one tap that favourites
+                        // everything still unselected. Gate logic is the pure
+                        // [shouldOfferBulkAdd] so the "could this accidentally
+                        // dump 300 entities into the deck?" cases stay tested.
+                        val addable = ui.rows.count { !it.isFavorite }
+                        if (shouldOfferBulkAdd(ui.filter, ui.query, addable)) {
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .clip(R1.ShapeS)
+                                    .background(R1.SurfaceMuted)
+                                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                                    .r1Pressable(
+                                        onClick = { vm.addAllShown() },
+                                        contentDescription = "Add all $addable shown entities to this tab",
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                            ) {
+                                Text(
+                                    text = "ADD ALL · $addable",
+                                    style = R1.labelMicro,
+                                    color = R1.AccentWarm,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -188,9 +219,36 @@ fun FavoritesPickerScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 when {
-                    ui.loading && ui.rows.isEmpty() -> CenteredLoading()
-                    ui.error != null -> ErrorState(message = ui.error ?: "Error")
-                    ui.rows.isEmpty() -> FilteredEmptyState(filter = ui.filter, query = ui.query)
+                    // First load: skeleton rows shaped like the list that will
+                    // replace them (sprint-standard, replaces the abstract
+                    // centred spinner). Placeholder rows are decorative; the
+                    // polite live region announces the loading state once.
+                    ui.loading && ui.rows.isEmpty() -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                contentDescription = "Loading entities"
+                            },
+                    ) {
+                        SkeletonList()
+                    }
+                    // Failed first load: canonical error state with a RETRY
+                    // chip. The previous bespoke version had no retry and the
+                    // non-scrollable error Box can't host pull-to-refresh, so
+                    // it stranded the user (the old hint even sent them to
+                    // sign out, a much bigger hammer than a refetch).
+                    ui.error != null -> R1ErrorState(
+                        title = "COULDN'T LOAD ENTITIES",
+                        message = ui.error,
+                        onRetry = { vm.refresh() },
+                    )
+                    ui.rows.isEmpty() -> FilteredEmptyState(
+                        filter = ui.filter,
+                        query = ui.query,
+                        onClearSearch = { vm.setQuery("") },
+                        onShowAll = { vm.setFilter(PickerFilter.ALL) },
+                    )
                     else -> ChannelList(
                         rows = ui.rows,
                         listState = listState,
@@ -574,29 +632,42 @@ private fun PageDeleteDialog(
 }
 
 @Composable
-private fun FilteredEmptyState(filter: PickerFilter, query: String) {
+private fun FilteredEmptyState(
+    filter: PickerFilter,
+    query: String,
+    onClearSearch: () -> Unit,
+    onShowAll: () -> Unit,
+) {
     // Four flavours of "nothing here": active search returned no hits, no entities at
     // all, filter pruned them all, or the favourites-only view with no favourites set
-    // yet. Each gets a short hint that points the user at the next step.
-    val (heading, body) = when {
-        query.isNotBlank() -> "NO MATCHES FOR \"${query.uppercase()}\"" to
-            "Try a different word. Search looks at both the entity name and the\nentity_id (e.g. \"sensor.\")."
-        filter == PickerFilter.ALL -> "NO CONTROLLABLE ENTITIES" to
-            "Home Assistant didn't return anything we know how to drive. No lights,\nswitches, scenes, or sensors."
-        filter == PickerFilter.FAVS -> "NO FAVOURITES YET" to
-            "Pick a chip above to start browsing, then tap an entity to favourite it."
-        else -> "NONE IN THIS FILTER" to "Tap ALL above to see every entity."
-    }
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 22.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(heading, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro), color = R1.InkSoft)
-        Spacer(Modifier.height(8.dp))
-        Text(body, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.InkMuted)
+    // yet. Each routes through the canonical R1EmptyState and, where one exists,
+    // carries the action that un-empties the view (clear the search, jump to ALL) so
+    // recovery is one tap instead of re-deriving the chip/field state by hand.
+    when {
+        query.isNotBlank() -> R1EmptyState(
+            title = "NO MATCHES FOR \"${query.uppercase()}\"",
+            body = "Try a different word. Search looks at both the entity name " +
+                "and the entity_id (e.g. \"sensor.\").",
+            actionText = "CLEAR SEARCH",
+            onAction = onClearSearch,
+        )
+        filter == PickerFilter.ALL -> R1EmptyState(
+            title = "NO CONTROLLABLE ENTITIES",
+            body = "Home Assistant didn't return anything we know how to drive. " +
+                "No lights, switches, scenes, or sensors.",
+        )
+        filter == PickerFilter.FAVS -> R1EmptyState(
+            title = "NO FAVOURITES YET",
+            body = "Browse the chips above, then tap an entity to favourite it.",
+            actionText = "BROWSE ALL",
+            onAction = onShowAll,
+        )
+        else -> R1EmptyState(
+            title = "NONE IN THIS FILTER",
+            body = "Nothing matches this chip on your server.",
+            actionText = "SHOW ALL",
+            onAction = onShowAll,
+        )
     }
 }
 
@@ -699,45 +770,6 @@ private fun PreviewOverlay(
             Spacer(Modifier.height(6.dp))
             Text("Tap anywhere to dismiss", style = R1.body, color = R1.InkMuted)
         }
-    }
-}
-
-@Composable
-private fun CenteredLoading() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                strokeWidth = 2.dp,
-                color = R1.AccentWarm,
-            )
-            Spacer(Modifier.height(16.dp))
-            Text("FETCHING ENTITIES…", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader), color = R1.InkMuted)
-        }
-    }
-}
-
-@Composable
-private fun ErrorState(message: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 22.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("ERROR", style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.labelMicro), color = R1.StatusRed)
-        Spacer(Modifier.height(8.dp))
-        Text(message, style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body), color = R1.Ink)
-        Spacer(Modifier.height(16.dp))
-        Text(
-            text = "Open Settings → Sign out & reconnect to recover.",
-            style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.body),
-            color = R1.InkMuted,
-        )
     }
 }
 
