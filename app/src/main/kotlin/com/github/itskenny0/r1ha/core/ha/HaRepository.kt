@@ -140,6 +140,18 @@ interface HaRepository {
     suspend fun fetchLogbook(hours: Int = 12): Result<List<LogbookEntry>>
 
     /**
+     * Per-entity logbook fetch — `GET /api/logbook/<since-iso>?entity=<id>`.
+     * Same shape as [fetchLogbook] but scoped server-side to a single entity, so
+     * the more-info sheet can embed an entity's recent activity without slurping
+     * (and then filtering) the whole-install logbook. [hours] defaults to 24 to
+     * match the sheet's "last day" framing.
+     */
+    suspend fun fetchLogbookForEntity(
+        entityId: String,
+        hours: Int = 24,
+    ): Result<List<LogbookEntry>>
+
+    /**
      * Render a Jinja2 template against the live HA state — POSTs to
      * `/api/template` with `{template: "..."}` and returns the
      * resulting plain-text string. Powers the Templates power-user
@@ -521,6 +533,31 @@ interface HaRepository {
      * (one round trip vs one-per-device when drilling in repeatedly).
      */
     suspend fun listEntityRegistry(): Result<List<EntityRegistryEntry>>
+
+    /**
+     * Fetch one entity's registry `options` blob via `config/entity_registry/get`.
+     * Returns the raw `options` object (HA nests per-domain favourite positions /
+     * colours under `options[<domain>]`), or null when the entity has no registry
+     * options. Used by the more-info sheet's favourites controls to read the
+     * user's stored favourite positions / colours.
+     */
+    suspend fun getEntityRegistryOptions(
+        entityId: String,
+    ): Result<kotlinx.serialization.json.JsonObject?>
+
+    /**
+     * Write one domain's `options` block on an entity's registry entry via
+     * `config/entity_registry/update` (the `options_domain` + `options` form HA's
+     * own frontend uses to persist favourites). [optionsDomain] is the domain key
+     * (`light` / `cover` / `valve`); [options] is the per-domain object to merge.
+     * Returns failure when the WS call is rejected so the caller never reports a
+     * fake success.
+     */
+    suspend fun updateEntityRegistryOptions(
+        entityId: String,
+        optionsDomain: String,
+        options: kotlinx.serialization.json.JsonObject,
+    ): Result<Unit>
 
     /**
      * List every configured integration instance via `config_entries/get`.

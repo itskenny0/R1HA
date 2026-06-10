@@ -1860,6 +1860,59 @@ class DefaultHaRepository(
             }
         }
 
+    override suspend fun fetchLogbookForEntity(
+        entityId: String,
+        hours: Int,
+    ): Result<List<LogbookEntry>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val s = settings.settings.first()
+            val server = s.server ?: error("Server URL not configured.")
+            refresher?.ensureFresh()
+            val since = Instant.now().minusSeconds(hours.toLong() * 3600L)
+            val sinceIso = since.toString()
+            // HA's logbook endpoint accepts an `entity` query param to scope the
+            // result server-side, so the sheet doesn't pull the whole install's
+            // log just to filter to one entity.
+            val url = "${server.url.trimEnd('/')}/api/logbook/$sinceIso" +
+                "?entity=${java.net.URLEncoder.encode(entityId, "UTF-8")}"
+            val body = fetchHistoryBody(url) ?: run {
+                if (refresher?.forceRefresh() == true) {
+                    fetchHistoryBody(url)
+                        ?: error("Home Assistant returned HTTP 401 for /api/logbook after refresh.")
+                } else {
+                    error("Home Assistant returned HTTP 401 for /api/logbook.")
+                }
+            }
+            decodeLogbookRows(body)
+        }.onFailure { t ->
+            R1Log.w("HaRepo.logbook", "entity fetch failed: ${t.message}")
+        }
+    }
+
+    /** Shared decode for the /api/logbook JSON body — used by both the
+     *  whole-install [fetchLogbook] and the per-entity [fetchLogbookForEntity]. */
+    private fun decodeLogbookRows(body: String): List<LogbookEntry> {
+        val rows = logbookJson.decodeFromString<List<LogbookRow>>(body)
+        return rows.mapNotNull { row ->
+            val ts = row.`when` ?: return@mapNotNull null
+            val instant = parseHaInstant(ts) ?: return@mapNotNull null
+            val entityId = row.entity_id?.let { raw ->
+                runCatching { EntityId(raw) }.getOrNull()
+            }
+            LogbookEntry(
+                timestamp = instant,
+                name = row.name ?: row.entity_id ?: "(unknown)",
+                message = row.message ?: "changed",
+                entityId = entityId,
+                domain = row.domain ?: row.entity_id?.substringBefore('.'),
+                state = row.state,
+                contextUserId = row.context_user_id,
+                contextEntityId = row.context_entity_id,
+                contextName = row.context_entity_id_name ?: row.context_name,
+            )
+        }.sortedByDescending { it.timestamp }
+    }
+
     /** Minimal row shape for /api/logbook. Every field is nullable
      *  because HA's logbook payloads vary by event type — an automation
      *  trigger row often lacks `state` but has `message`, a state-change
@@ -3614,6 +3667,41 @@ class DefaultHaRepository(
             }
         }.onFailure { t ->
             R1Log.w("HaRepo.entityRegistry", "list failed: ${t.message}")
+        }
+    }
+
+    override suspend fun getEntityRegistryOptions(
+        entityId: String,
+    ): Result<kotlinx.serialization.json.JsonObject?> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entity_id", JsonPrimitive(entityId))
+        }
+        // `config/entity_registry/get` returns the full extended registry entry,
+        // including the per-domain `options` blob (favourite positions / colours)
+        // that the slim `config/entity_registry/list` reply omits.
+        callWsExpectingPayload("config/entity_registry/get", extras).map { payload ->
+            val obj = payload as? kotlinx.serialization.json.JsonObject
+            obj?.get("options") as? kotlinx.serialization.json.JsonObject
+        }.onFailure { t ->
+            R1Log.w("HaRepo.entityRegistry", "get options $entityId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun updateEntityRegistryOptions(
+        entityId: String,
+        optionsDomain: String,
+        options: kotlinx.serialization.json.JsonObject,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entity_id", JsonPrimitive(entityId))
+            // HA's update endpoint persists per-domain options under the
+            // `options_domain` + `options` pair (the same form the frontend's
+            // updateEntityRegistryEntry uses to write favourites).
+            put("options_domain", JsonPrimitive(optionsDomain))
+            put("options", options)
+        }
+        callWsExpectingPayload("config/entity_registry/update", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.entityRegistry", "update options $entityId failed: ${t.message}")
         }
     }
 
