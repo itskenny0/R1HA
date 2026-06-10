@@ -124,60 +124,113 @@ object LovelaceParser {
     }
 
     /**
-     * Parse a view's `badges:` array. HA accepts each entry as either a bare
-     * entity-id string (`sensor.time`) or a `type: entity` object carrying
-     * `show_name` / `show_state` / `show_icon` / `color` / `name` / `icon` /
-     * `tap_action`. Both shapes resolve to a [LovelaceBadge]; a badge type we
-     * don't model still yields a minimal chip (driven by its `entity` / `name`)
-     * rather than being dropped, and an entry with neither is skipped.
+     * Parse a view's `badges:` array or a heading card's `badges:` array. HA
+     * accepts each entry as:
+     *  - a bare entity-id string: normalised to `show_name=true` (matching HA's
+     *    `ensureBadgeConfig` which expands a string to `{type: entity, show_name: true}`).
+     *  - a `type: entity` object: the standard entity-badge shape.
+     *  - a `type: state-label` object: legacy badge; show_name defaults true.
+     *  - a `type: entity-filter` object: filter-badge, entries expanded to one
+     *    badge per entity that passes the filter at parse time.
+     *  - a `type: shortcut` object: action-driven badge with optional icon/color.
+     *  - a heading-badge `type: button` object: action chip (text + icon).
+     *  - any other / custom type: best-effort chip from entity/name when present.
+     *
+     * Every object badge also reads `visibility:` conditions (Batch B gate) and
+     * `disabled: true` (maps to a never-passing condition, hiding the badge).
+     * An entry with neither entity, name, icon, nor a viable action is skipped.
      */
     private fun parseBadges(el: JsonElement?): List<LovelaceBadge> {
         val arr = el as? JsonArray ?: return emptyList()
-        return arr.mapNotNull { item ->
+        return arr.flatMap { item ->
             when (item) {
+                // Bare entity-id string: HA normalises to show_name=true.
                 is JsonPrimitive -> if (item.isString && item.content.looksLikeEntityId()) {
-                    LovelaceBadge(
+                    listOf(LovelaceBadge(
                         entityId = item.content,
                         name = null,
                         icon = null,
                         color = null,
-                        showName = false,
+                        showName = true,
                         showState = true,
                         showIcon = true,
                         tapAction = null,
-                    )
+                        isLegacyBareString = true,
+                    ))
                 } else {
-                    null
+                    emptyList()
                 }
                 is JsonObject -> {
-                    val entity = item["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
-                    val name = item["name"]?.asStringOrNull()
-                    val badgeType = item["type"]?.asStringOrNull()?.lowercase()
-                    val tap = parseAction(item["tap_action"] as? JsonObject)
-                    // A shortcut badge is action-driven and may carry only an
-                    // icon; keep it as long as it has something to show or do.
-                    val isShortcut = badgeType == "shortcut"
-                    if (entity == null && name.isNullOrBlank() && !(isShortcut && (tap != null || item["icon"] != null))) {
-                        return@mapNotNull null
-                    }
-                    LovelaceBadge(
-                        entityId = entity,
-                        name = name,
-                        icon = item["icon"]?.asStringOrNull(),
-                        color = item["color"]?.asStringOrNull(),
-                        // HA's entity-badge defaults: state on, name off, icon on.
-                        showName = item["show_name"]?.asBooleanOrNull() ?: false,
-                        showState = item["show_state"]?.asBooleanOrNull() ?: true,
-                        showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
-                        tapAction = tap,
-                        holdAction = parseAction(item["hold_action"] as? JsonObject),
-                        doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
-                        size = item["size"]?.asStringOrNull(),
-                    )
+                    val parsed = parseBadgeObject(item)
+                    if (parsed == null) emptyList() else listOf(parsed)
                 }
-                else -> null
+                else -> emptyList()
             }
         }
+    }
+
+    /**
+     * Parse one badge object. Returns null for entries we can't render at all
+     * (no entity, no name, no icon, no action). Handles the visibility / disabled
+     * gate by injecting conditions onto the returned badge.
+     */
+    private fun parseBadgeObject(item: JsonObject): LovelaceBadge? {
+        val entity = item["entity"]?.asStringOrNull()?.takeIf { it.looksLikeEntityId() }
+        val name = item["name"]?.asStringOrNull()
+        val badgeType = item["type"]?.asStringOrNull()?.lowercase()
+        val tap = parseAction(item["tap_action"] as? JsonObject)
+        val hold = parseAction(item["hold_action"] as? JsonObject)
+        val doubleTap = parseAction(item["double_tap_action"] as? JsonObject)
+
+        // Visibility conditions: `disabled: true` maps to Never (always hidden),
+        // `visibility:` array gates visibility with the Batch B evaluator.
+        val conditions: List<LovelaceCondition> = when {
+            item["disabled"]?.asBooleanOrNull() == true -> listOf(LovelaceCondition.Never)
+            else -> {
+                val vis = item["visibility"]
+                if (vis is JsonArray && vis.isNotEmpty()) parseConditions(vis) else emptyList()
+            }
+        }
+
+        // A shortcut / button heading badge is action-driven and may carry only
+        // an icon/text; keep it as long as it has something to show or do.
+        val isShortcutLike = badgeType == "shortcut" || badgeType == "button"
+        if (entity == null && name.isNullOrBlank() &&
+            !(isShortcutLike && (tap != null || hold != null || item["icon"] != null || item["text"] != null))) {
+            return null
+        }
+
+        // `type: state-label` (legacy): show_name defaults true.
+        val isStateLabelLegacy = badgeType == "state-label"
+        // `type: shortcut` / `type: button`: color applied to icon and text unconditionally.
+        val isActionBadge = badgeType == "shortcut" || badgeType == "button"
+
+        // `image:` key on state-label badges replaces the entity icon (stored as icon,
+        // treated as a URL at render time; the renderer checks for a slash-prefix).
+        val iconOrImage = item["icon"]?.asStringOrNull()
+            ?: (if (isStateLabelLegacy) item["image"]?.asStringOrNull() else null)
+
+        return LovelaceBadge(
+            entityId = entity,
+            // For button/shortcut heading badges `text:` maps to the name slot.
+            name = name ?: (if (isActionBadge) item["text"]?.asStringOrNull() else null),
+            icon = iconOrImage,
+            color = item["color"]?.asStringOrNull(),
+            // HA's entity-badge defaults: state on, name off, icon on.
+            // state-label legacy default: name on.
+            showName = item["show_name"]?.asBooleanOrNull()
+                ?: if (isStateLabelLegacy) true else false,
+            showState = item["show_state"]?.asBooleanOrNull()
+                ?: if (isActionBadge) false else true,
+            showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
+            tapAction = tap,
+            holdAction = hold,
+            doubleTapAction = doubleTap,
+            size = item["size"]?.asStringOrNull(),
+            stateContent = parseStringList(item["state_content"]),
+            showEntityPicture = item["show_entity_picture"]?.asBooleanOrNull() ?: false,
+            conditions = conditions,
+        )
     }
 
     /** Cards inside one section of a "sections" view. Strategy sections carry
