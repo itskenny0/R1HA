@@ -1132,6 +1132,10 @@ internal fun EntityState.attrStringList(key: String): List<String> =
         ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
         ?: emptyList()
 
+internal fun EntityState.attrBoolean(key: String): Boolean? =
+    (attributesJson?.get(key) as? kotlinx.serialization.json.JsonPrimitive)
+        ?.let { it.content.toBooleanStrictOrNull() }
+
 /**
  * `supported_features` bitmask read straight from the entity's raw attributes.
  * EntityState.supportedFeatures is only populated by the repository for a handful

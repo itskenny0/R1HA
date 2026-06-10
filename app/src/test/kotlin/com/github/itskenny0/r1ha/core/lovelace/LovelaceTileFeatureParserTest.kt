@@ -59,4 +59,43 @@ class LovelaceTileFeatureParserTest {
         assertThat(pf.forecastType).isEqualTo("hourly")
         assertThat(pf.precipitationType).isEqualTo("probability")
     }
+
+    @Test fun `parses the registry-favorite feature types`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"cover.blind","features":[
+              {"type":"cover-position-favorite"},
+              {"type":"cover-tilt-favorite"},
+              {"type":"valve-position-favorite"},
+              {"type":"light-color-favorites"}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat(t.features[0]).isEqualTo(LovelaceTileFeature.CoverPositionFavorite)
+        assertThat(t.features[1]).isEqualTo(LovelaceTileFeature.CoverTiltFavorite)
+        assertThat(t.features[2]).isEqualTo(LovelaceTileFeature.ValvePositionFavorite)
+        assertThat(t.features[3]).isEqualTo(LovelaceTileFeature.LightColorFavorites)
+    }
+
+    @Test fun `parses area-controls with mixed domain and entity controls`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"light.a","features":[
+              {"type":"area-controls","controls":["light","cover-shutter",{"entity_id":"switch.s"}]}
+            ]}
+            """.trimIndent(),
+        )
+        val f = t.features.single() as LovelaceTileFeature.AreaControls
+        assertThat(f.controls).containsExactly("light", "cover-shutter", "switch.s").inOrder()
+    }
+
+    @Test fun `area-controls with no controls list parses to an empty list`() {
+        val t = tile(
+            """
+            {"type":"tile","entity":"light.a","features":[{"type":"area-controls"}]}
+            """.trimIndent(),
+        )
+        val f = t.features.single() as LovelaceTileFeature.AreaControls
+        assertThat(f.controls).isEmpty()
+    }
 }

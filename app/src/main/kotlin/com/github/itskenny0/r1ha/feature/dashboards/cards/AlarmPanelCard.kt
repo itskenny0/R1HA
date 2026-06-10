@@ -179,7 +179,7 @@ private enum class AlarmChip(
  * doesn't reach into the private cardstack dialog.
  */
 @Composable
-private fun AlarmCodeDialog(
+internal fun AlarmCodeDialog(
     title: String,
     mode: AlarmCodeMode,
     accent: Color,
@@ -263,6 +263,21 @@ private fun AlarmCodeDialog(
             }
         }
     }
+}
+
+/**
+ * Free-text code-entry dialog for a code-protected lock command. Lock
+ * `code_format` is a regex pattern (text), so this reuses the alarm text dialog's
+ * password field. Used by the tile lock-commands / lock-open-door features.
+ */
+@Composable
+internal fun LockCodeDialog(
+    title: String,
+    accent: Color,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    AlarmTextDialog(title = title, accent = accent, onDismiss = onDismiss, onConfirm = onConfirm)
 }
 
 /** Free-text code entry for `code_format: text` panels (a password, not a PIN). */

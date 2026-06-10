@@ -17,10 +17,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.ActionTarget
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature
 import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
@@ -142,20 +146,36 @@ fun AreaCard(
                 }
         }
 
-        // Card features target the area's first matching entity (HA renders the
-        // feature row against an area-derived entity).
+        // Card features. area-controls is area-scoped (it fans a service out over
+        // every matching member), so it renders here against the resolved member
+        // states; the entity-scoped features (toggle, light-brightness, etc.) keep
+        // targeting the area's first matching entity the way HA derives them.
         if (card.features.isNotEmpty()) {
-            val featureState = members.states.firstOrNull { areaMemberIsControl(it) }
-            if (featureState != null) {
+            val areaControls = card.features.filterIsInstance<LovelaceTileFeature.AreaControls>()
+            val entityFeatures = card.features.filterNot { it is LovelaceTileFeature.AreaControls }
+            val featureAccent = accent ?: R1.AccentWarm
+            if (areaControls.isNotEmpty() || entityFeatures.isNotEmpty()) {
                 Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    Column {
-                        TileFeatureRows(
-                            features = card.features,
-                            entityId = featureState.id.value,
-                            state = featureState,
-                            accent = accent ?: R1.AccentWarm,
-                            onAction = onAction,
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        areaControls.forEach { feature ->
+                            AreaControlsFeature(
+                                controls = feature.controls,
+                                members = members.states,
+                                excludeEntities = card.excludeEntities,
+                                accent = featureAccent,
+                                onAction = onAction,
+                            )
+                        }
+                        val featureState = members.states.firstOrNull { areaMemberIsControl(it) }
+                        if (entityFeatures.isNotEmpty() && featureState != null) {
+                            TileFeatureRows(
+                                features = entityFeatures,
+                                entityId = featureState.id.value,
+                                state = featureState,
+                                accent = featureAccent,
+                                onAction = onAction,
+                            )
+                        }
                     }
                 }
             }
@@ -239,4 +259,93 @@ internal fun areaMemberIsControl(state: EntityState): Boolean = when (state.id.d
     Domain.MEDIA_PLAYER, Domain.CLIMATE, Domain.HUMIDIFIER, Domain.VALVE,
     Domain.INPUT_BOOLEAN -> true
     else -> false
+}
+
+/**
+ * HA's area-controls card feature: a row of group toggle buttons. Each control
+ * acts on every matching member of the area (a domain / cover-device-class group,
+ * or one explicit entity), firing the toggle service over the whole entity list
+ * (HA's toggleGroupEntities). Domain groups with no matching members are dropped;
+ * an unset `controls:` uses HA's default set capped at four. The button highlights
+ * when the group is active and toggles in the opposite direction.
+ */
+@Composable
+private fun AreaControlsFeature(
+    controls: List<String>,
+    members: List<EntityState>,
+    excludeEntities: Set<String>,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val resolved = resolveAreaControls(controls, members, excludeEntities)
+    if (resolved.isEmpty()) return
+    val byId = members.associateBy { it.id.value }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        resolved.forEach { control ->
+            when (control) {
+                is AreaControl.DomainGroup -> {
+                    val entities = areaControlEntities(control.token, members, excludeEntities)
+                    val active = areaGroupIsActive(control.token, entities)
+                    val service = areaToggleService(control.token, entities)
+                    AreaControlButton(label = areaControlLabel(control.token, active), accent = accent, active = active) {
+                        onAction(
+                            LovelaceAction.CallService(
+                                service = service,
+                                entityId = null,
+                                data = null,
+                                target = ActionTarget(entityId = entities.map { it.id.value }),
+                            ),
+                        )
+                    }
+                }
+                is AreaControl.Entity -> {
+                    val ent = byId[control.entityId] ?: return@forEach
+                    val active = ent.isOn
+                    val token = control.entityId.substringBefore('.')
+                    val service = if (active) "$token.turn_off" else "$token.turn_on"
+                    AreaControlButton(label = ent.friendlyName, accent = accent, active = active) {
+                        onAction(LovelaceAction.CallService(service, control.entityId, null))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Short caption for a domain control group, naming the group and its direction. */
+private fun areaControlLabel(token: String, active: Boolean): String {
+    val name = when (areaControlDomain(token)) {
+        "light" -> "LIGHTS"
+        "fan" -> "FANS"
+        "switch" -> "SWITCHES"
+        "cover" -> areaControlDeviceClass(token)?.uppercase()?.plus("S") ?: "COVERS"
+        else -> token.uppercase()
+    }
+    return if (active) "$name OFF" else "$name ON"
+}
+
+/** One area-control toggle button. Active groups carry the accent tint. */
+@Composable
+private fun AreaControlButton(label: String, accent: Color, active: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeM)
+            .background(if (active) accent.copy(alpha = 0.2f) else R1.SurfaceMuted)
+            .border(1.dp, if (active) accent else R1.Hairline, R1.ShapeM)
+            .r1Pressable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            style = R1.labelMicro,
+            color = if (active) accent else R1.Ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

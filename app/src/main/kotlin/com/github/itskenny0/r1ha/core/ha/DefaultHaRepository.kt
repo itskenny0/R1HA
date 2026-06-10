@@ -3617,6 +3617,25 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun getExtendedEntityRegistryOptions(
+        entityId: String,
+    ): Result<ExtEntityRegistryOptions> = withContext(Dispatchers.IO) {
+        val domain = entityId.substringBefore('.', missingDelimiterValue = "")
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entity_id", JsonPrimitive(entityId))
+        }
+        callWsExpectingPayload("config/entity_registry/get", extras).map { payload ->
+            ExtEntityRegistryOptions.fromPayload(
+                domain,
+                payload as? kotlinx.serialization.json.JsonObject,
+            )
+        }.recover {
+            // Older HA servers reject the unknown command; degrade silently so the
+            // favorite / code features fall back to their built-in defaults.
+            ExtEntityRegistryOptions.EMPTY
+        }
+    }
+
     override suspend fun listConfigEntries(): Result<List<ConfigEntry>> = withContext(Dispatchers.IO) {
         callWsExpectingPayload("config_entries/get").mapCatching { payload ->
             val arr = payload as? kotlinx.serialization.json.JsonArray

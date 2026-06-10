@@ -1999,6 +1999,50 @@ sealed class LovelaceTileFeature {
         override val type: String = "date-set"
     }
 
+    // ── Registry-favorite features ───────────────────────────────────────────
+
+    /** cover: favorite-position chips from the entity registry's
+     *  `options.cover.favorite_positions` (default [0,25,75,100]) firing
+     *  cover.set_cover_position. Gated on the cover supporting SET_POSITION. */
+    @Immutable
+    data object CoverPositionFavorite : LovelaceTileFeature() {
+        override val type: String = "cover-position-favorite"
+    }
+
+    /** cover: favorite tilt-position chips from
+     *  `options.cover.favorite_tilt_positions` firing cover.set_cover_tilt_position.
+     *  Gated on the cover supporting SET_TILT_POSITION. */
+    @Immutable
+    data object CoverTiltFavorite : LovelaceTileFeature() {
+        override val type: String = "cover-tilt-favorite"
+    }
+
+    /** valve: favorite-position chips from `options.valve.favorite_positions`
+     *  firing valve.set_valve_position. Gated on the valve supporting SET_POSITION. */
+    @Immutable
+    data object ValvePositionFavorite : LovelaceTileFeature() {
+        override val type: String = "valve-position-favorite"
+    }
+
+    /** light: favorite-colour swatches from `options.light.favorite_colors`
+     *  (falling back to computed default swatches) firing light.turn_on with the
+     *  stored colour payload. Gated on the light supporting colour or color_temp. */
+    @Immutable
+    data object LightColorFavorites : LovelaceTileFeature() {
+        override val type: String = "light-color-favorites"
+    }
+
+    // ── Area-controls (default feature on area cards) ────────────────────────
+
+    /** area-controls: group toggle buttons per control acting on every matching
+     *  entity in the host area. [controls] is HA's ordered control list (domain
+     *  tokens like "light"/"fan"/"switch"/"cover-<class>", or explicit entity ids);
+     *  empty means HA's default control set capped at four. */
+    @Immutable
+    data class AreaControls(val controls: List<String>) : LovelaceTileFeature() {
+        override val type: String = "area-controls"
+    }
+
     @Immutable
     data class Unsupported(override val type: String) : LovelaceTileFeature()
 }

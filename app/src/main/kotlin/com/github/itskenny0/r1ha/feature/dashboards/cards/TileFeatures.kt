@@ -116,12 +116,15 @@ private fun renderFeature(
             CoverOpenCloseFeature(entityId, state, accent, onAction)
         }
         is LovelaceTileFeature.CoverPosition -> {
-            // Gated on SET_POSITION; HA's cover-position feature is a 0..100 slider.
-            if (domain != "cover" || !state.hasFeature(EntityState.CoverFeature.SET_POSITION)) return false
+            // Gated on SET_POSITION read from the raw bitmask: EntityState.supportedFeatures
+            // is never populated for cover, so the typed hasFeature forgives 0 and would
+            // render for non-positionable covers HA hides.
+            if (domain != "cover" || !state.coverRawSupportsBit(EntityState.CoverFeature.SET_POSITION)) return false
             ScalarStepperFeature(
                 label = "POSITION",
                 percent = state.percent ?: 0,
                 accent = accent,
+                enabled = state.rawState != "unavailable",
                 onSet = { pct ->
                     onAction(
                         LovelaceAction.CallService(
@@ -134,13 +137,16 @@ private fun renderFeature(
             )
         }
         is LovelaceTileFeature.LightBrightness -> {
-            if (domain != "light") return false
+            // Gate on brightness-capable modes (HA's lightSupportsBrightness): an
+            // on/off-only light gets no slider. Disable when unavailable.
+            if (domain != "light" || !lightSupportsBrightness(state)) return false
             // HA clamps brightness to 1..100 % (a 0 % would turn the light off).
             ScalarStepperFeature(
                 label = "BRIGHTNESS",
                 percent = (state.percent ?: 0).coerceIn(1, 100),
                 accent = accent,
                 min = 1,
+                enabled = state.rawState != "unavailable",
                 onSet = { pct ->
                     onAction(
                         LovelaceAction.CallService(
@@ -154,10 +160,17 @@ private fun renderFeature(
         }
         is LovelaceTileFeature.FanSpeed -> {
             if (domain != "fan" || !state.hasFanFeature(EntityState.FanFeature.SET_SPEED)) return false
+            // Honour the fan's percentage_step so a 3-speed fan nudges by ~33 %
+            // (landing on the integration's discrete speeds) rather than a blanket
+            // 10 % that lands between speeds the integration would reject.
+            val fanStep = state.fanPercentageStep?.takeIf { it > 0 }
+                ?.let { kotlin.math.round(it).toInt().coerceIn(1, 100) } ?: 10
             ScalarStepperFeature(
                 label = "SPEED",
                 percent = state.percent ?: 0,
                 accent = accent,
+                step = fanStep,
+                enabled = state.rawState != "unavailable",
                 onSet = { pct ->
                     onAction(
                         LovelaceAction.CallService(
@@ -528,12 +541,10 @@ private fun renderFeature(
         // ── Lock open-door ────────────────────────────────────────────────────
         is LovelaceTileFeature.LockOpenDoor -> {
             if (domain != "lock") return false
-            // HA's lock domain doesn't expose a typed supported_features bitmask
-            // for the OPEN action in EntityState, so we show the button unconditionally
-            // and let HA reject the call if the integration doesn't support it.
-            FeatureButton(label = "OPEN", accent = accent, selected = false, modifier = Modifier.fillMaxWidth()) {
-                onAction(LovelaceAction.CallService("lock.open", entityId, null))
-            }
+            // Gate on the raw LockEntityFeature.OPEN bit so the button only shows
+            // for locks that actually support opening the door.
+            if (!lockSupportsOpen(state)) return false
+            LockOpenDoorFeature(entityId, state, accent, onAction)
         }
         // ── Counter actions ───────────────────────────────────────────────────
         is LovelaceTileFeature.CounterActions -> {
@@ -581,10 +592,11 @@ private fun renderFeature(
         // ── Cover tilt-position scalar ────────────────────────────────────────
         is LovelaceTileFeature.CoverTiltPosition -> {
             if (domain != "cover") return false
-            // EntityState.supportedFeatures is not populated for cover; gate on the
-            // presence of the actual tilt-position attribute instead (mirrors CoverPanel).
-            // A cover that never reports current_tilt_position has no tilt support.
-            val tiltPos = state.attrInt("current_tilt_position") ?: return false
+            // Gate on the SET_TILT_POSITION bit (read raw, EntityState.supportedFeatures
+            // is never populated for cover). HA shows the slider whenever the cover
+            // supports it, defaulting to 0 when current_tilt_position is unreported.
+            if (!state.coverRawSupportsBit(EntityState.CoverFeature.SET_TILT_POSITION)) return false
+            val tiltPos = state.attrInt("current_tilt_position") ?: 0
             ScalarStepperFeature(
                 label = "TILT",
                 percent = tiltPos,
@@ -679,11 +691,12 @@ private fun renderFeature(
         is LovelaceTileFeature.LightColorTemp -> {
             if (domain != "light") return false
             if (!state.supportedColorModes.any { it.equals("color_temp", ignoreCase = true) }) return false
-            val currentK = state.colorTempK ?: return false
-            // 2000..6500 K are HA's default mired-equivalent bounds when the
-            // light doesn't advertise its own; ~20 nudges span the whole range.
-            val minK = state.minColorTempK ?: 2000
+            // 2700..6500 K are HA's DEFAULT_MIN/MAX_KELVIN fallbacks; ~20 nudges
+            // span the range. Don't bail when color_temp_kelvin is null (light off
+            // or in an RGB mode) - HA still shows the control, anchored at min.
+            val minK = state.minColorTempK ?: 2700
             val maxK = state.maxColorTempK ?: 6500
+            val currentK = state.colorTempK ?: minK
             val step = ((maxK - minK) / 20.0).let { kotlin.math.round(it).toDouble().coerceAtLeast(1.0) }
             NumericStepperFeature(
                 label = "COLOR TEMP",
@@ -702,6 +715,54 @@ private fun renderFeature(
                     )
                 },
             )
+        }
+        // ── Registry favorite positions ───────────────────────────────────────
+        is LovelaceTileFeature.CoverPositionFavorite -> {
+            if (domain != "cover" || !state.coverRawSupportsBit(EntityState.CoverFeature.SET_POSITION)) return false
+            FavoritePositionChipsFeature(
+                entityId = entityId,
+                useTilt = false,
+                service = "cover.set_cover_position",
+                dataKey = "position",
+                accent = accent,
+                onAction = onAction,
+            )
+        }
+        is LovelaceTileFeature.CoverTiltFavorite -> {
+            if (domain != "cover" || !state.coverRawSupportsBit(EntityState.CoverFeature.SET_TILT_POSITION)) return false
+            FavoritePositionChipsFeature(
+                entityId = entityId,
+                useTilt = true,
+                service = "cover.set_cover_tilt_position",
+                dataKey = "tilt_position",
+                accent = accent,
+                onAction = onAction,
+            )
+        }
+        is LovelaceTileFeature.ValvePositionFavorite -> {
+            if (domain != "valve" || !state.hasFeature(EntityState.ValveFeature.SET_POSITION)) return false
+            FavoritePositionChipsFeature(
+                entityId = entityId,
+                useTilt = false,
+                service = "valve.set_valve_position",
+                dataKey = "position",
+                accent = accent,
+                onAction = onAction,
+            )
+        }
+        // ── Light favorite colours ────────────────────────────────────────────
+        is LovelaceTileFeature.LightColorFavorites -> {
+            if (domain != "light") return false
+            if (!lightSupportsFavoriteColors(state)) return false
+            LightColorFavoritesFeature(entityId, state, accent, onAction)
+        }
+        // ── Area-controls ─────────────────────────────────────────────────────
+        is LovelaceTileFeature.AreaControls -> {
+            // Area-controls is area-scoped, not entity-scoped: it is rendered by
+            // the area card directly (see AreaCard.AreaControlsFeature) with the
+            // resolved member states. Routed through the entity path it has no
+            // area context, so it draws nothing here.
+            return false
         }
         // ── Bar-gauge (HA 2025.9) ─────────────────────────────────────────────
         is LovelaceTileFeature.BarGauge -> {
@@ -871,7 +932,12 @@ private fun ToggleFeature(
     }
 }
 
-/** open / close / stop. Stop is shown only when the cover advertises STOP. */
+/**
+ * open / stop / close, mirroring HA's cover-open-close feature: each button is
+ * shown per the cover's raw `supported_features` bits and disabled at travel
+ * limits (canOpen / canClose) or when unavailable. STOP shows only when the
+ * cover advertises STOP and disables only when unavailable.
+ */
 @Composable
 private fun CoverOpenCloseFeature(
     entityId: String,
@@ -879,26 +945,36 @@ private fun CoverOpenCloseFeature(
     accent: Color,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val canStop = state.hasFeature(EntityState.CoverFeature.STOP)
+    val gate = coverOpenCloseGate(state)
+    if (!gate.showOpen && !gate.showClose && !gate.showStop) return
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        FeatureButton(label = "OPEN", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-            onAction(LovelaceAction.CallService("cover.open_cover", entityId, null))
+        if (gate.showOpen) {
+            FeatureButton(label = "OPEN", accent = accent, selected = false, enabled = gate.canOpen, modifier = Modifier.weight(1f)) {
+                onAction(LovelaceAction.CallService("cover.open_cover", entityId, null))
+            }
         }
-        if (canStop) {
-            FeatureButton(label = "STOP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+        if (gate.showStop) {
+            FeatureButton(label = "STOP", accent = accent, selected = false, enabled = gate.canStop, modifier = Modifier.weight(1f)) {
                 onAction(LovelaceAction.CallService("cover.stop_cover", entityId, null))
             }
         }
-        FeatureButton(label = "CLOSE", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-            onAction(LovelaceAction.CallService("cover.close_cover", entityId, null))
+        if (gate.showClose) {
+            FeatureButton(label = "CLOSE", accent = accent, selected = false, enabled = gate.canClose, modifier = Modifier.weight(1f)) {
+                onAction(LovelaceAction.CallService("cover.close_cover", entityId, null))
+            }
         }
     }
 }
 
-/** lock / unlock pair, highlighting the current state. */
+/**
+ * lock / unlock pair. Each button highlights the active state and disables per
+ * HA's canLock / canUnlock (already in that state, in motion, or unavailable).
+ * A code-protected lock (`code_format` set with no registry default code) opens
+ * a code dialog and rides the entry on the service call's `code` field.
+ */
 @Composable
 private fun LockCommandsFeature(
     entityId: String,
@@ -907,21 +983,112 @@ private fun LockCommandsFeature(
     onAction: (LovelaceAction) -> Unit,
 ) {
     val locked = state.rawState.equals("locked", ignoreCase = true)
+    val repo = LocalHaRepository.current
+    val regOptions = rememberEntityRegistryOptions(repo, entityId)
+    // A code is needed only when the lock declares a code_format and the registry
+    // carries no default_code (HA's callProtectedLockService gate).
+    val needsCode = !state.lockCodeFormat.isNullOrBlank() && regOptions.defaultCode.isNullOrBlank()
+    var pending by remember(entityId) { mutableStateOf<String?>(null) }
+
+    val fire: (String) -> Unit = { service ->
+        if (needsCode) pending = service else onAction(lockServiceAction(service, entityId, null))
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        FeatureButton(label = "LOCK", accent = accent, selected = locked, modifier = Modifier.weight(1f)) {
-            onAction(LovelaceAction.CallService("lock.lock", entityId, null))
+        FeatureButton(label = "LOCK", accent = accent, selected = locked, enabled = lockCanLock(state), modifier = Modifier.weight(1f)) {
+            fire("lock")
         }
-        FeatureButton(label = "UNLOCK", accent = accent, selected = !locked, modifier = Modifier.weight(1f)) {
-            onAction(LovelaceAction.CallService("lock.unlock", entityId, null))
+        FeatureButton(label = "UNLOCK", accent = accent, selected = !locked, enabled = lockCanUnlock(state), modifier = Modifier.weight(1f)) {
+            fire("unlock")
         }
+    }
+    val svc = pending
+    if (svc != null) {
+        LockCodeDialog(
+            title = svc.uppercase(),
+            accent = accent,
+            onDismiss = { pending = null },
+            onConfirm = { code ->
+                pending = null
+                onAction(lockServiceAction(svc, entityId, code))
+            },
+        )
     }
 }
 
-/** Arm-mode chip row. A triggered / arming / pending alarm gets a single DISARM
- *  button (HA's behaviour); otherwise a chip per supported arm mode. */
+/** Build a lock service call (`lock.<service>`), riding any code on the data body. */
+private fun lockServiceAction(service: String, entityId: String, code: String?): LovelaceAction.CallService {
+    val data = code?.takeUnless { it.isBlank() }?.let {
+        buildJsonObject { put("code", JsonPrimitive(it)) }
+    }
+    return LovelaceAction.CallService("lock.$service", entityId, data)
+}
+
+/**
+ * Single OPEN-door button mirroring HA's two-tap confirm: the first tap arms a
+ * warning-coloured CONFIRM state (auto-resetting after 5 s); the second tap, made
+ * before the timeout, fires lock.open (prompting for a code first when the lock is
+ * code-protected with no registry default). Disabled per canOpen / unavailable.
+ */
+@Composable
+private fun LockOpenDoorFeature(
+    entityId: String,
+    state: EntityState,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val repo = LocalHaRepository.current
+    val regOptions = rememberEntityRegistryOptions(repo, entityId)
+    val needsCode = !state.lockCodeFormat.isNullOrBlank() && regOptions.defaultCode.isNullOrBlank()
+    var confirming by remember(entityId) { mutableStateOf(false) }
+    var pending by remember(entityId) { mutableStateOf(false) }
+    // Auto-reset the confirm state after HA's 5 s window.
+    LaunchedEffect(confirming) {
+        if (confirming) {
+            kotlinx.coroutines.delay(5_000L)
+            confirming = false
+        }
+    }
+    val open: () -> Unit = {
+        if (needsCode) pending = true else onAction(lockServiceAction("open", entityId, null))
+    }
+    FeatureButton(
+        label = if (confirming) "CONFIRM OPEN" else "OPEN",
+        accent = if (confirming) R1.AccentWarm else accent,
+        selected = confirming,
+        enabled = lockCanOpen(state),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (!confirming) {
+            confirming = true
+        } else {
+            confirming = false
+            open()
+        }
+    }
+    if (pending) {
+        LockCodeDialog(
+            title = "OPEN",
+            accent = accent,
+            onDismiss = { pending = false },
+            onConfirm = { code ->
+                pending = false
+                onAction(lockServiceAction("open", entityId, code))
+            },
+        )
+    }
+}
+
+/**
+ * Arm-mode chip row. A triggered / arming / pending alarm gets a single DISARM
+ * button (HA's behaviour); otherwise a chip per supported arm mode. When the
+ * panel demands a code (arming with code_arm_required, or any disarm, with a
+ * code_format and no registry default_code), the tap opens the alarm keypad /
+ * text dialog and the entered code rides on the service call's `code` field
+ * (HA's setProtectedAlarmControlPanelMode).
+ */
 @Composable
 private fun AlarmModeChipRow(
     entityId: String,
@@ -930,25 +1097,63 @@ private fun AlarmModeChipRow(
     accent: Color,
     onAction: (LovelaceAction) -> Unit,
 ) {
+    val repo = LocalHaRepository.current
+    val regOptions = rememberEntityRegistryOptions(repo, entityId)
+    val codeFormat = state.alarmCodeFormat
+    val codeArmRequired = state.alarmCodeArmRequired
+    val hasDefaultCode = !regOptions.defaultCode.isNullOrBlank()
+    // The pending mode token a code dialog is collecting a code for, if any.
+    var pendingMode by remember(entityId) { mutableStateOf<String?>(null) }
+
+    val fire: (String) -> Unit = { mode ->
+        val arming = mode != "disarmed"
+        val needsCode = !hasDefaultCode &&
+            alarmCodeMode(codeFormat, codeArmRequired, arming) != AlarmCodeMode.NONE
+        if (needsCode) pendingMode = mode else onAction(alarmModeAction(mode, entityId, null))
+    }
+
     val raw = state.rawState.orEmpty().lowercase()
     if (raw == "triggered" || raw == "arming" || raw == "pending") {
         FeatureButton(label = "DISARM", accent = accent, selected = false, modifier = Modifier.fillMaxWidth()) {
-            onAction(LovelaceAction.CallService("alarm_control_panel.alarm_disarm", entityId, null))
+            fire("disarmed")
         }
-        return
-    }
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        modes.forEach { mode ->
-            val selected = state.rawState.equals(armStateFor(mode), ignoreCase = true)
-            ModeChip(label = mode.replace('_', ' '), accent = accent, selected = selected) {
-                onAction(LovelaceAction.CallService(alarmServiceFor(mode), entityId, null))
+    } else {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            modes.forEach { mode ->
+                val selected = state.rawState.equals(armStateFor(mode), ignoreCase = true)
+                ModeChip(label = mode.replace('_', ' '), accent = accent, selected = selected) {
+                    fire(mode)
+                }
             }
         }
     }
+
+    val mode = pendingMode
+    if (mode != null) {
+        val arming = mode != "disarmed"
+        AlarmCodeDialog(
+            title = if (arming) "ARM" else "DISARM",
+            mode = alarmCodeMode(codeFormat, codeArmRequired, arming),
+            accent = accent,
+            onDismiss = { pendingMode = null },
+            onConfirm = { code ->
+                pendingMode = null
+                onAction(alarmModeAction(mode, entityId, code))
+            },
+        )
+    }
+}
+
+/** Build the alarm_control_panel service call for a mode token, riding any code. */
+private fun alarmModeAction(mode: String, entityId: String, code: String?): LovelaceAction.CallService {
+    val data = code?.takeUnless { it.isBlank() }?.let {
+        buildJsonObject { put("code", JsonPrimitive(it)) }
+    }
+    return LovelaceAction.CallService(alarmServiceFor(mode), entityId, data)
 }
 
 /** Setpoint stepper for climate / water_heater, nudging by the entity's step. */
@@ -984,27 +1189,115 @@ private fun TargetTemperatureFeature(
 }
 
 /** A labelled +/- stepper that nudges a 0..100 scalar by 10 % per tap and fires
- *  [onSet] with the clamped target. Used for brightness / position / fan speed. */
+ *  [onSet] with the clamped target. Used for brightness / position / fan speed.
+ *  [enabled] is false for an unavailable entity (HA disables the slider). */
 @Composable
 private fun ScalarStepperFeature(
     label: String,
     percent: Int,
     accent: Color,
     min: Int = 0,
+    step: Int = 10,
+    enabled: Boolean = true,
     onSet: (Int) -> Unit,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.height(2.dp))
-            Text(text = "$percent%", style = R1.numeralM, color = accent)
+            Text(text = "$percent%", style = R1.numeralM, color = if (enabled) accent else R1.InkMuted)
         }
-        StepperButton(label = "−", accent = accent, enabled = true) {
-            onSet((percent - 10).coerceIn(min, 100))
+        StepperButton(label = "−", accent = accent, enabled = enabled) {
+            onSet((percent - step).coerceIn(min, 100))
         }
         Spacer(Modifier.width(10.dp))
-        StepperButton(label = "+", accent = accent, enabled = true) {
-            onSet((percent + 10).coerceIn(min, 100))
+        StepperButton(label = "+", accent = accent, enabled = enabled) {
+            onSet((percent + step).coerceIn(min, 100))
+        }
+    }
+}
+
+/**
+ * Favorite-position chips for cover / valve (position or tilt). Reads the entity
+ * registry's favorite positions (falling back to HA's [DEFAULT_FAVORITE_POSITIONS]
+ * when none are configured) and fires the position service with the chosen value.
+ */
+@Composable
+private fun FavoritePositionChipsFeature(
+    entityId: String,
+    useTilt: Boolean,
+    service: String,
+    dataKey: String,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val repo = LocalHaRepository.current
+    val regOptions = rememberEntityRegistryOptions(repo, entityId)
+    val positions = if (useTilt) {
+        resolveFavoritePositions(regOptions.favoriteTiltPositions, regOptions.hasFavoriteTiltPositions)
+    } else {
+        resolveFavoritePositions(regOptions.favoritePositions, regOptions.hasFavoritePositions)
+    }
+    if (positions.isEmpty()) return
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        positions.forEach { pos ->
+            ModeChip(label = "$pos%", accent = accent, selected = false) {
+                onAction(
+                    LovelaceAction.CallService(
+                        service = service,
+                        entityId = entityId,
+                        data = buildJsonObject { put(dataKey, JsonPrimitive(pos)) },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Favorite-colour swatches for a light. Reads the entity registry's
+ * favorite_colors (falling back to HA's computed default swatches) and fires
+ * light.turn_on with the stored colour payload, rendering each as a tinted pill.
+ */
+@Composable
+private fun LightColorFavoritesFeature(
+    entityId: String,
+    state: EntityState,
+    accent: Color,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val repo = LocalHaRepository.current
+    val regOptions = rememberEntityRegistryOptions(repo, entityId)
+    val colors = resolveFavoriteColors(state, regOptions.favoriteColors, regOptions.hasFavoriteColors)
+    if (colors.isEmpty()) return
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        colors.forEach { color ->
+            val swatch = favoriteColorSwatchArgb(color)?.let { Color(it) } ?: accent
+            Box(
+                modifier = Modifier
+                    .width(34.dp)
+                    .height(34.dp)
+                    .clip(R1.ShapeM)
+                    .background(swatch)
+                    .border(1.dp, R1.Hairline, R1.ShapeM)
+                    .r1Pressable(onClick = {
+                        onAction(
+                            LovelaceAction.CallService(
+                                service = "light.turn_on",
+                                entityId = entityId,
+                                data = color,
+                            ),
+                        )
+                    }),
+            )
         }
     }
 }
@@ -1039,21 +1332,26 @@ private fun FeatureButton(
     accent: Color,
     selected: Boolean,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Box(
         modifier = modifier
             .clip(R1.ShapeM)
-            .background(if (selected) accent.copy(alpha = 0.2f) else R1.SurfaceMuted)
-            .border(1.dp, if (selected) accent else R1.Hairline, R1.ShapeM)
-            .r1Pressable(onClick = onClick)
+            .background(if (selected && enabled) accent.copy(alpha = 0.2f) else R1.SurfaceMuted)
+            .border(1.dp, if (selected && enabled) accent else R1.Hairline, R1.ShapeM)
+            .let { if (enabled) it.r1Pressable(onClick = onClick) else it }
             .padding(horizontal = 12.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             style = R1.labelMicro,
-            color = if (selected) accent else R1.Ink,
+            color = when {
+                !enabled -> R1.InkMuted
+                selected -> accent
+                else -> R1.Ink
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1261,9 +1559,11 @@ private fun nextRepeat(current: String?): String = when (current) {
 }
 
 /**
- * Vacuum command row. Renders one button per requested command, each gated on
- * the vacuum's advertised supported_features. An empty commands list shows all
- * applicable buttons. Mirrors the VacuumPanel idiom.
+ * Vacuum command row. Honours HA's `commands:` config keys
+ * (start_pause / stop / clean_spot / locate / return_home), rendering one button
+ * per supported requested command. start_pause is one context-sensitive button
+ * (PAUSE while cleaning, else START), each button disabled per its state gate.
+ * An empty `commands:` shows the first three supported keys (HA's editor stub).
  */
 @Composable
 private fun VacuumCommandsFeature(
@@ -1273,45 +1573,25 @@ private fun VacuumCommandsFeature(
     accent: Color,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val all = listOf("start", "pause", "stop", "return_to_base", "clean_spot", "locate")
-    val wanted = if (commands.isEmpty()) all else commands.filter { it in all }
-    val applicable = wanted.filter { vacuumCommandSupported(it, state) }
-    if (applicable.isEmpty()) return
+    val keys = vacuumVisibleCommands(state, commands)
+    if (keys.isEmpty()) return
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        applicable.forEach { cmd ->
+        keys.forEach { key ->
+            val button = vacuumButtonFor(state, key)
             FeatureButton(
-                label = vacuumCommandLabel(cmd),
+                label = button.label,
                 accent = accent,
                 selected = false,
+                enabled = button.enabled,
                 modifier = Modifier.weight(1f),
             ) {
-                onAction(LovelaceAction.CallService("vacuum.$cmd", entityId, null))
+                onAction(LovelaceAction.CallService("vacuum.${button.service}", entityId, null))
             }
         }
     }
-}
-
-private fun vacuumCommandSupported(cmd: String, state: EntityState): Boolean = when (cmd) {
-    "start" -> state.hasVacuumFeature(EntityState.VacuumFeature.START)
-    "pause" -> state.hasVacuumFeature(EntityState.VacuumFeature.PAUSE)
-    "stop" -> state.hasVacuumFeature(EntityState.VacuumFeature.STOP)
-    "return_to_base" -> state.hasVacuumFeature(EntityState.VacuumFeature.RETURN_HOME)
-    "clean_spot" -> state.hasVacuumFeature(EntityState.VacuumFeature.CLEAN_SPOT)
-    "locate" -> state.hasVacuumFeature(EntityState.VacuumFeature.LOCATE)
-    else -> false
-}
-
-private fun vacuumCommandLabel(cmd: String): String = when (cmd) {
-    "start" -> "START"
-    "pause" -> "PAUSE"
-    "stop" -> "STOP"
-    "return_to_base" -> "DOCK"
-    "clean_spot" -> "SPOT"
-    "locate" -> "LOCATE"
-    else -> cmd.uppercase()
 }
 
 /**
@@ -1363,5 +1643,16 @@ private fun EntityState.coverRawSupportedFeatures(): Int = attrInt("supported_fe
 private fun EntityState.coverRawHasFeature(bit: Int): Boolean {
     val sf = coverRawSupportedFeatures()
     return sf == 0 || (sf and bit) != 0
+}
+
+/**
+ * Strict raw-bitmask test (no forgive-on-zero): true only when [bit] is explicitly
+ * set. Used by the cover position / tilt-position / favorite features, which HA
+ * gates on a concrete SET_POSITION / SET_TILT_POSITION bit rather than rendering
+ * for every cover the way the open/close button gate forgives an omitted mask.
+ */
+private fun EntityState.coverRawSupportsBit(bit: Int): Boolean {
+    val sf = coverRawSupportedFeatures()
+    return sf != 0 && (sf and bit) != 0
 }
 

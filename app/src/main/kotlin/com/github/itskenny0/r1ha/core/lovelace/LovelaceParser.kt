@@ -1013,6 +1013,13 @@ object LovelaceParser {
                 )
                 // Date-set (HA 2025.9)
                 "date-set" -> LovelaceTileFeature.DateSet
+                // Registry-favorite features
+                "cover-position-favorite" -> LovelaceTileFeature.CoverPositionFavorite
+                "cover-tilt-favorite" -> LovelaceTileFeature.CoverTiltFavorite
+                "valve-position-favorite" -> LovelaceTileFeature.ValvePositionFavorite
+                "light-color-favorites" -> LovelaceTileFeature.LightColorFavorites
+                // Area-controls (default feature on area cards)
+                "area-controls" -> LovelaceTileFeature.AreaControls(parseAreaControls(obj["controls"]))
                 else -> LovelaceTileFeature.Unsupported(type)
             }
         }
@@ -1040,6 +1047,24 @@ object LovelaceParser {
     private fun parseStringList(el: JsonElement?): List<String> {
         val arr = el as? JsonArray ?: return emptyList()
         return arr.mapNotNull { (it as? JsonPrimitive)?.let { p -> if (p.isString) p.content else null } }
+    }
+
+    /**
+     * Parse the area-controls feature's `controls:` list. HA accepts either a
+     * bare domain/control token string (e.g. "light", "cover-shutter") or an
+     * explicit `{entity_id: ...}` object; the object form is flattened to the
+     * entity id, which the renderer treats as a single-entity control. Both forms
+     * stay as plain strings so the renderer normalises them the same way HA does.
+     */
+    private fun parseAreaControls(el: JsonElement?): List<String> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) item.content else null
+                is JsonObject -> (item["entity_id"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                else -> null
+            }
+        }
     }
 
     /**
