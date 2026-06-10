@@ -1428,10 +1428,10 @@ sealed interface StatisticPeriodConfig {
 }
 
 /**
- * One badge chip from a view's top-level `badges:` array. HA renders these as
- * a horizontal row of pills above the cards, each showing a leading icon, the
- * entity's live state value, and (optionally) a name, with a configurable tap
- * action.
+ * One badge chip from a view's top-level `badges:` array or a heading card's
+ * `badges:` array. HA renders these as a horizontal row of pills; each chip
+ * shows a leading icon, the entity's live state value, and (optionally) a name,
+ * with configurable tap / hold / double-tap actions.
  *
  * HA accepts either a bare entity-id string (`sensor.time`) or a richer object
  * (`{type: entity, entity: ..., show_state: true, ...}`); both resolve to this
@@ -1439,6 +1439,9 @@ sealed interface StatisticPeriodConfig {
  * shown. A badge with no resolvable entity (a `type: custom:*` badge we can't
  * model) parses to one with a null [entityId] and renders a minimal text chip
  * from its [name] rather than being dropped.
+ *
+ * This model is shared for both view badges and heading badges; the two render
+ * identically through [com.github.itskenny0.r1ha.feature.dashboards.LovelaceBadgeRow].
  */
 @Immutable
 data class LovelaceBadge(
@@ -1462,6 +1465,34 @@ data class LovelaceBadge(
     val doubleTapAction: LovelaceAction? = null,
     /** HA 2024.9: "small" / "normal" / "large". Null = normal (current sizing). */
     val size: String? = null,
+    /**
+     * HA `state_content`: ordered token list composing the badge value line.
+     * Each token is one of "state", "last_changed", "last_updated", or an
+     * attribute key. Empty = use the default compact state text path. Mirrors
+     * the same field on the tile card (resolved by [resolveStateContent]).
+     */
+    val stateContent: List<String> = emptyList(),
+    /**
+     * HA `show_entity_picture`: when true and the entity has an `entity_picture`
+     * attribute, the badge replaces its vector icon with the entity's picture
+     * (camera entities are thumb-resized to 32x32). Defaults false. Mirrors
+     * HA's hui-entity-badge `show_entity_picture` option.
+     */
+    val showEntityPicture: Boolean = false,
+    /**
+     * HA `visibility:` conditions on the badge. When non-empty the badge renders
+     * only when every condition passes (Batch B engine). Empty = always visible.
+     * Mirrors HA's hui-badge / hui-heading-badge `visibility:` gate.
+     */
+    val conditions: List<LovelaceCondition> = emptyList(),
+    /**
+     * True when this badge originated from a bare entity-id string in the YAML
+     * (HA's "legacy" badge form). HA's `ensureBadgeConfig` normalises a bare
+     * string to `{type: entity, entity: x, show_name: true}`, so legacy badges
+     * show the friendly name alongside the state. The parser sets this flag and
+     * forces [showName]=true for the bare-string branch.
+     */
+    val isLegacyBareString: Boolean = false,
 )
 
 /**
