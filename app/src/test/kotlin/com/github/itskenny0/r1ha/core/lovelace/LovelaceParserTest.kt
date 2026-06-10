@@ -213,7 +213,10 @@ class LovelaceParserTest {
         assertEquals("sensor.temp", (cards[2] as LovelaceCard.Entities).entities.first().entityId)
     }
 
-    @Test fun `view with both top-level cards and sections concatenates them`() {
+    @Test fun `sections view hides legacy top-level cards (HA imported-cards quirk)`() {
+        // HA hides a sections view's leftover top-level `cards:` (imported from a
+        // masonry layout) in view mode, surfacing them only in the editor. R1HA
+        // renders read-only and mirrors view mode: only the section cards render.
         val cfg = LovelaceParser.parseConfig(
             obj(
                 """
@@ -228,9 +231,24 @@ class LovelaceParserTest {
             ),
         )
         val cards = cfg.views.first().cards
+        assertEquals(1, cards.size)
+        assertEquals("light.b", (cards[0] as LovelaceCard.Tile).entityId)
+    }
+
+    @Test fun `masonry view (no sections) keeps its top-level cards`() {
+        val cfg = LovelaceParser.parseConfig(
+            obj(
+                """
+                {"views": [{"path": "m", "cards": [
+                  {"type": "tile", "entity": "light.a"},
+                  {"type": "tile", "entity": "light.c"}
+                ]}]}
+                """.trimIndent(),
+            ),
+        )
+        val cards = cfg.views.first().cards
         assertEquals(2, cards.size)
         assertEquals("light.a", (cards[0] as LovelaceCard.Tile).entityId)
-        assertEquals("light.b", (cards[1] as LovelaceCard.Tile).entityId)
     }
 
     @Test fun `parses sensor picture-glance picture-entity area history-graph alarm-panel map`() {

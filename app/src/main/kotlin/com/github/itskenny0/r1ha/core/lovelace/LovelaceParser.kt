@@ -130,15 +130,18 @@ object LovelaceParser {
         val sidebarCards = sidebar?.let { sb ->
             orderedSectionCards(sb.sections, maxColumns, dense)
         } ?: emptyList()
-        // HA's imported-cards quirk: a sections view that ALSO carries a
-        // top-level `cards:` array (left over from a masonry import) hides those
-        // cards in VIEW mode and only surfaces them in the editor's "imported
-        // cards" group. R1HA renders read-only and a sibling batch chose to keep
-        // them concatenated (so no card silently vanishes for a user who can't
-        // reach an editor); top-level cards therefore precede the section cards
-        // in the flatten rather than being dropped. The reading-order contract
-        // (orderedSectionCards) still governs the section cards themselves.
-        val flatCards = directCards + sectionCards + sidebarCards
+        // HA's imported-cards quirk: a SECTIONS view that ALSO carries a
+        // top-level `cards:` array (left over from a masonry import) HIDES those
+        // cards in view mode, surfacing them only in the editor's "imported
+        // cards" group. R1HA renders read-only, so it mirrors HA's view-mode
+        // behaviour and drops the top-level cards on a sections view (they would
+        // otherwise duplicate / mis-order content the author can't see together).
+        // On a legacy masonry view (no `sections:`) the top-level cards ARE the
+        // content and are kept. The reading-order contract (orderedSectionCards)
+        // still governs the section cards themselves.
+        val isSectionsView = sectionsArr != null
+        val viewDirectCards = if (isSectionsView) emptyList() else directCards
+        val flatCards = viewDirectCards + sectionCards + sidebarCards
         // A view is strategy-generated when it carries a `strategy:` key and no
         // concrete cards, OR every one of its sections is a strategy section
         // (carries `strategy` but no `cards`). Either way there is nothing for
