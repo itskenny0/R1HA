@@ -1,11 +1,13 @@
 package com.github.itskenny0.r1ha.core.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -20,8 +22,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
+import com.github.itskenny0.r1ha.core.prefs.ValueBarLocation
 import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
+import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
  * "Colourful Cards" — a per-entity gradient sky behind the same Mission-Control
@@ -31,6 +35,13 @@ import com.github.itskenny0.r1ha.core.prefs.ThemeId
  * [MediaControlsRow], [VerticalTapeMeter]) so the theme is fully featured rather than
  * just a pretty wrapper; the distinct identity here is the gradient backdrop and the
  * always-white ink/accent.
+ *
+ * Legibility on the gradients comes from two quiet layers rather than dimming the
+ * palettes themselves: a top scrim that eases out by mid-card (the header, name, and
+ * big readout all live in the top band — which is also where the linear TL→BR
+ * gradient is at its brightest stop), and a narrow edge scrim under the value bar so
+ * the white fill, thumb, and tick numerals sit on a seated rail instead of floating
+ * on the vivid mid-stops. Both are constant brushes shared across every card.
  */
 object ColorfulCardsTheme : R1Theme {
     override val id = ThemeId.COLORFUL_CARDS
@@ -38,14 +49,47 @@ object ColorfulCardsTheme : R1Theme {
     override val systemBars = SystemBarColors(status = Color.Black, nav = Color.Black)
     override val baseline = sharedDarkBaseline
 
+    // Six palettes, hashed per entity_id. Each runs bright→deep along the TL→BR
+    // diagonal so the darkest stop anchors the bottom-right corner where the value
+    // bar's lower ticks and the more-info dots live. The deep anchors are tuned to
+    // keep white text at a comfortable contrast (≥ ~6:1) without the gradients going
+    // muddy. NOTE: the stable hash maps id → palette via `hashCode % palette.size`,
+    // so changing the COUNT here reshuffles which entity gets which palette — accept
+    // that only when the set itself changes (as it did when teal + rose were added).
     private val palette = listOf(
-        listOf(Color(0xFFFFB347), Color(0xFFFF6B1A), Color(0xFFC7338A)), // warm
-        listOf(Color(0xFF41BDF5), Color(0xFF1B7BB8), Color(0xFF0D3B66)), // cool
-        listOf(Color(0xFF52C77F), Color(0xFF2C8B5A), Color(0xFF154A35)), // green
-        listOf(Color(0xFF9B6BD8), Color(0xFF5B3B9E), Color(0xFF2E2057)), // violet
+        listOf(Color(0xFFFFB347), Color(0xFFFF6B1A), Color(0xFFA62B7C)), // warm: amber → orange → deep magenta
+        listOf(Color(0xFF41BDF5), Color(0xFF1B7BB8), Color(0xFF0D3B66)), // cool: sky → azure → navy
+        listOf(Color(0xFF52C77F), Color(0xFF2C8B5A), Color(0xFF154A35)), // green: mint → leaf → forest
+        listOf(Color(0xFF9B6BD8), Color(0xFF5B3B9E), Color(0xFF2E2057)), // violet: lilac → purple → indigo
+        listOf(Color(0xFF3FD8C2), Color(0xFF169E8F), Color(0xFF0B4F4A)), // teal: turquoise → teal → deep sea
+        listOf(Color(0xFFFF7E79), Color(0xFFE03E63), Color(0xFF6E1B45)), // rose: coral → raspberry → wine
     )
     private fun paletteFor(id: String): List<Color> =
         palette[(id.hashCode().rem(palette.size) + palette.size) % palette.size]
+
+    // Top scrim — black easing out by ~60% height. The intermediate stop softens the
+    // fade so the scrim itself doesn't band; below it the gradient stays fully vivid
+    // (the on/off pill and preset chips carry their own translucent backing).
+    private val topScrim = Brush.verticalGradient(
+        0.00f to Color.Black.copy(alpha = 0.38f),
+        0.30f to Color.Black.copy(alpha = 0.18f),
+        0.60f to Color.Transparent,
+        1.00f to Color.Transparent,
+    )
+
+    // Edge scrims for the value bar. Only the vertical LEFT/RIGHT placements get one
+    // (the horizontal TOP placement already sits inside the top scrim, and BOTTOM
+    // lands on the gradient's darkest run). Narrow and gentle — a seat, not a frame.
+    private val rightEdgeScrim = Brush.horizontalGradient(
+        0.00f to Color.Transparent,
+        0.72f to Color.Transparent,
+        1.00f to Color.Black.copy(alpha = 0.30f),
+    )
+    private val leftEdgeScrim = Brush.horizontalGradient(
+        0.00f to Color.Black.copy(alpha = 0.30f),
+        0.28f to Color.Transparent,
+        1.00f to Color.Transparent,
+    )
 
     private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
         CardRenderModel.Glyph.LIGHT -> "LIGHT"
@@ -89,12 +133,21 @@ object ColorfulCardsTheme : R1Theme {
         val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
         val compact = window.isLandscape && window.heightDp in 1..479
 
+        // Seat the value bar's edge with a scrim matching where the user put it.
+        // Vertical placements only — see the scrim declarations for rationale.
+        val edgeScrim = when (model.valueBarLocation) {
+            ValueBarLocation.RIGHT -> rightEdgeScrim
+            ValueBarLocation.LEFT -> leftEdgeScrim
+            else -> null
+        }
         CardValueBarScaffold(
             model = model,
             accent = accent,
             outer = modifier
                 .fillMaxSize()
                 .background(bgBrush)
+                .background(topScrim)
+                .let { m -> if (edgeScrim != null) m.background(edgeScrim) else m }
                 .padding(
                     start = 22.dp,
                     top = if (compact) 8.dp else 18.dp,
@@ -102,9 +155,11 @@ object ColorfulCardsTheme : R1Theme {
                     end = 18.dp,
                 ),
             // Default tick colour (R1.InkMuted) is invisible against the
-            // colourful gradient; force a soft-white that reads on every
-            // palette in the theme.
-            tickLabelColor = Color.White.copy(alpha = 0.78f),
+            // colourful gradient; force near-white. 0.92 rather than full white
+            // keeps the numerals a half-step behind the accent fill/thumb while
+            // still reading over the vivid mid-stops (the edge scrim does the
+            // rest of the work).
+            tickLabelColor = Color.White.copy(alpha = 0.92f),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -138,7 +193,7 @@ object ColorfulCardsTheme : R1Theme {
                     )
                     if (ui.showAreaLabel && !model.area.isNullOrBlank()) {
                         Spacer(Modifier.width(8.dp))
-                        Text("·", style = R1.labelMicro, color = Color.White.copy(alpha = 0.7f))
+                        Text("·", style = R1.labelMicro, color = Color.White.copy(alpha = 0.75f))
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = areaLabel(model.area),
@@ -157,24 +212,27 @@ object ColorfulCardsTheme : R1Theme {
                 )
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised composable so the ticker
-                // doesn't recompose the whole card on every interval.
+                // doesn't recompose the whole card on every interval. 0.75
+                // alpha (not the InkMuted-equivalent 0.65) because even under
+                // the top scrim this line sits on a colourful stop, not on
+                // near-black.
                 if (!compact && model.lastChangedAt != null) {
                     Spacer(Modifier.height(2.dp))
                     com.github.itskenny0.r1ha.ui.components.RelativeTimeLabel(
                         at = model.lastChangedAt,
-                        color = Color.White.copy(alpha = 0.65f),
+                        color = Color.White.copy(alpha = 0.75f),
                         style = R1.labelMicro,
                     )
                 }
                 Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
-                // Hide the giant percent readout on media_player cards with
-                // active now-playing — same parity rule as PragmaticHybridTheme
-                // and MinimalDarkTheme. The cover + title strip already
-                // dominate the card; '100 %' on top of them just compressed
-                // the now-playing into a sliver.
+                // Hide the giant percent readout on every media_player card —
+                // parity with PragmaticHybridTheme. The right-side meter already
+                // conveys the volume % and the now-playing block below carries
+                // the useful info. Unconditional (not gated on title/picture)
+                // so the layout stays stable while a track's metadata is still
+                // loading — see the matching comment in PragmaticHybridTheme.
                 val hideBigReadoutForMedia = model.domainGlyph ==
-                    CardRenderModel.Glyph.MEDIA_PLAYER &&
-                    (!model.mediaTitle.isNullOrBlank() || !model.mediaPicture.isNullOrBlank())
+                    CardRenderModel.Glyph.MEDIA_PLAYER
                 if (!hideBigReadoutForMedia) {
                     BigReadout(
                         percent = model.percent,
@@ -199,6 +257,49 @@ object ColorfulCardsTheme : R1Theme {
                         accent = accent,
                         hidden = model.lightButtonsHidden,
                     )
+                }
+                // Brightness preset chips on light cards — parity with
+                // PragmaticHybridTheme's 25/50/100 tap targets, restyled for the
+                // gradient: inactive chips use the same translucent black backing
+                // as the on/off pill (an opaque SurfaceMuted slab would punch a
+                // grey hole in the sky), the current value fills with the accent.
+                if (model.domainGlyph == CardRenderModel.Glyph.LIGHT &&
+                    (model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.BRIGHTNESS ||
+                        model.lightWheelMode == null)
+                ) {
+                    Spacer(Modifier.height(8.dp))
+                    val onSetPercent = LocalOnSetEntityPercent.current
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf(25, 50, 100).forEach { pct ->
+                            val isCurrent = model.percent == pct
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(R1.ShapeS)
+                                    .background(
+                                        if (isCurrent) accent
+                                        else Color.Black.copy(alpha = 0.26f),
+                                    )
+                                    .r1Pressable(onClick = {
+                                        onSetPercent?.invoke(
+                                            com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText),
+                                            pct,
+                                        )
+                                    })
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = "$pct%",
+                                    style = R1.labelMicro,
+                                    color = if (isCurrent) R1.Bg else Color.White.copy(alpha = 0.92f),
+                                )
+                            }
+                        }
+                    }
                 }
                 if (model.domainGlyph == CardRenderModel.Glyph.MEDIA_PLAYER) {
                     // Always render the now-playing block — the previous
@@ -297,16 +398,26 @@ object ColorfulCardsTheme : R1Theme {
                 }
                 Spacer(Modifier.weight(1f))
                 if (ui.showOnOffPill) {
+                    // Stateful pill — parity with PragmaticHybridTheme's OnOffPill,
+                    // which fills with the accent when on. The previous version drew
+                    // the same translucent pill for both states, so on/off wasn't
+                    // glanceable on a wall of gradients. ON = solid accent (white by
+                    // default) with dark text; OFF = the quiet scrim pill.
+                    val (pillLabel, pillFg, pillBg) = if (model.isOn) {
+                        Triple("● ON", R1.Bg, accent)
+                    } else {
+                        Triple("○ OFF", Color.White.copy(alpha = 0.80f), Color.Black.copy(alpha = 0.26f))
+                    }
                     Box(
                         modifier = Modifier
                             .clip(R1.ShapeRound)
-                            .background(Color.Black.copy(alpha = 0.22f))
+                            .background(pillBg)
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                     ) {
                         Text(
-                            text = if (model.isOn) "● ON" else "○ OFF",
+                            text = pillLabel,
                             style = R1.labelMicro,
-                            color = Color.White,
+                            color = pillFg,
                         )
                     }
                 }
