@@ -4219,6 +4219,28 @@ class DefaultHaRepository(
             }
         }
 
+    override suspend fun fetchPanels(): Result<List<HaPanel>> = withContext(Dispatchers.IO) {
+        callWsExpectingPayload("get_panels").mapCatching { payload ->
+            // HA returns an object keyed by url_path: { "lovelace": { ... }, "hacs": { ... } }
+            val obj = payload as? kotlinx.serialization.json.JsonObject
+                ?: return@mapCatching emptyList()
+            obj.entries.mapNotNull { (urlPath, value) ->
+                val panel = value as? kotlinx.serialization.json.JsonObject
+                    ?: return@mapNotNull null
+                fun str(key: String): String? =
+                    (panel[key] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
+                HaPanel(
+                    urlPath = urlPath,
+                    title = str("title"),
+                    icon = str("icon"),
+                    componentName = str("component_name") ?: return@mapNotNull null,
+                )
+            }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.panels", "get_panels failed: ${t.message}")
+        }
+    }
+
     /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last

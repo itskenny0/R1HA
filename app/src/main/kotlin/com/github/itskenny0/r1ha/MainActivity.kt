@@ -335,6 +335,7 @@ class MainActivity : ComponentActivity() {
                                 navPanel.hiddenNavItems,
                                 navPanel.pinnedSurfaces,
                                 navPanel.pinnedDashboards,
+                                navPanel.pinnedPanels,
                             ) {
                                 val core = com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
                                     homeRoute = Routes.CARD_STACK,
@@ -378,7 +379,21 @@ class MainActivity : ComponentActivity() {
                                         group = com.github.itskenny0.r1ha.ui.components.NavGroup.DASHBOARD,
                                     )
                                 }
-                                core + pins + dashboardPins
+                                // User-pinned HA sidebar panels, appended last. Each opens the
+                                // authenticated panel WebView at the panel's url_path. A generic
+                                // "plug/grid" glyph keeps them visually distinct from dashboard
+                                // pins. The url_path doubles as the stable id so two panels with
+                                // the same display title can't collide in the nav rail.
+                                val panelPins = navPanel.pinnedPanels.map { pinned ->
+                                    com.github.itskenny0.r1ha.ui.components.NavDestination(
+                                        route = Routes.panelViewerRoute(pinned.urlPath),
+                                        label = pinned.title,
+                                        glyph = "⊞",
+                                        id = "panel:${pinned.urlPath}",
+                                        group = com.github.itskenny0.r1ha.ui.components.NavGroup.DASHBOARD,
+                                    )
+                                }
+                                core + pins + dashboardPins + panelPins
                             }
                             // Suppress the rail / drawer on full-bleed flows where there's
                             // no app to navigate yet (onboarding, the long-lived-token

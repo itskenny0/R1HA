@@ -114,6 +114,25 @@ object Routes {
     /** Long-term statistics chart. */
     const val STATISTICS = "statistics"
 
+    /**
+     * Authenticated WebView for a pinned HA sidebar panel. The panel's
+     * url_path is carried as a path segment so each pinned panel gets a
+     * unique nav destination without requiring a dynamic route per panel.
+     * Use [panelViewerRoute] to build a concrete route string from a
+     * url_path; use [panelUrlPath] to extract it from a back-stack entry.
+     *
+     * url_paths are alphanumeric + dash/underscore (HA's registration
+     * rules), so no percent-encoding is needed.
+     */
+    const val PANEL_VIEWER = "panel_viewer/{urlPath}"
+
+    /** Build the concrete route for a panel by url_path. */
+    fun panelViewerRoute(urlPath: String): String = "panel_viewer/$urlPath"
+
+    /** Extract the url_path argument from a back-stack entry's arguments bundle. */
+    fun panelUrlPath(arguments: android.os.Bundle?): String =
+        arguments?.getString("urlPath").orEmpty()
+
     /** Native dashboards list. Imports HA's Lovelace YAML and renders the
      *  views natively in Compose. Hidden on R1's small-screen tier; the
      *  entry row lives under Settings, Appearance. */

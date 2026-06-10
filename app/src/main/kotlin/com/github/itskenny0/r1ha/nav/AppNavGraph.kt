@@ -247,6 +247,7 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.settings.SidebarConfigScreen(
                 settings = settings,
                 tokens = tokens,
+                haRepository = haRepository,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -563,6 +564,31 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.lovelace.LovelaceScreen(
                 settings = settings,
                 tokens = tokens,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            route = Routes.PANEL_VIEWER,
+            arguments = listOf(
+                androidx.navigation.navArgument("urlPath") {
+                    type = androidx.navigation.NavType.StringType
+                },
+            ),
+        ) { backStackEntry ->
+            val urlPath = Routes.panelUrlPath(backStackEntry.arguments)
+            // Look up the stored title from the settings so the top bar shows the
+            // panel's name rather than the url_path. Falls back to the url_path
+            // when the pin entry is no longer present (the user removed it between
+            // navigating and the back-stack resolving).
+            val pinnedTitle by androidx.compose.runtime.produceState(urlPath, settings) {
+                val panels = settings.settings.first().navPanel.pinnedPanels
+                value = panels.firstOrNull { it.urlPath == urlPath }?.title ?: urlPath
+            }
+            com.github.itskenny0.r1ha.feature.panels.PanelViewerScreen(
+                settings = settings,
+                tokens = tokens,
+                panelUrlPath = urlPath,
+                title = pinnedTitle,
                 onBack = { navController.popBackStack() },
             )
         }

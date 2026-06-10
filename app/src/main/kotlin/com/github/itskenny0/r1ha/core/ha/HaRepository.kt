@@ -770,6 +770,22 @@ interface HaRepository {
      * documented energy websocket API.
      */
     suspend fun getEnergyPrefs(): Result<Map<String, String>>
+
+    /**
+     * Fetch the sidebar panels registered on the connected HA instance via
+     * the `get_panels` WebSocket command. HA returns a map of url_path to
+     * panel descriptor; the repository flattens this into a list and
+     * populates title / icon / componentName from the panel object.
+     *
+     * Callers should filter the result with [HaPanel.isNativelyRendered] to
+     * drop panels R1HA already covers natively before presenting the list
+     * to the user.
+     *
+     * Returns failure when the WS is disconnected or the command is rejected.
+     * Callers should degrade gracefully (empty list or a "not available
+     * offline" message) rather than hard-erroring the UI.
+     */
+    suspend fun fetchPanels(): Result<List<HaPanel>>
 }
 
 /**
