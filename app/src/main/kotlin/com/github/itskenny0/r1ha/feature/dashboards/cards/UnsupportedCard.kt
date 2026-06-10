@@ -67,7 +67,11 @@ fun UnsupportedCard(
     // the generic entity-tile / raw-JSON fallback. Type strings match HA's
     // card registry (hui-todo-list-card / hui-entity-card / hui-toggle-group-card).
     when (card.type) {
-        "todo-list" -> {
+        "todo-list",
+        // shopping-list is HA's legacy alias for the same card (renamed to
+        // todo-list in 2023.11 once the entity platform was unified). Dispatch
+        // both to the same renderer so older dashboard configs still work.
+        "shopping-list" -> {
             TodoListCard(card, stateMap, modifier)
             return
         }

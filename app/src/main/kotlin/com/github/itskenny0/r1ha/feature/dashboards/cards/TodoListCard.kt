@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.ToDoItem
@@ -49,6 +55,10 @@ private const val MAX_TODO_ROWS = 40
  * R1HA's typed model has no dedicated todo-list variant, so the entity id is
  * taken from the [LovelaceCard.Unsupported.entityRefs] the parser captures off
  * the card's `entity` key (the entity is subscribed for its item count).
+ *
+ * `hide_create` (HA 2024.6): when true, the add-item input row is hidden so the
+ * card acts as a read-only view of the list. When false (default), an inline text
+ * field appears at the bottom of the card so items can be added from the dashboard.
  */
 @Composable
 fun TodoListCard(
@@ -63,9 +73,12 @@ fun TodoListCard(
         ?: entityId?.let { resolveName(null, stateMap.byRaw(it), it) }
     // `hide_completed` mirrors HA's option to drop already-done items.
     val hideCompleted = card.raw["hide_completed"]?.let { (it as? JsonPrimitive)?.content?.toBoolean() } ?: false
+    // `hide_create` (HA 2024.6): suppress the add-item input row.
+    val hideCreate = card.raw["hide_create"]?.let { (it as? JsonPrimitive)?.content?.toBoolean() } ?: false
     // `sort` (HA 2025.2): "alpha" = alphabetical by summary, "duedate" = by due date,
     // null/"manual" = server order (no-op).
     val sortMode = card.raw["sort"]?.let { (it as? JsonPrimitive)?.content }
+    var newItemText by remember(entityId) { mutableStateOf("") }
 
     var items by remember(entityId) { mutableStateOf<List<ToDoItem>?>(null) }
     // Bump to force a re-fetch after a mutation without re-keying on the list.
@@ -115,6 +128,25 @@ fun TodoListCard(
                 }
             }
         }
+        // Add-item input: shown by default, hidden when hide_create=true or
+        // the entity/repo is unavailable (nothing to submit to).
+        if (!hideCreate && entityId != null && repo != null) {
+            TodoDivider()
+            TodoAddRow(
+                value = newItemText,
+                onValueChange = { newItemText = it },
+                onAdd = {
+                    val summary = newItemText.trim()
+                    if (summary.isNotBlank()) {
+                        newItemText = ""
+                        scope.launch {
+                            repo.addTodoItem(entityId, summary)
+                            refreshTick++
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -163,6 +195,55 @@ private fun TodoRow(item: ToDoItem, onToggle: (() -> Unit)?) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Inline add-item input row. Pressing the keyboard action or the add button
+ * submits [onAdd]; the field is cleared by the caller after submission so it
+ * stays empty for the next item. [ImeAction.Done] lets the user stay in the
+ * field and add multiple items without lifting their finger.
+ */
+@Composable
+private fun TodoAddRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onAdd: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = {
+                Text(text = "Add item…", style = R1.body, color = R1.InkMuted)
+            },
+            singleLine = true,
+            textStyle = R1.body,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { onAdd() }),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent,
+                errorContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "ADD",
+            style = R1.labelMicro,
+            color = if (value.isNotBlank()) R1.AccentWarm else R1.InkMuted,
+            modifier = Modifier
+                .r1Pressable(onClick = onAdd)
+                .padding(horizontal = 8.dp, vertical = 12.dp),
+        )
     }
 }
 
