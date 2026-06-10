@@ -783,6 +783,25 @@ data class EntityRow(
      * falls back to the raw state for everything else.
      */
     val format: TimestampFormat? = null,
+    /**
+     * HA `confirmation:` on action-bearing rows (button / input-button / lock /
+     * scene / script). Gates the row's run/lock/unlock service behind the same
+     * native confirm dialog any [LovelaceAction.confirmation] uses; it is copied
+     * onto the control's [LovelaceAction.CallService] at render time so the
+     * dispatcher's confirmation gate handles it without bespoke plumbing. Null =
+     * fire immediately.
+     */
+    val confirmation: ActionConfirmation? = null,
+    /**
+     * HA `action_name:` — the label of the run button on scene / script / button
+     * rows (e.g. "Start" instead of the default "Run"). Null = the domain default.
+     */
+    val actionName: String? = null,
+    /**
+     * HA `image:` — an entity-picture URL shown in the row badge instead of the
+     * domain icon. Null = use the icon.
+     */
+    val image: String? = null,
 )
 
 /**

@@ -3,15 +3,12 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -171,6 +168,12 @@ internal fun ToggleSwitch(checked: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Dispatch one entities-card row to the interactive per-domain renderer for its
+ * domain, falling back to the read-only display row for sensor-style domains a
+ * sibling batch owns. An entity HA doesn't serve renders the not-found warning
+ * row rather than crashing or disappearing.
+ */
 @Composable
 private fun EntityRowItem(
     row: EntityRow,
@@ -179,69 +182,61 @@ private fun EntityRowItem(
     stateColor: Boolean = false,
 ) {
     val state = stateMap.byRaw(row.entityId)
-    val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
-    val secondary = row.secondaryInfo?.let { secondaryInfoLine(it, state) }
-    // Genuinely-absent state hides the readout rather than printing a "."
-    // placeholder; a blank chip just looks like a rendering glitch.
-    val stateText = state?.let { compactStateText(it) }
     val accent = stateAccentFor(row.entityId, state)
-    // `state_color: true` tints the name with the entity's accent while it's
-    // active; otherwise the name reads neutral ink and only the chip carries
-    // colour (HA's default).
-    val nameColor = if (stateColor && state?.isOn == true) accent else R1.Ink
-    // Per-row tap / hold / double-tap (with HA's domain-default tap fallback),
-    // bound to the row's entity via the shared action layer.
-    val actions = resolveCardActions(
-        tapAction = row.tapAction,
-        holdAction = row.holdAction,
-        doubleTapAction = row.doubleTapAction,
-        cardEntityId = row.entityId,
-    )
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .r1CardActions(actions = actions, onAction = onAction, contentDescription = name)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = cardEntityIcon(row.entityId, state, row.icon),
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                style = R1.bodyEmph,
-                color = nameColor,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            if (!secondary.isNullOrBlank()) {
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = secondary,
-                    style = R1.body,
-                    color = R1.InkMuted,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                )
-            }
+    when (rowKindFor(row.entityId)) {
+        RowKind.Toggle -> ToggleEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Button -> ButtonEntityRow(row, state, accent, onAction, stateColor, pressService = "button.press")
+        RowKind.InputButton -> ButtonEntityRow(row, state, accent, onAction, stateColor, pressService = "input_button.press")
+        RowKind.Climate -> ClimateEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Cover -> CoverEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Group -> GroupEntityRow(row, state, accent, onAction, stateColor) { gid ->
+            stateMap.byRaw(gid)?.let { groupMembers(it) }
         }
-        if (stateText != null) {
-            Spacer(Modifier.width(10.dp))
-            // Timestamp/uptime sensors tick live; everything else is a plain chip.
-            val tsFormat = resolveTimestampFormat(row.format, state?.deviceClass)
-            val tsInstant = if (tsFormat != null) {
-                timestampInstantOrNull(state?.deviceClass, state?.rawState)
-            } else null
-            if (tsInstant != null && tsFormat != null) {
-                LiveTimestampChip(at = tsInstant, format = tsFormat, accent = accent)
-            } else {
-                StateChip(text = stateText, accent = accent)
-            }
+        RowKind.Humidifier -> HumidifierEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.InputDatetime -> InputDatetimeEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.InputNumber -> NumberEntityRow(row, state, accent, onAction, stateColor, isInputNumber = true)
+        RowKind.InputSelect -> SelectEntityRow(row, state, accent, onAction, stateColor, service = "input_select.select_option")
+        RowKind.InputText -> InputTextEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Lock -> LockEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.MediaPlayer -> MediaPlayerEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Number -> NumberEntityRow(row, state, accent, onAction, stateColor, isInputNumber = false)
+        RowKind.Scene -> SceneEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Script -> ScriptEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Select -> SelectEntityRow(row, state, accent, onAction, stateColor, service = "select.select_option")
+        RowKind.Update -> UpdateEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Valve -> ValveEntityRow(row, state, accent, onAction, stateColor)
+        RowKind.Display -> DisplayEntityRow(row, state, accent, onAction, stateColor)
+    }
+}
+
+/**
+ * Read-only display row for sensor-style domains: the generic scaffold plus a
+ * state chip. Mirrors the previous EntitiesCard rendering for those rows. An
+ * entity HA doesn't serve renders the not-found warning instead.
+ */
+@Composable
+private fun DisplayEntityRow(
+    row: EntityRow,
+    state: EntityState?,
+    accent: androidx.compose.ui.graphics.Color,
+    onAction: (LovelaceAction) -> Unit,
+    stateColor: Boolean,
+) {
+    if (state == null) {
+        EntityNotFoundRow(row.entityId)
+        return
+    }
+    val stateText = compactStateText(state)
+    EntityRowScaffold(row, state, accent, onAction, stateColor) {
+        // Timestamp/uptime sensors tick live; everything else is a plain chip.
+        val tsFormat = resolveTimestampFormat(row.format, state.deviceClass)
+        val tsInstant = if (tsFormat != null) {
+            timestampInstantOrNull(state.deviceClass, state.rawState)
+        } else null
+        if (tsInstant != null && tsFormat != null) {
+            LiveTimestampChip(at = tsInstant, format = tsFormat, accent = accent)
+        } else if (stateText.isNotBlank()) {
+            StateChip(text = stateText, accent = accent)
         }
     }
 }
