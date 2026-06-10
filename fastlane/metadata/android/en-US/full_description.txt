@@ -1,4 +1,4 @@
-A native Home Assistant client built for the Rabbit R1, and equally at home on any Android 13+ phone or tablet. On the R1, the physical scroll wheel adjusts every scalar HA entity (light brightness, fan speed, cover position, media volume); on touch devices the same controls respond to drag and tap. No more fighting the WebView slider in the official HA app.
+A native Home Assistant client built for the Rabbit R1, and equally at home on any Android 6.0+ phone or tablet. On the R1, the physical scroll wheel adjusts every scalar HA entity (light brightness, fan speed, cover position, media volume); on touch devices the same controls respond to drag and tap. No more fighting the WebView slider in the official HA app.
 
 Where the official Home Assistant Companion app is a WebView wrapped around the Lovelace frontend, this client renders everything natively in a Compose-first idiom. A Lovelace WebView is still available for the long tail that doesn't fit (HACS cards, automation editor, configuration panel). The card stack and scroll-wheel idiom are tuned for the R1's portrait display; the layout adapts cleanly to handheld phones, wall-mounted tablets, and kiosk installs.
 
@@ -13,6 +13,7 @@ Control surfaces:
 
 * Scroll wheel control adjusts any scalar HA entity. On phones and tablets, the same wheel-bound affordances respond to touch and gesture.
 * Card stack with rearrangeable tab groups: one full-screen card per favourite entity.
+* Native dashboards: your HA Lovelace config rendered in Compose, over two dozen card types including tile-card feature rows.
 * HA Assist: type or dictate a prompt; HA's conversation engine handles it. Multi-turn context threaded across calls.
 * Scenes and Scripts launcher with substring search and kind filters.
 * Automations list with enabled-state chip, mode badge, running-instance count, last-triggered timestamp, tap-toggle, edge-tap RUN, RELOAD.
@@ -20,7 +21,7 @@ Control surfaces:
 * Master OFF actions for all lights, all media, or all switches at once.
 * Quick Actions drawer (long-press the chrome hamburger) doubles as a navigation drawer with a BROWSE grid covering every major surface.
 * Android app shortcuts (long-press the launcher icon): Search, Assist, Today, Automations.
-* Quick Settings tile: bind one HA entity to the notification-shade panel for one-tap access from anywhere.
+* Quick Settings tiles: bind up to four HA entities to the notification-shade panel for one-tap access from anywhere.
 
 Power tools for the long tail:
 
@@ -29,6 +30,8 @@ Power tools for the long tail:
 * Services Browser: discoverable directory of every service HA exposes.
 * System Health: HA config (version, location, components, internal/external URLs) plus the last 32 KB of the HA error log.
 * Long-lived access token entry as an alternative to the OAuth sign-in flow, ideal for kiosk-style installs.
+
+Three themes with an accent override, plus appearance controls for text size, clock format, list density, and reduced motion. Wide screens get real layouts: two-pane browsing for Devices, Areas, and Cameras, multi-column lists, and charts that grow with the window.
 
 Built around the Rabbit R1's portrait display and physical scroll wheel (handles both DPAD and VOLUME keycodes so it works across LineageOS and CipherOS ROMs), but the layout responds to touch and gesture on every other Android form factor so wheel-less devices don't feel like an afterthought.
 
