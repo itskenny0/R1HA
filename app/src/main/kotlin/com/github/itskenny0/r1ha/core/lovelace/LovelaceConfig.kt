@@ -415,6 +415,12 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /** HA `show_state`: card-level flag turning the chip state captions on for
+         *  every entity (each entity may also opt in via its own `show_state`). */
+        val showState: Boolean = false,
+        /** HA `force_dialog`: route every chip to the dialog (more-info) group
+         *  regardless of domain. */
+        val forceDialog: Boolean = false,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
         val aspectRatio: String? = null,
@@ -444,6 +450,9 @@ sealed class LovelaceCard {
         val imageEntity: String? = null,
         val showName: Boolean,
         val showState: Boolean,
+        /** HA `show_entity_picture`: prefer the entity's own `entity_picture`
+         *  attribute as the background before the configured image. */
+        val showEntityPicture: Boolean = false,
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
@@ -780,6 +789,18 @@ sealed class LovelaceCard {
         val elements: List<PictureElement>,
         val aspectRatio: String? = null,
         val cameraView: String? = null,
+        /** Optional `title:` shown as the card header. */
+        val title: String? = null,
+        /** `entity:` bound for state_image selection (HA requires it when
+         *  state_image is set). */
+        val entity: String? = null,
+        /** `image_entity:` whose `entity_picture` / image url supplies the background. */
+        val imageEntity: String? = null,
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        val filter: String? = null,
+        val darkModeImage: String? = null,
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-elements"
     }
@@ -891,6 +912,21 @@ data class EntityRow(
      * falls back to a labeled placeholder. Null = use domain-based dispatch.
      */
     val explicitType: String? = null,
+    /**
+     * HA picture-glance per-entity `show_state`: force the state text on this
+     * chip regardless of the card-level flag. Null = inherit the card's
+     * `show_state`.
+     */
+    val showState: Boolean? = null,
+    /**
+     * HA picture-glance per-entity `attribute`: show this attribute's value as
+     * the chip's state text instead of the entity state. Null = use the state.
+     */
+    val attribute: String? = null,
+    /** HA picture-glance per-entity `prefix` / `suffix`: text flanking the
+     *  attribute value when [attribute] is set. */
+    val prefix: String? = null,
+    val suffix: String? = null,
 )
 
 /**
@@ -1270,19 +1306,49 @@ data class GaugeSegment(
 )
 
 /**
- * One overlaid element on a `picture-elements` card. The element's centre is
- * placed at ([leftPct]%, [topPct]%) of the card's image box. Only the supported
- * types are kept by the parser; unknown types are dropped rather than crashing.
+ * A parsed `style.top` / `style.left` (or `style.width`) value. HA accepts a
+ * percentage ("40%"), a raw number (treated as a percentage), or a pixel value
+ * ("120px"). Percentages anchor against the rendered image box; pixels are an
+ * absolute offset from the box's top-left. Captured as a typed value so the
+ * renderer applies the correct unit without re-parsing strings.
+ */
+@Immutable
+data class PicturePosition(val value: Double, val isPixel: Boolean) {
+    companion object {
+        /** HA's default centre when `top` / `left` is absent. */
+        val CENTER = PicturePosition(50.0, isPixel = false)
+    }
+}
+
+/**
+ * One overlaid element on a `picture-elements` card. The element's anchor point
+ * is placed at ([left], [top]) of the card's image box (percent of the box or
+ * absolute pixels per [PicturePosition]); HA's default `transform:
+ * translate(-50%,-50%)` then centres the element on that point unless the
+ * element's own `style.transform` overrides it ([transformOverride]).
  *
- * Supported types: `state-badge`, `state-icon`, `state-label`, `icon`, `image`.
+ * Supported types: `state-badge`, `state-icon`, `state-label`, `icon`, `image`,
+ * `service-button` / `action-button`, and `conditional` (a transparent wrapper
+ * whose [children] render only when [conditions] pass).
  *
  * [entityId]: the bound entity (`entity:` key). Null for non-entity elements.
  * [icon]: explicit MDI icon slug override (e.g. "mdi:lightbulb").
  * [name]: display name override; null falls back to the entity's friendly_name.
  * [attribute]: for `state-label`, read this attribute instead of the entity's state.
  * [prefix]/[suffix]: text decorations flanking the state-label value.
- * [tapAction]: the action fired on tap. Null means use the entity domain default.
- * [image]: for `image` type elements, a static image URL (used when entity has no picture).
+ * [tapAction]/[holdAction]/[doubleTapAction]: per-element gesture actions. A null
+ *   [tapAction] means more-info on the element's entity (HA's element default).
+ * [image]: for `image` type elements, a static image URL.
+ * [imageEntity]/[cameraImage]/[cameraView]/[stateImage]/[stateFilter]/[filter]/[aspectRatio]:
+ *   the `image` element's full hui-image option set.
+ * [stateColor]: for `state-icon`, whether the icon tints with the entity state
+ *   (HA defaults this true for state-icon).
+ * [serviceAction]/[serviceData]/[serviceTarget]/[title]: the service-button /
+ *   action-button perform-action config plus its button label.
+ * [conditions]/[children]: for `conditional`, the gate and the wrapped elements.
+ * [transformOverride]: the element's own `style.transform`, when set; null means
+ *   HA's default translate(-50%,-50%) anchoring applies.
+ * [widthPx]: a `style.width` in pixels, when set (the image element honours it).
  */
 @Immutable
 data class PictureElement(
@@ -1293,11 +1359,34 @@ data class PictureElement(
     val attribute: String?,
     val prefix: String?,
     val suffix: String?,
-    val topPct: Double,
-    val leftPct: Double,
+    val top: PicturePosition,
+    val left: PicturePosition,
     val tapAction: LovelaceAction?,
+    val holdAction: LovelaceAction? = null,
+    val doubleTapAction: LovelaceAction? = null,
     val image: String?,
-)
+    val imageEntity: String? = null,
+    val cameraImage: String? = null,
+    val cameraView: String? = null,
+    val stateImage: kotlin.collections.Map<String, String>? = null,
+    val stateFilter: kotlin.collections.Map<String, String>? = null,
+    val filter: String? = null,
+    val aspectRatio: String? = null,
+    val stateColor: Boolean = true,
+    val serviceAction: String? = null,
+    val serviceData: JsonObject? = null,
+    val serviceTarget: ActionTarget? = null,
+    val title: String? = null,
+    val conditions: List<LovelaceCondition> = emptyList(),
+    val children: List<PictureElement> = emptyList(),
+    val transformOverride: String? = null,
+    val widthPx: Double? = null,
+) {
+    /** Back-compat percentage accessors used by older call sites / tests. A
+     *  pixel value reports as-is in its numeric component. */
+    val topPct: Double get() = top.value
+    val leftPct: Double get() = left.value
+}
 
 // One entry of a `tile` card's `features:` array. HA renders each below the
 // tile body as a control row (cards/tile-features). R1HA models the high-value

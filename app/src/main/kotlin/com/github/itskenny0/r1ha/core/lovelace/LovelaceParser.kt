@@ -429,6 +429,8 @@ object LovelaceParser {
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                showState = obj["show_state"]?.asBooleanOrNull() ?: false,
+                forceDialog = obj["force_dialog"]?.asBooleanOrNull() ?: false,
                 fitMode = obj["fit_mode"]?.asStringOrNull(),
                 aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
                 cameraView = obj["camera_view"]?.asStringOrNull(),
@@ -448,6 +450,7 @@ object LovelaceParser {
                     imageEntity = obj["image_entity"]?.asStringOrNull(),
                     showName = obj["show_name"]?.asBooleanOrNull() ?: true,
                     showState = obj["show_state"]?.asBooleanOrNull() ?: true,
+                    showEntityPicture = obj["show_entity_picture"]?.asBooleanOrNull() ?: false,
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     holdAction = parseAction(obj["hold_action"] as? JsonObject),
                     doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
@@ -632,12 +635,18 @@ object LovelaceParser {
             "picture-elements" -> LovelaceCard.PictureElements(
                 raw = obj,
                 image = obj["image"]?.asStringOrNull(),
-                cameraImage = obj["camera_image"]?.asStringOrNull()
-                    ?: obj["image_entity"]?.asStringOrNull()
-                    ?: obj["entity"]?.asStringOrNull(),
+                cameraImage = obj["camera_image"]?.asStringOrNull(),
                 elements = parseElements(obj["elements"] as? JsonArray),
                 aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
                 cameraView = obj["camera_view"]?.asStringOrNull(),
+                title = obj["title"]?.asStringOrNull(),
+                entity = obj["entity"]?.asStringOrNull(),
+                imageEntity = obj["image_entity"]?.asStringOrNull(),
+                stateImage = parseStateImageMap(obj["state_image"]),
+                stateFilter = parseStateFilterMap(obj["state_filter"]),
+                filter = obj["filter"]?.asStringOrNull(),
+                darkModeImage = obj["dark_mode_image"]?.asStringOrNull(),
+                darkModeFilter = obj["dark_mode_filter"]?.asStringOrNull(),
             )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
@@ -1027,6 +1036,10 @@ object LovelaceParser {
                         confirmation = parseConfirmation(item["confirmation"]),
                         actionName = item["action_name"]?.asStringOrNull(),
                         image = item["image"]?.asStringOrNull(),
+                        showState = item["show_state"]?.asBooleanOrNull(),
+                        attribute = item["attribute"]?.asStringOrNull(),
+                        prefix = item["prefix"]?.asStringOrNull(),
+                        suffix = item["suffix"]?.asStringOrNull(),
                     )
                 }
                 else -> null
@@ -1314,48 +1327,108 @@ object LovelaceParser {
 
     /**
      * Parse the `elements:` array of a picture-elements card. Each entry is an
-     * object with a required `type` key. Entries with no `type` are dropped. Only
-     * the renderable types are kept: `state-badge`, `state-icon`, `state-label`,
-     * `icon`, `image`. All other types are silently skipped so unknown elements
-     * degrade cleanly rather than crashing.
+     * object with a required `type` key. Entries with no `type` are dropped.
+     * Recognised types: `state-badge`, `state-icon`, `state-label`, `icon`,
+     * `image`, `service-button` / `action-button`, and `conditional` (which
+     * wraps a nested `elements:` list behind its `conditions:`). Any other type
+     * is kept as an `unknown` placeholder element so the renderer can show a
+     * small labelled chip rather than crash or drop it silently.
      *
-     * Position is read from `style.top` and `style.left` as percentage strings
-     * (with an optional trailing "%"). When absent or unparseable the value
-     * defaults to 50.0 (centered).
+     * Position is read from `style.top` / `style.left` as percentages, plain
+     * numbers, or pixel values (see [parseStylePosition]); when absent the value
+     * defaults to the centre.
      */
     private fun parseElements(arr: JsonArray?): List<PictureElement> {
         if (arr == null) return emptyList()
-        val supported = setOf("state-badge", "state-icon", "state-label", "icon", "image")
         return arr.mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
-            val type = obj["type"]?.asStringOrNull()?.lowercase() ?: return@mapNotNull null
-            if (type !in supported) return@mapNotNull null
-            val style = obj["style"] as? JsonObject
-            PictureElement(
-                type = type,
-                entityId = obj["entity"]?.asStringOrNull(),
-                icon = obj["icon"]?.asStringOrNull(),
-                name = obj["name"]?.asStringOrNull(),
-                attribute = obj["attribute"]?.asStringOrNull(),
-                prefix = obj["prefix"]?.asStringOrNull(),
-                suffix = obj["suffix"]?.asStringOrNull(),
-                topPct = parseStylePct(style?.get("top")),
-                leftPct = parseStylePct(style?.get("left")),
-                tapAction = parseAction(obj["tap_action"] as? JsonObject),
-                image = obj["image"]?.asStringOrNull(),
-            )
+            parseElement(obj)
         }
     }
 
+    private fun parseElement(obj: JsonObject): PictureElement? {
+        val rawType = obj["type"]?.asStringOrNull() ?: return null
+        val type = rawType.lowercase()
+        val style = obj["style"] as? JsonObject
+        val known = setOf(
+            "state-badge", "state-icon", "state-label", "icon", "image",
+            "service-button", "action-button", "conditional",
+        )
+        // Normalise the displayed type so the renderer's switch is exhaustive;
+        // anything outside the known set becomes an "unknown" placeholder that
+        // still carries its position and (for surfacing) its original type name.
+        val normalised = if (type in known) type else "unknown"
+        val serviceAction = obj["action"]?.asStringOrNull() ?: obj["service"]?.asStringOrNull()
+        val serviceTarget = parseActionTarget(obj["target"] as? JsonObject)
+        return PictureElement(
+            type = normalised,
+            entityId = obj["entity"]?.asStringOrNull(),
+            icon = obj["icon"]?.asStringOrNull(),
+            // For an unknown element keep the original type as a fallback label.
+            name = obj["name"]?.asStringOrNull()
+                ?: if (normalised == "unknown") rawType else null,
+            attribute = obj["attribute"]?.asStringOrNull(),
+            prefix = obj["prefix"]?.asStringOrNull(),
+            suffix = obj["suffix"]?.asStringOrNull(),
+            top = parseStylePosition(style?.get("top")),
+            left = parseStylePosition(style?.get("left")),
+            tapAction = parseAction(obj["tap_action"] as? JsonObject),
+            holdAction = parseAction(obj["hold_action"] as? JsonObject),
+            doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+            image = obj["image"]?.asStringOrNull(),
+            imageEntity = obj["image_entity"]?.asStringOrNull(),
+            cameraImage = obj["camera_image"]?.asStringOrNull(),
+            cameraView = obj["camera_view"]?.asStringOrNull(),
+            stateImage = parseStateImageMap(obj["state_image"]),
+            stateFilter = parseStateFilterMap(obj["state_filter"]),
+            filter = obj["filter"]?.asStringOrNull(),
+            aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+            // state-icon defaults state_color on; others leave it on but only
+            // state-icon reads it.
+            stateColor = obj["state_color"]?.asBooleanOrNull() ?: true,
+            serviceAction = serviceAction,
+            serviceData = (obj["data"] as? JsonObject) ?: (obj["service_data"] as? JsonObject),
+            serviceTarget = serviceTarget,
+            title = obj["title"]?.asStringOrNull(),
+            conditions = if (normalised == "conditional") parseConditions(obj["conditions"]) else emptyList(),
+            children = if (normalised == "conditional") parseElements(obj["elements"] as? JsonArray) else emptyList(),
+            transformOverride = (style?.get("transform"))?.asStringOrNull(),
+            widthPx = parsePixelWidth(style?.get("width")),
+        )
+    }
+
     /**
-     * Parse a `style.top` / `style.left` percentage value. Accepts a string
-     * like "25%" or "25", or a raw JSON number. Strips a trailing "%" before
-     * parsing. Returns 50.0 when the input is absent or unparseable.
+     * Parse a `style.top` / `style.left` value into a typed [PicturePosition].
+     * Accepts "25%" / "25" (percent of the image box), a raw JSON number
+     * (percent), or "120px" (absolute pixels). Absent or unparseable input
+     * yields the centre (50%).
      */
-    private fun parseStylePct(el: JsonElement?): Double {
-        if (el == null) return 50.0
-        val s = el.asStringOrNull() ?: el.asDoubleOrNull()?.let { return it } ?: return 50.0
-        return s.trimEnd('%').trim().toDoubleOrNull() ?: 50.0
+    private fun parseStylePosition(el: JsonElement?): PicturePosition {
+        if (el == null) return PicturePosition.CENTER
+        el.asDoubleOrNull()?.let { return PicturePosition(it, isPixel = false) }
+        val s = el.asStringOrNull()?.trim() ?: return PicturePosition.CENTER
+        return when {
+            s.endsWith("px", ignoreCase = true) ->
+                s.dropLast(2).trim().toDoubleOrNull()
+                    ?.let { PicturePosition(it, isPixel = true) } ?: PicturePosition.CENTER
+            s.endsWith("%") ->
+                s.dropLast(1).trim().toDoubleOrNull()
+                    ?.let { PicturePosition(it, isPixel = false) } ?: PicturePosition.CENTER
+            else ->
+                s.toDoubleOrNull()?.let { PicturePosition(it, isPixel = false) } ?: PicturePosition.CENTER
+        }
+    }
+
+    /** Parse a `style.width` pixel value ("120px" / "120"). Returns null when
+     *  absent or expressed in a non-pixel unit we don't size against. */
+    private fun parsePixelWidth(el: JsonElement?): Double? {
+        if (el == null) return null
+        el.asDoubleOrNull()?.let { return it }
+        val s = el.asStringOrNull()?.trim() ?: return null
+        return when {
+            s.endsWith("px", ignoreCase = true) -> s.dropLast(2).trim().toDoubleOrNull()
+            else -> s.toDoubleOrNull()
+        }
     }
 
     /**
