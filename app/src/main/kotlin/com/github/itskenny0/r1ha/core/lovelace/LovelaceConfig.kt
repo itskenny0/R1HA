@@ -167,21 +167,131 @@ sealed class LovelaceCard {
     /**
      * Shortcut card (HA 2026.5): a tile-shaped one-tap launcher. Carries no
      * entity; the whole card fires [tapAction] (navigate / url / call-service /
-     * assist). [name] / [icon] / [color] are optional overrides; when null HA
-     * resolves them from the action (we best-effort the name from a navigate
-     * path at render time and otherwise show a generic label).
+     * assist). [label] / [description] / [icon] / [color] are optional overrides;
+     * when null HA resolves them from the action (we best-effort the name from a
+     * navigate path at render time and otherwise show a generic label).
      */
     @Immutable
     data class Shortcut(
         override val raw: JsonObject,
+        /** HA 2026.5 `name:` key (legacy) and `label:` key - the primary line under the icon. */
         val name: String?,
+        /** HA 2026.5 `label:` key - takes precedence over `name:` when both are set. */
+        val label: String?,
         val icon: String?,
         val color: String?,
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /** HA 2026.5 `description:` secondary line below the label. */
+        val description: String? = null,
+        /** HA 2026.5 `vertical:` stacks the icon above the label. */
+        val vertical: Boolean = false,
     ) : LovelaceCard() {
         override val type: String = "shortcut"
+        /** Resolved display label: `label` wins over `name` to match HA's render order. */
+        val displayLabel: String? get() = label?.takeUnless { it.isBlank() } ?: name?.takeUnless { it.isBlank() }
+    }
+
+    /**
+     * Calendar card: a compact agenda list of events from one or more calendar
+     * entities. The R1-appropriate default view is an agenda (date-grouped event
+     * list) regardless of [initialView]. A `dayGridMonth` initial_view renders a
+     * compact scrolling agenda - a full month grid is not practical at 640x480.
+     *
+     * Events are fetched via the same [HaRepository.fetchCalendarEvents] path the
+     * native Calendars feature uses; [entityIds] drives which calendars are pulled.
+     * Colors are per-entity, derived from a stable hash (same as the native agenda).
+     */
+    @Immutable
+    data class Calendar(
+        override val raw: JsonObject,
+        val title: String?,
+        /** Ordered list of calendar entity ids. */
+        val entityIds: List<String>,
+        /**
+         * HA `initial_view`: "dayGridMonth" / "dayGridDay" / "listWeek" etc.
+         * R1HA renders a compact agenda list regardless of this value; it is stored
+         * for round-trip fidelity and future use.
+         */
+        val initialView: String?,
+    ) : LovelaceCard() {
+        override val type: String = "calendar"
+    }
+
+    /**
+     * Home-summary card (HA 2026.x): a tile-shaped summary of one of seven
+     * categories: light, climate, security, media_players, maintenance, energy,
+     * persons. On R1HA the card taps to the nearest native screen for the category;
+     * entity counts are derived from live state where available.
+     */
+    @Immutable
+    data class HomeSummary(
+        override val raw: JsonObject,
+        /**
+         * HA `summary:` - one of: light, climate, security, media_players,
+         * maintenance, energy, persons. Unknown values render as a generic tile.
+         */
+        val summary: String,
+        val vertical: Boolean = false,
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
+    ) : LovelaceCard() {
+        override val type: String = "home-summary"
+    }
+
+    /**
+     * Updates card (HA informational): shows pending software updates and links
+     * to the native Updates screen. [hideEmpty] when true hides the card if there
+     * are no pending updates (not evaluated client-side; stored for HA parity).
+     */
+    @Immutable
+    data class Updates(
+        override val raw: JsonObject,
+        val hideEmpty: Boolean = false,
+        val vertical: Boolean = false,
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
+    ) : LovelaceCard() {
+        override val type: String = "updates"
+    }
+
+    /**
+     * Repairs card (HA informational): shows open repair issues and links to the
+     * native Repairs screen. [hideEmpty] when true hides the card if there are no
+     * open issues.
+     */
+    @Immutable
+    data class Repairs(
+        override val raw: JsonObject,
+        val hideEmpty: Boolean = false,
+        val vertical: Boolean = false,
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
+    ) : LovelaceCard() {
+        override val type: String = "repairs"
+    }
+
+    /**
+     * Empty-state card (HA): a friendly "no devices yet" card rendered when a
+     * new HA instance has no devices. R1HA renders its [title] + [content] message
+     * with the optional [icon]. Buttons are rendered as navigate tiles (each fires
+     * its [tap_action]).
+     */
+    @Immutable
+    data class EmptyState(
+        override val raw: JsonObject,
+        val title: String?,
+        val content: String?,
+        val icon: String?,
+        /** HA `content_only`: when true, omit the card chrome and show only the
+         *  message body. */
+        val contentOnly: Boolean = false,
+    ) : LovelaceCard() {
+        override val type: String = "empty-state"
     }
 
     /** Modern compact tile (HA's current first-class card type). */

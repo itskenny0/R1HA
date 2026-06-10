@@ -137,6 +137,14 @@ internal fun collectEntityIds(card: LovelaceCard, sink: MutableSet<String>) {
         is LovelaceCard.StatisticsGraph -> card.entityIds.forEach { sink.addEntity(it) }
         is LovelaceCard.Picture -> card.imageEntity?.let { sink.addEntity(it) }
         is LovelaceCard.Shortcut -> Unit
+        // Calendar entity ids are fetched asynchronously by CalendarCard via
+        // LocalHaRepository; they are not tracked via EntityStates.
+        is LovelaceCard.Calendar -> Unit
+        // HomeSummary, Updates, Repairs, EmptyState carry no entity refs.
+        is LovelaceCard.HomeSummary -> Unit
+        is LovelaceCard.Updates -> Unit
+        is LovelaceCard.Repairs -> Unit
+        is LovelaceCard.EmptyState -> Unit
         is LovelaceCard.Distribution -> card.entries.forEach { sink.addEntity(it.entityId) }
         is LovelaceCard.Markdown -> Unit
         is LovelaceCard.Heading -> card.badges.forEach { it.entityId?.let(sink::addEntity) }

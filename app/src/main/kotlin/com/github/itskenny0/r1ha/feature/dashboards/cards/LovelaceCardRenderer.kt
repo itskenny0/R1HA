@@ -76,6 +76,11 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Logbook -> LogbookCard(card, modifier)
         is LovelaceCard.Clock -> ClockCard(card, modifier)
         is LovelaceCard.Shortcut -> ShortcutCard(card, onAction, modifier)
+        is LovelaceCard.Calendar -> CalendarCard(card, modifier)
+        is LovelaceCard.HomeSummary -> HomeSummaryCard(card, onAction, modifier)
+        is LovelaceCard.Updates -> UpdatesCard(card, onAction, modifier)
+        is LovelaceCard.Repairs -> RepairsCard(card, onAction, modifier)
+        is LovelaceCard.EmptyState -> EmptyStateCard(card, modifier)
         is LovelaceCard.Distribution -> DistributionCard(card, stateMap, onAction, modifier)
         is LovelaceCard.PictureElements -> PictureElementsCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Conditional -> {

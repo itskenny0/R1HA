@@ -343,11 +343,14 @@ object LovelaceParser {
             "shortcut" -> LovelaceCard.Shortcut(
                 raw = obj,
                 name = obj["name"]?.asStringOrNull(),
+                label = obj["label"]?.asStringOrNull(),
                 icon = obj["icon"]?.asStringOrNull(),
                 color = obj["color"]?.asStringOrNull(),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                description = obj["description"]?.asStringOrNull(),
+                vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
             )
             "tile" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -756,6 +759,51 @@ object LovelaceParser {
                 filter = obj["filter"]?.asStringOrNull(),
                 darkModeImage = obj["dark_mode_image"]?.asStringOrNull(),
                 darkModeFilter = obj["dark_mode_filter"]?.asStringOrNull(),
+            )
+            "calendar" -> {
+                val ids = parseCalendarEntityIds(obj["entities"])
+                if (ids.isEmpty()) return bestEffortUnsupported(obj, type)
+                LovelaceCard.Calendar(
+                    raw = obj,
+                    title = obj["title"]?.asStringOrNull(),
+                    entityIds = ids,
+                    initialView = obj["initial_view"]?.asStringOrNull(),
+                )
+            }
+            "home-summary" -> {
+                val summary = obj["summary"]?.asStringOrNull()?.lowercase()
+                    ?: return bestEffortUnsupported(obj, type)
+                LovelaceCard.HomeSummary(
+                    raw = obj,
+                    summary = summary,
+                    vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                )
+            }
+            "updates" -> LovelaceCard.Updates(
+                raw = obj,
+                hideEmpty = obj["hide_empty"]?.asBooleanOrNull() ?: false,
+                vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+            )
+            "repairs" -> LovelaceCard.Repairs(
+                raw = obj,
+                hideEmpty = obj["hide_empty"]?.asBooleanOrNull() ?: false,
+                vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
+                tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+            )
+            "empty-state" -> LovelaceCard.EmptyState(
+                raw = obj,
+                title = obj["title"]?.asStringOrNull(),
+                content = obj["content"]?.asStringOrNull(),
+                icon = obj["icon"]?.asStringOrNull(),
+                contentOnly = obj["content_only"]?.asBooleanOrNull() ?: false,
             )
             "iframe" -> bestEffortUnsupported(obj, type)
             else -> mapCustomCard(obj, type) ?: bestEffortUnsupported(obj, type)
@@ -1499,6 +1547,23 @@ object LovelaceParser {
         "time" -> TimestampFormat.TIME
         "datetime" -> TimestampFormat.DATETIME
         else -> null
+    }
+
+    /**
+     * Parse the calendar card's `entities:` into a list of calendar entity ids.
+     * HA accepts bare strings ("calendar.work") or objects with an `entity` key
+     * (with optional `color` which we don't use - color derives from the entity id
+     * hash). Entries without a usable id are dropped.
+     */
+    private fun parseCalendarEntityIds(el: JsonElement?): List<String> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) item.content.takeUnless { it.isBlank() } else null
+                is JsonObject -> item["entity"]?.asStringOrNull()?.takeUnless { it.isBlank() }
+                else -> null
+            }
+        }
     }
 
     /** Parse a distribution card's `entities:`: a bare id string or an object
