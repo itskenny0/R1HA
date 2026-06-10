@@ -38,6 +38,29 @@ class ActionDispatcherTest {
         assertThat(resolveTapAction(tapAction = null, cardEntityId = null)).isNull()
     }
 
+    @Test fun `badge default-to-more-info opens detail for a toggleable domain`() {
+        // A view badge with no tap_action opens more-info for every domain
+        // (defaultToMoreInfo), unlike a card which would toggle a light.
+        val resolved = resolveTapAction(
+            tapAction = null,
+            cardEntityId = "light.kitchen",
+            defaultToMoreInfo = true,
+        )
+        val builtin = resolved as LovelaceAction.Builtin
+        assertThat(builtin.name).isEqualTo("more-info")
+        assertThat(builtin.entityId).isEqualTo("light.kitchen")
+    }
+
+    @Test fun `badge default-to-more-info still honours an explicit tap`() {
+        val explicit = LovelaceAction.Navigate("/lovelace/0")
+        val resolved = resolveTapAction(
+            tapAction = explicit,
+            cardEntityId = "light.kitchen",
+            defaultToMoreInfo = true,
+        )
+        assertThat(resolved).isEqualTo(explicit)
+    }
+
     @Test fun `explicit toggle action without an entity is bound to the card entity`() {
         val resolved = resolveTapAction(
             tapAction = LovelaceAction.Builtin("toggle"),

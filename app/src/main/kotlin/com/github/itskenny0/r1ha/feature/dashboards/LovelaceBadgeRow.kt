@@ -67,6 +67,9 @@ fun LovelaceBadgeRow(
     states: EntityStates,
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
+    // Heading badges (HeadingCard) default an entity badge's tap to NONE; view
+    // badges default it to more-info. HA diverges this way between the two.
+    headingContext: Boolean = false,
 ) {
     if (badges.isEmpty()) return
 
@@ -86,7 +89,7 @@ fun LovelaceBadgeRow(
             if (badge.conditions.isNotEmpty() &&
                 !evaluateConditions(badge.conditions, states, context)) return@forEach
             val state = badge.entityId?.let { states.byRaw(it) }
-            BadgeChip(badge = badge, state = state, onAction = onAction)
+            BadgeChip(badge = badge, state = state, onAction = onAction, headingContext = headingContext)
         }
     }
 }
@@ -104,6 +107,7 @@ private fun BadgeChip(
     badge: LovelaceBadge,
     state: EntityState?,
     onAction: (LovelaceAction) -> Unit,
+    headingContext: Boolean = false,
 ) {
     // Accent: explicit config colour applied only when the entity is active
     // (matches HA's _computeStateColor gating custom color on stateActive);
@@ -133,11 +137,18 @@ private fun BadgeChip(
     // Tap / hold / double-tap: the badge's own actions, with HA's domain-default
     // tap fallback applied centrally, all bound to the badge's entity. An
     // entity-less badge with no action is inert.
+    // View entity badges with no tap_action default to more-info (every domain),
+    // unlike cards which toggle/press. Heading entity badges default to NONE, so
+    // an action-less heading entity badge is inert (only an explicit tap acts)
+    // while still honouring any hold / double-tap. Action badges (shortcut/
+    // button) and explicit taps go through the normal resolution.
+    val headingInertTap = headingContext && badge.tapAction == null && badge.entityId != null
     val actions = resolveCardActions(
-        tapAction = badge.tapAction,
+        tapAction = if (headingInertTap) LovelaceAction.Builtin("none", badge.entityId) else badge.tapAction,
         holdAction = badge.holdAction,
         doubleTapAction = badge.doubleTapAction,
         cardEntityId = badge.entityId,
+        defaultTapToMoreInfo = !headingContext,
     )
 
     val label = listOfNotNull(name, stateText).joinToString(" ").ifBlank {

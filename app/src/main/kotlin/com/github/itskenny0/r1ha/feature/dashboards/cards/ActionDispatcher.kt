@@ -51,9 +51,19 @@ import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
  *
  * Pure (no Compose, no IO) so the fallback chain is unit-tested directly.
  */
-fun resolveTapAction(tapAction: LovelaceAction?, cardEntityId: String?): LovelaceAction? {
+fun resolveTapAction(
+    tapAction: LovelaceAction?,
+    cardEntityId: String?,
+    defaultToMoreInfo: Boolean = false,
+): LovelaceAction? {
     val base = tapAction
-        ?: cardEntityId?.let { defaultTapAction(it) }
+        ?: cardEntityId?.let {
+            // Badges (defaultToMoreInfo = true) open more-info for every domain
+            // by default, unlike cards which toggle / press per domain. This
+            // matches HA, where a badge with no tap_action always opens the
+            // entity detail rather than acting on it.
+            if (defaultToMoreInfo) LovelaceAction.Builtin("more-info", it) else defaultTapAction(it)
+        }
         // A card with neither a configured tap nor an entity has nothing to do
         // on tap. HA would default to more-info on the card's entity; with no
         // entity there is no target, so the surface is inert.
@@ -72,8 +82,9 @@ fun resolveCardActions(
     holdAction: LovelaceAction?,
     doubleTapAction: LovelaceAction?,
     cardEntityId: String?,
+    defaultTapToMoreInfo: Boolean = false,
 ): CardActions = CardActions(
-    tap = resolveTapAction(tapAction, cardEntityId),
+    tap = resolveTapAction(tapAction, cardEntityId, defaultToMoreInfo = defaultTapToMoreInfo),
     hold = holdAction?.boundTo(cardEntityId),
     doubleTap = doubleTapAction?.boundTo(cardEntityId),
 )

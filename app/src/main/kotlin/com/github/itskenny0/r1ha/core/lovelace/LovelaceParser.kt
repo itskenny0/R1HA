@@ -427,6 +427,12 @@ object LovelaceParser {
         val iconOrImage = item["icon"]?.asStringOrNull()
             ?: (if (isStateLabelLegacy) item["image"]?.asStringOrNull() else null)
 
+        // Legacy `display_type` migration (HA migrateLegacyEntityBadgeConfig):
+        // `complete` -> show_name true (when show_name unset); `minimal` ->
+        // show_state false (when show_state unset); `standard` keeps the
+        // defaults. An explicit show_name / show_state always wins.
+        val displayType = item["display_type"]?.asStringOrNull()?.lowercase()
+
         return LovelaceBadge(
             entityId = entity,
             // For button/shortcut heading badges `text:` maps to the name slot.
@@ -436,9 +442,17 @@ object LovelaceParser {
             // HA's entity-badge defaults: state on, name off, icon on.
             // state-label legacy default: name on.
             showName = item["show_name"]?.asBooleanOrNull()
-                ?: if (isStateLabelLegacy) true else false,
+                ?: when {
+                    displayType == "complete" -> true
+                    isStateLabelLegacy -> true
+                    else -> false
+                },
             showState = item["show_state"]?.asBooleanOrNull()
-                ?: if (isActionBadge) false else true,
+                ?: when {
+                    displayType == "minimal" -> false
+                    isActionBadge -> false
+                    else -> true
+                },
             showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
             tapAction = tap,
             holdAction = hold,
