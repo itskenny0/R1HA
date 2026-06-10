@@ -45,9 +45,13 @@ fun HumidifierCard(
     modifier: Modifier = Modifier,
 ) {
     val eid = safeEntityId(card.entityId)
-    val state = eid?.let { stateMap[it] }
+    val state = eid?.let { stateMap[it] } ?: stateMap.byRaw(card.entityId)
+    if (state == null) {
+        EntityNotFoundCard(card.entityId, modifier)
+        return
+    }
     val name = resolveName(card.name, state, card.entityId)
-    val isOn = state?.isOn == true
+    val isOn = state.isOn
     val accent = if (isOn) R1.AccentWarm else R1.InkSoft
     val target = state?.percent
     val minH = state?.minRaw?.toInt() ?: 0
@@ -78,11 +82,23 @@ fun HumidifierCard(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(10.dp))
+            // More-info affordance, matching the light card: a tap opens the
+            // detail sheet for the humidifier entity.
+            MoreInfoDot(
+                accent = accent,
+                onClick = { onAction(LovelaceAction.Builtin("more-info", card.entityId)) },
+            )
+            Spacer(Modifier.width(8.dp))
             ModeChip(label = if (isOn) "ON" else "OFF", accent = accent, selected = isOn) {
                 onAction(toggleAction(card.entityId, !isOn))
             }
         }
         Spacer(Modifier.height(12.dp))
+        // show_current_as_primary swaps the emphasis: the current reading takes
+        // the accent (hero) colour and the target reads as the muted secondary.
+        // The default keeps the target as the accented value.
+        val currentColor = if (card.showCurrentAsPrimary) accent else R1.Ink
+        val targetColor = if (card.showCurrentAsPrimary) R1.InkMuted else accent
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (card.showCurrentTemperature) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -91,7 +107,7 @@ fun HumidifierCard(
                     Text(
                         text = currentHumidity?.let { "${fmtTemp(it)}%" } ?: "-",
                         style = R1.numeralM,
-                        color = R1.Ink,
+                        color = currentColor,
                     )
                 }
             }
@@ -106,7 +122,7 @@ fun HumidifierCard(
                 ) {
                     Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.height(2.dp))
-                    Text(text = "$target%", style = R1.numeralM, color = accent)
+                    Text(text = "$target%", style = R1.numeralM, color = targetColor)
                 }
                 Spacer(Modifier.width(10.dp))
                 StepperButton(label = "+", accent = accent, enabled = isOn) {
@@ -135,6 +151,22 @@ fun HumidifierCard(
                     ) { onAction(setModeAction(card.entityId, m)) }
                 }
             }
+        }
+        // Card features hosted under the humidifier body, reusing the shared
+        // TileFeatureRows slot the thermostat card uses. Only render when at
+        // least one feature resolves to a control the entity supports.
+        val hasFeatures = card.features.any {
+            it !is com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature.Unsupported
+        }
+        if (hasFeatures) {
+            Spacer(Modifier.height(10.dp))
+            TileFeatureRows(
+                features = card.features,
+                entityId = card.entityId,
+                state = state,
+                accent = accent,
+                onAction = onAction,
+            )
         }
     }
 }
