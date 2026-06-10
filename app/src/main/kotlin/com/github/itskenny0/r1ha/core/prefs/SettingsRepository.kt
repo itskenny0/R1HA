@@ -878,6 +878,37 @@ class SettingsRepository private constructor(
     }
 
     /**
+     * Pin an HA sidebar panel (identified by [urlPath]) to the side navigation
+     * rail / drawer. Appends to the end of [NavPanelSettings.pinnedPanels] so
+     * newly-pinned panels land at the bottom. When [urlPath] is already pinned,
+     * refreshes its [title] and [icon] in place (so a renamed integration panel
+     * stays current) without changing its position.
+     */
+    suspend fun pinPanel(urlPath: String, title: String, icon: String? = null) {
+        update { s ->
+            val current = s.navPanel.pinnedPanels
+            val existingIdx = current.indexOfFirst { it.urlPath == urlPath }
+            val next = if (existingIdx >= 0) {
+                current.toMutableList().also {
+                    it[existingIdx] = it[existingIdx].copy(title = title, icon = icon)
+                }
+            } else {
+                current + PinnedPanel(urlPath = urlPath, title = title, icon = icon)
+            }
+            s.copy(navPanel = s.navPanel.copy(pinnedPanels = next))
+        }
+    }
+
+    /** Remove a pinned HA panel from the side panel list. No-op when not pinned. */
+    suspend fun unpinPanel(urlPath: String) {
+        update { s ->
+            val current = s.navPanel.pinnedPanels
+            if (current.none { it.urlPath == urlPath }) s
+            else s.copy(navPanel = s.navPanel.copy(pinnedPanels = current.filterNot { it.urlPath == urlPath }))
+        }
+    }
+
+    /**
      * Atomically restore an [AppBackup] on top of the current settings. Wraps
      * [AppBackup.applyOnto] in a single [update] call so the favourites union
      * + activePageId clamp logic runs once on the merged result; no half-

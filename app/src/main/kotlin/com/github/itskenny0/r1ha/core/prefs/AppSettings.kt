@@ -670,6 +670,23 @@ data class NavPanelSettings(
      * ignore-unknown-keys JSON config used for the whole struct.
      */
     val pinnedDashboards: List<PinnedDashboard> = emptyList(),
+    /**
+     * User-pinned HA sidebar panels shown in the side navigation rail / drawer
+     * BELOW the pinned surfaces and dashboards. Each entry is a [PinnedPanel]
+     * carrying the panel's url_path (the stable HA-assigned identifier) plus
+     * a display title and optional MDI icon slug.
+     *
+     * Pins are discovered from the server's `get_panels` WS reply, filtered to
+     * exclude panels R1HA renders natively (lovelace, config, energy, etc.), and
+     * opened in the authenticated WebView when tapped. Empty by default: no panels
+     * are pre-pinned because panel availability is install-specific and we cannot
+     * know what custom integrations the user has installed.
+     *
+     * Forward-compatible: unknown fields on [PinnedPanel] decode cleanly via the
+     * ignore-unknown-keys config, so a future extension (e.g. a "type" field) from
+     * a newer build won't crash an older one during a backup restore.
+     */
+    val pinnedPanels: List<PinnedPanel> = emptyList(),
 ) {
     companion object {
         /** Sensible starter pins: the surfaces users reach most. Route-id strings
@@ -697,6 +714,25 @@ data class NavPanelSettings(
 @kotlinx.serialization.Serializable
 data class PinnedDashboard(
     val route: String,
+    val title: String,
+    val icon: String? = null,
+)
+
+/**
+ * One user-pinned HA sidebar panel (see [NavPanelSettings.pinnedPanels]).
+ *
+ * [urlPath] is HA's stable panel identifier (e.g. "hacs", "esphome",
+ * "zigbee2mqtt") and is the value used to build the panel URL at render time:
+ * `<serverBase>/<urlPath>`. It doubles as the stable id the pin/unpin mutators
+ * key on. [title] is the label shown in the rail / drawer; sourced from the
+ * panel registration at pin time and refreshed on subsequent settings-open
+ * fetches when the panel title changes. [icon] is an optional MDI slug from the
+ * panel descriptor; null falls back to a generic glyph at render time.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class PinnedPanel(
+    val urlPath: String,
     val title: String,
     val icon: String? = null,
 )

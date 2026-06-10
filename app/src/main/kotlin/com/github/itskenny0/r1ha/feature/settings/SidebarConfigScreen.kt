@@ -17,9 +17,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +30,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.github.itskenny0.r1ha.core.ha.HaPanel
+import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.isNativelyRendered
 import com.github.itskenny0.r1ha.core.prefs.NavItemId
 import com.github.itskenny0.r1ha.core.prefs.PhoneNavStyle
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -60,10 +66,26 @@ import kotlinx.coroutines.launch
  * Every mutation persists live through the existing repository mutators / the
  * SettingsViewModel.updateNavPanel hook; nothing is duplicated here.
  */
+/**
+ * Panel list load state for the "EXTERNAL PANELS" section.
+ *
+ * [Idle] is the pre-fetch state (before the LaunchedEffect fires).
+ * [Loading] is shown while the WS call is in flight.
+ * [Loaded] carries the filtered (non-native) panel list.
+ * [Error] is set when the WS call fails (offline, disconnected, etc.).
+ */
+private sealed interface PanelLoadState {
+    data object Idle : PanelLoadState
+    data object Loading : PanelLoadState
+    data class Loaded(val panels: List<HaPanel>) : PanelLoadState
+    data class Error(val message: String) : PanelLoadState
+}
+
 @Composable
 fun SidebarConfigScreen(
     settings: SettingsRepository,
     tokens: TokenStore,
+    haRepository: HaRepository,
     onBack: () -> Unit,
 ) {
     val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.factory(settings, tokens))
@@ -76,6 +98,24 @@ fun SidebarConfigScreen(
         PinnableSurfaces.resolve(navPanel.pinnedSurfaces)
     }
     val pinnedRouteSet = remember(navPanel.pinnedSurfaces) { navPanel.pinnedSurfaces.toSet() }
+
+    // One-shot panel discovery: fetch on composition, filter out natively-rendered panels.
+    var panelLoadState: PanelLoadState by remember { mutableStateOf(PanelLoadState.Idle) }
+    LaunchedEffect(Unit) {
+        panelLoadState = PanelLoadState.Loading
+        haRepository.fetchPanels().fold(
+            onSuccess = { all ->
+                panelLoadState = PanelLoadState.Loaded(all.filterNot { it.isNativelyRendered() })
+            },
+            onFailure = { t ->
+                panelLoadState = PanelLoadState.Error(t.message ?: "Failed to load panels")
+            },
+        )
+    }
+
+    val pinnedPanelPaths = remember(navPanel.pinnedPanels) {
+        navPanel.pinnedPanels.map { it.urlPath }.toSet()
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg).systemBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -233,6 +273,73 @@ fun SidebarConfigScreen(
                                 vertical = R1.space.xs,
                             ),
                         )
+                    }
+                }
+
+                // ── EXTERNAL PANELS ──
+                item { SectionHeader("EXTERNAL PANELS") }
+                when (val state = panelLoadState) {
+                    is PanelLoadState.Idle, is PanelLoadState.Loading -> {
+                        item {
+                            Text(
+                                text = "Loading panels from server...",
+                                style = R1.body,
+                                color = R1.InkMuted,
+                                modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.s),
+                            )
+                        }
+                    }
+                    is PanelLoadState.Error -> {
+                        item {
+                            Text(
+                                text = "Could not load panels (server offline or not connected).",
+                                style = R1.body,
+                                color = R1.InkMuted,
+                                modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.s),
+                            )
+                        }
+                    }
+                    is PanelLoadState.Loaded -> {
+                        if (state.panels.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "No external panels found. Custom integrations with sidebar panels (HACS, ESPHome, etc.) will appear here.",
+                                    style = R1.body,
+                                    color = R1.InkMuted,
+                                    modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.s),
+                                )
+                            }
+                        } else {
+                            items(state.panels, key = { "panel-${it.urlPath}" }) { panel ->
+                                val pinned = panel.urlPath in pinnedPanelPaths
+                                val displayTitle = panel.title?.takeIf { it.isNotBlank() } ?: panel.urlPath
+                                GlyphSwitchRow(
+                                    glyph = "⊞",
+                                    label = displayTitle,
+                                    subtitle = if (pinned) "Pinned" else panel.urlPath,
+                                    checked = pinned,
+                                    onCheckedChange = { pin ->
+                                        scope.launch {
+                                            if (pin) settings.pinPanel(panel.urlPath, displayTitle, panel.icon)
+                                            else settings.unpinPanel(panel.urlPath)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        if (navPanel.pinnedPanels.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "Pinned panels open in an authenticated browser view.",
+                                    style = R1.labelMicro,
+                                    color = R1.InkSoft,
+                                    modifier = Modifier.padding(
+                                        horizontal = R1.space.xl,
+                                        vertical = R1.space.xs,
+                                    ),
+                                )
+                            }
+                        }
                     }
                 }
 
