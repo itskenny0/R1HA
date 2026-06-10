@@ -58,6 +58,14 @@ data class SparklineSeries(
  * [windowStartMillis]..[windowEndMillis] pin the X axis; when null the series'
  * own span is used (so a standalone chart still fills the width). [limitMin] /
  * [limitMax] pin the Y axis (HA's `limits:` / `min_y_axis` / `max_y_axis`).
+ *
+ * Animated chart transitions (HA's ApexCharts/ECharts morph-in animation when a
+ * series updates) are deliberately NOT implemented and will not be: the R1's
+ * e-ink-like reflective panel reads animated curve tweens as smear rather than
+ * motion, and a per-frame Compose recomposition of the whole Canvas is pure
+ * token cost for no legibility gain on a 640x480 always-on kiosk. New data
+ * snaps in on the next state update. This is a documented design decision, not
+ * an oversight.
  */
 @Composable
 fun Sparkline(

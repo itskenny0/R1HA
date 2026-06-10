@@ -907,7 +907,8 @@ object LovelaceParser {
                 raw = obj,
                 title = obj["title"]?.asStringOrNull(),
                 entities = parseLogbookEntities(obj),
-                hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 12,
+                // HA's DEFAULT_HOURS_TO_SHOW is 24; a bare config shows the full day.
+                hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
                 target = parseLogbookTarget(obj["target"] as? JsonObject),
                 stateFilter = parseStringList(obj["state_filter"]),
                 theme = obj["theme"]?.asStringOrNull(),

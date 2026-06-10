@@ -63,6 +63,10 @@ fun AsyncBitmap(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
     contentScale: ContentScale = ContentScale.Crop,
+    /** Invoked once whenever a decoded bitmap becomes available (cache hit or
+     *  fresh fetch). Callers use this to sample the art for colour extraction;
+     *  the default no-op keeps the common path free of work. */
+    onBitmap: (ImageBitmap) -> Unit = {},
 ) {
     val resolved = remember(url, serverUrl) { url?.let { resolveUrl(it, serverUrl) } }
     // Seed bitmap from the memory cache so swiping back to a known cover paints
@@ -81,13 +85,14 @@ fun AsyncBitmap(
         }
         // Memory-hit fast path — keep the existing bitmap (already seeded above)
         // and skip the IO dispatch entirely.
-        if (AsyncBitmapCache.peek(resolved) != null) return@LaunchedEffect
+        AsyncBitmapCache.peek(resolved)?.let { onBitmap(it); return@LaunchedEffect }
         val image = runCatching { fetchAndDecode(resolved, bearerToken) }
             .onFailure { R1Log.d("AsyncBitmap", "fetch failed $resolved: ${it.message}") }
             .getOrNull()
         if (image != null) {
             AsyncBitmapCache.put(resolved, image)
             bitmap = image
+            onBitmap(image)
         } else {
             failed = true
         }

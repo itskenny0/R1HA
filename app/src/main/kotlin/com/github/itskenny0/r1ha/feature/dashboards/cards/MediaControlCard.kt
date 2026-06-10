@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +70,14 @@ fun MediaControlCard(
     val raw = state?.rawState?.lowercase().orEmpty()
     val playing = raw == "playing"
     val active = raw.isNotBlank() && raw != "off" && raw != "unavailable" && raw != "idle" && raw != "standby"
-    val accent = if (active) R1.AccentWarm else R1.InkSoft
+    // Album-art accent: derived from the loaded cover and used to tint the card
+    // when the player is active (HA's extractColors). Falls back to the warm
+    // accent until the art loads / when no usable colour is found.
+    var artAccent by remember(eid) { mutableStateOf<Color?>(null) }
+    val accent = when {
+        !active -> R1.InkSoft
+        else -> artAccent ?: R1.AccentWarm
+    }
 
     // Title line: HA prefers the media_title; the description (artist / series /
     // channel / app, per content type) is the secondary line.
@@ -117,8 +125,13 @@ fun MediaControlCard(
                     bearerToken = LocalHaBearerToken.current,
                     modifier = Modifier.size(56.dp).clip(R1.ShapeS),
                     contentDescription = "Album art",
+                    onBitmap = { img -> artAccent = dominantAccentFromArt(img) },
                 )
                 Spacer(Modifier.width(12.dp))
+            } else {
+                // No art: drop any stale extracted accent so the card returns to
+                // its default tint rather than carrying the previous cover's hue.
+                LaunchedEffect(eid) { artAccent = null }
             }
             Column(modifier = Modifier.weight(1f)) {
                 // Scroll long titles while playing, matching HA's hui-marquee. basicMarquee
