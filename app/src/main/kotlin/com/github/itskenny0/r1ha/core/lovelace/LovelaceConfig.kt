@@ -33,6 +33,13 @@ data class LovelaceConfig(
      * of silently rendering an empty dashboard.
      */
     val isStrategyGenerated: Boolean = false,
+    /**
+     * Dashboard-level `background:` (`config.background`). HA falls back to this
+     * when a view declares no `background:` of its own (hui-root.ts:
+     * `curViewConfig?.background || config.background`). Null when the dashboard
+     * sets none; see [resolveViewBackground].
+     */
+    val background: LovelaceViewBackground? = null,
 )
 
 /** One view inside a dashboard. corresponds to a tab in HA's frontend. */
@@ -82,7 +89,253 @@ data class LovelaceView(
      * renderable when navigated directly.
      */
     val subview: Boolean = false,
+    /**
+     * HA view `header:` (HA 2025.x): an optional card rendered above the
+     * badges/cards (typically a markdown title), plus the layout + badge
+     * placement options. Null when the view declares no header. R1HA renders
+     * the header card and threads [LovelaceViewHeader.badgesPosition] /
+     * [LovelaceViewHeader.layout] into the single-column flow; see
+     * [LovelaceViewHeader] and [resolveHeaderPlan].
+     */
+    val header: LovelaceViewHeader? = null,
+    /**
+     * HA view `footer:` : an optional card rendered after the last card. Null
+     * when the view declares none. On the 640px R1 column the footer renders
+     * inline at the bottom of the scroll (HA's sticky/max_width chrome is a
+     * wide-desktop affordance and is documented as a no-op here; see
+     * [LovelaceViewFooter]).
+     */
+    val footer: LovelaceViewFooter? = null,
+    /**
+     * HA sections-view `sidebar:` : a distinct group of sections HA renders in
+     * a side rail. On the single 640px column R1HA flattens these after the
+     * main sections under a divider, honouring the sidebar's own visibility
+     * conditions; see [LovelaceViewSidebar] and [resolveSidebarVisible].
+     */
+    val sidebar: LovelaceViewSidebar? = null,
+    /**
+     * HA view `background:` ({image, opacity, size, alignment, repeat,
+     * attachment} or a bare string). Rendered behind the cards via HuiImage.
+     * Null when the view declares none; the dashboard-level background is then
+     * the fallback (see [LovelaceConfig.background] and [resolveViewBackground]).
+     */
+    val background: LovelaceViewBackground? = null,
+    /**
+     * HA view `visible:` : `false` hides the view from the tab/page list, an
+     * array of `{user: id}` shows it only to listed users. Null = always
+     * visible. The view stays navigable by direct path even when hidden, so
+     * this only gates the tab list (see [ViewVisibility] and [isViewTabVisible]).
+     */
+    val visible: ViewVisibility? = null,
+    /**
+     * HA subview `back_path:` : when this is a subview, back navigation goes to
+     * the configured view path instead of the previous screen. Null = the
+     * normal back stack. Only meaningful when [subview] is true.
+     */
+    val backPath: String? = null,
+    /**
+     * HA `show_icon_and_title:` : when true (and both an [icon] and [title]
+     * exist) the tab/page indicator shows the icon AND the title rather than
+     * collapsing to one. False/null = HA's default (icon alone when present,
+     * else title). See [resolveTabIndicator].
+     */
+    val showIconAndTitle: Boolean = false,
+    /**
+     * HA sections-view `max_columns:` (default 4). On the single-column R1
+     * flatten this affects card ORDER only, never multi-column layout; stored
+     * so the ordering pass and a `view_columns` condition can read it. Null =
+     * HA's default.
+     */
+    val maxColumns: Int? = null,
+    /**
+     * HA sections-view `dense_section_placement:` : when true HA packs section
+     * tiles densely (CSS grid auto-flow dense). On the single-column flatten
+     * this never changes layout; stored so the order pass documents the
+     * adaptation. Defaults false.
+     */
+    val denseSectionPlacement: Boolean = false,
+    /**
+     * HA sections-view `top_margin:` : when true HA adds extra space above the
+     * first section. Honoured as a small leading spacer in the flatten.
+     * Defaults false.
+     */
+    val topMargin: Boolean = false,
+    /**
+     * The view's parsed sections in declaration order (a sections-view only).
+     * Empty for a masonry/panel view. Each [LovelaceSection] carries its span
+     * keys, disabled flag, and background; the renderer flattens them into the
+     * single column in HA's reading order (see [orderedSectionCards]). The
+     * flat [cards] list above remains the authoritative render input; [sections]
+     * is the structural detail the ordering + section-background passes read.
+     */
+    val sections: List<LovelaceSection> = emptyList(),
+    /**
+     * Per-view `theme:` key. Stored only; theme application is the theming
+     * batch's job. Null = inherit the dashboard/global theme.
+     */
+    val theme: String? = null,
 )
+
+/**
+ * HA view `header:` config (`LovelaceViewHeaderConfig`). The header is a small
+ * subsystem rendered above the view's cards.
+ *
+ *  - [card]: any card (HA's editor defaults to a text-only markdown title);
+ *    null when the header carries only badges.
+ *  - [layout]: "start" / "center" / "responsive". On the single 640px column
+ *    "responsive" collapses to "start" (there is never room to float badges
+ *    beside the heading); see [resolveHeaderPlan].
+ *  - [badgesPosition]: "top" (badges above the header card) or "bottom"
+ *    (default, badges below the header card).
+ *  - [badgesWrap]: "wrap" (default) or "scroll". The R1 badge row already
+ *    scrolls horizontally, so "wrap" is the only meaningful adaptation on the
+ *    narrow panel; the key is stored and documented.
+ */
+@Immutable
+data class LovelaceViewHeader(
+    val card: LovelaceCard?,
+    val layout: String? = null,
+    val badgesPosition: String? = null,
+    val badgesWrap: String? = null,
+)
+
+/**
+ * HA view `footer:` config (`LovelaceViewFooterConfig`).
+ *
+ *  - [card]: the card rendered after the last view card. Null when absent.
+ *  - [maxWidth]: HA's `max_width` (default 600px) caps the footer width on a
+ *    wide desktop. On the 640px R1 column this never bites, so it is stored and
+ *    documented but does not constrain layout.
+ *
+ * HA pins the footer sticky to the bottom of the viewport on desktop. R1HA's
+ * single scroll column renders it inline at the end (non-sticky); this is a
+ * deliberate small-screen adaptation, not a dropped key.
+ */
+@Immutable
+data class LovelaceViewFooter(
+    val card: LovelaceCard?,
+    val maxWidth: Int? = null,
+)
+
+/**
+ * HA sections-view `sidebar:` config (`LovelaceViewSidebarConfig`). HA renders
+ * the sidebar's sections in a side rail beside the main grid; on the single
+ * 640px column R1HA flattens them after the main sections under a divider.
+ *
+ *  - [sections]: the sidebar's own sections (flattened the same way the main
+ *    sections are).
+ *  - [contentLabel] / [sidebarLabel]: the labels HA's mobile tab switcher uses
+ *    for the main content vs the sidebar. R1HA uses [sidebarLabel] as the
+ *    divider caption above the flattened sidebar group (falling back to a
+ *    generic "More" when blank).
+ *  - [visibility]: conditions gating the whole sidebar group (HA hides the
+ *    sidebar when they fail). Evaluated through the Batch B engine; see
+ *    [resolveSidebarVisible].
+ */
+@Immutable
+data class LovelaceViewSidebar(
+    val sections: List<LovelaceSection> = emptyList(),
+    val contentLabel: String? = null,
+    val sidebarLabel: String? = null,
+    val visibility: List<LovelaceCondition> = emptyList(),
+)
+
+/**
+ * One section of a sections-view (`LovelaceSectionConfig`). R1HA flattens every
+ * section's cards into the view's single column; the structural keys here drive
+ * the flatten ORDER and the per-section background, never a real multi-column
+ * layout (the 640px portrait panel has room for exactly one column, so the
+ * flatten IS the equivalent of HA's grid here).
+ *
+ *  - [cards]: the section's cards, already parsed (a section header/footer card
+ *    is folded into this list by the parser, matching the flat [LovelaceView.cards]).
+ *  - [disabled]: HA's `disabled: true` drops the whole section from the render.
+ *  - [columnSpan] / [rowSpan]: HA grid spans. Used only to compute reading
+ *    order on the flatten (see [orderedSectionCards]); they never widen a card.
+ *  - [background]: HA's `background` (true, or {color, opacity}). Resolved by
+ *    [resolveSectionBackgroundOpacity]. Because the view flattens every section
+ *    into one card column (so section boundaries are not preserved in the flat
+ *    [LovelaceView.cards] render list), the per-section surface is parsed +
+ *    resolved here but drawn by the renderer only when it iterates [sections]
+ *    directly; the flat-list render path leaves it on the plain surface.
+ *  - [topMargin]: HA's section `top_margin`, honoured as leading spacing.
+ *  - [theme]: per-section theme key, stored for the theming batch.
+ */
+@Immutable
+data class LovelaceSection(
+    val cards: List<LovelaceCard>,
+    val disabled: Boolean = false,
+    val columnSpan: Int? = null,
+    val rowSpan: Int? = null,
+    val background: LovelaceSectionBackground? = null,
+    val topMargin: Boolean = false,
+    val theme: String? = null,
+)
+
+/**
+ * HA section `background:` config (`LovelaceSectionBackgroundConfig`), or the
+ * bare `background: true` shorthand (resolves to a default-opacity surface).
+ *
+ *  - [color]: a theme colour name or `#rrggbb`. Null = the default surface.
+ *  - [opacity]: 0..100 percent (HA's `DEFAULT_SECTION_BACKGROUND_OPACITY` is
+ *    50). Null = the default.
+ */
+@Immutable
+data class LovelaceSectionBackground(
+    val color: String? = null,
+    val opacity: Int? = null,
+)
+
+/**
+ * HA view `background:` config (`LovelaceViewBackgroundConfig`), or the bare
+ * `background: <css/url string>` shorthand. R1HA renders the image (when one
+ * resolves) behind the view's cards via HuiImage.
+ *
+ *  - [image]: a static image URL, or a `media-source://` content id (resolved
+ *    by the image layer where supported; an unresolvable id shows nothing and
+ *    the cards render on the plain surface).
+ *  - [opacity]: 0..100 percent dimming applied to the image. Null = opaque.
+ *  - [size]: "auto" / "cover" / "contain" (HA default "cover").
+ *  - [alignment]: HA's nine-point alignment string (default "center").
+ *  - [repeat]: "repeat" / "no-repeat" (HA default "no-repeat").
+ *  - [attachment]: "scroll" / "fixed". R1HA renders the background fixed behind
+ *    the scrolling column regardless; the key is stored and documented.
+ *  - [rawString]: the original bare-string form when the config was a plain
+ *    string rather than an object (HA accepts both). Preserved so a theme-token
+ *    or gradient string is not silently dropped; the renderer uses [image] when
+ *    it parses to a URL and otherwise falls back to the plain surface.
+ */
+@Immutable
+data class LovelaceViewBackground(
+    val image: String? = null,
+    val opacity: Int? = null,
+    val size: String? = null,
+    val alignment: String? = null,
+    val repeat: String? = null,
+    val attachment: String? = null,
+    val rawString: String? = null,
+)
+
+/**
+ * HA view `visible:` config. HA accepts:
+ *  - `visible: false` -> [AlwaysHidden]: the view is dropped from the tab list
+ *    for everyone (but stays navigable by direct path).
+ *  - `visible: [{user: id}, ...]` -> [Users]: the view appears in the tab list
+ *    only for the listed user ids.
+ *  - `visible: true` / omitted -> no [ViewVisibility] at all (always visible).
+ *
+ * Modelled as a sealed type so the tab filter ([isViewTabVisible]) reads a
+ * single value instead of juggling a nullable boolean and a list.
+ */
+@Immutable
+sealed interface ViewVisibility {
+    /** `visible: false` — never shown in the tab list. */
+    @Immutable
+    data object AlwaysHidden : ViewVisibility
+    /** `visible: [{user: id}]` — shown only to the listed users. */
+    @Immutable
+    data class Users(val userIds: Set<String>) : ViewVisibility
+}
 
 /**
  * Sealed hierarchy of card types R1HA renders natively. Adding a new
