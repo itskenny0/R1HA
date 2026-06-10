@@ -143,14 +143,14 @@ object MinimalDarkTheme : R1Theme {
                     )
                 }
                 Spacer(Modifier.height(if (compact) 8.dp else 20.dp))
-                // Hide the giant percent readout on media_player cards that are
-                // currently playing — same logic as PragmaticHybridTheme. The
-                // now-playing block + the right-side meter already convey
-                // volume, so a 72 sp '100 %' on top of them squeezed the
-                // now-playing block into a thumbnail-sized strip.
+                // Hide the giant percent readout on media_player cards — same
+                // unconditional rule as the other themes. Gating on title-or-
+                // picture made the layout flap while track metadata loaded: the
+                // 72 sp readout appeared, then vanished on the next state event
+                // and squeezed the now-playing strip back in. The now-playing
+                // block + the meter already convey volume.
                 val hideBigReadoutForMedia = model.domainGlyph ==
-                    CardRenderModel.Glyph.MEDIA_PLAYER &&
-                    (!model.mediaTitle.isNullOrBlank() || !model.mediaPicture.isNullOrBlank())
+                    CardRenderModel.Glyph.MEDIA_PLAYER
                 if (!hideBigReadoutForMedia) {
                     BigReadout(
                         percent = model.percent,

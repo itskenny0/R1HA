@@ -427,6 +427,8 @@ internal fun CardValueBarScaffold(
     accent: Color,
     outer: Modifier,
     tickLabelColor: Color = R1.InkMuted,
+    /** Forwarded to the tape meters; see [VerticalTapeMeter]'s trackColor. */
+    trackColor: Color = R1.SurfaceMuted,
     content: @Composable () -> Unit,
 ) {
     val entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText)
@@ -441,6 +443,7 @@ internal fun CardValueBarScaffold(
                     tickLabels = model.meterLabels,
                     rainbow = rainbow,
                     tickLabelColor = tickLabelColor,
+                    trackColor = trackColor,
                 )
                 Spacer(Modifier.width(20.dp))
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -463,6 +466,7 @@ internal fun CardValueBarScaffold(
                     tickLabels = model.meterLabels,
                     rainbow = rainbow,
                     tickLabelColor = tickLabelColor,
+                    trackColor = trackColor,
                 )
             }
         }
@@ -475,6 +479,7 @@ internal fun CardValueBarScaffold(
                     tickLabels = model.meterLabels,
                     rainbow = rainbow,
                     tickLabelColor = tickLabelColor,
+                    trackColor = trackColor,
                 )
                 Spacer(Modifier.height(14.dp))
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -497,6 +502,7 @@ internal fun CardValueBarScaffold(
                     tickLabels = model.meterLabels,
                     rainbow = rainbow,
                     tickLabelColor = tickLabelColor,
+                    trackColor = trackColor,
                 )
             }
         }
@@ -652,6 +658,9 @@ internal fun VerticalTapeMeter(
      *  on the dark theme backgrounds; the Colourful Cards theme passes a near-white
      *  here because the gradient backdrop renders muted-grey labels invisible. */
     tickLabelColor: Color = R1.InkMuted,
+    /** Override the hairline track colour. Same rationale as [tickLabelColor]: the
+     *  default dark grey disappears against Colourful Cards' deep gradient anchors. */
+    trackColor: Color = R1.SurfaceMuted,
 ) {
     val fraction = rememberSliderFraction(percent).coerceIn(0f, 1f)
     val labels = tickLabels ?: listOf("100", "75", "50", "25", "0")
@@ -776,7 +785,7 @@ internal fun VerticalTapeMeter(
                         .fillMaxHeight()
                         .width(2.dp)
                         .align(Alignment.CenterEnd)
-                        .background(R1.SurfaceMuted),
+                        .background(trackColor),
                 )
                 // Fill — grows from the bottom up to `fraction` of available height.
                 // Skipped in rainbow mode because there's no "level" being displayed;
@@ -822,6 +831,8 @@ internal fun HorizontalTapeMeter(
     tickLabels: List<String>? = null,
     rainbow: Boolean = false,
     tickLabelColor: Color = R1.InkMuted,
+    /** See [VerticalTapeMeter]'s trackColor: themes on vivid backdrops override it. */
+    trackColor: Color = R1.SurfaceMuted,
 ) {
     val fraction = rememberSliderFraction(percent).coerceIn(0f, 1f)
     // VerticalTapeMeter's labels list is top→bottom (high→low). Reverse it so the
@@ -889,7 +900,7 @@ internal fun HorizontalTapeMeter(
                         .fillMaxWidth()
                         .height(2.dp)
                         .align(Alignment.Center)
-                        .background(R1.SurfaceMuted),
+                        .background(trackColor),
                 )
                 // Fill — grows from the left to `fraction` of available width.
                 Box(

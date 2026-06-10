@@ -160,6 +160,10 @@ object ColorfulCardsTheme : R1Theme {
             // still reading over the vivid mid-stops (the edge scrim does the
             // rest of the work).
             tickLabelColor = Color.White.copy(alpha = 0.92f),
+            // The default dark-grey hairline vanishes against the gradients'
+            // deep anchors; a translucent white reads on every palette without
+            // competing with the solid white fill.
+            trackColor = Color.White.copy(alpha = 0.25f),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
