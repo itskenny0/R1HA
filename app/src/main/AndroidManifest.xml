@@ -279,8 +279,9 @@
             android:permission="android.permission.BIND_JOB_SERVICE"/>
 
         <!-- Home-screen widget — a single-tile quick-launch shortcut. Tap opens
-             MainActivity. No live data binding (RemoteViews + Doze would fight),
-             so think of this as a launcher tile with the app's iconography. -->
+             MainActivity. Deliberately no live data binding (the favorite-card
+             widget below covers that); think of this as a launcher tile with
+             the app's iconography. -->
         <receiver
             android:name=".feature.widget.R1haWidgetProvider"
             android:exported="true">
@@ -291,6 +292,34 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/r1ha_widget_info"/>
         </receiver>
+
+        <!-- Favorite-card widget — renders one favorite as a live card
+             (glyph, name, state, accent) refreshed by a bounded 30-minute
+             REST poll plus tap-to-act for toggleable domains. Each instance
+             binds to one entity via the configure activity below. -->
+        <receiver
+            android:name=".feature.widget.FavoriteCardWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_favorite_card_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/favorite_card_widget_info"/>
+        </receiver>
+
+        <!-- Configuration activity for the favorite-card widget. Launched by
+             the widget host (the launcher), so it must be exported with the
+             APPWIDGET_CONFIGURE filter. -->
+        <activity
+            android:name=".feature.widget.FavoriteCardWidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.R1ha">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE"/>
+            </intent-filter>
+        </activity>
 
         <!-- DISMISS-action receiver for the HA notification mirror. Fired when the
              user taps the DISMISS button on a mirrored notification; routes to

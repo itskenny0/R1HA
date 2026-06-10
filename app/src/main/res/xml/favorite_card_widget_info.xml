@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidget metadata for the favorite-card widget. Defaults to a 3x2-cell
+  card (a legible name + readout at typical launcher grid densities) and
+  resizes freely in both axes; the provider repaints the bitmap at the new
+  size from onAppWidgetOptionsChanged. updatePeriodMillis sits at the
+  30-minute floor Android enforces — the live readout is a bounded poll,
+  not a push surface, and a tap always forces a fresh fetch. The configure
+  activity is mandatory: every instance binds to exactly one favorite
+  before the host places it.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="40dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/favorite_card_widget"
+    android:configure="com.github.itskenny0.r1ha.feature.widget.FavoriteCardWidgetConfigActivity"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_favorite_card_description"/>

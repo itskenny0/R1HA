@@ -12,11 +12,11 @@ import com.github.itskenny0.r1ha.R
 
 /**
  * Home-screen widget — a single-tile quick-launch tile that opens R1HA's
- * main activity. Doesn't bind to an HA entity because (a) RemoteViews
- * have a constrained drawing surface that doesn't match the in-app card
- * idiom and (b) live data would require a periodic poll that fights with
- * Doze for power; the existing Quick Settings tiles cover the live-state
- * mirror use case better.
+ * main activity. Deliberately stays a dumb shortcut: no entity binding, no
+ * poll, no per-instance state. Users who want live entity data on the home
+ * screen use [FavoriteCardWidgetProvider], which accepts the RemoteViews +
+ * bounded-poll tradeoffs this tile avoids; keeping the two widgets separate
+ * means this one never wakes the network and never needs configuration.
  *
  * Tap target: the whole tile fires a single PendingIntent to MainActivity.
  * Future expansion: a configuration activity could let the user pick an
