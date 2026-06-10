@@ -549,7 +549,8 @@ class LovelaceParserTest {
             obj("""{"type":"logbook","entities":["light.x","light.y"]}"""),
         ) as LovelaceCard.Logbook
         assertEquals(listOf("light.x", "light.y"), card.entities)
-        assertEquals(12, card.hoursToShow)
+        // HA's DEFAULT_HOURS_TO_SHOW is 24; a bare logbook config shows the full day.
+        assertEquals(24, card.hoursToShow)
     }
 
     @Test fun `entity-filter without filter keeps empty filter list and clock defaults to digital`() {
