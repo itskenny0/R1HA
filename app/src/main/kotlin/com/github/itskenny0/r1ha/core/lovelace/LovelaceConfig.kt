@@ -286,6 +286,16 @@ sealed class LovelaceCard {
         val showForecast: Boolean,
         val forecastType: String?,
         val forecastSlots: Int?,
+        /** HA's `secondary_info_attribute`: an extra attribute (humidity, wind
+         *  speed, pressure...) shown under the current condition. Null = HA's
+         *  default secondary line (extrema). */
+        val secondaryInfoAttribute: String? = null,
+        /** HA's `round_temperature`: round displayed temperatures to whole
+         *  degrees rather than showing a fractional digit. */
+        val roundTemperature: Boolean = false,
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "weather-forecast"
     }
@@ -300,6 +310,17 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction? = null,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /** HA's `entity_id` (a single id or a list): scopes which entities the
+         *  template subscription listens to, so a card watching one sensor does
+         *  not re-render on every unrelated state change. Empty = HA derives the
+         *  listeners from the template itself. */
+        val entityIds: List<String> = emptyList(),
+        /** HA's `text_only`: drop the card surface / border and suppress the
+         *  title, so the markdown reads as bare text in the layout. */
+        val textOnly: Boolean = false,
+        /** HA's `show_empty`: when false the whole card hides if the rendered
+         *  result is the empty string. */
+        val showEmpty: Boolean = true,
     ) : LovelaceCard() {
         override val type: String = "markdown"
     }

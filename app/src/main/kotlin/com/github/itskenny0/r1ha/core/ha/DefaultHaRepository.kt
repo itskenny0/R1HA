@@ -448,6 +448,10 @@ class DefaultHaRepository(
     private val _currentUserId = MutableStateFlow<String?>(null)
     override val currentUserId: StateFlow<String?> = _currentUserId.asStateFlow()
 
+    /** Cached logged-in user display name, populated alongside [_currentUserId]. */
+    private val _currentUserName = MutableStateFlow<String?>(null)
+    override val currentUserName: StateFlow<String?> = _currentUserName.asStateFlow()
+
     private val pendingCalls = ConcurrentHashMap<Int, CompletableDeferred<Result<Unit>>>()
     /**
      * Parallel awaiter map keyed by the same request id space as [pendingCalls], but
@@ -753,6 +757,7 @@ class DefaultHaRepository(
                         // Drop the cached user id: the next connect re-fetches it
                         // (and a server change must not bleed user A's id into B).
                         _currentUserId.value = null
+                        _currentUserName.value = null
                         // If we just transitioned out of AuthLost (which fired its own
                         // refresh + connectFromSettings) the Disconnected handler must NOT
                         // also schedule a reconnect; both timers would otherwise race and
@@ -2004,6 +2009,7 @@ class DefaultHaRepository(
     private suspend fun refreshCurrentUser() {
         val user = fetchCurrentUser().getOrNull()
         _currentUserId.value = user?.id
+        _currentUserName.value = user?.name?.takeIf { it.isNotBlank() }
     }
 
     override suspend fun listServices(): Result<List<HaServiceDomain>> = withContext(Dispatchers.IO) {
@@ -3362,6 +3368,53 @@ class DefaultHaRepository(
             )
         }.onFailure { t ->
             R1Log.w("HaRepo.template.live", "subscribe failed: ${t.message}")
+        }.map { handle ->
+            object : HaRepository.TemplateSubscription {
+                override suspend fun cancel() = cancelLiveSubscription(handle)
+            }
+        }
+    }
+
+    override suspend fun subscribeTemplateDetailed(
+        template: String,
+        variables: kotlinx.serialization.json.JsonObject?,
+        entityIds: List<String>,
+        strict: Boolean,
+        reportErrors: Boolean,
+        onRender: (HaRepository.TemplateRender) -> Unit,
+    ): Result<HaRepository.TemplateSubscription> = withContext(Dispatchers.IO) {
+        runCatching {
+            val extras = kotlinx.serialization.json.buildJsonObject {
+                put("template", JsonPrimitive(template))
+                if (strict) put("strict", JsonPrimitive(true))
+                if (reportErrors) put("report_errors", JsonPrimitive(true))
+                if (variables != null) put("variables", variables)
+                if (entityIds.isNotEmpty()) {
+                    put(
+                        "entity_ids",
+                        kotlinx.serialization.json.buildJsonArray {
+                            entityIds.forEach { add(JsonPrimitive(it)) }
+                        },
+                    )
+                }
+            }
+            registerLiveSubscription(
+                frameType = "render_template",
+                frameExtras = extras,
+                onEvent = { event ->
+                    val error = (event["error"] as? JsonPrimitive)?.content
+                    if (error != null) {
+                        val level = (event["level"] as? JsonPrimitive)?.content ?: "ERROR"
+                        onRender(HaRepository.TemplateRender.Error(error, level))
+                    } else {
+                        val result = (event["result"] as? JsonPrimitive)?.content
+                        if (result != null) onRender(HaRepository.TemplateRender.Ok(result))
+                    }
+                },
+                logTag = "HaRepo.template.card",
+            )
+        }.onFailure { t ->
+            R1Log.w("HaRepo.template.card", "subscribe failed: ${t.message}")
         }.map { handle ->
             object : HaRepository.TemplateSubscription {
                 override suspend fun cancel() = cancelLiveSubscription(handle)

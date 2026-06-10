@@ -359,8 +359,13 @@ object LovelaceParser {
                     name = obj["name"]?.asStringOrNull(),
                     showCurrent = obj["show_current"]?.asBooleanOrNull() ?: true,
                     showForecast = obj["show_forecast"]?.asBooleanOrNull() ?: true,
-                    forecastType = obj["forecast_type"]?.asStringOrNull(),
+                    forecastType = obj["forecast_type"]?.asStringOrNull()?.lowercase(),
                     forecastSlots = obj["forecast_slots"]?.asIntOrNull(),
+                    secondaryInfoAttribute = obj["secondary_info_attribute"]?.asStringOrNull(),
+                    roundTemperature = obj["round_temperature"]?.asBooleanOrNull() ?: false,
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 )
             }
             "markdown" -> LovelaceCard.Markdown(
@@ -370,6 +375,10 @@ object LovelaceParser {
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                // `entity_id` may be a single id string or a list; accept both.
+                entityIds = parseEntityIdScope(obj["entity_id"]),
+                textOnly = obj["text_only"]?.asBooleanOrNull() ?: false,
+                showEmpty = obj["show_empty"]?.asBooleanOrNull() ?: true,
             )
             "heading" -> LovelaceCard.Heading(
                 raw = obj,
@@ -1040,6 +1049,14 @@ object LovelaceParser {
     private fun parseStringList(el: JsonElement?): List<String> {
         val arr = el as? JsonArray ?: return emptyList()
         return arr.mapNotNull { (it as? JsonPrimitive)?.let { p -> if (p.isString) p.content else null } }
+    }
+
+    /** Parse HA's `entity_id` scope key, which is either a single id string or a
+     *  list of id strings. Blank entries are dropped. */
+    private fun parseEntityIdScope(el: JsonElement?): List<String> = when (el) {
+        is JsonArray -> el.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.takeIf { s -> s.isNotBlank() } }
+        is JsonPrimitive -> if (el.isString) el.content.takeIf { it.isNotBlank() }?.let { listOf(it) } ?: emptyList() else emptyList()
+        else -> emptyList()
     }
 
     /**

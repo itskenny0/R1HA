@@ -18,6 +18,14 @@ interface HaRepository {
     val currentUserId: StateFlow<String?>
 
     /**
+     * The logged-in user's display name, cached from the same `auth/current_user`
+     * fetch that populates [currentUserId]. Null when not yet fetched / failed.
+     * The markdown card forwards it as the `user` template variable, matching HA's
+     * frontend (`variables: { user: hass.user.name }`).
+     */
+    val currentUserName: StateFlow<String?>
+
+    /**
      * One-shot fetch of the logged-in user via the `auth/current_user` WS
      * command. Returns the [HaCurrentUser], or null when the server doesn't
      * recognise the command (degrades silently). A transport failure is a
@@ -484,6 +492,35 @@ interface HaRepository {
     suspend fun subscribeTemplate(
         template: String,
         onResult: (String) -> Unit,
+    ): Result<TemplateSubscription>
+
+    /** A `render_template` event, either a rendered string or an error with
+     *  HA's severity level. Used by the detailed subscription so a card can map
+     *  an error to a styled callout instead of treating it as a render. */
+    sealed interface TemplateRender {
+        data class Ok(val result: String) : TemplateRender
+        data class Error(val message: String, val level: String) : TemplateRender
+    }
+
+    /**
+     * Subscribe to live re-renders of [template] with the full parameter set HA's
+     * markdown card sends: [variables] (the `{config, user}` map a template can
+     * read), [entityIds] to scope which entities re-trigger the render, [strict]
+     * to fail on undefined variables, and [reportErrors] so HA pushes Jinja errors
+     * through the event channel (with a severity level) rather than tanking the
+     * whole subscription. Each event arrives as a [TemplateRender] so the caller
+     * can distinguish a rendered result from an error and pick a fallback.
+     *
+     * A null / empty [entityIds] omits the scope (HA derives listeners from the
+     * template itself), and a null [variables] sends no variables block.
+     */
+    suspend fun subscribeTemplateDetailed(
+        template: String,
+        variables: kotlinx.serialization.json.JsonObject? = null,
+        entityIds: List<String> = emptyList(),
+        strict: Boolean = true,
+        reportErrors: Boolean = true,
+        onRender: (TemplateRender) -> Unit,
     ): Result<TemplateSubscription>
 
     /**
