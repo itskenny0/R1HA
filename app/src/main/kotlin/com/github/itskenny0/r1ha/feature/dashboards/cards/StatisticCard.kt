@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
@@ -51,15 +52,33 @@ fun StatisticCard(
     val eid = remember(card.entityId) { safeEntityId(card.entityId) }
     val name = resolveName(card.name, eid?.let { stateMap[it] }, card.entityId)
     val unit = card.unit ?: eid?.let { stateMap[it]?.unit }
-    var value by remember(card.entityId, card.statType, card.periodSpec) {
+    // Energy date-range binding: when collection_key / energy_date_selection is
+    // set the window comes from the shared energy period instead of period_spec.
+    val energyPeriod = card.collectionKey?.let {
+        val collection =
+            com.github.itskenny0.r1ha.feature.dashboards.cards.energy.rememberEnergyCollection(it)
+        collection.data.collectAsStateWithLifecycle().value.period
+    }
+    var value by remember(card.entityId, card.statType, card.periodSpec, energyPeriod) {
         mutableStateOf<Double?>(null)
     }
-    var loaded by remember(card.entityId, card.statType, card.periodSpec) { mutableStateOf(false) }
+    var loaded by remember(card.entityId, card.statType, card.periodSpec, energyPeriod) {
+        mutableStateOf(false)
+    }
 
     if (repo != null) {
-        LaunchedEffect(card.entityId, card.statType, card.periodSpec) {
+        LaunchedEffect(card.entityId, card.statType, card.periodSpec, energyPeriod) {
             while (true) {
-                val window = resolveStatisticWindow(card.periodSpec.toSpec(), Instant.now())
+                val window = if (energyPeriod != null) {
+                    com.github.itskenny0.r1ha.ui.components.StatisticWindow(
+                        start = energyPeriod.start,
+                        end = energyPeriod.end,
+                        bucket = com.github.itskenny0.r1ha.feature.dashboards.cards.energy
+                            .bucketForPeriod(energyPeriod),
+                    )
+                } else {
+                    resolveStatisticWindow(card.periodSpec.toSpec(), Instant.now())
+                }
                 repo.getStatisticsDuringPeriod(
                     statisticIds = listOf(card.entityId),
                     start = window.start,

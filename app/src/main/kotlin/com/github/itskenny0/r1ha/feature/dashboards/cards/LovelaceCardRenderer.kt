@@ -82,6 +82,10 @@ fun LovelaceCardRenderer(
         is LovelaceCard.Repairs -> RepairsCard(card, onAction, modifier)
         is LovelaceCard.EmptyState -> EmptyStateCard(card, modifier)
         is LovelaceCard.Distribution -> DistributionCard(card, stateMap, onAction, modifier)
+        is LovelaceCard.EnergyDateSelection ->
+            com.github.itskenny0.r1ha.feature.dashboards.cards.energy.EnergyDateSelectionCard(card, modifier)
+        is LovelaceCard.Energy ->
+            com.github.itskenny0.r1ha.feature.dashboards.cards.energy.EnergyCard(card, modifier)
         is LovelaceCard.PictureElements -> PictureElementsCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Conditional -> {
             // Read the live condition context (current user, window size, local

@@ -50,4 +50,26 @@ class DistributionWeightsTest {
         assertThat(distributionWeights(listOf(0.0, 0.0))).containsExactly(0f, 0f).inOrder()
         assertThat(distributionWeights(emptyList())).isEmpty()
     }
+
+    @Test fun `SI prefix scales kilo and milli`() {
+        assertThat(normalizeBySiPrefix(2.0, "kW")).isEqualTo(2000.0)
+        assertThat(normalizeBySiPrefix(500.0, "mA")).isEqualTo(0.5)
+        assertThat(normalizeBySiPrefix(1.0, "MWh")).isEqualTo(1_000_000.0)
+    }
+
+    @Test fun `SI prefix leaves bare and unprefixed units alone`() {
+        // "m" (metres) and "A" (amps) are single-char; "Pa" starts with no prefix.
+        assertThat(normalizeBySiPrefix(3.0, "m")).isEqualTo(3.0)
+        assertThat(normalizeBySiPrefix(3.0, "A")).isEqualTo(3.0)
+        assertThat(normalizeBySiPrefix(3.0, "Pa")).isEqualTo(3.0)
+        assertThat(normalizeBySiPrefix(3.0, null)).isEqualTo(3.0)
+        assertThat(normalizeBySiPrefix(null, "kW")).isNull()
+    }
+
+    @Test fun `mixed-prefix entries weight by true magnitude`() {
+        // 2 kW vs 500 W should split 80 / 20, not be dominated by the raw 500.
+        val values = listOf(normalizeBySiPrefix(2.0, "kW"), normalizeBySiPrefix(500.0, "W"))
+        val w = distributionWeights(values)
+        assertThat(w).containsExactly(0.8f, 0.2f).inOrder()
+    }
 }

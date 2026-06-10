@@ -26,6 +26,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
@@ -67,23 +68,31 @@ fun StatisticsGraphCard(
     modifier: Modifier = Modifier,
 ) {
     val repo = LocalHaRepository.current
+    // Energy date-range binding: when collection_key / energy_date_selection is
+    // set the window comes from the shared energy period instead of days_to_show,
+    // so the card reflows with the dashboard's energy selector.
+    val energyPeriod = card.collectionKey?.let {
+        val collection =
+            com.github.itskenny0.r1ha.feature.dashboards.cards.energy.rememberEnergyCollection(it)
+        collection.data.collectAsStateWithLifecycle().value.period
+    }
     // One drawable series per (entity, stat_type) pair.
-    var series by remember(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+    var series by remember(card.entityIds, card.statTypes, card.period, card.daysToShow, energyPeriod) {
         mutableStateOf<List<StatSeries>>(emptyList())
     }
-    var loaded by remember(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+    var loaded by remember(card.entityIds, card.statTypes, card.period, card.daysToShow, energyPeriod) {
         mutableStateOf(false)
     }
-    var nowMillis by remember(card.entityIds, card.period, card.daysToShow) {
+    var nowMillis by remember(card.entityIds, card.period, card.daysToShow, energyPeriod) {
         mutableStateOf(System.currentTimeMillis())
     }
 
     if (repo != null) {
-        LaunchedEffect(card.entityIds, card.statTypes, card.period, card.daysToShow) {
+        LaunchedEffect(card.entityIds, card.statTypes, card.period, card.daysToShow, energyPeriod) {
             while (true) {
-                val end = Instant.now()
+                val end = energyPeriod?.end ?: Instant.now()
                 val days = card.daysToShow ?: DEFAULT_STAT_DAYS
-                val start = end.minus(Duration.ofDays(days.toLong()))
+                val start = energyPeriod?.start ?: end.minus(Duration.ofDays(days.toLong()))
                 repo.getStatisticsDuringPeriod(
                     statisticIds = card.entityIds,
                     start = start,
@@ -118,8 +127,9 @@ fun StatisticsGraphCard(
         }
     }
 
-    val windowEnd = nowMillis
-    val windowStart = windowEnd - (card.daysToShow ?: DEFAULT_STAT_DAYS).toLong() * 86_400_000L
+    val windowEnd = energyPeriod?.end?.toEpochMilli() ?: nowMillis
+    val windowStart = energyPeriod?.start?.toEpochMilli()
+        ?: (windowEnd - (card.daysToShow ?: DEFAULT_STAT_DAYS).toLong() * 86_400_000L)
 
     CardSurface(modifier = modifier, title = card.title?.takeUnless { it.isBlank() }) {
         Column(modifier = Modifier.padding(horizontal = 14.dp)) {

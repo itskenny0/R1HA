@@ -16,8 +16,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
@@ -39,7 +44,17 @@ fun DistributionCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val values = card.entries.map { distributionValueOf(stateMap.byRaw(it.entityId)) }
+    // Entities the user has toggled off via the legend; their segment is dropped
+    // from the bar (and the legend item dims) until tapped again. Keyed by the
+    // card identity so re-rendering the same card preserves the hidden set.
+    var hidden by remember(card) { mutableStateOf(emptySet<String>()) }
+    // SI-normalise each entry's value by its unit prefix (kW -> W, mA -> A, ...)
+    // so a mixed-prefix set weights by true magnitude rather than raw number.
+    val values = card.entries.map { e ->
+        val state = stateMap.byRaw(e.entityId)
+        val raw = distributionValueOf(state)
+        if (e.entityId in hidden) null else normalizeBySiPrefix(raw, state?.unit)
+    }
     val weights = distributionWeights(values)
     val colors = card.entries.map { e ->
         haColorAccent(e.color) ?: stateAccentFor(e.entityId, stateMap.byRaw(e.entityId))
@@ -81,17 +96,24 @@ fun DistributionCard(
             }
         }
         Spacer(Modifier.height(10.dp))
-        // Legend.
+        // Legend. Tapping a legend item toggles its segment's visibility (HA's
+        // _toggleEntity); a long-press equivalent isn't available on the R1, so
+        // more-info is reachable from the segment itself in the bar above.
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             card.entries.forEachIndexed { i, entry ->
                 val state = stateMap.byRaw(entry.entityId)
                 val label = resolveName(entry.name, state, entry.entityId)
                 val valueText = state?.let { compactStateText(it) } ?: "-"
+                val isHidden = entry.entityId in hidden
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.r1Pressable(
-                        onClick = { onAction(LovelaceAction.Builtin("more-info", entry.entityId)) },
-                    ),
+                    modifier = Modifier
+                        .alpha(if (isHidden) 0.4f else 1f)
+                        .r1Pressable(
+                            onClick = {
+                                hidden = if (isHidden) hidden - entry.entityId else hidden + entry.entityId
+                            },
+                        ),
                 ) {
                     Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(colors[i]))
                     Spacer(Modifier.width(6.dp))
@@ -106,6 +128,28 @@ fun DistributionCard(
  *  number, or null when the entity is absent or its state is non-numeric. */
 internal fun distributionValueOf(state: com.github.itskenny0.r1ha.core.ha.EntityState?): Double? =
     state?.rawState?.toDoubleOrNull()
+
+/**
+ * Normalise [value] by a leading SI prefix on [unit] (T/G/M/k/m/µ), a port of
+ * HA's `normalizeValueBySIPrefix`. Only fires when the unit is longer than one
+ * char and starts with a recognised prefix, so a bare "m" (metres) or "A"
+ * (amps) is left alone. Lets the distribution bar weight a kW entry against a
+ * W entry by true magnitude. Null value passes through.
+ */
+internal fun normalizeBySiPrefix(value: Double?, unit: String?): Double? {
+    if (value == null) return null
+    if (unit == null || unit.length <= 1) return value
+    val factor = when (unit[0]) {
+        'T' -> 1e12
+        'G' -> 1e9
+        'M' -> 1e6
+        'k' -> 1e3
+        'm' -> 1e-3
+        'µ', 'μ' -> 1e-6
+        else -> return value
+    }
+    return value * factor
+}
 
 /**
  * Pure helper: turn raw per-entity values into proportional weights summing to

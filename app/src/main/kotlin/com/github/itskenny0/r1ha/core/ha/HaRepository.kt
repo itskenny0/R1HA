@@ -805,6 +805,29 @@ interface HaRepository {
      * offline" message) rather than hard-erroring the UI.
      */
     suspend fun fetchPanels(): Result<List<HaPanel>>
+
+    /**
+     * Fetch the full Energy dashboard preferences via `energy/get_prefs`,
+     * decoded into [EnergyPreferences] (sources + per-device meters). This is
+     * the structured form the Lovelace energy cards consume; [getEnergyPrefs]
+     * returns only the name-override map the native energy screen needs.
+     *
+     * Best-effort: a transport error or an HA install with the energy
+     * integration disabled returns a failure the caller renders as an empty
+     * state, never a crash.
+     *
+     * UNVERIFIED OFFLINE: the `energy/get_prefs` shape follows HA's documented
+     * websocket API; not exercised against a live energy setup.
+     */
+    suspend fun getEnergyPreferencesFull(): Result<EnergyPreferences>
+
+    /**
+     * Fetch `energy/info`: the auto-generated cost-sensor map. Used by the
+     * sources table to fill cost columns for sources that configured only a
+     * price, not an explicit cost meter. Best-effort; an empty info is a
+     * graceful degradation (cost columns simply stay blank).
+     */
+    suspend fun getEnergyInfo(): Result<EnergyInfo>
 }
 
 /**

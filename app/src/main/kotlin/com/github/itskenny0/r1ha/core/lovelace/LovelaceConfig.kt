@@ -1389,6 +1389,59 @@ sealed class LovelaceCard {
         /** Per-card `theme:` key. Stored only; applied by a later batch. */
         val theme: String? = null,
     ) : LovelaceCard()
+
+    /**
+     * The energy date-range selector card (`energy-date-selection`): the
+     * dashboard host for the shared period. Renders compact on 640px (chevrons
+     * + preset dropdown + compare toggle) and drives every energy card bound to
+     * the same [collectionKey].
+     */
+    @Immutable
+    data class EnergyDateSelection(
+        override val raw: JsonObject,
+        val collectionKey: String? = null,
+    ) : LovelaceCard() {
+        override val type: String = "energy-date-selection"
+    }
+
+    /**
+     * Every other energy card. They all share the same data source (the energy
+     * collection for [collectionKey]) and differ only in [kind], so one card
+     * type with a discriminator keeps the family coherent and the parser
+     * additive. [title] is the optional card header.
+     */
+    @Immutable
+    data class Energy(
+        override val raw: JsonObject,
+        val kind: EnergyCardKind,
+        val title: String? = null,
+        val collectionKey: String? = null,
+    ) : LovelaceCard() {
+        override val type: String = kind.haType
+    }
+}
+
+/** The energy card variants, each mapping to one HA `energy-*` card type. */
+enum class EnergyCardKind(val haType: String) {
+    USAGE_GRAPH("energy-usage-graph"),
+    DISTRIBUTION("energy-distribution"),
+    DEVICES_GRAPH("energy-devices-graph"),
+    DEVICES_DETAIL_GRAPH("energy-devices-detail-graph"),
+    SOURCES_TABLE("energy-sources-table"),
+    SOLAR_GRAPH("energy-solar-graph"),
+    GAS_GRAPH("energy-gas-graph"),
+    WATER_GRAPH("energy-water-graph"),
+    SOLAR_CONSUMED_GAUGE("energy-solar-consumed-gauge"),
+    SELF_SUFFICIENCY_GAUGE("energy-self-sufficiency-gauge"),
+    GRID_NEUTRALITY_GAUGE("energy-grid-neutrality-gauge"),
+    CARBON_CONSUMED_GAUGE("energy-carbon-consumed-gauge"),
+    COMPARE("energy-compare"),
+    GRID_BALANCE("energy-grid-balance"),
+    SANKEY("energy-sankey"),
+    POWER_SANKEY("power-sankey"),
+    WATER_SANKEY("water-sankey"),
+    WATER_FLOW_SANKEY("water-flow-sankey"),
+    POWER_SOURCES_GRAPH("power-sources-graph"),
 }
 
 /**

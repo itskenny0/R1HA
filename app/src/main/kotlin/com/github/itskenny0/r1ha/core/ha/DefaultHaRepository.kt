@@ -4256,6 +4256,38 @@ class DefaultHaRepository(
     }
 
     /**
+     * Fetch the full Energy dashboard preferences (sources + per-device meters)
+     * via `energy/get_prefs`, decoded into [EnergyPreferences]. Unlike
+     * [getEnergyPrefs] this surfaces a failure to the caller so the energy
+     * cards can render a "no energy config" state instead of silently empty.
+     *
+     * UNVERIFIED OFFLINE: not exercised against a live HA energy setup.
+     */
+    override suspend fun getEnergyPreferencesFull(): Result<EnergyPreferences> =
+        withContext(Dispatchers.IO) {
+            callWsExpectingPayload("energy/get_prefs").mapCatching { payload ->
+                parseEnergyPreferences(payload)
+            }.onFailure { t ->
+                R1Log.w("HaRepo.energyPrefs", "get_prefs (full) failed: ${t.message}")
+            }
+        }
+
+    /**
+     * Fetch `energy/info`: the auto-generated cost-sensor map. Best-effort; a
+     * failure recovers to empty info so the sources table just omits the cost
+     * column rather than failing the whole card.
+     */
+    override suspend fun getEnergyInfo(): Result<EnergyInfo> =
+        withContext(Dispatchers.IO) {
+            callWsExpectingPayload("energy/info").mapCatching { payload ->
+                parseEnergyInfo(payload)
+            }.recoverCatching { t ->
+                R1Log.w("HaRepo.energyPrefs", "energy/info failed (best-effort): ${t.message}")
+                EnergyInfo()
+            }
+        }
+
+    /**
      * Variant of [simpleAuthedGetTail] that also reports the total body
      * size pre-truncation so callers can render an accurate "showing last
      * N of M bytes" hint. Memory profile is identical: bounded by
