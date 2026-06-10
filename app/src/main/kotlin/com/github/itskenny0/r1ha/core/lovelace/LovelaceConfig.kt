@@ -1734,6 +1734,13 @@ data class EntityRow(
      * friendly name apply).
      */
     val nameItems: List<EntityNameItem> = emptyList(),
+    /**
+     * HA glance per-entity `show_last_changed`: when true (and the entity is NOT
+     * a timestamp-device-class sensor) the tile renders the relative
+     * `last_changed` time instead of the state value. Mirrors hui-glance-card's
+     * `entityConf.show_last_changed`. Defaults false.
+     */
+    val showLastChanged: Boolean = false,
 )
 
 /**

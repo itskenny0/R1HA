@@ -159,6 +159,7 @@ private fun GlanceTile(
             GlanceTileState(
                 state = state,
                 rowFormat = row.format,
+                showLastChanged = row.showLastChanged,
                 accent = accent,
             )
         }
@@ -225,14 +226,16 @@ private fun GlanceNotFoundTile(
 private fun GlanceTileState(
     state: EntityState?,
     rowFormat: TimestampFormat?,
+    showLastChanged: Boolean,
     accent: androidx.compose.ui.graphics.Color,
 ) {
     val now by rememberNowTick()
     val use24h = rememberUse24HourClock()
     val tsFormat = resolveTimestampFormat(rowFormat, state?.deviceClass)
     val tsInstant = if (tsFormat != null) timestampInstantOrNull(state?.deviceClass, state?.rawState) else null
-    val stateText = if (tsInstant != null && tsFormat != null) {
-        runCatching {
+    val stateText = when {
+        // Timestamp / uptime device-class sensors win (hui-timestamp-display).
+        tsInstant != null && tsFormat != null -> runCatching {
             formatTimestamp(
                 at = tsInstant,
                 format = tsFormat,
@@ -241,8 +244,9 @@ private fun GlanceTileState(
                 use24h = use24h,
             )
         }.getOrDefault(state?.rawState.orEmpty())
-    } else {
-        state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-"
+        // Otherwise `show_last_changed` renders the relative last_changed time.
+        showLastChanged && state != null -> relativeTimeShort(state.lastChanged)
+        else -> state?.let(::compactStateText)?.takeUnless { it.isBlank() } ?: "-"
     }
     Spacer(Modifier.height(3.dp))
     Text(

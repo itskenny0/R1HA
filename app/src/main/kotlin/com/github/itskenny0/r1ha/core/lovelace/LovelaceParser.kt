@@ -1588,6 +1588,7 @@ object LovelaceParser {
             suffix = item["suffix"]?.asStringOrNull(),
             stateColor = item["state_color"]?.asBooleanOrNull(),
             nameItems = parseStructuredName(item["name"]),
+            showLastChanged = item["show_last_changed"]?.asBooleanOrNull() ?: false,
         )
     }
 

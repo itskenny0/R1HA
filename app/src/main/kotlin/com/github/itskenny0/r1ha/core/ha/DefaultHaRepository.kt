@@ -3129,6 +3129,54 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun editTodoItem(
+        entityId: String,
+        uid: String,
+        summary: String?,
+        description: String?,
+        due: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+                put("item", JsonPrimitive(uid))
+                if (summary != null) put("rename", JsonPrimitive(summary))
+                if (description != null) put("description", JsonPrimitive(description))
+                // A datetime due ("...T...") routes to due_datetime; a bare date
+                // to due_date. An empty string clears whichever field is implied
+                // (HA clears the value when the service receives an empty string).
+                if (due != null) {
+                    if (due.contains("T")) {
+                        put("due_datetime", JsonPrimitive(due))
+                    } else {
+                        put("due_date", JsonPrimitive(due))
+                    }
+                }
+            }
+            callRawService("todo", "update_item", payload).getOrThrow()
+            Unit
+        }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "edit on $entityId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun moveTodoItem(
+        entityId: String,
+        uid: String,
+        previousUid: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entity_id", JsonPrimitive(entityId))
+            put("uid", JsonPrimitive(uid))
+            // Omitting previous_uid (or sending null) moves the item to the top,
+            // matching HA's moveItem(prev = undefined) semantics.
+            if (previousUid != null) put("previous_uid", JsonPrimitive(previousUid))
+        }
+        callWsExpectingPayload("todo/item/move", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "move on $entityId failed: ${t.message}")
+        }
+    }
+
     override suspend fun removeTodoItem(entityId: String, uid: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
