@@ -309,6 +309,11 @@ object LovelaceParser {
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
                     holdAction = parseAction(obj["hold_action"] as? JsonObject),
                     doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                    iconTapAction = parseAction(obj["icon_tap_action"] as? JsonObject),
+                    iconHoldAction = parseAction(obj["icon_hold_action"] as? JsonObject),
+                    iconDoubleTapAction = parseAction(obj["icon_double_tap_action"] as? JsonObject),
+                    showEntityPicture = obj["show_entity_picture"]?.asBooleanOrNull() ?: false,
+                    featuresPosition = obj["features_position"]?.asStringOrNull(),
                     features = parseTileFeatures(obj["features"]),
                     stateContent = parseStringList(obj["state_content"]),
                     nameType = obj["name_type"]?.asStringOrNull(),
@@ -553,6 +558,7 @@ object LovelaceParser {
                     entityId = entity,
                     name = obj["name"]?.asStringOrNull(),
                     showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
+                    showCurrentAsPrimary = obj["show_current_as_primary"]?.asBooleanOrNull() ?: false,
                     features = parseTileFeatures(obj["features"]),
                 )
             }

@@ -1,5 +1,10 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -9,17 +14,29 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.CardActions
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
+import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
+import com.github.itskenny0.r1ha.ui.components.attrString
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -31,6 +48,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * Vertical mode flips the layout to icon-on-top so a wider screen can
  * pack tiles two-up in a column without label truncation. We honour
  * `vertical: true` from the card config when set.
+ *
+ * HA splits the tile into two action surfaces: the body taps to more-info by
+ * default while the ICON taps to toggle / press (for a toggleable domain) or
+ * nothing. We honour `icon_tap_action` / `icon_hold_action` /
+ * `icon_double_tap_action`, falling back to HA's domain-default icon action.
  */
 @Composable
 fun TileCard(
@@ -52,14 +74,17 @@ fun TileCard(
     }
     val name = resolveDisplayName(card.name, card.nameType, state, card.entityId)
     val icon = cardEntityIcon(card.entityId, state, card.icon)
-    // Resolve tap (with HA's domain-default fallback) plus hold / double-tap,
-    // all bound to the tile's entity, via the shared action layer.
+    // Body tap (with HA's domain-default fallback) plus hold / double-tap.
     val actions = resolveCardActions(
         tapAction = card.tapAction,
         holdAction = card.holdAction,
         doubleTapAction = card.doubleTapAction,
         cardEntityId = card.entityId,
     )
+    // The icon's own gesture surface. A null icon_tap_action falls back to HA's
+    // domain-default (toggle / press / none). "none" yields no tap so the icon
+    // is inert and the body action still fires from the surrounding surface.
+    val iconActions = resolveIconActions(card)
     val stateText = when {
         card.stateContent.isNotEmpty() && state != null ->
             resolveStateContent(card.stateContent, state).takeUnless { it.isBlank() }
@@ -73,6 +98,10 @@ fun TileCard(
     // surface, separated by a hairline. Only renders when the entity supports
     // at least one configured feature.
     val hasFeatures = card.features.any { it !is com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature.Unsupported }
+    // HA's "inline" feature position renders features beside the body; "bottom"
+    // (default) renders them below. Vertical tiles always render below.
+    val inlineFeatures = !card.vertical &&
+        card.featuresPosition?.equals("inline", ignoreCase = true) == true
 
     val cardSurface = Modifier
         .fillMaxWidth()
@@ -86,30 +115,58 @@ fun TileCard(
         .padding(horizontal = 14.dp, vertical = 12.dp)
 
     Column(modifier = modifier.then(cardSurface)) {
-        TileBody(
-            card = card,
-            state = state,
-            accent = accent,
-            name = name,
-            icon = icon,
-            stateText = stateText,
-            modifier = bodyTap,
-        )
-        if (hasFeatures && state != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(R1.Hairline),
-            )
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-                TileFeatureRows(
-                    features = card.features,
-                    entityId = card.entityId,
+        if (inlineFeatures && hasFeatures && state != null) {
+            // Body and a compact trailing feature column share one row.
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TileBody(
+                    card = card,
                     state = state,
                     accent = accent,
+                    name = name,
+                    icon = icon,
+                    stateText = stateText,
+                    iconActions = iconActions,
                     onAction = onAction,
+                    modifier = bodyTap.weight(1f),
                 )
+                Column(modifier = Modifier.padding(end = 12.dp, top = 8.dp, bottom = 8.dp).width(120.dp)) {
+                    TileFeatureRows(
+                        features = card.features,
+                        entityId = card.entityId,
+                        state = state,
+                        accent = accent,
+                        onAction = onAction,
+                    )
+                }
+            }
+        } else {
+            TileBody(
+                card = card,
+                state = state,
+                accent = accent,
+                name = name,
+                icon = icon,
+                stateText = stateText,
+                iconActions = iconActions,
+                onAction = onAction,
+                modifier = bodyTap,
+            )
+            if (hasFeatures && state != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(R1.Hairline),
+                )
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    TileFeatureRows(
+                        features = card.features,
+                        entityId = card.entityId,
+                        state = state,
+                        accent = accent,
+                        onAction = onAction,
+                    )
+                }
             }
         }
     }
@@ -122,11 +179,13 @@ fun TileCard(
 @Composable
 private fun TileBody(
     card: LovelaceCard.Tile,
-    state: com.github.itskenny0.r1ha.core.ha.EntityState?,
-    accent: androidx.compose.ui.graphics.Color,
+    state: EntityState?,
+    accent: Color,
     name: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     stateText: String?,
+    iconActions: CardActions,
+    onAction: (LovelaceAction) -> Unit,
     modifier: Modifier,
 ) {
     if (card.vertical) {
@@ -134,7 +193,10 @@ private fun TileBody(
             modifier = modifier,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            CardIconDisc(icon = icon, accent = accent, discSize = 48.dp, iconSize = 24.dp)
+            TileIconSurface(
+                card = card, state = state, accent = accent, icon = icon,
+                discSize = 48.dp, iconSize = 24.dp, iconActions = iconActions, onAction = onAction,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
                 text = name,
@@ -161,7 +223,10 @@ private fun TileBody(
             modifier = modifier,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CardIconDisc(icon = icon, accent = accent, discSize = 40.dp, iconSize = 22.dp)
+            TileIconSurface(
+                card = card, state = state, accent = accent, icon = icon,
+                discSize = 40.dp, iconSize = 22.dp, iconActions = iconActions, onAction = onAction,
+            )
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -192,6 +257,140 @@ private fun TileBody(
             }
         }
     }
+}
+
+/**
+ * The tile's icon surface: the accent disc (or an entity picture when
+ * `show_entity_picture` is set and the entity carries one), an optional status
+ * badge overlay, the alarm/lock pulse, and the icon's own tap gesture. Kept
+ * here so the badge + picture + pulse logic lives next to the tile and reuses
+ * the pure [tileBadgeFor] / [tileIconPulses] decisions.
+ */
+@Composable
+private fun TileIconSurface(
+    card: LovelaceCard.Tile,
+    state: EntityState?,
+    accent: Color,
+    icon: ImageVector,
+    discSize: Dp,
+    iconSize: Dp,
+    iconActions: CardActions,
+    onAction: (LovelaceAction) -> Unit,
+) {
+    val pulses = tileIconPulses(card.entityId, state)
+    val pulseAlpha = if (pulses) {
+        val transition = rememberInfiniteTransition(label = "tile-icon-pulse")
+        val a by transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1000),
+                repeatMode = RepeatMode.Reverse,
+            ),
+            label = "tile-icon-pulse-alpha",
+        )
+        a
+    } else {
+        1f
+    }
+
+    // HA reads `entity_picture_local` || `entity_picture`. We surface the raw
+    // attribute (covers person avatars / camera thumbs / album art) and fall
+    // back to the media-player-specific [mediaPicture] field.
+    val picture = if (card.showEntityPicture) {
+        (state?.attrString("entity_picture_local")
+            ?: state?.attrString("entity_picture")
+            ?: state?.mediaPicture)?.takeUnless { it.isBlank() }
+    } else {
+        null
+    }
+    // The icon's tap gesture: a `none` resolution leaves CardActions empty and
+    // r1CardActions returns the receiver unchanged (no spurious click target),
+    // so the body action still fires.
+    val iconGesture = Modifier.r1CardActions(actions = iconActions, onAction = onAction)
+
+    Box(modifier = Modifier.then(iconGesture).alpha(pulseAlpha)) {
+        if (picture != null) {
+            AsyncBitmap(
+                url = picture,
+                serverUrl = LocalHaServerUrl.current,
+                bearerToken = LocalHaBearerToken.current,
+                modifier = Modifier.size(discSize).clip(CircleShape),
+                contentDescription = null,
+            )
+        } else {
+            CardIconDisc(icon = icon, accent = accent, discSize = discSize, iconSize = iconSize)
+        }
+        val badge = tileBadgeFor(card.entityId, state)
+        if (badge != null) {
+            TileStatusBadge(
+                badge = badge,
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
+    }
+}
+
+/** Small overlay badge drawn at the icon's top-right corner (HA's
+ *  ha-tile-badge). A monochrome glyph in a coloured disc, sized to read at the
+ *  R1's pixel density without crowding the icon. Uses the app's font-free glyph
+ *  idiom (a single unicode symbol) so it tints cleanly and never depends on a
+ *  curated MDI mapping that might be absent. */
+@Composable
+private fun TileStatusBadge(badge: TileBadge, modifier: Modifier = Modifier) {
+    val (glyph, bg) = when (badge) {
+        TileBadge.Unavailable -> "!" to R1.StatusAmber
+        is TileBadge.Person -> (if (badge.away) "↪" else "⌂") to
+            (if (badge.home) R1.AccentGreen else R1.AccentCool)
+        is TileBadge.Climate -> climateActionGlyph(badge.action) to climateActionAccent(badge.action)
+        is TileBadge.Humidifier -> "≀" to R1.AccentCool
+    }
+    Box(
+        modifier = modifier
+            .size(16.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .border(1.dp, R1.Surface, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = glyph, style = R1.labelMicro, color = R1.Surface)
+    }
+}
+
+/** A glyph for a climate hvac_action: a flame for heating, snowflake for
+ *  cooling, drop for drying, fan otherwise. */
+private fun climateActionGlyph(action: String): String = when (action.lowercase()) {
+    "heating" -> "✦"
+    "cooling" -> "❅"
+    "drying" -> "≀"
+    "fan" -> "✣"
+    else -> "❈"
+}
+
+/** Accent for a climate hvac_action badge: heating warm, cooling cool, else neutral. */
+private fun climateActionAccent(action: String): Color = when (action.lowercase()) {
+    "heating" -> R1.StatusRed
+    "cooling" -> R1.AccentCool
+    "drying" -> R1.StatusAmber
+    else -> R1.AccentGreen
+}
+
+/**
+ * Resolve the tile's icon-gesture slots. A null `icon_tap_action` falls back to
+ * HA's domain-default ("toggle" / "none"); "none" produces no tap so the icon
+ * is a passthrough. Hold / double-tap are bound only when configured.
+ */
+private fun resolveIconActions(card: LovelaceCard.Tile): CardActions {
+    val tap = card.iconTapAction
+        ?: when (getEntityDefaultTileIconAction(card.entityId)) {
+            "toggle" -> LovelaceAction.Builtin("toggle", card.entityId)
+            else -> null
+        }
+    return CardActions(
+        tap = tap?.boundTo(card.entityId),
+        hold = card.iconHoldAction?.boundTo(card.entityId),
+        doubleTap = card.iconDoubleTapAction?.boundTo(card.entityId),
+    )
 }
 
 /**

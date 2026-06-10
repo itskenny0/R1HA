@@ -197,6 +197,29 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /**
+         * HA's separate ICON gesture slots. The tile splits its body and icon
+         * into two action surfaces: tapping the body more-infos by default,
+         * tapping the icon toggles/presses (for a toggleable domain) or does
+         * nothing. A null [iconTapAction] falls back to
+         * `getEntityDefaultTileIconAction(entity)`. Hold / double-tap stay null
+         * when unconfigured (no icon gesture attached for them).
+         */
+        val iconTapAction: LovelaceAction? = null,
+        val iconHoldAction: LovelaceAction? = null,
+        val iconDoubleTapAction: LovelaceAction? = null,
+        /**
+         * HA `show_entity_picture`: when true and the entity reports an
+         * `entity_picture`, the icon disc is replaced by that image (album art,
+         * person avatar, camera thumbnail).
+         */
+        val showEntityPicture: Boolean = false,
+        /**
+         * HA `features_position`: "bottom" (default, features render below the
+         * body) or "inline" (features render beside the body). On the 640px R1
+         * screen "inline" renders the features as a compact trailing column.
+         */
+        val featuresPosition: String? = null,
         // HA's `features:` array. Each entry renders as a control row below the
         // tile body (cover open/close, light brightness, fan speed, climate HVAC
         // modes, alarm modes, lock commands, toggle, target temperature, select
@@ -651,6 +674,12 @@ sealed class LovelaceCard {
          * large value and hide the current temperature reading.
          */
         val showCurrentTemperature: Boolean = true,
+        /**
+         * HA `show_current_as_primary`: when true, the current temperature is the
+         * dominant large value and the setpoint becomes the secondary readout
+         * (the reverse of the default emphasis).
+         */
+        val showCurrentAsPrimary: Boolean = false,
         /**
          * HA 2023.12: tile features rendered below the card body (e.g.
          * climate-hvac-modes, target-temperature). Parsed via the shared

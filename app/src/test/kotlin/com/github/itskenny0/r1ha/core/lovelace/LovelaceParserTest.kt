@@ -392,6 +392,46 @@ class LovelaceParserTest {
         assertTrue(LovelaceParser.parseCard(obj("""{"type":"humidifier"}""")) is LovelaceCard.Unsupported)
     }
 
+    @Test fun `tile parses icon actions, entity picture and features position`() {
+        val card = LovelaceParser.parseCard(
+            obj(
+                """
+                {"type":"tile","entity":"light.kitchen",
+                 "icon_tap_action":{"action":"toggle"},
+                 "icon_hold_action":{"action":"more-info"},
+                 "icon_double_tap_action":{"action":"none"},
+                 "show_entity_picture":true,
+                 "features_position":"inline"}
+                """.trimIndent(),
+            ),
+        ) as LovelaceCard.Tile
+        assertNotNull(card.iconTapAction)
+        assertNotNull(card.iconHoldAction)
+        assertNotNull(card.iconDoubleTapAction)
+        assertTrue(card.showEntityPicture)
+        assertEquals("inline", card.featuresPosition)
+    }
+
+    @Test fun `tile defaults icon-action fields when unset`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"tile","entity":"light.kitchen"}"""),
+        ) as LovelaceCard.Tile
+        assertEquals(null, card.iconTapAction)
+        assertEquals(false, card.showEntityPicture)
+        assertEquals(null, card.featuresPosition)
+    }
+
+    @Test fun `thermostat parses show_current_as_primary`() {
+        val card = LovelaceParser.parseCard(
+            obj("""{"type":"thermostat","entity":"climate.lr","show_current_as_primary":true}"""),
+        ) as LovelaceCard.Thermostat
+        assertTrue(card.showCurrentAsPrimary)
+        val plain = LovelaceParser.parseCard(
+            obj("""{"type":"thermostat","entity":"climate.lr"}"""),
+        ) as LovelaceCard.Thermostat
+        assertEquals(false, plain.showCurrentAsPrimary)
+    }
+
     @Test fun `custom card with single entity captures entity ref`() {
         // An UNMAPPED custom type still falls to the best-effort Unsupported card
         // and captures its entity ref. Recognised types like mushroom-light-card
