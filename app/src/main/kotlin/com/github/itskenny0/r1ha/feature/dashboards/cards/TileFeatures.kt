@@ -111,6 +111,23 @@ private fun renderFeature(
             if (!toggleableDomain(domain)) return false
             ToggleFeature(entityId, state, accent, onAction)
         }
+        is LovelaceTileFeature.ButtonFeature -> {
+            // Domains the button feature acts on (HA supportsButtonCardFeature).
+            if (domain != "button" && domain != "input_button" &&
+                domain != "scene" && domain != "script") return false
+            val unavailable = state.rawState == "unavailable"
+            val service = if (domain == "scene" || domain == "script") "turn_on" else "press"
+            val label = feature.actionName?.uppercase() ?: "PRESS"
+            FeatureButton(
+                label = label,
+                accent = accent,
+                selected = false,
+                enabled = !unavailable,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                onAction(LovelaceAction.CallService("$domain.$service", entityId, null))
+            }
+        }
         is LovelaceTileFeature.CoverOpenClose -> {
             if (domain != "cover") return false
             CoverOpenCloseFeature(entityId, state, accent, onAction)
@@ -460,22 +477,23 @@ private fun renderFeature(
         // ── Lawn-mower commands ───────────────────────────────────────────────
         is LovelaceTileFeature.LawnMowerCommands -> {
             if (domain != "lawn_mower") return false
-            val showStart = state.hasFeature(EntityState.LawnMowerFeature.START_MOWING)
-            val showPause = state.hasFeature(EntityState.LawnMowerFeature.PAUSE)
-            val showDock = state.hasFeature(EntityState.LawnMowerFeature.DOCK)
-            if (!showStart && !showPause && !showDock) return false
+            val keys = lawnMowerVisibleCommands(state, feature.commands)
+            if (keys.isEmpty()) return false
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (showStart) FeatureButton(label = "START", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-                    onAction(LovelaceAction.CallService("lawn_mower.start_mowing", entityId, null))
-                }
-                if (showPause) FeatureButton(label = "PAUSE", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-                    onAction(LovelaceAction.CallService("lawn_mower.pause", entityId, null))
-                }
-                if (showDock) FeatureButton(label = "DOCK", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-                    onAction(LovelaceAction.CallService("lawn_mower.dock", entityId, null))
+                keys.forEach { key ->
+                    val button = lawnMowerButtonFor(state, key)
+                    FeatureButton(
+                        label = button.label,
+                        accent = accent,
+                        selected = false,
+                        enabled = button.enabled,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        onAction(LovelaceAction.CallService("lawn_mower.${button.service}", entityId, null))
+                    }
                 }
             }
         }
@@ -571,22 +589,71 @@ private fun renderFeature(
         // ── Update actions ────────────────────────────────────────────────────
         is LovelaceTileFeature.UpdateActions -> {
             if (domain != "update") return false
+            val unavailable = state.rawState == "unavailable"
+            // "ask" mode: gate behind a YES/NO dialog before firing install.
+            var showBackupAsk by remember(entityId) { mutableStateOf(false) }
+            val fireInstall: (Boolean) -> Unit = { withBackup ->
+                onAction(
+                    LovelaceAction.CallService(
+                        service = "update.install",
+                        entityId = entityId,
+                        data = if (withBackup) buildJsonObject { put("backup", JsonPrimitive(true)) } else null,
+                    ),
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FeatureButton(label = "INSTALL", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
-                    onAction(
-                        LovelaceAction.CallService(
-                            service = "update.install",
-                            entityId = entityId,
-                            data = if (feature.backup) buildJsonObject { put("backup", JsonPrimitive(true)) } else null,
-                        ),
-                    )
+                FeatureButton(label = "INSTALL", accent = accent, selected = false, enabled = !unavailable, modifier = Modifier.weight(1f)) {
+                    when (feature.backup) {
+                        "yes" -> fireInstall(true)
+                        "ask" -> showBackupAsk = true
+                        else -> fireInstall(false)
+                    }
                 }
-                FeatureButton(label = "SKIP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                FeatureButton(label = "SKIP", accent = accent, selected = false, enabled = !unavailable, modifier = Modifier.weight(1f)) {
                     onAction(LovelaceAction.CallService("update.skip", entityId, null))
                 }
+            }
+            if (showBackupAsk) {
+                // HA's "ask" mode: prompt whether to backup before installing.
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { showBackupAsk = false },
+                    containerColor = R1.Bg,
+                    title = {
+                        androidx.compose.material3.Text(
+                            text = "BACKUP BEFORE INSTALL?",
+                            style = R1.sectionHeader,
+                            color = R1.Ink,
+                        )
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            text = "Create a backup before installing the update.",
+                            style = R1.body,
+                            color = R1.InkMuted,
+                        )
+                    },
+                    confirmButton = {
+                        com.github.itskenny0.r1ha.ui.components.R1Button(
+                            text = "BACKUP + INSTALL",
+                            onClick = {
+                                showBackupAsk = false
+                                fireInstall(true)
+                            },
+                        )
+                    },
+                    dismissButton = {
+                        com.github.itskenny0.r1ha.ui.components.R1Button(
+                            text = "INSTALL",
+                            onClick = {
+                                showBackupAsk = false
+                                fireInstall(false)
+                            },
+                        )
+                    },
+                )
             }
         }
         // ── Cover tilt-position scalar ────────────────────────────────────────
@@ -1156,7 +1223,13 @@ private fun alarmModeAction(mode: String, entityId: String, code: String?): Love
     return LovelaceAction.CallService(alarmServiceFor(mode), entityId, data)
 }
 
-/** Setpoint stepper for climate / water_heater, nudging by the entity's step. */
+/**
+ * Setpoint stepper for climate / water_heater, nudging by the entity's step.
+ * When the entity reports both target_temp_low and target_temp_high (heat_cool
+ * mode) two independent low/high steppers are shown side by side, mirroring the
+ * thermostat card's dual-setpoint layout. The two bounds are clamped against
+ * each other (low <= high) using [nudgeDualSetpoint].
+ */
 @Composable
 private fun TargetTemperatureFeature(
     entityId: String,
@@ -1165,11 +1238,52 @@ private fun TargetTemperatureFeature(
     accent: Color,
     onAction: (LovelaceAction) -> Unit,
 ) {
-    val target = state.climateTargetTemperature ?: return
     val step = state.climateTempStep?.takeIf { it > 0 } ?: 0.5
     val unit = state.temperatureUnit?.takeUnless { it.isBlank() } ?: state.unit?.takeUnless { it.isBlank() } ?: "°"
     val min = state.climateMinTemp
     val max = state.climateMaxTemp
+    val targetLow = state.climateTargetTempLow
+    val targetHigh = state.climateTargetTempHigh
+    if (targetLow != null && targetHigh != null) {
+        // Dual setpoint (heat_cool): two steppers for low / high bounds.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "COOL", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.height(2.dp))
+                Text(text = "${fmtTemp(targetHigh)}$unit", style = R1.numeralM, color = accent)
+            }
+            StepperButton(label = "−", accent = accent, enabled = true) {
+                val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = false, direction = -1, step = step, min = min, max = max)
+                onAction(setTempRangeFeatureAction(domain, entityId, low = targetLow, high = next))
+            }
+            Spacer(Modifier.width(4.dp))
+            StepperButton(label = "+", accent = accent, enabled = true) {
+                val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = false, direction = +1, step = step, min = min, max = max)
+                onAction(setTempRangeFeatureAction(domain, entityId, low = targetLow, high = next))
+            }
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "HEAT", style = R1.labelMicro, color = R1.InkMuted)
+                Spacer(Modifier.height(2.dp))
+                Text(text = "${fmtTemp(targetLow)}$unit", style = R1.numeralM, color = accent)
+            }
+            StepperButton(label = "−", accent = accent, enabled = true) {
+                val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = true, direction = -1, step = step, min = min, max = max)
+                onAction(setTempRangeFeatureAction(domain, entityId, low = next, high = targetHigh))
+            }
+            Spacer(Modifier.width(4.dp))
+            StepperButton(label = "+", accent = accent, enabled = true) {
+                val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = true, direction = +1, step = step, min = min, max = max)
+                onAction(setTempRangeFeatureAction(domain, entityId, low = next, high = targetHigh))
+            }
+        }
+        return
+    }
+    val target = state.climateTargetTemperature ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
@@ -1186,6 +1300,20 @@ private fun TargetTemperatureFeature(
             onAction(setTemperatureFeatureAction(domain, entityId, next))
         }
     }
+}
+
+/** Build the set_temperature call for dual-setpoint heat_cool mode. */
+private fun setTempRangeFeatureAction(domain: String, entityId: String, low: Double, high: Double): LovelaceAction.CallService {
+    val cleanLow = Math.round(low * 10.0) / 10.0
+    val cleanHigh = Math.round(high * 10.0) / 10.0
+    return LovelaceAction.CallService(
+        service = "$domain.set_temperature",
+        entityId = entityId,
+        data = buildJsonObject {
+            put("target_temp_low", JsonPrimitive(cleanLow))
+            put("target_temp_high", JsonPrimitive(cleanHigh))
+        },
+    )
 }
 
 /** A labelled +/- stepper that nudges a 0..100 scalar by 10 % per tap and fires
@@ -1551,10 +1679,10 @@ private fun mediaControlAction(entityId: String, control: String, state: EntityS
     else -> LovelaceAction.CallService("media_player.$control", entityId, null)
 }
 
-/** Cycle repeat off -> all -> one -> off, matching HA's button. */
+/** Cycle repeat off -> one -> all -> off, matching HA's repeat_set cycle. */
 private fun nextRepeat(current: String?): String = when (current) {
-    "off", null -> "all"
-    "all" -> "one"
+    "off", null -> "one"
+    "one" -> "all"
     else -> "off"
 }
 

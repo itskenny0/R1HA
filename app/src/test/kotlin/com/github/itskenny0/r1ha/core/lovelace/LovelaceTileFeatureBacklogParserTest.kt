@@ -86,6 +86,7 @@ class LovelaceTileFeatureBacklogParserTest {
     @Test fun `parses lawn-mower-commands`() {
         val f = single("""{"type":"lawn-mower-commands"}""")
         assertTrue(f is LovelaceTileFeature.LawnMowerCommands)
+        assertEquals(emptyList<String>(), (f as LovelaceTileFeature.LawnMowerCommands).commands)
     }
 
     @Test fun `parses vacuum-commands without filter`() {
@@ -125,15 +126,17 @@ class LovelaceTileFeatureBacklogParserTest {
         assertEquals(listOf("increment", "reset"), (f as LovelaceTileFeature.CounterActions).actions)
     }
 
-    @Test fun `parses update-actions without backup`() {
+    @Test fun `parses update-actions without backup defaults to no`() {
         val f = single("""{"type":"update-actions"}""")
         assertTrue(f is LovelaceTileFeature.UpdateActions)
-        assertEquals(false, (f as LovelaceTileFeature.UpdateActions).backup)
+        assertEquals("no", (f as LovelaceTileFeature.UpdateActions).backup)
     }
 
-    @Test fun `parses update-actions with backup true`() {
-        val f = single("""{"type":"update-actions","backup":true}""")
-        assertEquals(true, (f as LovelaceTileFeature.UpdateActions).backup)
+    @Test fun `parses update-actions with backup string options`() {
+        assertEquals("yes", (single("""{"type":"update-actions","backup":"yes"}""") as LovelaceTileFeature.UpdateActions).backup)
+        assertEquals("ask", (single("""{"type":"update-actions","backup":"ask"}""") as LovelaceTileFeature.UpdateActions).backup)
+        // Legacy boolean true coerces to "yes".
+        assertEquals("yes", (single("""{"type":"update-actions","backup":true}""") as LovelaceTileFeature.UpdateActions).backup)
     }
 
     // ── Scalar-stepper features ──────────────────────────────────────────────
