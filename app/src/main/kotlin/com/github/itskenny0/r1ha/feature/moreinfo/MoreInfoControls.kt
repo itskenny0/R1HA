@@ -56,6 +56,79 @@ object MoreInfoControls {
                 it.equals(COLOR_MODE_RGBWW, ignoreCase = true)
         }
 
+    fun lightSupportsRgbww(colorModes: List<String>): Boolean =
+        colorModes.any { it.equals(COLOR_MODE_RGBWW, ignoreCase = true) }
+
+    fun lightSupportsRgbw(colorModes: List<String>): Boolean =
+        colorModes.any { it.equals(COLOR_MODE_RGBW, ignoreCase = true) }
+
+    /** Convert a 0..100 percent white-channel value to HA's 0..255 byte (matching
+     *  `Math.min(255, Math.round(value * 255 / 100))`). */
+    fun whiteChannelByte(percent: Int): Int =
+        ((percent.coerceIn(0, 100) * 255 + 50) / 100).coerceIn(0, 255)
+
+    /**
+     * Build the `rgbw_color` array (`[r,g,b,w]`) for an rgbw white-channel slider
+     * change, preserving the current rgb part. Mirrors HA's `_wvSliderChanged`
+     * "wv" branch: take the bulb's current rgb (or [0,0,0] when none), keep r/g/b
+     * and set the white channel to [whitePercent] scaled to 0..255.
+     */
+    fun rgbwColorForWhite(currentRgb: List<Int>?, whitePercent: Int): List<Int> {
+        val rgb = (currentRgb ?: emptyList()).take(3)
+        val r = rgb.getOrElse(0) { 0 }
+        val g = rgb.getOrElse(1) { 0 }
+        val b = rgb.getOrElse(2) { 0 }
+        return listOf(r, g, b, whiteChannelByte(whitePercent))
+    }
+
+    /** RGBWW slider channels: cold-white is index 3, warm-white is index 4. */
+    enum class RgbwwChannel { COLD, WARM }
+
+    /**
+     * Build the `rgbww_color` array (`[r,g,b,cw,ww]`) for an rgbww white-channel
+     * slider change, preserving the rgb part AND the other white channel. Mirrors
+     * HA's `_wvSliderChanged` rgbww branch: start from the current rgbww (padded to
+     * five entries), then overwrite only the changed cold/warm-white channel.
+     */
+    fun rgbwwColorForWhite(
+        currentRgbww: List<Int>?,
+        channel: RgbwwChannel,
+        whitePercent: Int,
+    ): List<Int> {
+        val base = (currentRgbww ?: emptyList()).toMutableList()
+        while (base.size < 5) base.add(0)
+        val idx = if (channel == RgbwwChannel.COLD) 3 else 4
+        base[idx] = whiteChannelByte(whitePercent)
+        return base.take(5)
+    }
+
+    /** Current white-channel percent (0..100) for a slider, read from the matching
+     *  rgbw/rgbww attribute index. Null = no value yet (slider defaults to 0). */
+    fun whiteChannelPercent(channelByte: Int?): Int? =
+        channelByte?.let { ((it.coerceIn(0, 255) * 100 + 127) / 255).coerceIn(0, 100) }
+
+    /**
+     * Scale an rgb triple by a 0..100 color-brightness percent, mirroring HA's
+     * `_adjustColorBrightness` (black normalises to white first, then each channel
+     * scales by value/255). Returns the adjusted `[r,g,b]`.
+     */
+    fun adjustColorBrightness(currentRgb: List<Int>?, brightnessPercent: Int): List<Int> {
+        var r = currentRgb?.getOrNull(0) ?: 255
+        var g = currentRgb?.getOrNull(1) ?: 255
+        var b = currentRgb?.getOrNull(2) ?: 255
+        if (r == 0 && g == 0 && b == 0) {
+            r = 255; g = 255; b = 255
+        }
+        val value = (brightnessPercent.coerceIn(0, 100) * 255 + 50) / 100
+        if (value != 255) {
+            val ratio = value / 255.0
+            r = minOf(255, Math.round(r * ratio).toInt())
+            g = minOf(255, Math.round(g * ratio).toInt())
+            b = minOf(255, Math.round(b * ratio).toInt())
+        }
+        return listOf(r, g, b)
+    }
+
     /**
      * True when a lock advertises the OPEN feature (unlatch the door), so the
      * sheet offers an "open door" button. [supportedFeatures] is the raw

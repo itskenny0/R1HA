@@ -772,6 +772,75 @@ private fun LightControl(
                 )
             }
         }
+        // RGBW / RGBWW white-channel + color-brightness sliders — HA's
+        // light-color-rgb-picker shows a "color brightness" slider plus one (rgbw)
+        // or two (rgbww cold/warm) white-channel sliders when the bulb advertises
+        // those modes. Each call preserves the rest of the colour payload.
+        if (com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls.lightSupportsWhiteChannel(colorModes)) {
+            val controls = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls
+            val currentRgb = entity.attrIntList("rgb_color")
+            // Color brightness: scales the rgb part, preserving the white channels.
+            val colorBrightPct = run {
+                val maxRgb = currentRgb?.take(3)?.maxOrNull()
+                controls.whiteChannelPercent(maxRgb) ?: 100
+            }
+            PercentControl(
+                label = "COLOR BRIGHTNESS",
+                pct = colorBrightPct.coerceIn(0, 100),
+                accent = accent,
+                onChange = { pct ->
+                    val rgb = controls.adjustColorBrightness(currentRgb, pct)
+                    dispatch(setRgbColorPreservingWhite(entity, controls, colorModes, rgb))
+                },
+            )
+            if (controls.lightSupportsRgbww(colorModes)) {
+                val rgbww = entity.attrIntList("rgbww_color")
+                val cwPct = controls.whiteChannelPercent(rgbww?.getOrNull(3)) ?: 0
+                val wwPct = controls.whiteChannelPercent(rgbww?.getOrNull(4)) ?: 0
+                PercentControl(
+                    label = "COLD WHITE",
+                    pct = cwPct,
+                    accent = accent,
+                    onChange = { pct ->
+                        dispatch(
+                            rgbwwWhiteCall(
+                                entity,
+                                controls.rgbwwColorForWhite(rgbww, com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls.RgbwwChannel.COLD, pct),
+                            ),
+                        )
+                    },
+                )
+                PercentControl(
+                    label = "WARM WHITE",
+                    pct = wwPct,
+                    accent = accent,
+                    onChange = { pct ->
+                        dispatch(
+                            rgbwwWhiteCall(
+                                entity,
+                                controls.rgbwwColorForWhite(rgbww, com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls.RgbwwChannel.WARM, pct),
+                            ),
+                        )
+                    },
+                )
+            } else {
+                val rgbw = entity.attrIntList("rgbw_color")
+                val wPct = controls.whiteChannelPercent(rgbw?.getOrNull(3)) ?: 0
+                PercentControl(
+                    label = "WHITE",
+                    pct = wPct,
+                    accent = accent,
+                    onChange = { pct ->
+                        dispatch(
+                            rgbwWhiteCall(
+                                entity,
+                                controls.rgbwColorForWhite(currentRgb, pct),
+                            ),
+                        )
+                    },
+                )
+            }
+        }
         // White mode — HA's more-info-light offers a dedicated WHITE button for
         // bulbs that advertise LightColorMode.WHITE; it drives the white channel
         // (not a colour) at the bulb's current brightness.
@@ -819,6 +888,62 @@ private fun LightControl(
             }
         }
     }
+}
+
+/** `light.turn_on { rgbw_color: [...] }`. */
+private fun rgbwWhiteCall(entity: EntityState, rgbw: List<Int>): ServiceCall =
+    ServiceCall(
+        entity.id,
+        "turn_on",
+        kotlinx.serialization.json.buildJsonObject {
+            put("rgbw_color", kotlinx.serialization.json.buildJsonArray {
+                rgbw.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+            })
+        },
+    )
+
+/** `light.turn_on { rgbww_color: [...] }`. */
+private fun rgbwwWhiteCall(entity: EntityState, rgbww: List<Int>): ServiceCall =
+    ServiceCall(
+        entity.id,
+        "turn_on",
+        kotlinx.serialization.json.buildJsonObject {
+            put("rgbww_color", kotlinx.serialization.json.buildJsonArray {
+                rgbww.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+            })
+        },
+    )
+
+/**
+ * Color-brightness apply: scale the rgb part (already adjusted), then re-attach
+ * the bulb's existing white channels so an rgbww/rgbw bulb keeps its whites.
+ * Mirrors HA's `_setRgbWColor`: an rgbww bulb sends `rgbww_color = rgb + current
+ * whites`, an rgbw bulb sends `rgbw_color = rgb + current white`, a plain rgb
+ * bulb sends `rgb_color`.
+ */
+private fun setRgbColorPreservingWhite(
+    entity: EntityState,
+    controls: com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoControls,
+    colorModes: List<String>,
+    rgb: List<Int>,
+): ServiceCall = when {
+    controls.lightSupportsRgbww(colorModes) -> {
+        val whites = entity.attrIntList("rgbww_color")
+        rgbwwWhiteCall(entity, rgb.take(3) + listOf(whites?.getOrNull(3) ?: 0, whites?.getOrNull(4) ?: 0))
+    }
+    controls.lightSupportsRgbw(colorModes) -> {
+        val white = entity.attrIntList("rgbw_color")?.getOrNull(3) ?: 0
+        rgbwWhiteCall(entity, rgb.take(3) + white)
+    }
+    else -> ServiceCall(
+        entity.id,
+        "turn_on",
+        kotlinx.serialization.json.buildJsonObject {
+            put("rgb_color", kotlinx.serialization.json.buildJsonArray {
+                rgb.take(3).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+            })
+        },
+    )
 }
 
 /**

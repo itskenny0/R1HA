@@ -73,4 +73,70 @@ class MoreInfoControlsTest {
         assertThat(MoreInfoControls.climateSupportsTargetHumidity(1)).isFalse()
         assertThat(MoreInfoControls.climateSupportsTargetHumidity(0)).isFalse()
     }
+
+    // ── RGBW / RGBWW white channel + color brightness ────────────────────────
+
+    @Test fun `rgbw and rgbww modes are detected`() {
+        assertThat(MoreInfoControls.lightSupportsRgbw(listOf("rgbw"))).isTrue()
+        assertThat(MoreInfoControls.lightSupportsRgbww(listOf("rgbww"))).isTrue()
+        assertThat(MoreInfoControls.lightSupportsRgbw(listOf("rgbww"))).isFalse()
+        assertThat(MoreInfoControls.lightSupportsWhiteChannel(listOf("rgb"))).isFalse()
+    }
+
+    @Test fun `white channel percent maps to a 0-255 byte`() {
+        assertThat(MoreInfoControls.whiteChannelByte(0)).isEqualTo(0)
+        assertThat(MoreInfoControls.whiteChannelByte(100)).isEqualTo(255)
+        // HA: round(50 * 255 / 100) = 128.
+        assertThat(MoreInfoControls.whiteChannelByte(50)).isEqualTo(128)
+        assertThat(MoreInfoControls.whiteChannelByte(150)).isEqualTo(255)
+    }
+
+    @Test fun `rgbw white preserves the rgb part`() {
+        val out = MoreInfoControls.rgbwColorForWhite(currentRgb = listOf(10, 20, 30), whitePercent = 100)
+        assertThat(out).containsExactly(10, 20, 30, 255).inOrder()
+    }
+
+    @Test fun `rgbw white defaults rgb to zero when none`() {
+        val out = MoreInfoControls.rgbwColorForWhite(currentRgb = null, whitePercent = 0)
+        assertThat(out).containsExactly(0, 0, 0, 0).inOrder()
+    }
+
+    @Test fun `rgbww cold white preserves rgb and warm white`() {
+        val out = MoreInfoControls.rgbwwColorForWhite(
+            currentRgbww = listOf(1, 2, 3, 40, 50),
+            channel = MoreInfoControls.RgbwwChannel.COLD,
+            whitePercent = 100,
+        )
+        // r,g,b kept, cold-white (index 3) overwritten, warm-white (index 4) kept.
+        assertThat(out).containsExactly(1, 2, 3, 255, 50).inOrder()
+    }
+
+    @Test fun `rgbww warm white overwrites only index four`() {
+        val out = MoreInfoControls.rgbwwColorForWhite(
+            currentRgbww = listOf(1, 2, 3, 40, 50),
+            channel = MoreInfoControls.RgbwwChannel.WARM,
+            whitePercent = 0,
+        )
+        assertThat(out).containsExactly(1, 2, 3, 40, 0).inOrder()
+    }
+
+    @Test fun `rgbww pads a short or null source to five entries`() {
+        val out = MoreInfoControls.rgbwwColorForWhite(
+            currentRgbww = null,
+            channel = MoreInfoControls.RgbwwChannel.COLD,
+            whitePercent = 100,
+        )
+        assertThat(out).containsExactly(0, 0, 0, 255, 0).inOrder()
+    }
+
+    @Test fun `color brightness scales the rgb channels`() {
+        // value/255 = 128/255 ~ 0.502; 255 * ratio ~ 128.
+        val out = MoreInfoControls.adjustColorBrightness(listOf(255, 255, 255), brightnessPercent = 50)
+        assertThat(out).containsExactly(128, 128, 128).inOrder()
+    }
+
+    @Test fun `color brightness normalises black to white`() {
+        val out = MoreInfoControls.adjustColorBrightness(listOf(0, 0, 0), brightnessPercent = 100)
+        assertThat(out).containsExactly(255, 255, 255).inOrder()
+    }
 }
