@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -62,7 +63,40 @@ fun EntitiesCard(
             .map { it.row.entityId }.filter { headerToggleableDomain(it) }
     }
     val showToggle = (card.showHeaderToggle ?: true) && toggleableIds.isNotEmpty()
-    CardSurface(modifier = modifier, title = if (showToggle) null else title) {
+    // HA's entities card draws an optional card-level `icon:` next to the title
+    // (hui-entities-card.ts). When set we render the title row ourselves (icon +
+    // text) and pass title=null to the surface so it isn't drawn twice.
+    val titleIcon = (card.raw["icon"] as? JsonPrimitive)?.content
+    val ownTitleRow = !showToggle && title != null && titleIcon != null
+    CardSurface(modifier = modifier, title = if (showToggle || ownTitleRow) null else title) {
+        // HA `header:` slot renders above the card body (and above any title's
+        // rows). The shared header-footer subsystem dispatches the slot type.
+        card.header?.let { header ->
+            CardHeaderFooterSlot(header, stateMap, onAction)
+            Spacer(Modifier.height(4.dp))
+        }
+        if (ownTitleRow) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Icon(
+                    imageVector = cardEntityIcon(entityId = "", state = null, configIcon = titleIcon),
+                    contentDescription = null,
+                    tint = R1.InkSoft,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = title!!,
+                    style = R1.sectionHeader,
+                    color = R1.InkSoft,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+        }
         if (showToggle) {
             HeaderToggleRow(
                 title = title,
@@ -73,31 +107,36 @@ fun EntitiesCard(
         }
         if (card.rowItems.isEmpty()) {
             EmptyRow(text = "No entities configured")
-            return@CardSurface
-        }
-        // Dividers are drawn between consecutive entity/non-divider rows only;
-        // section headers and dividers themselves don't get an extra separator.
-        var needsDivider = false
-        card.rowItems.forEach { item ->
-            when (item) {
-                is EntitiesItem.Entity -> {
-                    if (needsDivider) Divider1dp()
-                    EntityRowItem(row = item.row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
-                    needsDivider = true
-                }
-                is EntitiesItem.Special -> {
-                    // Section and divider rows reset the divider so no double-line appears.
-                    val isSeparator = item.row is SpecialRow.Section || item.row is SpecialRow.Divider
-                    if (needsDivider && !isSeparator) Divider1dp()
-                    SpecialRowItem(
-                        row = item.row,
-                        stateMap = stateMap,
-                        onAction = onAction,
-                        stateColor = stateColor,
-                    )
-                    needsDivider = !isSeparator
+        } else {
+            // Dividers are drawn between consecutive entity/non-divider rows only;
+            // section headers and dividers themselves don't get an extra separator.
+            var needsDivider = false
+            card.rowItems.forEach { item ->
+                when (item) {
+                    is EntitiesItem.Entity -> {
+                        if (needsDivider) Divider1dp()
+                        EntityRowItem(row = item.row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
+                        needsDivider = true
+                    }
+                    is EntitiesItem.Special -> {
+                        // Section and divider rows reset the divider so no double-line appears.
+                        val isSeparator = item.row is SpecialRow.Section || item.row is SpecialRow.Divider
+                        if (needsDivider && !isSeparator) Divider1dp()
+                        SpecialRowItem(
+                            row = item.row,
+                            stateMap = stateMap,
+                            onAction = onAction,
+                            stateColor = stateColor,
+                        )
+                        needsDivider = !isSeparator
+                    }
                 }
             }
+        }
+        // HA `footer:` slot renders below the card body.
+        card.footer?.let { footer ->
+            Spacer(Modifier.height(4.dp))
+            CardHeaderFooterSlot(footer, stateMap, onAction)
         }
     }
 }

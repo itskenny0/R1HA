@@ -261,6 +261,8 @@ object LovelaceParser {
                 title = obj["title"]?.asStringOrNull(),
                 showHeaderToggle = obj["show_header_toggle"]?.asBooleanOrNull(),
                 rowItems = parseEntitiesItems(obj["entities"]),
+                header = parseHeaderFooter(obj["header"]),
+                footer = parseHeaderFooter(obj["footer"]),
             )
             "glance" -> LovelaceCard.Glance(
                 raw = obj,
@@ -540,13 +542,23 @@ object LovelaceParser {
                     showCurrentTemperature = obj["show_current_temperature"]?.asBooleanOrNull() ?: true,
                 )
             }
-            "entity-filter" -> LovelaceCard.EntityFilter(
-                raw = obj,
-                title = obj["title"]?.asStringOrNull(),
-                entities = parseEntityRows(obj["entities"]),
-                stateFilter = parseStateFilter(obj["state_filter"]),
-                showEmpty = obj["show_empty"]?.asBooleanOrNull() ?: true,
-            )
+            "entity-filter" -> {
+                // A wrapped `card:` renders the survivors as that card type (the
+                // entities list is injected at render time). Reject a wrapped
+                // entity-filter to avoid infinite recursion; null then falls back
+                // to the default entities card in the renderer.
+                val wrapped = (obj["card"] as? JsonObject)
+                    ?.takeUnless { (it["type"]?.asStringOrNull()?.lowercase()) == "entity-filter" }
+                LovelaceCard.EntityFilter(
+                    raw = obj,
+                    title = obj["title"]?.asStringOrNull(),
+                    entries = parseEntityFilterEntries(obj["entities"]),
+                    stateFilter = parseStateFilterRules(obj["state_filter"]),
+                    conditions = parseConditions(obj["conditions"]),
+                    showEmpty = obj["show_empty"]?.asBooleanOrNull() ?: true,
+                    wrappedCard = wrapped,
+                )
+            }
             "statistic" -> {
                 val entity = parseStatisticEntity(obj) ?: return LovelaceCard.Unsupported(obj, type)
                 LovelaceCard.Statistic(
@@ -1021,30 +1033,35 @@ object LovelaceParser {
                         secondaryInfo = null,
                     )
                 } else null
-                is JsonObject -> {
-                    val entity = item["entity"]?.asStringOrNull() ?: return@mapNotNull null
-                    EntityRow(
-                        entityId = entity,
-                        name = item["name"]?.asStringOrNull(),
-                        icon = item["icon"]?.asStringOrNull(),
-                        secondaryInfo = item["secondary_info"]?.asStringOrNull(),
-                        nameType = item["name_type"]?.asStringOrNull(),
-                        tapAction = parseAction(item["tap_action"] as? JsonObject),
-                        holdAction = parseAction(item["hold_action"] as? JsonObject),
-                        doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
-                        format = parseTimestampFormat(item["format"]?.asStringOrNull()),
-                        confirmation = parseConfirmation(item["confirmation"]),
-                        actionName = item["action_name"]?.asStringOrNull(),
-                        image = item["image"]?.asStringOrNull(),
-                        showState = item["show_state"]?.asBooleanOrNull(),
-                        attribute = item["attribute"]?.asStringOrNull(),
-                        prefix = item["prefix"]?.asStringOrNull(),
-                        suffix = item["suffix"]?.asStringOrNull(),
-                    )
-                }
+                is JsonObject -> parseEntityRowObject(item)
                 else -> null
             }
         }
+    }
+
+    /** Parse one `{entity: ..., name: ..., ...}` row object into an [EntityRow].
+     *  Returns null when there is no `entity:` key. Shared by the entities card,
+     *  the entity-filter card, and any other entity-row list. */
+    private fun parseEntityRowObject(item: JsonObject): EntityRow? {
+        val entity = item["entity"]?.asStringOrNull() ?: return null
+        return EntityRow(
+            entityId = entity,
+            name = item["name"]?.asStringOrNull(),
+            icon = item["icon"]?.asStringOrNull(),
+            secondaryInfo = item["secondary_info"]?.asStringOrNull(),
+            nameType = item["name_type"]?.asStringOrNull(),
+            tapAction = parseAction(item["tap_action"] as? JsonObject),
+            holdAction = parseAction(item["hold_action"] as? JsonObject),
+            doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
+            format = parseTimestampFormat(item["format"]?.asStringOrNull()),
+            confirmation = parseConfirmation(item["confirmation"]),
+            actionName = item["action_name"]?.asStringOrNull(),
+            image = item["image"]?.asStringOrNull(),
+            showState = item["show_state"]?.asBooleanOrNull(),
+            attribute = item["attribute"]?.asStringOrNull(),
+            prefix = item["prefix"]?.asStringOrNull(),
+            suffix = item["suffix"]?.asStringOrNull(),
+        )
     }
 
     /**
@@ -1432,18 +1449,130 @@ object LovelaceParser {
     }
 
     /**
-     * Parse the `state_filter` of an entity-filter card. HA accepts either a
-     * bare list of state strings (`["on", "home"]`) or a list of objects
-     * carrying a `value` / `state` key (the richer operator form). We pull
-     * the plain state value out of both shapes and ignore operators we can't
-     * evaluate locally; the empty result means "no filter, show everything".
+     * Parse an entity-filter card's `entities:` list into [EntityFilterEntry]s.
+     * Each entry is a bare string row or an object row; an object row may also
+     * carry its own `state_filter:` / `conditions:` per-entity filter override
+     * (mutually exclusive in HA; we keep both lists and let the evaluator apply
+     * conditions-first precedence). Entries without a usable entity are dropped.
      */
-    private fun parseStateFilter(el: JsonElement?): List<String> {
+    private fun parseEntityFilterEntries(el: JsonElement?): List<EntityFilterEntry> {
         val arr = el as? JsonArray ?: return emptyList()
         return arr.mapNotNull { item ->
             when (item) {
-                is JsonPrimitive -> if (item.isString) item.content else null
-                is JsonObject -> item["value"]?.asStringOrNull() ?: item["state"]?.asStringOrNull()
+                is JsonPrimitive -> if (item.isString) {
+                    EntityFilterEntry(EntityRow(item.content, null, null, null))
+                } else null
+                is JsonObject -> parseEntityRowObject(item)?.let { row ->
+                    EntityFilterEntry(
+                        row = row,
+                        stateFilter = parseStateFilterRules(item["state_filter"]),
+                        conditions = parseConditions(item["conditions"]),
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    /**
+     * Parse a `state_filter:` array into operator-form [StateFilterRule]s,
+     * mirroring HA's `LegacyStateFilter`. Accepts the bare-string / bare-number
+     * shorthand (operator `==`, comparing the entity state) and the object form
+     * `{operator, value, attribute}`. An object with an unknown operator, or one
+     * missing its required `value`, is dropped. An empty result means "no filter".
+     */
+    private fun parseStateFilterRules(el: JsonElement?): List<StateFilterRule> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive ->
+                    // Bare string OR number shorthand: equality against the state.
+                    item.asStringOrNull()?.let {
+                        StateFilterRule(StateFilterOperator.EQ, listOf(it))
+                    }
+                is JsonObject -> {
+                    val operator = StateFilterOperator.fromToken(
+                        item["operator"]?.asStringOrNull() ?: "==",
+                    ) ?: return@mapNotNull null
+                    val values = parseStateFilterValues(item["value"]) ?: return@mapNotNull null
+                    StateFilterRule(
+                        operator = operator,
+                        values = values,
+                        attribute = item["attribute"]?.asStringOrNull(),
+                    )
+                }
+                else -> null
+            }
+        }
+    }
+
+    /** Pull a state-filter rule's `value:` into a string list. HA accepts a
+     *  scalar (string/number) or, for in / not in, an array; both stringify. */
+    private fun parseStateFilterValues(el: JsonElement?): List<String>? = when (el) {
+        is JsonPrimitive -> el.asStringOrNull()?.let { listOf(it) }
+        is JsonArray -> el.mapNotNull { it.asStringOrNull() }.takeIf { it.isNotEmpty() }
+        else -> null
+    }
+
+    /**
+     * Parse a card-level `header:` / `footer:` slot into [LovelaceHeaderFooter].
+     * Mirrors HA's three header-footer types (buttons / graph / picture). A slot
+     * with a `type:` we don't model, or one missing its required field, returns
+     * [LovelaceHeaderFooter.Unsupported] (renders nothing) rather than null so the
+     * config round-trips.
+     */
+    fun parseHeaderFooter(el: JsonElement?): LovelaceHeaderFooter? {
+        val obj = el as? JsonObject ?: return null
+        return when (obj["type"]?.asStringOrNull()?.lowercase()) {
+            "buttons" -> LovelaceHeaderFooter.Buttons(parseHeaderFooterButtons(obj["entities"]))
+            "graph" -> {
+                val entity = obj["entity"]?.asStringOrNull()
+                    ?: return LovelaceHeaderFooter.Unsupported("graph")
+                LovelaceHeaderFooter.Graph(
+                    entityId = entity,
+                    hoursToShow = obj["hours_to_show"]?.asIntOrNull() ?: 24,
+                    // HA clamps detail to 1 or 2; anything else becomes 1.
+                    detail = (obj["detail"]?.asIntOrNull() ?: 1).let { if (it == 2) 2 else 1 },
+                    limitMin = (obj["limits"] as? JsonObject)?.get("min")?.asDoubleOrNull(),
+                    limitMax = (obj["limits"] as? JsonObject)?.get("max")?.asDoubleOrNull(),
+                )
+            }
+            "picture" -> {
+                val image = obj["image"]?.asStringOrNull()
+                    ?: return LovelaceHeaderFooter.Unsupported("picture")
+                LovelaceHeaderFooter.Picture(
+                    image = image,
+                    altText = obj["alt_text"]?.asStringOrNull(),
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                )
+            }
+            else -> obj["type"]?.asStringOrNull()?.let { LovelaceHeaderFooter.Unsupported(it) }
+        }
+    }
+
+    /** Parse a buttons header/footer's `entities:` into button entries. HA's
+     *  per-entry tap defaults to `toggle` (scene entries to `scene.turn_on`),
+     *  hold to `more-info`; we apply those defaults at render time so an absent
+     *  tap_action here stays null and the dispatcher resolves the default. */
+    private fun parseHeaderFooterButtons(el: JsonElement?): List<LovelaceHeaderFooter.Buttons.ButtonEntry> {
+        val arr = el as? JsonArray ?: return emptyList()
+        return arr.mapNotNull { item ->
+            when (item) {
+                is JsonPrimitive -> if (item.isString) {
+                    LovelaceHeaderFooter.Buttons.ButtonEntry(item.content, null, null, null)
+                } else null
+                is JsonObject -> {
+                    val entity = item["entity"]?.asStringOrNull() ?: return@mapNotNull null
+                    LovelaceHeaderFooter.Buttons.ButtonEntry(
+                        entityId = entity,
+                        icon = item["icon"]?.asStringOrNull(),
+                        name = item["name"]?.asStringOrNull(),
+                        tapAction = parseAction(item["tap_action"] as? JsonObject),
+                        holdAction = parseAction(item["hold_action"] as? JsonObject),
+                    )
+                }
                 else -> null
             }
         }
@@ -1636,6 +1765,11 @@ object LovelaceParser {
         }
         return out.toList()
     }
+
+    /** Public entry point for parsing an action object out of a raw card config
+     *  key (e.g. the entity card, which renders off its raw JSON). Mirrors the
+     *  internal [parseAction] used by the typed-card parse paths. */
+    fun parseActionConfig(obj: JsonObject?): LovelaceAction? = parseAction(obj)
 
     private fun parseAction(obj: JsonObject?): LovelaceAction? {
         if (obj == null) return null
