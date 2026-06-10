@@ -24,6 +24,16 @@ val LocalR1Theme = staticCompositionLocalOf<R1Theme> { PragmaticHybridTheme }
 val LocalUiOptions = compositionLocalOf { UiOptions() }
 
 /**
+ * Ink palette for the aux card variants (sensor / select / action / switch). The
+ * EntityCard wrapper provides the active theme's [AuxCardStyle.ink] here when
+ * [R1Theme.auxCardStyle] returns one; the default mirrors the R1 ink tokens exactly so
+ * every theme without the hook keeps today's rendering. Static is fine — the value only
+ * changes when the theme (or the card's entity) changes, both of which rebuild the
+ * providing scope anyway.
+ */
+val LocalCardInk = staticCompositionLocalOf { DefaultCardInk }
+
+/**
  * Repository handle injected near the top of each screen that needs it (CardStackScreen,
  * FavoritesPickerScreen) so deep composables — [com.github.itskenny0.r1ha.ui.components.SensorCard]
  * especially — can fetch history without every wrapper threading the repository through

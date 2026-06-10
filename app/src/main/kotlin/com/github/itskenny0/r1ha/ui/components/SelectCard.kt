@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -65,10 +66,13 @@ fun SelectCard(
     // matches the picker rows. The raw `current` is still used for the active-row match.
     val display = current?.replace('_', ' ')?.uppercase() ?: "—"
     val (bodyStyle, _) = selectReadoutStyle(display, textSizeSp)
+    // Ink rides in from the theme via the EntityCard wrapper (white over a gradient
+    // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
+    // by the wrapper too, so the card stays theme-agnostic.
+    val ink = LocalCardInk.current
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(R1.Bg)
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -80,17 +84,17 @@ fun SelectCard(
                     .background(accent),
             )
             Spacer(Modifier.width(8.dp))
-            Text(domainLabel, style = R1.labelMicro, color = R1.Ink)
+            Text(domainLabel, style = R1.labelMicro, color = ink.ink)
             Spacer(Modifier.width(8.dp))
-            Text("· ${state.selectOptions.size} OPTIONS", style = R1.labelMicro, color = R1.InkMuted)
+            Text("· ${state.selectOptions.size} OPTIONS", style = R1.labelMicro, color = ink.muted)
             if (showArea && !state.area.isNullOrBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = R1.InkMuted)
+                Text("·", style = R1.labelMicro, color = ink.muted)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = areaLabel(state.area),
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
         }
@@ -98,7 +102,7 @@ fun SelectCard(
         Text(
             text = state.friendlyName,
             style = R1.titleCard,
-            color = R1.Ink,
+            color = ink.ink,
             maxLines = 2,
         )
         Spacer(Modifier.height(20.dp))
@@ -107,7 +111,7 @@ fun SelectCard(
         Text(
             text = display,
             style = bodyStyle,
-            color = if (current != null) accent else R1.InkSoft,
+            color = if (current != null) accent else ink.soft,
             softWrap = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -130,7 +134,7 @@ fun SelectCard(
                 Text(
                     text = "CHOOSE OPTION",
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
             if (wheelEnabled) {
@@ -143,7 +147,7 @@ fun SelectCard(
                 Text(
                     text = "WHEEL CYCLES OPTIONS",
                     style = R1.labelMicro,
-                    color = R1.InkMuted,
+                    color = ink.muted,
                 )
             }
         }

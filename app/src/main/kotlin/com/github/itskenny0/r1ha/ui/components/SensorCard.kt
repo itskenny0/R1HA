@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -140,10 +141,13 @@ fun SensorCard(
     val isBinary = state.id.domain == Domain.BINARY_SENSOR
     val isPerson = state.id.domain == Domain.PERSON
     val isWeather = state.id.domain == Domain.WEATHER
+    // Ink rides in from the theme via the EntityCard wrapper (white over a gradient
+    // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
+    // by the wrapper too, so the card stays theme-agnostic.
+    val ink = LocalCardInk.current
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(R1.Bg)
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -155,25 +159,25 @@ fun SensorCard(
                     .background(accent),
             )
             Spacer(Modifier.width(8.dp))
-            Text(domainLabel, style = R1.labelMicro, color = R1.Ink)
+            Text(domainLabel, style = R1.labelMicro, color = ink.ink)
             if (!state.deviceClass.isNullOrBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = R1.InkMuted)
+                Text("·", style = R1.labelMicro, color = ink.muted)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = state.deviceClass.uppercase(),
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
             if (showArea && !state.area.isNullOrBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = R1.InkMuted)
+                Text("·", style = R1.labelMicro, color = ink.muted)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = areaLabel(state.area),
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
         }
@@ -181,7 +185,7 @@ fun SensorCard(
         Text(
             text = state.friendlyName,
             style = R1.titleCard,
-            color = R1.Ink,
+            color = ink.ink,
             maxLines = 2,
         )
 
@@ -197,7 +201,7 @@ fun SensorCard(
             Text(
                 text = word,
                 style = bodyStyle,
-                color = if (PersonWeatherCardModel.personIsHome(state.rawState)) accent else R1.InkSoft,
+                color = if (PersonWeatherCardModel.personIsHome(state.rawState)) accent else ink.soft,
                 softWrap = true,
             )
             // Freshness of the presence state ("2h ago" / "just now"): last_changed flips
@@ -209,7 +213,7 @@ fun SensorCard(
                 Text(
                     text = since,
                     style = R1.labelMicro,
-                    color = R1.InkMuted,
+                    color = ink.muted,
                     maxLines = 1,
                 )
             }
@@ -232,7 +236,7 @@ fun SensorCard(
                     Text(
                         text = tempStr,
                         style = bodyStyle,
-                        color = R1.Ink,
+                        color = ink.ink,
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     Spacer(Modifier.width(6.dp))
@@ -249,7 +253,7 @@ fun SensorCard(
                     Text(
                         text = conditionLabel,
                         style = bodyStyle,
-                        color = R1.Ink,
+                        color = ink.ink,
                         softWrap = true,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -259,7 +263,7 @@ fun SensorCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = glyph, style = R1.numeralM, color = accent)
                 Spacer(Modifier.width(8.dp))
-                Text(text = conditionLabel, style = R1.titleCard, color = R1.InkSoft, maxLines = 1)
+                Text(text = conditionLabel, style = R1.titleCard, color = ink.soft, maxLines = 1)
             }
             // Humidity + wind as a compact secondary line when the integration reports
             // them, so the card answers "how humid / how windy?" without opening more-info.
@@ -270,7 +274,7 @@ fun SensorCard(
             )
             if (weatherDetail != null) {
                 Spacer(Modifier.height(4.dp))
-                Text(text = weatherDetail, style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+                Text(text = weatherDetail, style = R1.labelMicro, color = ink.muted, maxLines = 1)
             }
         } else if (isBinary) {
             // Binary sensors — render the state word itself (sized like our numeric
@@ -284,7 +288,7 @@ fun SensorCard(
             // binary sensors keep the accent-when-on / muted-when-off treatment.
             val triggeredColor = if (dangerBinaryTriggered(state.deviceClass, state.isOn)) {
                 R1.StatusRed
-            } else if (state.isOn) accent else R1.InkSoft
+            } else if (state.isOn) accent else ink.soft
             Text(
                 text = word,
                 style = bodyStyle,
@@ -300,7 +304,7 @@ fun SensorCard(
                 Text(
                     text = binarySince,
                     style = R1.labelMicro,
-                    color = R1.InkMuted,
+                    color = ink.muted,
                     maxLines = 1,
                 )
             }
@@ -310,7 +314,7 @@ fun SensorCard(
             val tsInstant = timestampSensorInstant(state.deviceClass, state.rawState)!!
             val rel = rememberRelativeTime(tsInstant).ifEmpty { "—" }
             val (tsBodyStyle, _) = sensorReadoutStyle(rel, textSizeSp)
-            Text(text = rel, style = tsBodyStyle, color = R1.Ink, softWrap = true)
+            Text(text = rel, style = tsBodyStyle, color = ink.ink, softWrap = true)
             val absText = androidx.compose.runtime.remember(tsInstant) {
                 tsInstant.atZone(java.time.ZoneId.systemDefault())
                     .format(
@@ -319,7 +323,7 @@ fun SensorCard(
                     )
             }
             Spacer(Modifier.height(4.dp))
-            Text(text = absText, style = R1.labelMicro, color = R1.InkSoft, maxLines = 1)
+            Text(text = absText, style = R1.labelMicro, color = ink.soft, maxLines = 1)
         } else {
             // Plain sensors — render the rawState as the body. A sensor's value can be
             // anything from "21" (temperature) to a 240-char weather summary or an
@@ -346,7 +350,7 @@ fun SensorCard(
                     Text(
                         text = value,
                         style = bodyStyle,
-                        color = battColor ?: R1.Ink,
+                        color = battColor ?: ink.ink,
                         softWrap = true,
                         modifier = Modifier.weight(1f, fill = false),
                     )
@@ -362,7 +366,7 @@ fun SensorCard(
                 Text(
                     text = value,
                     style = bodyStyle,
-                    color = battColor ?: R1.Ink,
+                    color = battColor ?: ink.ink,
                     softWrap = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -416,7 +420,7 @@ fun SensorCard(
                 Text(
                     text = "—",
                     style = R1.labelMicro,
-                    color = R1.InkMuted,
+                    color = ink.muted,
                 )
             }
         } else if (latestIsNumeric) {
@@ -447,7 +451,7 @@ fun SensorCard(
         Text(
             text = "READ-ONLY",
             style = R1.labelMicro,
-            color = R1.InkMuted,
+            color = ink.muted,
         )
     }
 }

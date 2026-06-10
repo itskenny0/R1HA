@@ -49,9 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Make it yours: text size, clock format, list density, reduce motion, and timestamp style in Settings.",
-    "Colourful Cards refresh: crisper text on every gradient, brightness presets, two new palettes.",
-    "Cameras join Devices and Areas in two-pane on wide screens, live view beside the list.",
-    "Background refreshes stay quiet: no more lists blinking or spinners popping on timers.",
-    "Don't want this panel? Turn it off in About, or via the corner of this very screen.",
+    "Colourful Cards now paints every card type: sensors, scenes, switches, and selects get their gradient.",
+    "Appearance options are easier to find: search for font, AM/PM, or animations in Settings.",
+    "Smarter onboarding: bad URLs, proxies, and certificate problems now explain themselves.",
+    "Favourites picker: ADD ALL adds every match of a search or filter in one tap.",
+    "More-info sheets put forecasts and history above the attribute dump.",
 )

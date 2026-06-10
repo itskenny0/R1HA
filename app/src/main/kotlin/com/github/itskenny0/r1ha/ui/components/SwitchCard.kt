@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -52,10 +53,13 @@ fun SwitchCard(
     onSetOn: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Ink rides in from the theme via the EntityCard wrapper (white over a gradient
+    // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
+    // by the wrapper too, so the card stays theme-agnostic.
+    val ink = LocalCardInk.current
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(R1.Bg)
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -67,17 +71,17 @@ fun SwitchCard(
                     .background(accent),
             )
             Spacer(Modifier.width(8.dp))
-            Text(domainLabel, style = R1.labelMicro, color = R1.Ink)
+            Text(domainLabel, style = R1.labelMicro, color = ink.ink)
             Spacer(Modifier.width(8.dp))
-            Text("· ON/OFF", style = R1.labelMicro, color = R1.InkMuted)
+            Text("· ON/OFF", style = R1.labelMicro, color = ink.muted)
             if (showArea && !state.area.isNullOrBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = R1.InkMuted)
+                Text("·", style = R1.labelMicro, color = ink.muted)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = areaLabel(state.area),
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
         }
@@ -85,7 +89,7 @@ fun SwitchCard(
         Text(
             text = state.friendlyName,
             style = R1.titleCard,
-            color = R1.Ink,
+            color = ink.ink,
             maxLines = 2,
         )
         Spacer(Modifier.height(20.dp))
@@ -103,7 +107,7 @@ fun SwitchCard(
             targetValue = when {
                 alarmingState -> R1.StatusRed
                 state.isOn -> accent
-                else -> R1.InkSoft
+                else -> ink.soft
             },
             label = "switch-label-color",
         )
@@ -134,7 +138,7 @@ fun SwitchCard(
         val lastRan = rememberRelativeTime(state.lastTriggered)
         if (lastRan.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            Text(text = "ran $lastRan", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+            Text(text = "ran $lastRan", style = R1.labelMicro, color = ink.muted, maxLines = 1)
         }
 
         Spacer(Modifier.height(14.dp))
@@ -299,6 +303,9 @@ private fun SwitchTrack(
         label = "switch-frac",
     )
     val frac = rawFrac.coerceIn(0f, 1f)
+    // Same theme-provided ink as the card body — the end-stop labels and the off-state
+    // thumb need the white palette to stay legible on a gradient backdrop.
+    val ink = LocalCardInk.current
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -313,7 +320,7 @@ private fun SwitchTrack(
             Text(
                 text = onLabel,
                 style = R1.numeralM,
-                color = if (isOn) accent else R1.InkMuted,
+                color = if (isOn) accent else ink.muted,
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = { onSetOn(true) })
@@ -322,7 +329,7 @@ private fun SwitchTrack(
             Text(
                 text = offLabel,
                 style = R1.numeralM,
-                color = if (!isOn) R1.InkSoft else R1.InkMuted,
+                color = if (!isOn) ink.soft else ink.muted,
                 modifier = Modifier
                     .clip(R1.ShapeS)
                     .r1Pressable(onClick = { onSetOn(false) })
@@ -359,7 +366,7 @@ private fun SwitchTrack(
                     .width(24.dp)
                     .height(thumbHeight)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(if (isOn) accent else R1.InkSoft),
+                    .background(if (isOn) accent else ink.soft),
             )
         }
     }
@@ -380,6 +387,8 @@ private fun MediaNowPlayingInline(state: EntityState, accent: Color) {
     // half of media_player integrations whose entity_picture is a plain /api/... path
     // (no `?token=...` baked in). Harmless when the URL already carries a token.
     val bearerToken = com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken.current
+    // Theme-provided ink so the track metadata stays legible on a gradient backdrop.
+    val ink = LocalCardInk.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (!state.mediaPicture.isNullOrBlank()) {
             AsyncBitmap(
@@ -407,7 +416,7 @@ private fun MediaNowPlayingInline(state: EntityState, accent: Color) {
                 Text(
                     text = state.mediaTitle,
                     style = R1.bodyEmph,
-                    color = R1.Ink,
+                    color = ink.ink,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
@@ -416,7 +425,7 @@ private fun MediaNowPlayingInline(state: EntityState, accent: Color) {
                 Text(
                     text = state.mediaArtist,
                     style = R1.body,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )

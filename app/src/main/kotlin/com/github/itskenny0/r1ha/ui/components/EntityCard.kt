@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -237,8 +238,24 @@ fun EntityCard(
             maxDecimalPlaces = perCardOverride.maxDecimalPlaces ?: baseUi.maxDecimalPlaces,
         )
     }
+    // Aux-card styling — the sensor / select / action / switch variants draw their own
+    // full-screen layouts instead of going through theme.Card, which used to leave them
+    // on the plain near-black background under the Colourful Cards theme while every
+    // theme.Card entity got its gradient sky. The theme's auxCardStyle hook closes that
+    // gap: backdrop + scrim paint under the card and the ink palette rides in on
+    // LocalCardInk so the variants' grey inks turn white over the gradients. Null (the
+    // default for the other themes) keeps the classic rendering byte-identical — the
+    // R1.Bg backdrop below matches what each card used to paint itself, and
+    // DefaultCardInk == the R1 ink tokens the cards used to read directly. Remembered
+    // because the style is a pure function of theme + entity id; rebuilding the gradient
+    // Brush on every recomposition would be a per-detent allocation for nothing.
+    val auxStyle = androidx.compose.runtime.remember(theme, state.id.value) {
+        theme.auxCardStyle(state.id.value)
+    }
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalUiOptions provides mergedUi,
+        com.github.itskenny0.r1ha.core.theme.LocalCardInk provides
+            (auxStyle?.ink ?: com.github.itskenny0.r1ha.core.theme.DefaultCardInk),
     ) {
     Box(modifier = modifier.then(tapModifier)) {
         // Dim slightly when unavailable, but keep the friendly name legible — the previous
@@ -250,6 +267,22 @@ fun EntityCard(
         // same colour. Null = fall back to the domain-derived role colour.
         val overrideAccent = perCardOverride.accentColor?.let { androidx.compose.ui.graphics.Color(it) }
         val resolvedAccent = overrideAccent ?: resolveAccentColor(accentRole)
+        // Shared root modifier for the aux variants. The backdrop is painted here (after
+        // the alpha so an unavailable entity dims gradient and content together) rather
+        // than inside each card, so the cards stay theme-agnostic: plain R1.Bg when the
+        // theme has no aux style — exactly what the cards used to paint themselves —
+        // or the theme's backdrop + scrim when it does.
+        val auxCardModifier = Modifier
+            .fillMaxSize()
+            .alpha(themeAlpha)
+            .then(
+                if (auxStyle == null) {
+                    Modifier.background(R1.Bg)
+                } else {
+                    val sky = Modifier.background(auxStyle.backdrop)
+                    auxStyle.scrim?.let { sky.background(it) } ?: sky
+                },
+            )
         if (state.id.domain.isSensor) {
             SensorCard(
                 state = state,
@@ -257,7 +290,7 @@ fun EntityCard(
                 domainLabel = sensorDomainLabel(state.id.domain),
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 textSizeSp = perCardOverride.textSizeSp,
-                modifier = Modifier.fillMaxSize().alpha(themeAlpha),
+                modifier = auxCardModifier,
             )
         } else if (state.id.domain.isSelect) {
             // Settable-enum entities (select / input_select). Wheel cycles through
@@ -277,7 +310,7 @@ fun EntityCard(
                 // the only affordance visible when the user has explicitly
                 // turned wheel-cycling off (or the per-domain default does).
                 wheelEnabled = perCardOverride.resolvedWheelEnabled(state.id.domain.prefix),
-                modifier = Modifier.fillMaxSize().alpha(themeAlpha),
+                modifier = auxCardModifier,
             )
         } else if (state.id.domain.isAction) {
             ActionCard(
@@ -286,7 +319,7 @@ fun EntityCard(
                 domainLabel = actionDomainLabel(state.id.domain),
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 onFire = onTapToggle,
-                modifier = Modifier.fillMaxSize().alpha(themeAlpha),
+                modifier = auxCardModifier,
             )
         } else if (!state.supportsScalar) {
             SwitchCard(
@@ -307,7 +340,7 @@ fun EntityCard(
                 showArea = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showAreaLabel,
                 onTapToggle = onTapToggle,
                 onSetOn = onSetOn ?: { _ -> onTapToggle() },
-                modifier = Modifier.fillMaxSize().alpha(themeAlpha),
+                modifier = auxCardModifier,
             )
         } else {
             // Domain-native display value — for climate / number entities the percent
@@ -444,7 +477,9 @@ fun EntityCard(
             Text(
                 text = "⋯",
                 style = R1.labelMicro,
-                color = R1.InkMuted,
+                // Card ink rather than the raw token so the dots stay visible on a
+                // themed gradient backdrop; identical to R1.InkMuted everywhere else.
+                color = com.github.itskenny0.r1ha.core.theme.LocalCardInk.current.muted,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(end = 8.dp, bottom = 6.dp),

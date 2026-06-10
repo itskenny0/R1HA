@@ -3,9 +3,11 @@ package com.github.itskenny0.r1ha.core.theme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
 
@@ -168,6 +170,39 @@ data class CardRenderModel(
     enum class AccentRole { WARM, COOL, GREEN, NEUTRAL }
 }
 
+/**
+ * Text / icon-tint colours for the aux card variants (SensorCard, SelectCard, ActionCard,
+ * SwitchCard). The defaults mirror the [R1] ink tokens exactly, so a card that reads
+ * [LocalCardInk] under a theme without an [R1Theme.auxCardStyle] renders byte-identically
+ * to the old direct R1.Ink / R1.InkSoft / R1.InkMuted reads — the indirection only takes
+ * effect when a theme actually supplies its own palette.
+ */
+@Immutable
+data class CardInkPalette(
+    /** Primary text — headlines, friendly names, big readouts. */
+    val ink: Color,
+    /** Secondary text — area labels, off-state words, secondary readouts. */
+    val soft: Color,
+    /** Muted callouts — separators, hints, timestamps. */
+    val muted: Color,
+)
+
+/** The classic Mission-Control ink set; [LocalCardInk]'s default. */
+val DefaultCardInk = CardInkPalette(ink = R1.Ink, soft = R1.InkSoft, muted = R1.InkMuted)
+
+/**
+ * Backdrop + ink for an aux card, returned by [R1Theme.auxCardStyle]. The EntityCard
+ * wrapper paints [backdrop] then [scrim] (when present) under the card content and
+ * provides [ink] via [LocalCardInk], so the aux variants pick up a theme's card identity
+ * without each layout knowing which theme is active.
+ */
+@Immutable
+data class AuxCardStyle(
+    val backdrop: Brush,
+    val scrim: Brush?,
+    val ink: CardInkPalette,
+)
+
 interface R1Theme {
     val id: ThemeId
     val displayName: String
@@ -175,6 +210,20 @@ interface R1Theme {
     val baseline: ColorScheme
 
     @Composable fun Card(model: CardRenderModel, modifier: Modifier, onTapToggle: () -> Unit)
+
+    /**
+     * Optional theme styling for the aux card variants — sensor / select / action /
+     * switch cards render their own full-screen layouts instead of going through [Card],
+     * which historically left them on the plain near-black background under any theme
+     * whose card identity is the backdrop itself (the Colourful Cards gradients). Themes
+     * that carry a per-entity backdrop override this to return the same treatment their
+     * [Card] uses; the default null keeps today's R1.Bg rendering byte-identical.
+     *
+     * Deliberately non-composable: implementations derive the style from plain objects
+     * (palette hash + constant scrims), and the EntityCard wrapper remembers the result
+     * per entity so a per-call Brush build never lands in the recomposition hot path.
+     */
+    fun auxCardStyle(entityIdText: String): AuxCardStyle? = null
 }
 
 /** Shared baseline used by all three themes for non-card screens (settings, picker, about, onboarding). */

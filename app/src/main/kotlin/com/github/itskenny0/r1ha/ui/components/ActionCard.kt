@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 import kotlinx.coroutines.delay
 
@@ -68,10 +69,13 @@ fun ActionCard(
         label = "action-btn-color",
     )
 
+    // Ink rides in from the theme via the EntityCard wrapper (white over a gradient
+    // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
+    // by the wrapper too, so the card stays theme-agnostic.
+    val ink = LocalCardInk.current
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(R1.Bg)
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -83,17 +87,17 @@ fun ActionCard(
                     .background(accent),
             )
             Spacer(Modifier.width(8.dp))
-            Text(domainLabel, style = R1.labelMicro, color = R1.Ink)
+            Text(domainLabel, style = R1.labelMicro, color = ink.ink)
             Spacer(Modifier.width(8.dp))
-            Text("· TRIGGER", style = R1.labelMicro, color = R1.InkMuted)
+            Text("· TRIGGER", style = R1.labelMicro, color = ink.muted)
             if (showArea && !state.area.isNullOrBlank()) {
                 Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = R1.InkMuted)
+                Text("·", style = R1.labelMicro, color = ink.muted)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = areaLabel(state.area),
                     style = R1.labelMicro,
-                    color = R1.InkSoft,
+                    color = ink.soft,
                 )
             }
         }
@@ -101,7 +105,7 @@ fun ActionCard(
         Text(
             text = state.friendlyName,
             style = R1.titleCard,
-            color = R1.Ink,
+            color = ink.ink,
             maxLines = 2,
         )
         // When the script last ran ("ran 2h ago"). last_triggered, not last_changed, so it
@@ -109,7 +113,7 @@ fun ActionCard(
         val ran = rememberRelativeTime(state.lastTriggered)
         if (ran.isNotEmpty()) {
             Spacer(Modifier.height(4.dp))
-            Text(text = "ran $ran", style = R1.labelMicro, color = R1.InkMuted, maxLines = 1)
+            Text(text = "ran $ran", style = R1.labelMicro, color = ink.muted, maxLines = 1)
         }
 
         Spacer(Modifier.weight(1f))
@@ -151,7 +155,7 @@ fun ActionCard(
         Text(
             text = if (state.isOn) "RUNNING…" else "TAP TO FIRE · NO TOGGLE",
             style = R1.labelMicro,
-            color = R1.InkMuted,
+            color = ink.muted,
         )
     }
 }

@@ -91,6 +91,29 @@ object ColorfulCardsTheme : R1Theme {
         1.00f to Color.Transparent,
     )
 
+    // Aux-card ink — the same always-white treatment the main cards earned in the
+    // contrast pass: full white headlines, 0.85 for secondary text, 0.72 for muted
+    // callouts. The plain grey R1 inks (InkSoft 0xA8, InkMuted 0x6E) sink into the
+    // vivid mid-stops; translucent white reads on every palette.
+    private val auxInk = CardInkPalette(
+        ink = Color.White,
+        soft = Color.White.copy(alpha = 0.85f),
+        muted = Color.White.copy(alpha = 0.72f),
+    )
+
+    /**
+     * Same per-entity gradient sky + top scrim as [Card], so a sensor / select / action /
+     * switch card sitting next to a light card reads as the same theme rather than a
+     * left-over black tile. Builds the Brush per call (cheap — three colour stops); the
+     * EntityCard wrapper remembers the returned style per entity so this never runs in
+     * the per-detent recomposition path.
+     */
+    override fun auxCardStyle(entityIdText: String): AuxCardStyle = AuxCardStyle(
+        backdrop = Brush.linearGradient(paletteFor(entityIdText)),
+        scrim = topScrim,
+        ink = auxInk,
+    )
+
     private fun domainLabel(glyph: CardRenderModel.Glyph): String = when (glyph) {
         CardRenderModel.Glyph.LIGHT -> "LIGHT"
         CardRenderModel.Glyph.FAN -> "FAN"

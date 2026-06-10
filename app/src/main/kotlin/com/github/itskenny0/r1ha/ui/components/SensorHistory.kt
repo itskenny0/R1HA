@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.HistoryPoint
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 import java.time.Duration
 import java.time.Instant
@@ -78,15 +79,19 @@ fun SensorHistoryChart(
     val tEnd = numeric.last().first
     val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
 
+    // Theme-provided ink for the labels that sit directly on the card backdrop (the
+    // chart canvas itself keeps its opaque Surface slab, so its gridlines don't move).
+    // Identical to the R1 tokens outside a themed-backdrop card.
+    val ink = LocalCardInk.current
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = "LAST ${formatSpan(tSpan)}", style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = "LAST ${formatSpan(tSpan)}", style = R1.labelMicro, color = ink.muted)
             Spacer(Modifier.weight(1f))
             // min/max labels — show the y range so the user can interpret the line.
             Text(
                 text = "${formatSensorValue(yMin.toString())}–${formatSensorValue(yMax.toString())}${unit?.let { " $it" } ?: ""}",
                 style = R1.labelMicro,
-                color = R1.InkSoft,
+                color = ink.soft,
             )
         }
         Spacer(Modifier.height(4.dp))
@@ -149,8 +154,8 @@ fun SensorHistoryChart(
         Spacer(Modifier.height(2.dp))
         val use24h = rememberUse24HourClock()
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = formatTime(tStart, use24h), style = R1.labelMicro, color = R1.InkMuted)
-            Text(text = formatTime(tEnd, use24h), style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = formatTime(tStart, use24h), style = R1.labelMicro, color = ink.muted)
+            Text(text = formatTime(tEnd, use24h), style = R1.labelMicro, color = ink.muted)
         }
     }
 }
@@ -175,11 +180,14 @@ fun SensorHistoryList(
     // Newest-first, then capped to the user's preferred length.
     val recent = points.asReversed().take(maxEntries)
     val use24h = rememberUse24HourClock()
+    // Theme-provided ink — these rows sit directly on the card backdrop. Identical to
+    // the R1 tokens outside a themed-backdrop card.
+    val ink = LocalCardInk.current
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "LAST ${recent.size} CHANGES",
             style = R1.labelMicro,
-            color = R1.InkMuted,
+            color = ink.muted,
         )
         Spacer(Modifier.height(4.dp))
         // Bounded height so the list scrolls within the card rather than pushing the
@@ -197,13 +205,13 @@ fun SensorHistoryList(
                         modifier = Modifier
                             .size(5.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(if (p.state.equals("off", ignoreCase = true)) R1.InkMuted else accent),
+                            .background(if (p.state.equals("off", ignoreCase = true)) ink.muted else accent),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = formatTime(p.timestamp, use24h),
                         style = R1.labelMicro,
-                        color = R1.InkMuted,
+                        color = ink.muted,
                         // 12-hour times carry an AM/PM marker ("12:32 PM"), so the
                         // fixed time column gets a little extra room in that mode.
                         modifier = Modifier.width(if (use24h) 56.dp else 72.dp),
@@ -211,7 +219,7 @@ fun SensorHistoryList(
                     Text(
                         text = formatSensorValue(p.state).uppercase(),
                         style = R1.body,
-                        color = R1.Ink,
+                        color = ink.ink,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
