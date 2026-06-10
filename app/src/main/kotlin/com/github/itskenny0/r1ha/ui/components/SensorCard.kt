@@ -225,7 +225,9 @@ fun SensorCard(
             val tempUnit = weatherAttrText(state, "temperature_unit") ?: "°"
             Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
                 if (temp != null) {
-                    val tempStr = "%.0f".format(temp)
+                    // Locale-pinned: an unpinned "%.0f" renders Eastern Arabic
+                    // digits on ar-locale devices; readouts stay ASCII app-wide.
+                    val tempStr = "%.0f".format(java.util.Locale.US, temp)
                     val (bodyStyle, suffixStyle) = sensorReadoutStyle(tempStr, textSizeSp)
                     Text(
                         text = tempStr,
@@ -516,10 +518,11 @@ private fun weatherAttrText(state: EntityState, key: String): String? =
  *  unit-tested. */
 internal fun weatherDetailLine(humidity: Double?, windSpeed: Double?, windUnit: String?): String? {
     val parts = mutableListOf<String>()
-    if (humidity != null) parts += "Humidity ${"%.0f".format(humidity)}%"
+    // Locale-pinned so the digits stay ASCII on non-Latin-digit device locales.
+    if (humidity != null) parts += "Humidity ${"%.0f".format(java.util.Locale.US, humidity)}%"
     if (windSpeed != null) {
         val unit = windUnit?.takeIf { it.isNotBlank() }?.let { " $it" } ?: ""
-        parts += "Wind ${"%.0f".format(windSpeed)}$unit"
+        parts += "Wind ${"%.0f".format(java.util.Locale.US, windSpeed)}$unit"
     }
     return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 }

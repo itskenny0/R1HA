@@ -336,7 +336,9 @@ class ToDoViewModel(
             val clock: String? = (
                 runCatching { java.time.OffsetDateTime.parse(value).toLocalTime() }.getOrNull()
                     ?: runCatching { java.time.LocalDateTime.parse(value).toLocalTime() }.getOrNull()
-                )?.let { "%02d:%02d".format(it.hour, it.minute) }
+                // Locale-pinned: "%d" localises its digit set, and the HH:mm chip
+                // must keep ASCII digits on non-Latin-digit device locales.
+                )?.let { "%02d:%02d".format(java.util.Locale.US, it.hour, it.minute) }
 
             if (dueDate == null) {
                 // Unparseable: surface it raw rather than dropping the field.

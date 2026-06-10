@@ -32,4 +32,17 @@ class WeatherDetailLineTest {
     @Test fun `neither present yields null`() {
         assertThat(weatherDetailLine(null, null, "km/h")).isNull()
     }
+
+    @Test fun `digits stay ASCII regardless of the default locale`() {
+        // An Arabic default locale renders unpinned "%.0f" with Eastern Arabic
+        // digits; the readout must stay on the US-pinned ASCII form.
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar"))
+            assertThat(weatherDetailLine(64.0, 12.0, "km/h"))
+                .isEqualTo("Humidity 64%  ·  Wind 12 km/h")
+        } finally {
+            java.util.Locale.setDefault(previous)
+        }
+    }
 }

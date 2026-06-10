@@ -3916,7 +3916,7 @@ private fun JumpRow(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "%2d".format(index + 1),
+                text = "%2d".format(java.util.Locale.US, index + 1),
                 style = R1.labelMicro,
                 color = if (isActive) R1.Bg else R1.InkMuted,
             )

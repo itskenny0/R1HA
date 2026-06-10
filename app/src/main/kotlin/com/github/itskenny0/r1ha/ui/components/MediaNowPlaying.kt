@@ -270,5 +270,12 @@ private fun formatHms(totalSec: Int): String {
     val h = totalSec / 3600
     val m = (totalSec % 3600) / 60
     val s = totalSec % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+    // Locale-pinned: "%d" honours the default locale's digit set, so an Arabic
+    // device locale would otherwise render the position timer in Eastern Arabic
+    // digits.
+    return if (h > 0) {
+        "%d:%02d:%02d".format(java.util.Locale.US, h, m, s)
+    } else {
+        "%d:%02d".format(java.util.Locale.US, m, s)
+    }
 }

@@ -549,5 +549,7 @@ private fun formatClock(millis: Long): String {
     val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
     val m = cal.get(java.util.Calendar.MINUTE)
     val s = cal.get(java.util.Calendar.SECOND)
-    return "%02d:%02d:%02d".format(h, m, s)
+    // Locale-pinned: "%d" localises its digit set, and this clock readout must
+    // stay ASCII regardless of the device locale.
+    return "%02d:%02d:%02d".format(java.util.Locale.US, h, m, s)
 }

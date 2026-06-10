@@ -244,7 +244,9 @@ class CardStackViewModel(
                 // water_heater shares the same set_temperature service signature.
                 val raw = entityState.minRaw + (pct / 100.0) * (entityState.maxRaw - entityState.minRaw)
                 val temp = Math.round(raw * 2.0) / 2.0
-                R1Log.i("CardStack.debounced", "sending setTemperature($entityId, ${"%.1f".format(temp)})")
+                // Log values are locale-pinned so diagnostics show the same
+                // dot-decimal numbers that go over the wire.
+                R1Log.i("CardStack.debounced", "sending setTemperature($entityId, ${"%.1f".format(java.util.Locale.US, temp)})")
                 ServiceCall.setTemperature(entityId, temp)
             }
             // Number / input_number scalar — same shape as climate but emits set_value
@@ -260,7 +262,7 @@ class CardStackViewModel(
                 val step = entityState.step?.takeIf { it > 0.0 }
                 val snapped = if (step != null) Math.round(raw / step) * step else raw
                 val clamped = snapped.coerceIn(entityState.minRaw, entityState.maxRaw)
-                R1Log.i("CardStack.debounced", "sending setNumberValue($entityId, ${"%.3f".format(clamped)} step=$step)")
+                R1Log.i("CardStack.debounced", "sending setNumberValue($entityId, ${"%.3f".format(java.util.Locale.US, clamped)} step=$step)")
                 ServiceCall.setNumberValue(entityId, clamped)
             }
             // Light wheel-mode dispatch — when the user has cycled into CT or HUE mode
@@ -284,7 +286,7 @@ class CardStackViewModel(
                 _state.value.lightWheelMode[entityId] == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE -> {
                 val hue = (pct / 100.0) * 360.0
                 val carryBright = entityState?.percent?.takeIf { it > 0 }
-                R1Log.i("CardStack.debounced", "sending setLightHue($entityId, ${"%.0f".format(hue)}°, bright=$carryBright)")
+                R1Log.i("CardStack.debounced", "sending setLightHue($entityId, ${"%.0f".format(java.util.Locale.US, hue)}°, bright=$carryBright)")
                 ServiceCall.setLightHue(entityId, hue, brightnessPct = carryBright)
             }
             else -> {

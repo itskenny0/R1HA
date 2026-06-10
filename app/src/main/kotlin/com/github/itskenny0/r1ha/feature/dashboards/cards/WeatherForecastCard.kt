@@ -65,7 +65,9 @@ fun WeatherForecastCard(
         if (card.showCurrent) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = tempC?.let { "%.0f".format(it) } ?: "-",
+                    // Locale-pinned: temperature readouts keep ASCII digits on
+                    // non-Latin-digit device locales.
+                    text = tempC?.let { "%.0f".format(java.util.Locale.US, it) } ?: "-",
                     style = R1.numeralXl.copy(fontSize = androidx.compose.ui.unit.TextUnit.Unspecified),
                     color = R1.Ink,
                 )
@@ -118,12 +120,12 @@ private fun ForecastStrip(forecast: JsonArray, slots: Int) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = temp?.let { "%.0f°".format(it) } ?: "-",
+                    text = temp?.let { "%.0f°".format(java.util.Locale.US, it) } ?: "-",
                     style = R1.bodyEmph,
                     color = R1.Ink,
                 )
                 if (low != null) {
-                    Text(text = "%.0f°".format(low), style = androidx.compose.ui.text.TextStyle.Default, color = R1.InkMuted)
+                    Text(text = "%.0f°".format(java.util.Locale.US, low), style = androidx.compose.ui.text.TextStyle.Default, color = R1.InkMuted)
                 }
             }
         }

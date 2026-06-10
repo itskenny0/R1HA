@@ -505,7 +505,7 @@ private fun WeatherCard(
             // reports them. HA surfaces these in the more-info weather view;
             // they're the next most-glanceable facts after the headline temp.
             val extras = buildList {
-                w.apparentTemperature?.let { add("FEELS ${"%.0f".format(it)}$unit") }
+                w.apparentTemperature?.let { add("FEELS ${"%.0f".format(java.util.Locale.US, it)}$unit") }
                 w.humidity?.let { add("$it% RH") }
             }
             if (extras.isNotEmpty()) {
@@ -520,7 +520,7 @@ private fun WeatherCard(
         }
         if (w.temperature != null) {
             Text(
-                text = "${"%.0f".format(w.temperature)}$unit",
+                text = "${"%.0f".format(java.util.Locale.US, w.temperature)}$unit",
                 style = responsiveType(R1.numeralXl),
                 color = R1.Ink,
             )
@@ -569,11 +569,12 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
         }
         // Next rise/set: relative time and HH:mm absolute. The
         // relative is the at-a-glance answer ('in 4h'); the absolute
-        // helps with concrete planning ('alarm before sunrise').
-        val locale = java.util.Locale.getDefault()
-        val timeFmt = java.time.format.DateTimeFormatter.ofLocalizedTime(
-            java.time.format.FormatStyle.SHORT,
-        ).withLocale(locale)
+        // helps with concrete planning ('alarm before sunrise'). Routed
+        // through the shared clock pipeline so the Settings 12/24-hour
+        // choice applies here like every other clock readout (a locale-
+        // default formatter ignored it and localized the digit set).
+        val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
+        val zone = java.time.ZoneId.systemDefault()
         Row {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "NEXT RISE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
@@ -582,7 +583,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                     s.nextRising?.let {
                         Spacer(Modifier.width(R1.space.s))
                         Text(
-                            text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
+                            text = com.github.itskenny0.r1ha.ui.components.formatClockTime(it, zone, use24h),
                             style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )
@@ -596,7 +597,7 @@ private fun SunCard(s: DashboardViewModel.SunSummary, onClick: () -> Unit = {}) 
                     s.nextSetting?.let {
                         Spacer(Modifier.width(R1.space.s))
                         Text(
-                            text = it.atZone(java.time.ZoneId.systemDefault()).format(timeFmt),
+                            text = com.github.itskenny0.r1ha.ui.components.formatClockTime(it, zone, use24h),
                             style = responsiveType(R1.labelMicro),
                             color = R1.InkSoft,
                         )

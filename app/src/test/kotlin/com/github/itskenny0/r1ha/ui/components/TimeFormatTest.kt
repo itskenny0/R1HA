@@ -87,6 +87,20 @@ class TimeFormatTest {
             .isEqualTo("1 Jul 09:00")
     }
 
+    @Test fun `absolute timestamp stays on the local wall clock across a DST jump`() {
+        // Europe/Berlin springs forward 2026-03-29 (02:00 CET -> 03:00 CEST).
+        // A sunrise after the jump must render its local CEST wall-clock time and
+        // still bucket as "today" relative to a pre-jump now on the same local
+        // date; both depend on the zone-aware atZone conversion, not epoch math.
+        val berlin = java.time.ZoneId.of("Europe/Berlin")
+        val preJump = Instant.parse("2026-03-29T00:30:00Z") // 01:30 CET, 29 Mar
+        val sunrise = Instant.parse("2026-03-29T04:30:00Z") // 06:30 CEST, 29 Mar
+        assertThat(formatAbsoluteTimestamp(sunrise, preJump, berlin, use24h = true))
+            .isEqualTo("06:30")
+        assertThat(formatAbsoluteTimestamp(sunrise, preJump, berlin, use24h = false))
+            .isEqualTo("6:30 AM")
+    }
+
     @Test fun `yesterday is not today even when under 24 hours away`() {
         // 23:50 the previous local day, 14h 42m before "now" — the bucket keys
         // on the LOCAL DATE, not the elapsed duration, so this carries its day.

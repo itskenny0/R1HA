@@ -578,7 +578,8 @@ private fun computeLightDisplay(
         }
         com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE -> {
             val hue = pct * 3.6  // 0..360
-            "%.0f".format(hue) to "°"
+            // Locale-pinned so the hue readout keeps ASCII digits everywhere.
+            "%.0f".format(java.util.Locale.US, hue) to "°"
         }
     }
 }

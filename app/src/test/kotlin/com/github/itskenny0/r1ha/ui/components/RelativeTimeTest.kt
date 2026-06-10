@@ -45,6 +45,20 @@ class RelativeTimeTest {
         assertThat(past(200 * 86_400)).isEqualTo("6mo ago")
     }
 
+    @Test fun `dst spring-forward counts physical hours, not wall-clock hours`() {
+        // Europe/Berlin, 2026-03-29: 02:00 CET jumps to 03:00 CEST. From 00:30
+        // local (23:30Z) to a 06:30 CEST sunrise (04:30Z) the wall clock shows a
+        // six-hour difference but only five physical hours elapse. The label is
+        // a countdown, so the Instant-based "in 5h" is the correct reading; this
+        // pins that the implementation stays on epoch deltas and never switches
+        // to wall-clock field arithmetic.
+        val before = Instant.parse("2026-03-28T23:30:00Z") // 00:30 CET
+        val sunrise = Instant.parse("2026-03-29T04:30:00Z") // 06:30 CEST
+        assertThat(formatRelativeTime(sunrise, before)).isEqualTo("in 5h")
+        // And the symmetric past reading after the jump.
+        assertThat(formatRelativeTime(before, sunrise)).isEqualTo("5h ago")
+    }
+
     @Test fun `a year or more reads in years`() {
         assertThat(past(365 * 86_400)).isEqualTo("1y ago")
         assertThat(past(800 * 86_400)).isEqualTo("2y ago")
