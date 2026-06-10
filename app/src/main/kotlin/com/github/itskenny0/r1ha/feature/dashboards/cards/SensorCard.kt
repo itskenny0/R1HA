@@ -61,9 +61,12 @@ fun SensorCard(
     val name = resolveName(card.name, state, card.entityId)
     val accent = stateAccentFor(card.entityId, state)
     val unit = card.unit ?: state?.unit
-    // state_color tints the value text by the entity's on/off accent; off
-    // otherwise it stays the neutral state accent.
-    val valueColor = if (card.stateColor) accent else accent
+    // R1HA colours the sensor value with its device-class accent by default
+    // (a deliberate readability choice). HA's `state_color` is the opt-in for
+    // exactly that tint, so an explicit `state_color: false` drops back to the
+    // neutral ink HA uses by default while the accent still drives the icon and
+    // sparkline.
+    val valueColor = if (card.raw.containsKey("state_color") && !card.stateColor) R1.Ink else accent
     val valueText = state?.let { s ->
         // An `attribute:` override displays that attribute in place of the state.
         val raw = card.attribute
@@ -166,9 +169,8 @@ fun SensorCard(
     }
 }
 
-/** Render a JSON scalar attribute value as a plain string (numbers without the
- *  surrounding quotes JSON keeps for strings). Null for object/array values. */
-internal fun jsonScalar(el: kotlinx.serialization.json.JsonElement): String? {
-    val prim = el as? kotlinx.serialization.json.JsonPrimitive ?: return null
-    return if (prim.isString) prim.content else prim.content
-}
+/** Render a JSON scalar attribute value as a plain string (its content,
+ *  unquoted for both string and numeric primitives). Null for object/array
+ *  values, which an `attribute:` display can't render meaningfully. */
+internal fun jsonScalar(el: kotlinx.serialization.json.JsonElement): String? =
+    (el as? kotlinx.serialization.json.JsonPrimitive)?.content
