@@ -57,10 +57,12 @@ fun EntityCard(
         EntityNotFoundCard(entityId, modifier)
         return
     }
-    // A structured `name:` (EntityNameItem object/array) needs registry data we
-    // don't carry; degrade to the friendly name by only honouring a string name.
+    // `name:` may be a plain string or a structured EntityNameItem object/array
+    // (HA 2025.11+); the structured form composes entity/device/area/floor + text
+    // parts against the registry, degrading to the friendly name when absent.
     val nameOverride = (card.raw["name"] as? JsonPrimitive)?.content
-    val name = resolveName(nameOverride, state, entityId)
+    val nameItems = LovelaceParser.parseStructuredNameConfig(card.raw["name"])
+    val name = resolveStructuredName(nameOverride, nameItems, null, state, entityId)
     val accent = stateAccentFor(entityId, state)
     val configIcon = (card.raw["icon"] as? JsonPrimitive)?.content
     val icon = cardEntityIcon(entityId, state, configIcon)

@@ -61,4 +61,25 @@ class ButtonLogicTest {
     @Test fun `entityless action button is neutral`() {
         assertEquals(R1.InkSoft, buttonAccent(null, stateColor = true, null, null))
     }
+
+    // ── iconHeightDp ─────────────────────────────────────────────────────────
+
+    @Test fun `icon_height parses bare number pixels and em`() {
+        assertEquals(48f, iconHeightDp("48"))
+        assertEquals(40f, iconHeightDp("40px"))
+        // 2em against HA's 24px base icon = 48px.
+        assertEquals(48f, iconHeightDp("2em"))
+    }
+
+    @Test fun `icon_height clamps out-of-range values`() {
+        assertEquals(96f, iconHeightDp("9999px"))
+        assertEquals(16f, iconHeightDp("4px"))
+    }
+
+    @Test fun `icon_height rejects blank null and unparseable input`() {
+        assertEquals(null, iconHeightDp(null))
+        assertEquals(null, iconHeightDp("  "))
+        assertEquals(null, iconHeightDp("tall"))
+        assertEquals(null, iconHeightDp("0px"))
+    }
 }

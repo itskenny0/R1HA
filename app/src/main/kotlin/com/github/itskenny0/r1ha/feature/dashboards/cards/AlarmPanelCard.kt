@@ -53,7 +53,7 @@ fun AlarmPanelCard(
 ) {
     val eid = safeEntityId(card.entityId)
     val state = eid?.let { stateMap[it] }
-    val name = resolveName(card.name, state, card.entityId)
+    val name = resolveStructuredName(card.name, card.nameItems, null, state, card.entityId)
     val raw = state?.rawState?.lowercase().orEmpty()
     val accent = if (raw.startsWith("armed") || raw == "triggered") R1.AccentWarm else R1.AccentGreen
     val codeFormat = state?.alarmCodeFormat

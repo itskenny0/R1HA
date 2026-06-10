@@ -22,3 +22,13 @@ data class HistoryPoint(
             )
     }
 }
+
+/**
+ * One timestamped GPS fix from an attribute-bearing history fetch. Used to draw
+ * the map card's location trail (a polyline of an entity's past positions).
+ */
+data class LocationFix(
+    val timestamp: Instant,
+    val latitude: Double,
+    val longitude: Double,
+)

@@ -113,3 +113,98 @@ internal fun effectiveLabelMode(cardLabelMode: String?, markerLabelMode: String?
  */
 internal fun effectiveLabelAttribute(cardAttribute: String?, markerAttribute: String?): String? =
     markerAttribute ?: cardAttribute
+
+// ── cluster grouping ────────────────────────────────────────────────────────
+
+/** A normalised plot position (fractions 0..1 within the canvas) carrying its
+ *  source index, used by the clusterer to merge overlapping points. */
+data class PlotPoint(val index: Int, val xFrac: Float, val yFrac: Float)
+
+/** A cluster of plotted points: the centroid position and the member indices. */
+data class PlotCluster(val xFrac: Float, val yFrac: Float, val members: List<Int>)
+
+/**
+ * Greedily merge plot points whose canvas distance is within [radiusFrac] into
+ * clusters (HA's marker clustering). Points are processed in order; each
+ * unclustered point seeds a cluster that absorbs every later point within the
+ * radius of the seed. The cluster position is the centroid of its members. When
+ * clustering is disabled the caller skips this and plots points individually.
+ *
+ * Pure (operates on normalised fractions), so the grouping is unit-tested without
+ * a canvas. A single-member cluster renders as a normal marker; a multi-member
+ * cluster renders as a count chip.
+ */
+fun clusterPlotPoints(points: List<PlotPoint>, radiusFrac: Float): List<PlotCluster> {
+    val out = ArrayList<PlotCluster>()
+    val taken = BooleanArray(points.size)
+    for (i in points.indices) {
+        if (taken[i]) continue
+        taken[i] = true
+        val members = ArrayList<Int>()
+        members.add(points[i].index)
+        var sx = points[i].xFrac
+        var sy = points[i].yFrac
+        for (j in i + 1 until points.size) {
+            if (taken[j]) continue
+            val dx = points[j].xFrac - points[i].xFrac
+            val dy = points[j].yFrac - points[i].yFrac
+            if (dx * dx + dy * dy <= radiusFrac * radiusFrac) {
+                taken[j] = true
+                members.add(points[j].index)
+                sx += points[j].xFrac
+                sy += points[j].yFrac
+            }
+        }
+        out.add(PlotCluster(sx / members.size, sy / members.size, members))
+    }
+    return out
+}
+
+// ── trail simplification ────────────────────────────────────────────────────
+
+/** A latitude/longitude trail point for simplification (renderer-agnostic). */
+data class TrailPoint(val lat: Double, val lon: Double)
+
+/**
+ * Simplify a GPS trail with the Ramer-Douglas-Peucker algorithm so a long
+ * location history draws as a clean polyline without thousands of nearly-colinear
+ * vertices. [epsilon] is the max perpendicular deviation (in degrees) a point may
+ * have from the simplified segment before it is kept. A trail of two or fewer
+ * points is returned unchanged.
+ *
+ * Pure + deterministic, so the simplification is unit-tested directly.
+ */
+fun simplifyTrail(points: List<TrailPoint>, epsilon: Double): List<TrailPoint> {
+    if (points.size <= 2) return points
+    var maxDist = 0.0
+    var index = 0
+    val end = points.size - 1
+    for (i in 1 until end) {
+        val d = perpendicularDistance(points[i], points[0], points[end])
+        if (d > maxDist) {
+            maxDist = d
+            index = i
+        }
+    }
+    return if (maxDist > epsilon) {
+        val left = simplifyTrail(points.subList(0, index + 1), epsilon)
+        val right = simplifyTrail(points.subList(index, points.size), epsilon)
+        left.dropLast(1) + right
+    } else {
+        listOf(points[0], points[end])
+    }
+}
+
+/** Perpendicular distance of [p] from the line through [a] and [b] (degrees). */
+internal fun perpendicularDistance(p: TrailPoint, a: TrailPoint, b: TrailPoint): Double {
+    val dx = b.lon - a.lon
+    val dy = b.lat - a.lat
+    val denom = kotlin.math.sqrt(dx * dx + dy * dy)
+    if (denom < 1e-12) {
+        val ex = p.lon - a.lon
+        val ey = p.lat - a.lat
+        return kotlin.math.sqrt(ex * ex + ey * ey)
+    }
+    val num = kotlin.math.abs(dy * p.lon - dx * p.lat + b.lon * a.lat - b.lat * a.lon)
+    return num / denom
+}

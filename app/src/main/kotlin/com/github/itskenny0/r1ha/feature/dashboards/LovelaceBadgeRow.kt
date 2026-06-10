@@ -40,6 +40,7 @@ import com.github.itskenny0.r1ha.feature.dashboards.cards.r1CardActions
 import com.github.itskenny0.r1ha.feature.dashboards.cards.rememberLovelaceConditionContext
 import com.github.itskenny0.r1ha.feature.dashboards.cards.resolveCardActions
 import com.github.itskenny0.r1ha.feature.dashboards.cards.resolveName
+import com.github.itskenny0.r1ha.feature.dashboards.cards.resolveStructuredName
 import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
@@ -120,7 +121,7 @@ private fun BadgeChip(
     )
 
     val name = if (badge.showName && badge.entityId != null) {
-        resolveName(badge.name, state, badge.entityId)
+        resolveStructuredName(badge.name, badge.nameItems, null, state, badge.entityId)
     } else {
         badge.name?.takeUnless { it.isBlank() }
     }

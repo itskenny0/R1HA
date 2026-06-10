@@ -83,6 +83,21 @@ fun UnsupportedCard(
             EntityCard(card, stateMap, onAction, modifier)
             return
         }
+        "plant-status" -> {
+            PlantStatusCard(card, stateMap, onAction, modifier)
+            return
+        }
+        "discovered-devices" -> {
+            DiscoveredDevicesCard(card, modifier)
+            return
+        }
+        // HA emits an `error` card ({type: error, error: "...", origConfig: {...}})
+        // when a card fails to build. Render it with the message + collapsible raw
+        // config, matching hui-error-card's role.
+        "error" -> {
+            ErrorCard(card, modifier)
+            return
+        }
     }
     when {
         card.url != null -> IframeCard(card, modifier)
@@ -448,6 +463,71 @@ private fun RawJsonCard(card: LovelaceCard.Unsupported, modifier: Modifier = Mod
             color = R1.Ink,
         )
         if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeM)
+                    .background(R1.SurfaceMuted)
+                    .padding(12.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(
+                    text = prettyJson,
+                    style = androidx.compose.ui.text.TextStyle(
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontSize = androidx.compose.ui.unit.TextUnit(11f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    ),
+                    color = R1.InkSoft,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Renderer for HA's `error` card (hui-error-card.ts), which HA emits in place of
+ * a card that failed to build. Shows the `error` message prominently in the
+ * error (amber) severity plus a collapsible view of the original card config
+ * (`origConfig`). On the personal-device R1 the audience is the HA owner, so the
+ * detail is shown rather than admin-gated.
+ */
+@Composable
+private fun ErrorCard(card: LovelaceCard.Unsupported, modifier: Modifier = Modifier) {
+    var expanded by remember { mutableStateOf(false) }
+    val message = (card.raw["error"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        ?.takeUnless { it.isBlank() }
+        ?: card.friendlyType.takeUnless { it == card.type }
+        ?: "Card error"
+    val origConfig = card.raw["origConfig"] as? kotlinx.serialization.json.JsonObject
+    val prettyJson = remember(origConfig) {
+        origConfig?.let {
+            runCatching { LOVELACE_EDIT_JSON.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), it) }
+                .getOrElse { _ -> it.toString() }
+        }
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeM)
+            .background(R1.Surface)
+            .border(1.dp, R1.StatusRed.copy(alpha = 0.6f), R1.ShapeM)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row {
+            Text(text = "CARD ERROR", style = R1.sectionHeader, color = R1.StatusRed, modifier = Modifier.weight(1f))
+            if (prettyJson != null) {
+                Text(
+                    text = if (expanded) "HIDE" else "SHOW CONFIG",
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                    modifier = Modifier.r1Pressable(onClick = { expanded = !expanded }),
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(text = message, style = R1.body, color = R1.Ink)
+        if (expanded && prettyJson != null) {
             Spacer(Modifier.height(8.dp))
             Column(
                 modifier = Modifier

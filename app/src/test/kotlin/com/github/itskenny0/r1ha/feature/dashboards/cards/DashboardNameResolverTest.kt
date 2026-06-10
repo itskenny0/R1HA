@@ -184,6 +184,62 @@ class DashboardNameResolverTest {
         assertThat(resolver.resolveParts("device", "sensor.x")).isNull()
     }
 
+    // ── resolveNameItems (structured EntityNameItem name) ────────────────────
+
+    @Test
+    fun `resolveNameItems composes device and area parts with a space`() {
+        val items = listOf(
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("device"),
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("area"),
+        )
+        assertThat(resolver.resolveNameItems(items, "light.a", "Friendly"))
+            .isEqualTo("Living Room Hub Kitchen")
+    }
+
+    @Test
+    fun `resolveNameItems entity part uses the supplied friendly name`() {
+        val items = listOf(
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("entity"),
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("area"),
+        )
+        assertThat(resolver.resolveNameItems(items, "light.b", "My Lamp"))
+            .isEqualTo("My Lamp Bedroom")
+    }
+
+    @Test
+    fun `resolveNameItems interleaves literal text fragments`() {
+        val items = listOf(
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Text("("),
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("device"),
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Text(")"),
+        )
+        assertThat(resolver.resolveNameItems(items, "light.a", null))
+            .isEqualTo("( Living Room Hub )")
+    }
+
+    @Test
+    fun `resolveNameItems drops parts that do not resolve`() {
+        val items = listOf(
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("device"),
+            com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("area"),
+        )
+        // sensor.x has neither device nor area; only text would survive, so null.
+        assertThat(resolver.resolveNameItems(items, "sensor.x", null)).isNull()
+    }
+
+    @Test
+    fun `resolveNameItems returns null for an empty list`() {
+        assertThat(resolver.resolveNameItems(emptyList(), "light.a", "F")).isNull()
+    }
+
+    @Test
+    fun `resolveToken maps device area floor and rejects entity`() {
+        assertThat(resolver.resolveToken("device", "light.a")).isEqualTo("Living Room Hub")
+        assertThat(resolver.resolveToken("area", "light.b")).isEqualTo("Bedroom")
+        assertThat(resolver.resolveToken("entity", "light.a")).isNull()
+        assertThat(resolver.resolveToken("floor", "light.a")).isNull()
+    }
+
     // ── empty resolver (no-regression fallback) ──────────────────────────────
 
     @Test
@@ -194,5 +250,10 @@ class DashboardNameResolverTest {
         assertThat(empty.floorName("light.a")).isNull()
         assertThat(empty.resolveParts("device", "light.a")).isNull()
         assertThat(empty.resolveParts("area", "light.b")).isNull()
+        assertThat(empty.resolveNameItems(
+            listOf(com.github.itskenny0.r1ha.core.lovelace.EntityNameItem.Part("device")),
+            "light.a",
+            "Friendly",
+        )).isNull()
     }
 }

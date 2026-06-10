@@ -78,10 +78,29 @@ fun HistoryGraphCard(
         LaunchedEffect(ids, card.hoursToShow) {
             while (true) {
                 val out = LinkedHashMap<String, List<HistoryPoint>>(ids.size)
+                val windowStartInstant = java.time.Instant.ofEpochMilli(
+                    System.currentTimeMillis() - (card.hoursToShowExact * 3_600_000L).toLong(),
+                )
                 ids.forEach { raw ->
                     val eid = safeEntityId(raw) ?: return@forEach
                     repo.fetchHistory(eid, hours = card.hoursToShow)
-                        .onSuccess { out[raw] = it }
+                        .onSuccess { history ->
+                            // Long-term statistics backfill: when the recorder has
+                            // purged the early part of a long window, fill it from
+                            // hourly statistics so the graph still draws the full
+                            // range (HA's hui-history-graph-card merge).
+                            out[raw] = if (needsStatisticsBackfill(history, windowStartInstant)) {
+                                val stats = repo.getStatisticsDuringPeriod(
+                                    statisticIds = listOf(raw),
+                                    start = windowStartInstant,
+                                    end = java.time.Instant.now(),
+                                    period = "hour",
+                                ).getOrNull()?.get(raw).orEmpty()
+                                mergeHistoryWithStatistics(history, stats, windowStartInstant)
+                            } else {
+                                history
+                            }
+                        }
                 }
                 rawById = out
                 loaded = true

@@ -48,7 +48,7 @@ internal fun EntityRowScaffold(
     secondaryOverride: String? = null,
     controls: @Composable (RowScope.() -> Unit)? = null,
 ) {
-    val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
+    val name = resolveStructuredName(row.name, row.nameItems, row.nameType, state, row.entityId)
     val secondary = secondaryOverride
         ?: row.secondaryInfo?.let { secondaryInfoLine(it, state) }
     val nameColor = if (stateColor && state?.isOn == true) accent else R1.Ink

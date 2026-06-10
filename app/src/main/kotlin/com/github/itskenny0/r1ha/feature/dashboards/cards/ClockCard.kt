@@ -59,7 +59,11 @@ fun ClockCard(
         }
     }
 
-    CardSurface(modifier = modifier, title = card.title?.takeUnless { it.isBlank() }) {
+    CardSurface(
+        modifier = modifier,
+        title = card.title?.takeUnless { it.isBlank() },
+        transparent = card.noBackground,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

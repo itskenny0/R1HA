@@ -31,6 +31,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -1698,6 +1699,46 @@ class DefaultHaRepository(
             Result.failure(t)
         }
 
+    override suspend fun fetchLocationHistory(entityId: EntityId, hours: Int): Result<List<LocationFix>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val s = settings.settings.first()
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val since = Instant.now().minusSeconds(hours.toLong() * 3600L)
+                // Keep the attribute payload (no `no_attributes`) so latitude /
+                // longitude survive; `minimal_response` would strip them after the
+                // first sample, so it is intentionally omitted here.
+                val url = "${server.url.trimEnd('/')}/api/history/period/$since" +
+                    "?filter_entity_id=${java.net.URLEncoder.encode(entityId.value, "UTF-8")}"
+                val body = fetchHistoryBody(url) ?: run {
+                    if (refresher?.forceRefresh() == true) fetchHistoryBody(url) else null
+                } ?: error("Home Assistant returned no history for ${entityId.value}")
+                val outer = listStatesJson.decodeFromString<List<List<LocationHistoryRow>>>(body)
+                outer.firstOrNull().orEmpty().mapNotNull { row ->
+                    val lat = row.attributes?.get("latitude")?.let { (it as? JsonPrimitive)?.doubleOrNull }
+                    val lon = row.attributes?.get("longitude")?.let { (it as? JsonPrimitive)?.doubleOrNull }
+                    val ts = row.last_changed ?: row.last_updated
+                    if (lat != null && lon != null && ts != null) {
+                        parseHaInstant(ts)?.let { LocationFix(it, lat, lon) }
+                    } else {
+                        null
+                    }
+                }
+            }.onFailure { t ->
+                if (t is kotlinx.coroutines.CancellationException) throw t
+                R1Log.d("HaRepo.fetchLocationHistory", "${entityId.value}: ${t.message}")
+            }
+        }
+
+    /** Row shape for the attribute-bearing location history (keeps `attributes`). */
+    @kotlinx.serialization.Serializable
+    private data class LocationHistoryRow(
+        val attributes: kotlinx.serialization.json.JsonObject? = null,
+        val last_changed: String? = null,
+        val last_updated: String? = null,
+    )
+
     /** One attempt of the [fetchHistory] REST GET + parse. Throws on any failure (HTTP error,
      *  breaker short-circuit 503, parse error); the caller's retry loop decides whether to
      *  re-attempt. */
@@ -3126,6 +3167,54 @@ class DefaultHaRepository(
             Unit
         }.onFailure { t ->
             R1Log.w("HaRepo.todo", "update on $entityId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun editTodoItem(
+        entityId: String,
+        uid: String,
+        summary: String?,
+        description: String?,
+        due: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+                put("item", JsonPrimitive(uid))
+                if (summary != null) put("rename", JsonPrimitive(summary))
+                if (description != null) put("description", JsonPrimitive(description))
+                // A datetime due ("...T...") routes to due_datetime; a bare date
+                // to due_date. An empty string clears whichever field is implied
+                // (HA clears the value when the service receives an empty string).
+                if (due != null) {
+                    if (due.contains("T")) {
+                        put("due_datetime", JsonPrimitive(due))
+                    } else {
+                        put("due_date", JsonPrimitive(due))
+                    }
+                }
+            }
+            callRawService("todo", "update_item", payload).getOrThrow()
+            Unit
+        }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "edit on $entityId failed: ${t.message}")
+        }
+    }
+
+    override suspend fun moveTodoItem(
+        entityId: String,
+        uid: String,
+        previousUid: String?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("entity_id", JsonPrimitive(entityId))
+            put("uid", JsonPrimitive(uid))
+            // Omitting previous_uid (or sending null) moves the item to the top,
+            // matching HA's moveItem(prev = undefined) semantics.
+            if (previousUid != null) put("previous_uid", JsonPrimitive(previousUid))
+        }
+        callWsExpectingPayload("todo/item/move", extras).map { }.onFailure { t ->
+            R1Log.w("HaRepo.todo", "move on $entityId failed: ${t.message}")
         }
     }
 

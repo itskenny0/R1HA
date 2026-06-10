@@ -523,19 +523,27 @@ fun CardSurface(
     modifier: Modifier = Modifier,
     title: String? = null,
     accent: androidx.compose.ui.graphics.Color = R1.Hairline,
+    transparent: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val overlay = LocalDashboardThemeOverlay.current
-    val bg = overlay.cardBg ?: R1.Surface
-    val border = if (overlay.cardBg != null) (overlay.primary ?: overlay.accent ?: accent) else accent
-    Column(
-        modifier = modifier
+    // HA's `no_background` strips the card surface (background / shadow / border)
+    // so the content reads as bare text in the layout; we drop the fill + border
+    // and keep only the layout padding. The theme overlay only applies when the
+    // surface itself renders.
+    val surface = if (transparent) {
+        Modifier.fillMaxWidth().padding(vertical = 10.dp)
+    } else {
+        val bg = overlay.cardBg ?: R1.Surface
+        val border = if (overlay.cardBg != null) (overlay.primary ?: overlay.accent ?: accent) else accent
+        Modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(bg)
             .border(1.dp, border, R1.ShapeM)
-            .padding(vertical = 10.dp),
-    ) {
+            .padding(vertical = 10.dp)
+    }
+    Column(modifier = modifier.then(surface)) {
         if (!title.isNullOrBlank()) {
             val titleColor = overlay.textSecondary ?: R1.InkSoft
             Text(
@@ -594,4 +602,37 @@ fun resolveDisplayName(
         if (!resolved.isNullOrBlank()) return resolved
     }
     return resolveName(override, state, entityIdRaw)
+}
+
+/**
+ * Composable name resolver that adds HA 2025.11+ structured-`name` awareness on
+ * top of [resolveDisplayName]. The structured form (`name:` as an
+ * [EntityNameItem] object/array) composes entity/device/area/floor + literal
+ * text parts via [DashboardNameResolver.resolveNameItems].
+ *
+ * Resolution order:
+ *  1. a plain-string [override] wins (the historic `name: "Foo"` path);
+ *  2. a non-empty [nameItems] list is composed against the registry (degrading
+ *     to the friendly name where registry data is absent);
+ *  3. [nameType] parts (the non-HA convenience key) as before;
+ *  4. friendly_name then the prettified entity_id.
+ *
+ * No-regression: with [override] null, [nameItems] empty and [nameType] null the
+ * output is exactly [resolveName]'s.
+ */
+@androidx.compose.runtime.Composable
+fun resolveStructuredName(
+    override: String?,
+    nameItems: List<com.github.itskenny0.r1ha.core.lovelace.EntityNameItem>,
+    nameType: String?,
+    state: EntityState?,
+    entityIdRaw: String,
+): String {
+    if (!override.isNullOrBlank()) return override
+    if (nameItems.isNotEmpty()) {
+        val resolver = com.github.itskenny0.r1ha.core.theme.LocalNameResolver.current
+        val composed = resolver.resolveNameItems(nameItems, entityIdRaw, state?.friendlyName)
+        if (!composed.isNullOrBlank()) return composed
+    }
+    return resolveDisplayName(override, nameType, state, entityIdRaw)
 }

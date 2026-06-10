@@ -118,6 +118,16 @@ interface HaRepository {
     suspend fun fetchHistory(entityId: EntityId, hours: Int = 24): Result<List<HistoryPoint>>
 
     /**
+     * Attribute-bearing history fetch for the map card's location trail. Unlike
+     * [fetchHistory] (which uses `no_attributes` for a compact numeric series),
+     * this keeps the `latitude`/`longitude` attributes so the past positions of a
+     * device_tracker / person can be plotted as a trail. Returns one
+     * [LocationFix] per state change carrying coordinates, in chronological order;
+     * samples lacking coordinates are dropped.
+     */
+    suspend fun fetchLocationHistory(entityId: EntityId, hours: Int = 24): Result<List<LocationFix>>
+
+    /**
      * HA's conversation/process endpoint — sends a natural-language [text]
      * prompt and returns the plain-text response. Powers the Assist text
      * surface. [conversationId] threads multi-turn context; null starts a
@@ -303,6 +313,28 @@ interface HaRepository {
         uid: String,
         completed: Boolean,
     ): Result<Unit>
+
+    /**
+     * Edit an item's fields in one `todo.update_item` call (HA's edit dialog
+     * path): rename the summary, set the description, and set the due value
+     * (a bare date "2026-06-02" routes to `due_date`, an ISO datetime to
+     * `due_datetime`). A null argument leaves that field unchanged; passing an
+     * empty string clears the description / due. Targets by stable [uid].
+     */
+    suspend fun editTodoItem(
+        entityId: String,
+        uid: String,
+        summary: String? = null,
+        description: String? = null,
+        due: String? = null,
+    ): Result<Unit>
+
+    /**
+     * Reorder an item via the `todo/item/move` WS command. [previousUid] is the
+     * uid the moved item should land AFTER (null = move to the top of the list).
+     * Mirrors HA's reorder affordance for providers advertising MOVE_TODO_ITEM.
+     */
+    suspend fun moveTodoItem(entityId: String, uid: String, previousUid: String?): Result<Unit>
 
     /** Remove an item by uid. Same duplicate-summary rationale as the
      *  update path. */

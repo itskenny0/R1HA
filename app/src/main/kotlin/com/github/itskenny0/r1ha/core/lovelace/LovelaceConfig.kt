@@ -394,6 +394,12 @@ sealed class LovelaceCard {
         val showName: Boolean,
         val showState: Boolean,
         val showIcon: Boolean,
+        /**
+         * HA glance `state_color`: when true (the HA default) each tile's icon
+         * takes the entity's state accent; when false every tile reads neutral.
+         * Per-entity [EntityRow.stateColor] overrides this for a single tile.
+         */
+        val stateColor: Boolean = true,
     ) : LovelaceCard() {
         override val type: String = "glance"
     }
@@ -419,6 +425,15 @@ sealed class LovelaceCard {
          *  the state accent. When false the button stays neutral regardless of
          *  state. HA defaults this true for the button card. */
         val stateColor: Boolean = true,
+        /** HA 2025.11+ structured `name` parts (see [EntityNameItem]). Empty when
+         *  `name:` was a plain string / absent. */
+        val nameItems: List<EntityNameItem> = emptyList(),
+        /**
+         * HA `icon_height`: the requested icon glyph height (CSS length, e.g.
+         * "48px" / "2.5em" / "40"). Null = the card's default 48dp disc. Parsed
+         * to dp at render time; HA defaults this unset (40px var).
+         */
+        val iconHeight: String? = null,
     ) : LovelaceCard() {
         override val type: String = "button"
     }
@@ -563,6 +578,13 @@ sealed class LovelaceCard {
         val hideState: Boolean,
         val vertical: Boolean,
         val color: String?,
+        /**
+         * HA tile `state_color`: when true (the HA default for the tile card) the
+         * icon takes the entity's state accent; when false it stays neutral. A
+         * light's live `rgb_color` still overrides this when on, matching
+         * hui-tile-card's icon-colour rule.
+         */
+        val stateColor: Boolean = true,
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
@@ -612,6 +634,9 @@ sealed class LovelaceCard {
          * part and join the results with a space.
          */
         val nameType: String? = null,
+        /** HA 2025.11+ structured `name` parts (see [EntityNameItem]). Empty when
+         *  `name:` was a plain string / absent. */
+        val nameItems: List<EntityNameItem> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "tile"
     }
@@ -1005,6 +1030,9 @@ sealed class LovelaceCard {
         val name: String?,
         /** Subset of HA's `states` config (arm modes to surface). Empty = all. */
         val states: List<String>,
+        /** HA 2025.11+ structured `name` parts (see [EntityNameItem]). Empty when
+         *  `name:` was a plain string / absent. */
+        val nameItems: List<EntityNameItem> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "alarm-panel"
     }
@@ -1043,6 +1071,30 @@ sealed class LovelaceCard {
         val labelAttribute: String? = null,
         /** Per-card `theme:` key. Stored only; applied by a later batch. */
         val theme: String? = null,
+        /**
+         * HA `hours_to_show` history-trail toggle is driven by [hoursToShow]; this
+         * is HA's `show_all`: when true (and no explicit entities are configured),
+         * the card plots every locatable device_tracker / person. */
+        val showAll: Boolean = false,
+        /**
+         * HA `fit_zones`: include zone entities in the bounding-box auto-fit so
+         * the framing accounts for nearby zones, not just markers. Defaults false.
+         */
+        val fitZones: Boolean = false,
+        /**
+         * HA `cluster`: merge overlapping markers into a count chip. Defaults true
+         * in HA; on the abstract canvas this groups near-coincident dots into a
+         * single labelled count when enabled. */
+        val cluster: Boolean = true,
+        /**
+         * HA `geo_location_sources`: plot geo_location entities whose `source`
+         * attribute is in this list. The special token "all" plots every
+         * geo_location entity. Empty = no geo-location plotting. */
+        val geoLocationSources: List<String> = emptyList(),
+        /**
+         * HA `conditions:` filtering plotted entities per entity (the Batch B
+         * evaluator runs each marker through these). Empty = no condition gating. */
+        val conditions: List<LovelaceCondition> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "map"
     }
@@ -1076,6 +1128,9 @@ sealed class LovelaceCard {
          * [parseTileFeatures] path.
          */
         val features: List<LovelaceTileFeature> = emptyList(),
+        /** HA 2025.11+ structured `name` parts (see [EntityNameItem]). Empty when
+         *  `name:` was a plain string / absent. */
+        val nameItems: List<EntityNameItem> = emptyList(),
     ) : LovelaceCard() {
         override val type: String = "thermostat"
     }
@@ -1304,6 +1359,9 @@ sealed class LovelaceCard {
         /** HA 2025.4: an IANA time-zone id (e.g. "America/New_York"). Null = the
          *  device's local zone. An unparseable id falls back to local. */
         val timeZone: String? = null,
+        /** HA: `no_background` strips the card surface (fill / border / shadow) so
+         *  the clock reads as bare text in the layout. Defaults false. */
+        val noBackground: Boolean = false,
     ) : LovelaceCard() {
         override val type: String = "clock"
     }
@@ -1693,7 +1751,49 @@ data class EntityRow(
      *  attribute value when [attribute] is set. */
     val prefix: String? = null,
     val suffix: String? = null,
+    /**
+     * HA glance per-entity `state_color`: when set, overrides the card-level
+     * `state_color` for this entity only (hui-glance-card honours
+     * `entityConf.state_color`). Null = inherit the card flag.
+     */
+    val stateColor: Boolean? = null,
+    /**
+     * HA 2025.11+ structured `name`: when `name:` was an [EntityNameItem]
+     * object/array rather than a plain string, the parsed parts land here and
+     * are composed at render time. Empty = no structured name ([name] / the
+     * friendly name apply).
+     */
+    val nameItems: List<EntityNameItem> = emptyList(),
+    /**
+     * HA glance per-entity `show_last_changed`: when true (and the entity is NOT
+     * a timestamp-device-class sensor) the tile renders the relative
+     * `last_changed` time instead of the state value. Mirrors hui-glance-card's
+     * `entityConf.show_last_changed`. Defaults false.
+     */
+    val showLastChanged: Boolean = false,
 )
+
+/**
+ * HA 2025.11+ structured `name`: a single item or an array of items composed by
+ * `hass.formatEntityName`. Each item is either a registry-derived part
+ * ([Part], `{type: entity|device|area|floor}`) or a literal text fragment
+ * ([Text], `{type: text, text: "..."}`). The parts are resolved against the
+ * entity's registry data and joined with a space; when no part resolves the
+ * caller falls back to the entity's friendly name.
+ *
+ * Mirrors `src/common/entity/compute_entity_name_display.ts` (the `EntityNameItem`
+ * shape from `src/panels/lovelace/cards/types.ts`).
+ */
+@Immutable
+sealed class EntityNameItem {
+    /** A registry-derived part: one of "entity" / "device" / "area" / "floor". */
+    @Immutable
+    data class Part(val type: String) : EntityNameItem()
+
+    /** A literal text fragment, rendered verbatim. */
+    @Immutable
+    data class Text(val text: String) : EntityNameItem()
+}
 
 /**
  * Timestamp rendering format. Mirrors HA's `TimestampRenderingFormat` type
@@ -1936,6 +2036,9 @@ data class LovelaceBadge(
      * forces [showName]=true for the bare-string branch.
      */
     val isLegacyBareString: Boolean = false,
+    /** HA 2025.11+ structured `name` parts (see [EntityNameItem]). Empty when
+     *  `name:` was a plain string / absent. */
+    val nameItems: List<EntityNameItem> = emptyList(),
 )
 
 /**
