@@ -30,7 +30,9 @@ fun ButtonCard(
     modifier: Modifier = Modifier,
 ) {
     val state = card.entityId?.let { stateMap.byRaw(it) }
-    val accent = stateAccentFor(card.entityId.orEmpty(), state)
+    // HA precedence: an explicit `color` wins; else `state_color` gates the
+    // state-derived tint; else the button stays neutral.
+    val accent = buttonAccent(card.color, card.stateColor, card.entityId, state)
     val label = card.name ?: card.entityId?.let { resolveName(null, state, it) } ?: "Action"
     // Resolve tap (with HA's domain-default fallback) plus hold / double-tap,
     // all bound to the card entity, in one shot via the shared action layer.
