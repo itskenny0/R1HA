@@ -1345,7 +1345,9 @@ object LovelaceParser {
                 "climate-fan-modes" -> LovelaceTileFeature.ClimateFanModes(parseStringList(obj["fan_modes"]))
                 "climate-preset-modes" -> LovelaceTileFeature.ClimatePresetModes(parseStringList(obj["preset_modes"]))
                 "climate-swing-modes" -> LovelaceTileFeature.ClimateSwingModes(parseStringList(obj["swing_modes"]))
-                "climate-swing-horizontal-modes" -> LovelaceTileFeature.ClimateSwingHorizontalModes(parseStringList(obj["swing_modes"]))
+                // HA's config key is `swing_horizontal_modes` (not `swing_modes`);
+                // reading the wrong key silently dropped any narrowing list.
+                "climate-swing-horizontal-modes" -> LovelaceTileFeature.ClimateSwingHorizontalModes(parseStringList(obj["swing_horizontal_modes"]))
                 // Fan mode-pickers and toggles
                 "fan-preset-modes" -> LovelaceTileFeature.FanPresetModes(parseStringList(obj["preset_modes"]))
                 "fan-direction" -> LovelaceTileFeature.FanDirection

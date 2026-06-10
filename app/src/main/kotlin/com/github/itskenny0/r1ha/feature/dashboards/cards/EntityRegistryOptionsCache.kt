@@ -34,6 +34,12 @@ object EntityRegistryOptionsCache {
         synchronized(cache) { cache.clear() }
     }
 
+    /** Drop one entity's cached entry so the next read re-fetches it (used after
+     *  a successful favourites write from the more-info sheet). */
+    fun invalidate(entityId: String) {
+        synchronized(cache) { cache.remove(entityId) }
+    }
+
     suspend fun get(repo: HaRepository, entityId: String, nowMs: Long): ExtEntityRegistryOptions {
         synchronized(cache) {
             cache[entityId]?.let { if (nowMs - it.fetchedAtMs < TTL_MS) return it.value }

@@ -347,7 +347,7 @@ private fun renderFeature(
             }
         }
         is LovelaceTileFeature.ClimateSwingHorizontalModes -> {
-            if (domain != "climate") return false
+            if (domain != "climate" || !state.hasClimateFeature(EntityState.ClimateFeature.SWING_HORIZONTAL_MODE)) return false
             val available = state.attrStringList("swing_horizontal_modes")
             val modes = filterModes(available, feature.swingModes)
             if (modes.isEmpty()) return false

@@ -9,8 +9,9 @@ import kotlin.math.roundToInt
  *
  * The HA frontend stores per-entity favourite positions / colours in the entity
  * registry under `options[<domain>]`. When the user has not customised them it
- * falls back to a computed default. R1HA reads the registry options through
- * [MoreInfoRegistryOptions]; this file holds the unit-testable rules for
+ * falls back to a computed default. R1HA reads the registry options through the
+ * shared [com.github.itskenny0.r1ha.feature.dashboards.cards.EntityRegistryOptionsCache]
+ * (decoded into [RegistryFavorites]); this file holds the unit-testable rules for
  * normalising stored values and computing the defaults, so the Compose layer can
  * stay thin.
  *
