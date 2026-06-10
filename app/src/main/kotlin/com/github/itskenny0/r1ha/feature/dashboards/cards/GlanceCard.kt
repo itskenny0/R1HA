@@ -19,7 +19,6 @@ import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
  * Renderer for HA's `glance` card. A compact tile grid where each tile
@@ -87,11 +86,17 @@ private fun GlanceTile(
     val state = stateMap.byRaw(row.entityId)
     val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
     val accent = stateAccentFor(row.entityId, state)
+    val actions = resolveCardActions(
+        tapAction = row.tapAction,
+        holdAction = row.holdAction,
+        doubleTapAction = row.doubleTapAction,
+        cardEntityId = row.entityId,
+    )
     Column(
         modifier = modifier
             .clip(R1.ShapeM)
             .background(R1.SurfaceMuted)
-            .r1Pressable(onClick = { onAction(defaultTapAction(row.entityId)) })
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = name)
             .padding(horizontal = 8.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

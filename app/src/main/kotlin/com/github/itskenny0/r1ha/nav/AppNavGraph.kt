@@ -711,29 +711,20 @@ fun AppNavGraph(
                 onOpenLovelace = {
                     navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
                 },
+                onOpenAssist = {
+                    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+                },
                 onOpenView = { navPath ->
-                    // A `navigate` tap_action's navigation_path. HA paths look
-                    // like "/lovelace/lights" or "/my-dash/lights"; the last
-                    // segment is the target view's path within the dashboard the
-                    // path names (or the current one when it's a bare segment).
-                    // Anything that doesn't resolve to a same-dashboard view path
-                    // falls back to the full Lovelace WebView so the tap is never
-                    // a dead end.
-                    val trimmed = navPath.trim().trim('/')
-                    if (trimmed.isEmpty()) {
-                        navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
-                    } else {
-                        val segments = trimmed.split('/')
-                        val targetView = segments.last()
-                        // "/lovelace/<view>" → current dashboard; "/<dash>/<view>"
-                        // → that dashboard; bare "<view>" → current dashboard.
-                        val targetDash = when {
-                            segments.size >= 2 && segments[0] != "lovelace" -> segments[0]
-                            else -> dashboardUrlPath
-                        }
-                        navController.navigate(
-                            Routes.dashboardsViewRoute(targetDash, targetView),
-                        ) { launchSingleTop = true }
+                    // A `navigate` tap_action's navigation_path. Mapping (empty /
+                    // system-panel paths fall back to the Lovelace WebView so the
+                    // tap is never a dead end) lives in resolveNavigateTarget.
+                    when (val target = resolveNavigateTarget(navPath, dashboardUrlPath)) {
+                        NavigateTarget.Lovelace ->
+                            navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
+                        is NavigateTarget.DashboardView ->
+                            navController.navigate(
+                                Routes.dashboardsViewRoute(target.dashboard, target.view),
+                            ) { launchSingleTop = true }
                     }
                 },
             )

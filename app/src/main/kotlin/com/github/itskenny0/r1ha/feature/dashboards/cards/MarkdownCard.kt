@@ -2,7 +2,6 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,7 +41,6 @@ import com.github.itskenny0.r1ha.core.theme.R1
  * headings + lists cover ~95% of the markdown HA users actually paste
  * into a card.
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun MarkdownCard(
     card: LovelaceCard.Markdown,
@@ -50,20 +48,20 @@ fun MarkdownCard(
     modifier: Modifier = Modifier,
 ) {
     val rendered = remember(card.content) { renderMarkdown(card.content) }
-    val hasGesture = card.tapAction != null || card.holdAction != null || card.doubleTapAction != null
+    // Markdown carries no entity; pass the slots through unchanged (no domain
+    // default) and let the shared action layer wire the gestures + haptics.
+    val actions = com.github.itskenny0.r1ha.core.lovelace.CardActions(
+        tap = card.tapAction,
+        hold = card.holdAction,
+        doubleTap = card.doubleTapAction,
+    )
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, R1.Hairline, R1.ShapeM)
-            .let { m ->
-                if (!hasGesture) m else m.combinedClickable(
-                    onClick = { card.tapAction?.let(onAction) },
-                    onLongClick = card.holdAction?.let { a -> { onAction(a) } },
-                    onDoubleClick = card.doubleTapAction?.let { a -> { onAction(a) } },
-                )
-            }
+            .r1CardActions(actions = actions, onAction = onAction)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         if (!card.title.isNullOrBlank()) {

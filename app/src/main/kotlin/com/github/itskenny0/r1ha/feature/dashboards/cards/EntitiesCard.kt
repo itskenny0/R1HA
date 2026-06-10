@@ -182,10 +182,18 @@ private fun EntityRowItem(
     // active; otherwise the name reads neutral ink and only the chip carries
     // colour (HA's default).
     val nameColor = if (stateColor && state?.isOn == true) accent else R1.Ink
+    // Per-row tap / hold / double-tap (with HA's domain-default tap fallback),
+    // bound to the row's entity via the shared action layer.
+    val actions = resolveCardActions(
+        tapAction = row.tapAction,
+        holdAction = row.holdAction,
+        doubleTapAction = row.doubleTapAction,
+        cardEntityId = row.entityId,
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .r1Pressable(onClick = { onAction(defaultTapAction(row.entityId)) })
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = name)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

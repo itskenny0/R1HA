@@ -16,7 +16,6 @@ import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 
 /**
  * Renderer for HA's `button` card. Big tappable accent-bordered box;
@@ -33,17 +32,21 @@ fun ButtonCard(
     val state = card.entityId?.let { stateMap.byRaw(it) }
     val accent = stateAccentFor(card.entityId.orEmpty(), state)
     val label = card.name ?: card.entityId?.let { resolveName(null, state, it) } ?: "Action"
-    // Bind the card's entity to the resolved action so a config `tap_action:
-    // toggle` (which parses without an entity) still has a target to act on.
-    val resolvedAction = (card.tapAction ?: card.entityId?.let { defaultTapAction(it) })
-        ?.boundTo(card.entityId)
+    // Resolve tap (with HA's domain-default fallback) plus hold / double-tap,
+    // all bound to the card entity, in one shot via the shared action layer.
+    val actions = resolveCardActions(
+        tapAction = card.tapAction,
+        holdAction = card.holdAction,
+        doubleTapAction = card.doubleTapAction,
+        cardEntityId = card.entityId,
+    )
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, accent.copy(alpha = 0.6f), R1.ShapeM)
-            .r1Pressable(onClick = { resolvedAction?.let(onAction) })
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = label)
             .padding(horizontal = 14.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

@@ -14,11 +14,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.lovelace.CardActions
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.feature.dashboards.LovelaceBadgeRow
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
 /**
@@ -38,12 +38,19 @@ fun HeadingCard(
         else -> R1.screenTitle
     }
     val hasTap = card.tapAction != null
+    // Heading has no entity, so the slots pass through unchanged. The chevron
+    // affordance still keys off a configured tap_action.
+    val actions = CardActions(
+        tap = card.tapAction,
+        hold = card.holdAction,
+        doubleTap = card.doubleTapAction,
+    )
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp)) {
-        // Only a tappable heading needs to fill the width and weight the text so
+        // Only an actionable heading needs to fill the width and weight the text so
         // the trailing chevron sits flush right; a plain heading stays wrap-content
         // exactly as before.
-        val rowMod = if (hasTap) {
-            Modifier.fillMaxWidth().r1Pressable(onClick = { onAction(card.tapAction!!) })
+        val rowMod = if (actions.tap != null || actions.hasHoldOrDoubleTap) {
+            Modifier.fillMaxWidth().r1CardActions(actions = actions, onAction = onAction, contentDescription = card.heading)
         } else {
             Modifier
         }

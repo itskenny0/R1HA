@@ -139,6 +139,8 @@ sealed class LovelaceCard {
         val showIcon: Boolean,
         val showState: Boolean,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "button"
     }
@@ -157,6 +159,8 @@ sealed class LovelaceCard {
         val icon: String?,
         val color: String?,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "shortcut"
     }
@@ -172,6 +176,8 @@ sealed class LovelaceCard {
         val vertical: Boolean,
         val color: String?,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
         // HA's `features:` array. Each entry renders as a control row below the
         // tile body (cover open/close, light brightness, fan speed, climate HVAC
         // modes, alarm modes, lock commands, toggle, target temperature, select
@@ -269,6 +275,8 @@ sealed class LovelaceCard {
         val badges: List<LovelaceBadge> = emptyList(),
         /** Whole-heading tap action (HA 2024.10). When set the heading row is tappable. */
         val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "heading"
     }
@@ -347,6 +355,8 @@ sealed class LovelaceCard {
         val image: String?,
         val imageEntity: String?,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "picture"
     }
@@ -367,6 +377,8 @@ sealed class LovelaceCard {
         val cameraImage: String?,
         val entities: List<EntityRow>,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
     ) : LovelaceCard() {
@@ -390,6 +402,8 @@ sealed class LovelaceCard {
         val showName: Boolean,
         val showState: Boolean,
         val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
     ) : LovelaceCard() {
@@ -723,6 +737,11 @@ data class EntityRow(
      * entity's friendly_name (the historic default).
      */
     val nameType: String? = null,
+    /** Per-row `tap_action`. Null = the entity's domain-default action. */
+    val tapAction: LovelaceAction? = null,
+    /** Per-row `hold_action` / `double_tap_action`. Null = gesture unbound. */
+    val holdAction: LovelaceAction? = null,
+    val doubleTapAction: LovelaceAction? = null,
 )
 
 /** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */
@@ -764,6 +783,9 @@ data class LovelaceBadge(
     /** Tap target. Null = the entity's domain-default action (more-info etc.),
      *  resolved at dispatch time. */
     val tapAction: LovelaceAction?,
+    /** `hold_action` / `double_tap_action`. Null = gesture unbound. */
+    val holdAction: LovelaceAction? = null,
+    val doubleTapAction: LovelaceAction? = null,
     /** HA 2024.9: "small" / "normal" / "large". Null = normal (current sizing). */
     val size: String? = null,
 )
@@ -771,31 +793,145 @@ data class LovelaceBadge(
 /**
  * Subset of HA's action_config we understand. Tap on a button card or
  * tile card fires one of these; unknown variants degrade to a no-op.
+ *
+ * Every variant carries an optional [confirmation] so any action can be
+ * gated behind a native confirm dialog (HA's `confirmation:` key), matching
+ * HA where confirmation is a base-action property independent of the action
+ * type. The dispatcher consults [LovelaceAction.confirmation] before firing.
  */
 @Immutable
 sealed class LovelaceAction {
+    /** HA's `confirmation:` gate, parsed once. Null = fire immediately. */
+    abstract val confirmation: ActionConfirmation?
+
     @Immutable
     data class CallService(
         val service: String,
         val entityId: String?,
         val data: JsonObject?,
+        /**
+         * Full HA `target:` (entity_id / device_id / area_id / floor_id /
+         * label_id, each a single id or a list). Passed through to HA's
+         * service call verbatim; HA expands device/area/floor/label
+         * server-side. Null when the action had no `target:` block (the
+         * dispatcher then falls back to [entityId] / the card entity).
+         */
+        val target: ActionTarget? = null,
+        override val confirmation: ActionConfirmation? = null,
     ) : LovelaceAction()
 
     @Immutable
-    data class Navigate(val path: String) : LovelaceAction()
+    data class Navigate(
+        val path: String,
+        /** HA's `navigation_replace:` — replace the back-stack entry instead
+         *  of pushing. R1HA's nav always pushes, so this is advisory only. */
+        val replace: Boolean = false,
+        override val confirmation: ActionConfirmation? = null,
+    ) : LovelaceAction()
 
     @Immutable
-    data class Url(val url: String) : LovelaceAction()
+    data class Url(
+        val url: String,
+        override val confirmation: ActionConfirmation? = null,
+    ) : LovelaceAction()
 
     /**
-     * `toggle` / `more-info` / `none`. [entityId] carries the target so the
-     * dispatcher can resolve the entity (and its live state, for a toggle)
-     * without relying on a card-level fallback. Null only when the action
-     * came from config with no resolvable entity (the dispatcher then falls
-     * back to the card's own entity id).
+     * `toggle` / `more-info` / `assist` / `none`. [entityId] carries the
+     * target so the dispatcher can resolve the entity (and its live state,
+     * for a toggle) without relying on a card-level fallback. Null only when
+     * the action came from config with no resolvable entity (the dispatcher
+     * then falls back to the card's own entity id).
+     *
+     * For `more-info`, [entityId] also carries HA's action-level `entity:`
+     * override, so `{action: more-info, entity: other.thing}` opens the
+     * detail sheet for `other.thing` rather than the card's own entity.
+     *
+     * [pipelineId] / [startListening] apply only to `assist`; ignored
+     * otherwise. They are forwarded to the Assist feature when it can accept
+     * them and dropped silently when it can't.
      */
     @Immutable
-    data class Builtin(val name: String, val entityId: String? = null) : LovelaceAction()
+    data class Builtin(
+        val name: String,
+        val entityId: String? = null,
+        val pipelineId: String? = null,
+        val startListening: Boolean = false,
+        override val confirmation: ActionConfirmation? = null,
+    ) : LovelaceAction()
+
+    /**
+     * A configured action we recognise the shape of but can't satisfy, kept
+     * so the dispatcher can surface non-crashing error feedback rather than
+     * silently firing the wrong thing (HA toasts + a failure haptic in the
+     * same cases). [reason] is the user-facing message.
+     */
+    @Immutable
+    data class Invalid(
+        val reason: String,
+        override val confirmation: ActionConfirmation? = null,
+    ) : LovelaceAction()
+}
+
+/**
+ * The three sibling action slots HA wires onto every action-capable surface:
+ * `tap_action`, `hold_action`, `double_tap_action`. Bundled so a card carries
+ * one parse-once value and the shared gesture modifier + dispatcher can resolve
+ * the correct slot per gesture (including HA's "absent tap defaults to a
+ * domain action" fallback, applied centrally rather than per card).
+ *
+ * Any slot may be null: a null [tap] means "use the card's default action",
+ * a null [hold] / [doubleTap] means the gesture is unbound (no long-press /
+ * double-tap handler is attached for it).
+ */
+@Immutable
+data class CardActions(
+    val tap: LovelaceAction? = null,
+    val hold: LovelaceAction? = null,
+    val doubleTap: LovelaceAction? = null,
+) {
+    /** True when at least one slot beyond tap is configured. Cards use this to
+     *  decide whether the richer gesture modifier is needed at all. */
+    val hasHoldOrDoubleTap: Boolean get() = hold != null || doubleTap != null
+
+    companion object {
+        val NONE = CardActions()
+    }
+}
+
+/**
+ * HA's `confirmation:` restriction on an action. A bare `confirmation: true`
+ * parses to all-null fields (the dispatcher then uses a generic prompt). The
+ * object form carries optional [text] / [title] / [confirmText] / [dismissText]
+ * and a list of exempt user ids ([exemptions]); an action whose exemptions
+ * include the current user fires without prompting.
+ */
+@Immutable
+data class ActionConfirmation(
+    val text: String? = null,
+    val title: String? = null,
+    val confirmText: String? = null,
+    val dismissText: String? = null,
+    val exemptions: List<String> = emptyList(),
+)
+
+/**
+ * HA's service-call `target:`. Each field is a single id or a list of ids;
+ * R1HA keeps them as lists (single ids normalise to a one-element list) and
+ * passes the whole target through to HA, which performs device/area/floor/
+ * label expansion server-side.
+ */
+@Immutable
+data class ActionTarget(
+    val entityId: List<String> = emptyList(),
+    val deviceId: List<String> = emptyList(),
+    val areaId: List<String> = emptyList(),
+    val floorId: List<String> = emptyList(),
+    val labelId: List<String> = emptyList(),
+) {
+    /** True when no target id of any kind is present (HA fires with no target). */
+    val isEmpty: Boolean
+        get() = entityId.isEmpty() && deviceId.isEmpty() && areaId.isEmpty() &&
+            floorId.isEmpty() && labelId.isEmpty()
 }
 
 /** Severity bands for the gauge card. colour the needle when the value

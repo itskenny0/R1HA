@@ -16,10 +16,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.lovelace.CardActions
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
 /**
@@ -37,14 +37,19 @@ fun ShortcutCard(
     val accent = haColorAccent(card.color) ?: R1.AccentWarm
     val label = card.name?.takeUnless { it.isBlank() } ?: shortcutLabelFor(card.tapAction)
     val icon = R1Icons.forMdi(card.icon)
-    val action = card.tapAction
+    // Shortcut has no entity: pass the slots through as-is (no domain default).
+    val actions = CardActions(
+        tap = card.tapAction,
+        hold = card.holdAction,
+        doubleTap = card.doubleTapAction,
+    )
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, accent.copy(alpha = 0.4f), R1.ShapeM)
-            .let { m -> if (action != null) m.r1Pressable(onClick = { onAction(action) }) else m }
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = label)
             .padding(horizontal = 14.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

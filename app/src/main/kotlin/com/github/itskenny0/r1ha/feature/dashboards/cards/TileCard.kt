@@ -20,7 +20,6 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -53,9 +52,14 @@ fun TileCard(
     }
     val name = resolveDisplayName(card.name, card.nameType, state, card.entityId)
     val icon = cardEntityIcon(card.entityId, state, card.icon)
-    // Bind the card's entity to a config tap_action that omits one (toggle /
-    // more-info / target-less call-service) so the dispatcher always has a target.
-    val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
+    // Resolve tap (with HA's domain-default fallback) plus hold / double-tap,
+    // all bound to the tile's entity, via the shared action layer.
+    val actions = resolveCardActions(
+        tapAction = card.tapAction,
+        holdAction = card.holdAction,
+        doubleTapAction = card.doubleTapAction,
+        cardEntityId = card.entityId,
+    )
     val stateText = when {
         card.stateContent.isNotEmpty() && state != null ->
             resolveStateContent(card.stateContent, state).takeUnless { it.isBlank() }
@@ -78,7 +82,7 @@ fun TileCard(
 
     val bodyTap = Modifier
         .fillMaxWidth()
-        .r1Pressable(onClick = { onAction(action) })
+        .r1CardActions(actions = actions, onAction = onAction, contentDescription = name)
         .padding(horizontal = 14.dp, vertical = 12.dp)
 
     Column(modifier = modifier.then(cardSurface)) {

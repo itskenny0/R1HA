@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import androidx.compose.ui.layout.ContentScale
+import com.github.itskenny0.r1ha.core.lovelace.CardActions
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
@@ -25,7 +26,6 @@ import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
 import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -46,11 +46,20 @@ fun PictureGlanceCard(
 ) {
     val cameraState = card.cameraImage?.let { safeEntityId(it)?.let { id -> stateMap[id] } }
     val imageUrl = card.image ?: entityPictureOf(cameraState)
+    // Whole-card action (HA fires the card's tap_action on the image area). The
+    // card carries no single entity, so the slots pass through unchanged; chips
+    // below have their own per-entity actions.
+    val cardActions = CardActions(
+        tap = card.tapAction,
+        hold = card.holdAction,
+        doubleTap = card.doubleTapAction,
+    )
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
-            .border(1.dp, R1.Hairline, R1.ShapeM),
+            .border(1.dp, R1.Hairline, R1.ShapeM)
+            .r1CardActions(actions = cardActions, onAction = onAction),
     ) {
         if (!card.title.isNullOrBlank()) {
             Text(
@@ -99,7 +108,12 @@ fun PictureEntityCard(
     val name = resolveName(card.name, state, card.entityId)
     val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
     val imageUrl = card.image ?: entityPictureOf(imageEntityState) ?: entityPictureOf(state)
-    val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
+    val actions = resolveCardActions(
+        tapAction = card.tapAction,
+        holdAction = card.holdAction,
+        doubleTapAction = card.doubleTapAction,
+        cardEntityId = card.entityId,
+    )
     val accent = stateAccentFor(card.entityId, state)
     Box(
         modifier = modifier
@@ -107,7 +121,7 @@ fun PictureEntityCard(
             .height(160.dp)
             .clip(R1.ShapeM)
             .border(1.dp, R1.Hairline, R1.ShapeM)
-            .r1Pressable(onClick = { onAction(action) }),
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = name),
     ) {
         PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp), fitModeScale(card.fitMode))
         Row(
@@ -155,16 +169,20 @@ fun PicturePlainCard(
 ) {
     val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
     val imageUrl = card.image ?: entityPictureOf(imageEntityState)
-    val clickModifier = card.tapAction?.let { action ->
-        Modifier.r1Pressable(onClick = { onAction(action) })
-    } ?: Modifier
+    // Whole-card action; the plain picture card has no entity, so a missing
+    // tap_action leaves the surface inert (no domain default to fall back to).
+    val actions = CardActions(
+        tap = card.tapAction,
+        hold = card.holdAction,
+        doubleTap = card.doubleTapAction,
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(160.dp)
             .clip(R1.ShapeM)
             .border(1.dp, R1.Hairline, R1.ShapeM)
-            .then(clickModifier),
+            .r1CardActions(actions = actions, onAction = onAction),
     ) {
         PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp))
     }
@@ -202,11 +220,17 @@ private fun PictureChip(
     val eid = safeEntityId(row.entityId)
     val state = eid?.let { stateMap[it] }
     val accent = stateAccentFor(row.entityId, state)
+    val actions = resolveCardActions(
+        tapAction = row.tapAction,
+        holdAction = row.holdAction,
+        doubleTapAction = row.doubleTapAction,
+        cardEntityId = row.entityId,
+    )
     Box(
         modifier = Modifier
             .clip(R1.ShapeRound)
             .background(R1.SurfaceMuted.copy(alpha = 0.9f))
-            .r1Pressable(onClick = { onAction(defaultTapAction(row.entityId)) })
+            .r1CardActions(actions = actions, onAction = onAction)
             .padding(horizontal = 10.dp, vertical = 5.dp),
     ) {
         Text(

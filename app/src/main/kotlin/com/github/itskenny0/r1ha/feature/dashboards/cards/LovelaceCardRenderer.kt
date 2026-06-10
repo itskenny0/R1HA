@@ -97,14 +97,24 @@ fun LovelaceCardRenderer(
  * layer (DashboardViewScreen) wires this up once; per-card renderers stay
  * Compose-pure.
  *
- * Handles the four [LovelaceAction] variants:
- *  - `CallService`  → `haRepository.call(ServiceCall)` for entity-targeted
- *    actions, or `callRawService` when there's no target.
- *  - `Toggle` (Builtin) → routes to `homeassistant.toggle` for any entity
- *    we can resolve a domain for.
- *  - `MoreInfo` / `Navigate` / `Url` → bubbles via [onNavigate] /
- *    [onOpenUrl] so the screen can navigate / launch a browser intent
- *    without per-card surfaces having to know about Compose Navigation.
+ * Execution path: a [LovelaceAction.confirmation] is consulted FIRST via
+ * [confirmGate] (which the screen backs with a native dialog); a dismissed
+ * confirmation aborts the action. Then the action type dispatches:
+ *  - `CallService`  → `haRepository.call(ServiceCall)` for a single-entity
+ *    target, or `callRawService` (with any device/area/floor/label target
+ *    merged into the body and passed through to HA) otherwise.
+ *  - `Builtin("toggle")` → opposite-direction service for modelled domains,
+ *    else `homeassistant.toggle`.
+ *  - `Builtin("more-info")` → [onMoreInfo] for the action-level entity
+ *    override, then the card fallback.
+ *  - `Builtin("assist")` → [onAssist] (the native Assist screen).
+ *  - `Navigate` / `Url` → [onNavigate] / [onOpenUrl].
+ *  - `Invalid` → [onError] (non-crashing toast), matching HA's failure toasts
+ *    for navigate-without-path / url-without-url / call-service-without-service.
+ *
+ * [confirmGate] returns true to proceed, false to abort. Its default proceeds
+ * unconditionally so the function stays usable in isolation; the real screen
+ * supplies a dialog-backed gate. [onError] defaults to the app's toast.
  */
 suspend fun dispatchLovelaceAction(
     action: LovelaceAction,
@@ -114,32 +124,64 @@ suspend fun dispatchLovelaceAction(
     onOpenUrl: (String) -> Unit,
     onMoreInfo: (String) -> Unit,
     stateLookup: (String) -> EntityState? = { null },
+    onAssist: () -> Unit = { onNavigate(Routes.ASSIST) },
+    confirmGate: suspend (com.github.itskenny0.r1ha.core.lovelace.ActionConfirmation, LovelaceAction) -> Boolean = { _, _ -> true },
+    onError: (String) -> Unit = { com.github.itskenny0.r1ha.core.util.Toaster.error(it) },
 ) {
+    // Confirmation gate (HA: shown before any action type runs). Exemption is
+    // resolved inside the gate the screen supplies, which knows the current
+    // user id (today: none, so the gate always prompts; see isConfirmationExempt).
+    action.confirmation?.let { c ->
+        if (!confirmGate(c, action)) return
+    }
     when (action) {
         is LovelaceAction.CallService -> {
             val parts = action.service.split('.', limit = 2)
-            if (parts.size != 2) return
+            if (parts.size != 2) {
+                onError("Malformed service: ${action.service}")
+                return
+            }
             val domain = parts[0]
             val service = parts[1]
-            val target = action.entityId ?: fallbackEntityId
             val payload = action.data ?: kotlinx.serialization.json.JsonObject(emptyMap())
-            if (target != null) {
-                safeEntityId(target)?.let { eid ->
-                    haRepository.call(ServiceCall(target = eid, service = service, data = payload))
-                } ?: run {
-                    haRepository.callRawService(domain = domain, service = service, data = payload)
+            val target = action.target
+            // A target carrying device/area/floor/label ids (or multiple entity
+            // ids) can't go through the single-EntityId WS path; merge the whole
+            // target into the REST body and let HA expand it server-side.
+            val needsRawTarget = target != null && !target.isEmpty &&
+                (target.deviceId.isNotEmpty() || target.areaId.isNotEmpty() ||
+                    target.floorId.isNotEmpty() || target.labelId.isNotEmpty() ||
+                    target.entityId.size > 1)
+            when {
+                needsRawTarget -> haRepository.callRawService(
+                    domain = domain,
+                    service = service,
+                    data = mergeTargetIntoData(payload, target!!),
+                )
+                else -> {
+                    val single = action.entityId ?: target?.entityId?.firstOrNull() ?: fallbackEntityId
+                    if (single != null) {
+                        safeEntityId(single)?.let { eid ->
+                            haRepository.call(ServiceCall(target = eid, service = service, data = payload))
+                        } ?: haRepository.callRawService(domain = domain, service = service, data = payload)
+                    } else {
+                        haRepository.callRawService(domain = domain, service = service, data = payload)
+                    }
                 }
-            } else {
-                haRepository.callRawService(domain = domain, service = service, data = payload)
             }
         }
         is LovelaceAction.Navigate -> onNavigate(action.path)
         is LovelaceAction.Url -> onOpenUrl(action.url)
+        is LovelaceAction.Invalid -> onError(action.reason)
         is LovelaceAction.Builtin -> when (action.name) {
             "toggle" -> {
                 // Prefer the action's own entity id (cards now attach it), then the
                 // card-level fallback. Without one there's nothing to toggle.
-                val target = action.entityId ?: fallbackEntityId ?: return
+                val target = action.entityId ?: fallbackEntityId
+                if (target == null) {
+                    onError("No entity to toggle")
+                    return
+                }
                 safeEntityId(target)?.let { eid ->
                     // For domains we model, read the live on/off state and pick the
                     // opposite-direction service (turn_off when on, open_cover when
@@ -161,12 +203,50 @@ suspend fun dispatchLovelaceAction(
                     )
                 }
             }
-            "more-info" -> (action.entityId ?: fallbackEntityId)?.let(onMoreInfo)
-            "assist" -> onNavigate(Routes.ASSIST)
+            // HA: actionConfig.entity (the override) || config.entity (the card).
+            "more-info" -> {
+                val entity = action.entityId ?: fallbackEntityId
+                if (entity != null) onMoreInfo(entity) else onError("No entity for more-info")
+            }
+            // Open the native Assist screen. pipeline_id / start_listening are
+            // parsed but not forwarded: the Assist route accepts no such params.
+            "assist" -> onAssist()
             "none" -> Unit
             else -> Unit
         }
     }
+}
+
+/**
+ * Merge an [ActionTarget] into a service-call [data] body so HA's REST
+ * `/api/services` path receives the target alongside the data. HA accepts
+ * target keys (entity_id / device_id / area_id / floor_id / label_id) in the
+ * POST body and performs device/area/floor/label expansion server-side, so
+ * R1HA passes them through verbatim rather than resolving them client-side.
+ * A single id collapses to a string; multiple stay an array (HA accepts both).
+ * Existing keys already in [data] are not overwritten.
+ */
+private fun mergeTargetIntoData(
+    data: kotlinx.serialization.json.JsonObject,
+    target: com.github.itskenny0.r1ha.core.lovelace.ActionTarget,
+): kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.buildJsonObject {
+    data.forEach { (k, v) -> put(k, v) }
+    fun putIds(key: String, ids: List<String>) {
+        if (ids.isEmpty() || data.containsKey(key)) return
+        if (ids.size == 1) {
+            put(key, kotlinx.serialization.json.JsonPrimitive(ids.first()))
+        } else {
+            put(
+                key,
+                kotlinx.serialization.json.JsonArray(ids.map { kotlinx.serialization.json.JsonPrimitive(it) }),
+            )
+        }
+    }
+    putIds("entity_id", target.entityId)
+    putIds("device_id", target.deviceId)
+    putIds("area_id", target.areaId)
+    putIds("floor_id", target.floorId)
+    putIds("label_id", target.labelId)
 }
 
 /**

@@ -160,6 +160,8 @@ object LovelaceParser {
                         showState = item["show_state"]?.asBooleanOrNull() ?: true,
                         showIcon = item["show_icon"]?.asBooleanOrNull() ?: true,
                         tapAction = tap,
+                        holdAction = parseAction(item["hold_action"] as? JsonObject),
+                        doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
                         size = item["size"]?.asStringOrNull(),
                     )
                 }
@@ -257,6 +259,8 @@ object LovelaceParser {
                 showIcon = obj["show_icon"]?.asBooleanOrNull() ?: true,
                 showState = obj["show_state"]?.asBooleanOrNull() ?: false,
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
             )
             "shortcut" -> LovelaceCard.Shortcut(
                 raw = obj,
@@ -264,6 +268,8 @@ object LovelaceParser {
                 icon = obj["icon"]?.asStringOrNull(),
                 color = obj["color"]?.asStringOrNull(),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
             )
             "tile" -> {
                 val entity = obj["entity"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
@@ -276,6 +282,8 @@ object LovelaceParser {
                     vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
                     color = obj["color"]?.asStringOrNull(),
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                     features = parseTileFeatures(obj["features"]),
                     stateContent = parseStringList(obj["state_content"]),
                     nameType = obj["name_type"]?.asStringOrNull(),
@@ -337,6 +345,8 @@ object LovelaceParser {
                 icon = obj["icon"]?.asStringOrNull(),
                 badges = parseBadges(obj["badges"]),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
             )
             "vertical-stack" -> LovelaceCard.VerticalStack(
                 raw = obj,
@@ -388,6 +398,8 @@ object LovelaceParser {
                     ?: obj["entity"]?.asStringOrNull(),
                 entities = parseEntityRows(obj["entities"]),
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 fitMode = obj["fit_mode"]?.asStringOrNull(),
             )
             "picture-entity" -> {
@@ -401,6 +413,8 @@ object LovelaceParser {
                     showName = obj["show_name"]?.asBooleanOrNull() ?: true,
                     showState = obj["show_state"]?.asBooleanOrNull() ?: true,
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                     fitMode = obj["fit_mode"]?.asStringOrNull(),
                 )
             }
@@ -527,6 +541,8 @@ object LovelaceParser {
                     image = image?.takeUnless { it.isBlank() },
                     imageEntity = imageEntity?.takeUnless { it.isBlank() },
                     tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 )
             }
             "picture-elements" -> LovelaceCard.PictureElements(
@@ -918,6 +934,9 @@ object LovelaceParser {
                         icon = item["icon"]?.asStringOrNull(),
                         secondaryInfo = item["secondary_info"]?.asStringOrNull(),
                         nameType = item["name_type"]?.asStringOrNull(),
+                        tapAction = parseAction(item["tap_action"] as? JsonObject),
+                        holdAction = parseAction(item["hold_action"] as? JsonObject),
+                        doubleTapAction = parseAction(item["double_tap_action"] as? JsonObject),
                     )
                 }
                 else -> null
@@ -1081,37 +1100,110 @@ object LovelaceParser {
     private fun parseAction(obj: JsonObject?): LovelaceAction? {
         if (obj == null) return null
         val actionName = obj["action"]?.asStringOrNull()?.lowercase() ?: return null
+        val confirmation = parseConfirmation(obj["confirmation"])
         return when (actionName) {
             "call-service", "perform-action" -> {
                 // HA renamed `service` → `perform_action` in 2025.x; accept both.
+                // A call-service with no service is a misconfiguration HA toasts
+                // about; surface it as Invalid so the dispatcher does the same
+                // rather than the card silently falling back to its domain default.
                 val service = obj["service"]?.asStringOrNull()
                     ?: obj["perform_action"]?.asStringOrNull()
-                    ?: return null
-                val target = obj["target"] as? JsonObject
-                val entity = target?.get("entity_id")?.let { e ->
-                    when (e) {
-                        is JsonPrimitive -> e.contentOrNull()
-                        is JsonArray -> e.firstOrNull()?.asStringOrNull()
-                        else -> null
-                    }
-                } ?: obj["entity_id"]?.asStringOrNull()
+                    ?: return LovelaceAction.Invalid("Action has no service", confirmation)
+                val target = parseActionTarget(obj["target"] as? JsonObject)
+                // Legacy single-target convenience: `entity_id` at the action root
+                // (not inside `target:`) still resolves the entity for our
+                // EntityId-typed WS call path.
+                val legacyEntity = obj["entity_id"]?.asStringOrNull()
+                val entity = target?.entityId?.firstOrNull() ?: legacyEntity
                 LovelaceAction.CallService(
                     service = service,
                     entityId = entity,
                     data = (obj["data"] as? JsonObject) ?: (obj["service_data"] as? JsonObject),
+                    target = target,
+                    confirmation = confirmation,
                 )
             }
             "navigate" -> {
-                val path = obj["navigation_path"]?.asStringOrNull() ?: return null
-                LovelaceAction.Navigate(path = path)
+                val path = obj["navigation_path"]?.asStringOrNull()
+                    ?: return LovelaceAction.Invalid("Navigate has no path", confirmation)
+                LovelaceAction.Navigate(
+                    path = path,
+                    replace = obj["navigation_replace"]?.asBooleanOrNull() ?: false,
+                    confirmation = confirmation,
+                )
             }
             "url" -> {
-                val url = obj["url_path"]?.asStringOrNull() ?: obj["url"]?.asStringOrNull() ?: return null
-                LovelaceAction.Url(url = url)
+                val url = obj["url_path"]?.asStringOrNull() ?: obj["url"]?.asStringOrNull()
+                    ?: return LovelaceAction.Invalid("URL action has no url", confirmation)
+                LovelaceAction.Url(url = url, confirmation = confirmation)
             }
-            "toggle", "more-info", "none" -> LovelaceAction.Builtin(name = actionName)
-            else -> LovelaceAction.Builtin(name = actionName)
+            "more-info" -> LovelaceAction.Builtin(
+                name = actionName,
+                // HA's action-level `entity:` override: open more-info for a
+                // different entity than the card's. Null leaves the dispatcher to
+                // fall back to the card entity.
+                entityId = obj["entity"]?.asStringOrNull(),
+                confirmation = confirmation,
+            )
+            "assist" -> LovelaceAction.Builtin(
+                name = actionName,
+                pipelineId = obj["pipeline_id"]?.asStringOrNull(),
+                startListening = obj["start_listening"]?.asBooleanOrNull() ?: false,
+                confirmation = confirmation,
+            )
+            "toggle", "none" -> LovelaceAction.Builtin(name = actionName, confirmation = confirmation)
+            // `fire-dom-event` and any custom action we can't satisfy: keep as a
+            // Builtin so a `none`-like no-op is the safe default rather than
+            // firing the wrong thing. The dispatcher treats unknown names as no-op.
+            else -> LovelaceAction.Builtin(name = actionName, confirmation = confirmation)
         }
+    }
+
+    /**
+     * Parse HA's `confirmation:` key. `true` → a generic prompt (all-null
+     * fields); an object → the custom text/title/buttons plus the exempt
+     * user-id list. Anything else (absent / `false`) → null (no gate).
+     */
+    private fun parseConfirmation(el: JsonElement?): ActionConfirmation? = when (el) {
+        is JsonPrimitive -> if (el.asBooleanOrNull() == true) ActionConfirmation() else null
+        is JsonObject -> ActionConfirmation(
+            text = el["text"]?.asStringOrNull(),
+            title = el["title"]?.asStringOrNull(),
+            confirmText = el["confirm_text"]?.asStringOrNull(),
+            dismissText = el["dismiss_text"]?.asStringOrNull(),
+            exemptions = (el["exemptions"] as? JsonArray).orEmptyExemptionUsers(),
+        )
+        else -> null
+    }
+
+    /** Pull the `user` ids out of a confirmation `exemptions:` array. Each entry
+     *  is `{user: <id>}`; entries without a user id are skipped. */
+    private fun JsonArray?.orEmptyExemptionUsers(): List<String> {
+        if (this == null) return emptyList()
+        return mapNotNull { (it as? JsonObject)?.get("user")?.asStringOrNull() }
+    }
+
+    /**
+     * Parse HA's service `target:` block. Each id key accepts a single string or
+     * a list of strings; we normalise both to a list and keep the whole target
+     * so device/area/floor/label expansion can be passed through to HA verbatim.
+     * Returns null when there is no `target:` block at all.
+     */
+    private fun parseActionTarget(obj: JsonObject?): ActionTarget? {
+        if (obj == null) return null
+        fun ids(key: String): List<String> = when (val v = obj[key]) {
+            is JsonPrimitive -> v.asStringOrNull()?.let { listOf(it) } ?: emptyList()
+            is JsonArray -> v.mapNotNull { it.asStringOrNull() }
+            else -> emptyList()
+        }
+        return ActionTarget(
+            entityId = ids("entity_id"),
+            deviceId = ids("device_id"),
+            areaId = ids("area_id"),
+            floorId = ids("floor_id"),
+            labelId = ids("label_id"),
+        )
     }
 
     fun parseConditions(el: JsonElement?): List<LovelaceCondition> {

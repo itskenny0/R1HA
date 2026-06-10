@@ -105,6 +105,10 @@ fun DashboardViewScreen(
      *  [com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoSheet]; the caller's
      *  callback still fires so external navigation keeps working. */
     onMoreInfo: (String) -> Unit = {},
+    /** Open R1HA's native Assist screen (an `action: assist` tap). No-op default
+     *  keeps the screen renderable in isolation. Wired distinctly from
+     *  [onOpenView] so the assist action isn't mistaken for a view path. */
+    onOpenAssist: () -> Unit = {},
     /** Settings repository, used to resolve the effective per-entity
      *  ultra-detail `moreInfoEnabled` flag and to feed the more-info sheet.
      *  Null (the isolation-render default) suppresses the in-screen sheet and
@@ -164,6 +168,11 @@ fun DashboardViewScreen(
     val pinScope = rememberCoroutineScope()
     // Entity whose ultra-detail sheet is currently open; null = none.
     var moreInfoEntityId by remember { mutableStateOf<String?>(null) }
+    // Pending action confirmation. Holds the parsed confirmation config plus the
+    // resolved prompt text, and a CompletableDeferred the dialog buttons settle:
+    // CONFIRM -> true (proceed), CANCEL / dismiss -> false (abort). The dispatcher
+    // awaits it inside confirmGate so the action only runs once the user decides.
+    var pendingConfirm by remember { mutableStateOf<PendingConfirm?>(null) }
     // Wrap the caller's more-info handler: always fire it (external nav still
     // works), and when settings resolve the effective moreInfoEnabled to true,
     // also open the ultra-detail sheet for that entity.
@@ -299,10 +308,30 @@ fun DashboardViewScreen(
                             onNavigate = { path -> onOpenView(path) },
                             onOpenUrl = { url -> launchUrl(context, url) },
                             onMoreInfo = handleMoreInfo,
+                            // Open the native Assist screen. Wired distinctly from
+                            // onNavigate so an `action: assist` doesn't get treated
+                            // as a view path (which dead-ends on an ErrorScrim).
+                            onAssist = onOpenAssist,
                             // Live state lookup by raw id so a toggle flips the right
                             // direction (the dispatcher reads isOn to pick turn_on vs
                             // turn_off / open vs close).
                             stateLookup = { rawId -> entities?.get(rawId) },
+                            confirmGate = { confirmation, act ->
+                                // No current-user id is available (see
+                                // isConfirmationExempt), so exemptions never apply;
+                                // every configured confirmation prompts.
+                                if (com.github.itskenny0.r1ha.feature.dashboards.cards.isConfirmationExempt(confirmation, null)) {
+                                    true
+                                } else {
+                                    val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                                    pendingConfirm = PendingConfirm(
+                                        confirmation = confirmation,
+                                        promptText = confirmationPromptText(confirmation, act),
+                                        decision = deferred,
+                                    )
+                                    deferred.await()
+                                }
+                            },
                         )
                     }
                 },
@@ -348,6 +377,85 @@ fun DashboardViewScreen(
             onDismiss = { moreInfoEntityId = null },
         )
     }
+
+    // Action confirmation gate (HA's `confirmation:`). The dispatcher parked a
+    // pending decision here; the dialog settles it and clears itself. A dismiss
+    // (back / scrim) counts as cancel so the guarded action never fires by
+    // accident.
+    pendingConfirm?.let { pending ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                pending.decision.complete(false)
+                pendingConfirm = null
+            },
+            containerColor = R1.Bg,
+            title = {
+                androidx.compose.material3.Text(
+                    text = pending.confirmation.title?.takeUnless { it.isBlank() } ?: "CONFIRM",
+                    style = R1.sectionHeader,
+                    color = R1.Ink,
+                )
+            },
+            text = {
+                androidx.compose.material3.Text(
+                    text = pending.promptText,
+                    style = R1.body,
+                    color = R1.InkMuted,
+                )
+            },
+            confirmButton = {
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = pending.confirmation.confirmText?.takeUnless { it.isBlank() } ?: "CONFIRM",
+                    onClick = {
+                        pending.decision.complete(true)
+                        pendingConfirm = null
+                    },
+                )
+            },
+            dismissButton = {
+                com.github.itskenny0.r1ha.ui.components.R1Button(
+                    text = pending.confirmation.dismissText?.takeUnless { it.isBlank() } ?: "CANCEL",
+                    onClick = {
+                        pending.decision.complete(false)
+                        pendingConfirm = null
+                    },
+                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * A confirmation dialog awaiting the user's decision. [decision] is the
+ * [kotlinx.coroutines.CompletableDeferred] the dispatcher's confirmGate is
+ * suspended on; the dialog completes it with true (proceed) or false (abort).
+ */
+private data class PendingConfirm(
+    val confirmation: com.github.itskenny0.r1ha.core.lovelace.ActionConfirmation,
+    val promptText: String,
+    val decision: kotlinx.coroutines.CompletableDeferred<Boolean>,
+)
+
+/**
+ * The body text for an action confirmation. HA uses the custom `text:` when
+ * set, otherwise a generic "Are you sure you want to <action>?" built from the
+ * action type (the service name for a call-service). We mirror that with a
+ * short, no-em-dash phrasing.
+ */
+private fun confirmationPromptText(
+    confirmation: com.github.itskenny0.r1ha.core.lovelace.ActionConfirmation,
+    action: LovelaceAction,
+): String {
+    confirmation.text?.takeUnless { it.isBlank() }?.let { return it }
+    val verb = when (action) {
+        is LovelaceAction.CallService -> action.service
+        is LovelaceAction.Navigate -> "navigate"
+        is LovelaceAction.Url -> "open this link"
+        is LovelaceAction.Builtin -> action.name
+        is LovelaceAction.Invalid -> "run this action"
+    }
+    return "Are you sure you want to $verb?"
 }
 
 @Composable

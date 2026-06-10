@@ -28,13 +28,12 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceBadge
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates
-import com.github.itskenny0.r1ha.feature.dashboards.cards.boundTo
 import com.github.itskenny0.r1ha.feature.dashboards.cards.compactStateText
-import com.github.itskenny0.r1ha.feature.dashboards.cards.defaultTapAction
 import com.github.itskenny0.r1ha.feature.dashboards.cards.haColorAccent
+import com.github.itskenny0.r1ha.feature.dashboards.cards.r1CardActions
+import com.github.itskenny0.r1ha.feature.dashboards.cards.resolveCardActions
 import com.github.itskenny0.r1ha.feature.dashboards.cards.resolveName
 import com.github.itskenny0.r1ha.feature.dashboards.cards.stateAccentFor
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 
 /**
@@ -105,14 +104,15 @@ private fun BadgeChip(
         null
     }
 
-    // Tap action: the badge's own action, bound to its entity, else the
-    // entity's domain default (more-info for a sensor). An entity-less badge
-    // with no action is inert.
-    val action: LovelaceAction? = when {
-        badge.tapAction != null -> badge.tapAction.boundTo(badge.entityId)
-        badge.entityId != null -> defaultTapAction(badge.entityId)
-        else -> null
-    }
+    // Tap / hold / double-tap: the badge's own actions, with HA's domain-default
+    // tap fallback applied centrally, all bound to the badge's entity. An
+    // entity-less badge with no action is inert.
+    val actions = resolveCardActions(
+        tapAction = badge.tapAction,
+        holdAction = badge.holdAction,
+        doubleTapAction = badge.doubleTapAction,
+        cardEntityId = badge.entityId,
+    )
 
     val label = listOfNotNull(name, stateText).joinToString(" ").ifBlank {
         badge.entityId ?: "badge"
@@ -124,11 +124,9 @@ private fun BadgeChip(
         .clip(R1.ShapeRound)
         .background(R1.Surface)
         .border(1.dp, R1.Hairline, R1.ShapeRound)
-    if (action != null && !action.isNone()) {
-        chip = chip.r1Pressable(
-            onClick = { onAction(action) },
-            contentDescription = "Badge $label",
-        )
+    val tapIsNone = actions.tap?.isNone() == true
+    if ((actions.tap != null && !tapIsNone) || actions.hasHoldOrDoubleTap) {
+        chip = chip.r1CardActions(actions = actions, onAction = onAction, contentDescription = "Badge $label")
     } else {
         chip = chip.semantics { contentDescription = "Badge $label" }
     }
