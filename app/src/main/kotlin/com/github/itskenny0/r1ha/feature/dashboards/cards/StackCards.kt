@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -135,7 +136,13 @@ fun GridCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 rowCards.forEach { child ->
-                    androidx.compose.foundation.layout.Box(modifier = Modifier.weight(1f)) {
+                    // HA's `square: true` forces each grid cell to a 1:1 box. We
+                    // apply it on the cell wrapper so the child fills a square
+                    // slot; `square: false` lets the child take its natural height.
+                    val cellModifier = Modifier
+                        .weight(1f)
+                        .let { if (card.square) it.aspectRatio(1f) else it }
+                    androidx.compose.foundation.layout.Box(modifier = cellModifier) {
                         LovelaceCardRenderer(card = child, stateMap = stateMap.sliceFor(child), onAction = onAction)
                     }
                 }

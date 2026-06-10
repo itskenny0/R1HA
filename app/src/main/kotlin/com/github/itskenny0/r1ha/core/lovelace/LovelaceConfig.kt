@@ -153,6 +153,13 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         val holdAction: LovelaceAction? = null,
         val doubleTapAction: LovelaceAction? = null,
+        /** HA `color`: a theme colour name or `#rrggbb` applied to the icon/name
+         *  when set. Null = use the state-derived accent. */
+        val color: String? = null,
+        /** HA `state_color`: when true, an active entity tints the icon/name with
+         *  the state accent. When false the button stays neutral regardless of
+         *  state. HA defaults this true for the button card. */
+        val stateColor: Boolean = true,
     ) : LovelaceCard() {
         override val type: String = "button"
     }
@@ -245,6 +252,14 @@ sealed class LovelaceCard {
         // arc from its `from` to the next segment's `from`. Empty when the gauge
         // uses severity or a single fill.
         val segments: List<GaugeSegment> = emptyList(),
+        /** HA `attribute`: gauge a numeric attribute of the entity instead of its
+         *  state (e.g. a climate's `current_temperature`). Null = use the state. */
+        val attribute: String? = null,
+        /** HA tap / hold / double-tap. A null tap falls back to the entity's
+         *  domain-default action (more-info) via the shared action layer. */
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "gauge"
     }
@@ -476,11 +491,12 @@ sealed class LovelaceCard {
     }
 
     /**
-     * Area card: an area name + a representative strip of the area's
-     * controls / sensors. R1HA can't resolve an area's member entities
-     * locally (that needs the area registry), so the card renders the
-     * configured [name]/[area] heading plus any explicitly-listed
-     * [entities]; an area with no listed entities shows just the heading.
+     * Area card: an area name plus a representative strip of the area's controls
+     * and sensors. Member entities are resolved from HA's area registry through
+     * the shared area resolver (the same pipeline the Areas browser uses), so a
+     * stock `type: area, area: x` card surfaces the area's live entities, sensor
+     * summary, and alert badges without any explicit `entities:` list. The
+     * config's own `entities:` list, when present, is still shown.
      */
     @Immutable
     data class Area(
@@ -492,6 +508,35 @@ sealed class LovelaceCard {
         /** Entities the config explicitly attached to the area card, if any. */
         val entities: List<EntityRow>,
         val navigationPath: String?,
+        /** HA `sensor_classes`: device classes whose readings form the secondary
+         *  summary line. Empty = HA's default [temperature, humidity]. */
+        val sensorClasses: List<String> = emptyList(),
+        /** HA `alert_classes`: binary_sensor device classes that surface as alert
+         *  chips when on. Empty = the area card's default alert set. */
+        val alertClasses: List<String> = emptyList(),
+        /** HA `display_type`: "compact" / "icon" / "picture" / "camera". Null =
+         *  the default compact list. */
+        val displayType: String? = null,
+        /** HA legacy `show_camera`: shorthand for display_type: camera. */
+        val showCamera: Boolean = false,
+        /** HA `camera_view`: "auto" (poll) or "live". Null = auto. */
+        val cameraView: String? = null,
+        /** HA `vertical`: stack the summary/badges vertically under the heading. */
+        val vertical: Boolean = false,
+        /** HA `aspect_ratio` for the picture/camera header (e.g. "16:9"). */
+        val aspectRatio: String? = null,
+        /** HA `exclude_entities`: entity ids to drop from the resolved member set. */
+        val excludeEntities: Set<String> = emptySet(),
+        /** HA `color`: a theme colour name / hex tinting the heading + chrome.
+         *  Null = the default surface treatment. */
+        val color: String? = null,
+        /** HA tile `features:` rendered below the body, targeting an area entity. */
+        val features: List<LovelaceTileFeature> = emptyList(),
+        /** HA `tap_action` / `hold_action` for the card body. A `navigation_path`
+         *  is folded into [tapAction] as a Navigate when no explicit tap is set. */
+        val tapAction: LovelaceAction? = null,
+        val holdAction: LovelaceAction? = null,
+        val doubleTapAction: LovelaceAction? = null,
     ) : LovelaceCard() {
         override val type: String = "area"
     }
@@ -775,8 +820,12 @@ sealed class LovelaceCard {
         val analog: Boolean,
         /** HA 2025.4: "small" / "medium" / "large". Null = medium (current sizing). */
         val clockSize: String? = null,
-        /** HA 2025.4: "12" for 12-hour AM/PM format; anything else = 24h. Null = 24h. */
+        /** HA 2025.4: "12" / "24" / "auto". "auto" (and null) follow the device's
+         *  12h/24h setting; "12" forces AM/PM, "24" forces 24-hour. */
         val timeFormat: String? = null,
+        /** HA 2025.4: an IANA time-zone id (e.g. "America/New_York"). Null = the
+         *  device's local zone. An unparseable id falls back to local. */
+        val timeZone: String? = null,
     ) : LovelaceCard() {
         override val type: String = "clock"
     }

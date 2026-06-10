@@ -56,19 +56,23 @@ fun AlarmPanelCard(
     val name = resolveName(card.name, state, card.entityId)
     val raw = state?.rawState?.lowercase().orEmpty()
     val accent = if (raw.startsWith("armed") || raw == "triggered") R1.AccentWarm else R1.AccentGreen
-    val codeRequired = !state?.alarmCodeFormat.isNullOrBlank()
-    val armNeedsCode = codeRequired && (state?.alarmCodeArmRequired ?: true)
+    val codeFormat = state?.alarmCodeFormat
+    val codeArmRequired = state?.alarmCodeArmRequired ?: true
 
-    // Restrict to the config's `states` list when present; otherwise show the
-    // common arm modes. HA's alarm card defaults to [arm_home, arm_away].
-    val configStates = card.states.map { it.lowercase() }
-    fun shows(mode: String) = configStates.isEmpty() || configStates.contains(mode)
+    // Which arm-mode chips to show: the config's `states` list (filtered by what
+    // the panel advertises) or HA's [arm_home, arm_away] default. "disarm" is
+    // always present and rendered separately.
+    val armModes = remember(card.states, state?.supportedFeatures) {
+        alarmArmModes(card.states, state)
+    }
 
     var pending by remember { mutableStateOf<AlarmChip?>(null) }
 
     val fire: (AlarmChip) -> Unit = { chip ->
-        val needCode = if (chip == AlarmChip.DISARM) codeRequired else armNeedsCode
-        if (needCode) pending = chip else onAction(chip.action(card.entityId, null))
+        // code_format drives whether a code is collected; disarm always needs it
+        // when a format is set, arming additionally honours code_arm_required.
+        val mode = alarmCodeMode(codeFormat, codeArmRequired, arming = chip != AlarmChip.DISARM)
+        if (mode == AlarmCodeMode.NONE) onAction(chip.action(card.entityId, null)) else pending = chip
     }
 
     Column(
@@ -98,19 +102,19 @@ fun AlarmPanelCard(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             AlarmChipButton("DISARM", accent, raw == "disarmed") { fire(AlarmChip.DISARM) }
-            if (shows("arm_away")) AlarmChipButton("AWAY", accent, raw == "armed_away") { fire(AlarmChip.ARM_AWAY) }
-            if (shows("arm_home")) AlarmChipButton("HOME", accent, raw == "armed_home") { fire(AlarmChip.ARM_HOME) }
-            if (shows("arm_night")) AlarmChipButton("NIGHT", accent, raw == "armed_night") { fire(AlarmChip.ARM_NIGHT) }
-            if (shows("arm_vacation")) AlarmChipButton("VACATION", accent, raw == "armed_vacation") { fire(AlarmChip.ARM_VACATION) }
-            if (shows("arm_custom_bypass")) AlarmChipButton("BYPASS", accent, raw == "armed_custom_bypass") { fire(AlarmChip.ARM_BYPASS) }
+            armModes.forEach { mode ->
+                val chip = AlarmChip.forMode(mode) ?: return@forEach
+                AlarmChipButton(chip.shortLabel, accent, raw == chip.activeState) { fire(chip) }
+            }
         }
     }
 
     val p = pending
     if (p != null) {
-        AlarmPinDialog(
+        val mode = alarmCodeMode(codeFormat, codeArmRequired, arming = p != AlarmChip.DISARM)
+        AlarmCodeDialog(
             title = p.label,
-            codeFormat = state?.alarmCodeFormat,
+            mode = mode,
             accent = accent,
             onDismiss = { pending = null },
             onConfirm = { code ->
@@ -135,14 +139,22 @@ private fun AlarmChipButton(label: String, accent: Color, selected: Boolean, onC
     }
 }
 
-/** Arm/disarm chips and the service each maps to. */
-private enum class AlarmChip(val label: String, val service: String) {
-    DISARM("DISARM", "alarm_disarm"),
-    ARM_AWAY("ARM AWAY", "alarm_arm_away"),
-    ARM_HOME("ARM HOME", "alarm_arm_home"),
-    ARM_NIGHT("ARM NIGHT", "alarm_arm_night"),
-    ARM_VACATION("ARM VACATION", "alarm_arm_vacation"),
-    ARM_BYPASS("ARM BYPASS", "alarm_arm_custom_bypass");
+/** Arm/disarm chips and the service each maps to. [shortLabel] is the compact
+ *  chip caption; [activeState] is the alarm state that marks the chip selected;
+ *  [mode] is the bare arm-mode token used to map from [alarmArmModes]. */
+private enum class AlarmChip(
+    val label: String,
+    val shortLabel: String,
+    val service: String,
+    val mode: String,
+    val activeState: String,
+) {
+    DISARM("DISARM", "DISARM", "alarm_disarm", "disarm", "disarmed"),
+    ARM_AWAY("ARM AWAY", "AWAY", "alarm_arm_away", "arm_away", "armed_away"),
+    ARM_HOME("ARM HOME", "HOME", "alarm_arm_home", "arm_home", "armed_home"),
+    ARM_NIGHT("ARM NIGHT", "NIGHT", "alarm_arm_night", "arm_night", "armed_night"),
+    ARM_VACATION("ARM VACATION", "VACATION", "alarm_arm_vacation", "arm_vacation", "armed_vacation"),
+    ARM_BYPASS("ARM BYPASS", "BYPASS", "alarm_arm_custom_bypass", "arm_custom_bypass", "armed_custom_bypass");
 
     fun action(entityId: String, code: String?): LovelaceAction.CallService {
         val data: JsonObject? = code?.takeUnless { it.isBlank() }?.let {
@@ -154,21 +166,32 @@ private enum class AlarmChip(val label: String, val service: String) {
             data = data,
         )
     }
+
+    companion object {
+        fun forMode(mode: String): AlarmChip? = entries.firstOrNull { it.mode == mode }
+    }
 }
 
-/** Compact 3x4 PIN keypad for code-gated alarm actions. Self-contained so
- *  the dashboards layer doesn't reach into the private cardstack dialog. */
+/**
+ * Code-entry dialog for code-gated alarm actions. Dispatches on the resolved
+ * [AlarmCodeMode]: a 3x4 digit keypad for `code_format: number`, a free-text
+ * password field for `code_format: text`. Self-contained so the dashboards layer
+ * doesn't reach into the private cardstack dialog.
+ */
 @Composable
-private fun AlarmPinDialog(
+private fun AlarmCodeDialog(
     title: String,
-    codeFormat: String?,
+    mode: AlarmCodeMode,
     accent: Color,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    if (mode == AlarmCodeMode.TEXT) {
+        AlarmTextDialog(title = title, accent = accent, onDismiss = onDismiss, onConfirm = onConfirm)
+        return
+    }
     var entered by remember { mutableStateOf("") }
-    val pattern = remember(codeFormat) { runCatching { codeFormat?.let { Regex(it) } }.getOrNull() }
-    val valid = entered.isNotEmpty() && (pattern?.containsMatchIn(entered) ?: true)
+    val valid = alarmCodeValid(AlarmCodeMode.NUMBER, entered)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
@@ -237,6 +260,58 @@ private fun AlarmPinDialog(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Free-text code entry for `code_format: text` panels (a password, not a PIN). */
+@Composable
+private fun AlarmTextDialog(
+    title: String,
+    accent: Color,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var entered by remember { mutableStateOf("") }
+    val valid = alarmCodeValid(AlarmCodeMode.TEXT, entered)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Column(
+            modifier = Modifier
+                .background(R1.Bg)
+                .border(1.dp, accent, R1.ShapeM)
+                .padding(20.dp)
+                .width(260.dp),
+        ) {
+            Text(text = title, style = R1.bodyEmph, color = accent)
+            Spacer(Modifier.height(6.dp))
+            Text(text = "ENTER CODE", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.material3.OutlinedTextField(
+                value = entered,
+                onValueChange = { entered = it },
+                singleLine = true,
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Password,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(R1.ShapeS)
+                    .background(if (valid) accent else R1.SurfaceMuted)
+                    .r1Pressable(onClick = { if (valid) onConfirm(entered) }),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "OK",
+                    style = R1.numeralM,
+                    color = if (valid) R1.Bg else R1.InkMuted,
+                )
             }
         }
     }

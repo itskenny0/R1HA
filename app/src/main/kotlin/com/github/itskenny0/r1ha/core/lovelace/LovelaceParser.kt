@@ -284,6 +284,8 @@ object LovelaceParser {
                 tapAction = parseAction(obj["tap_action"] as? JsonObject),
                 holdAction = parseAction(obj["hold_action"] as? JsonObject),
                 doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
+                color = obj["color"]?.asStringOrNull(),
+                stateColor = obj["state_color"]?.asBooleanOrNull() ?: true,
             )
             "shortcut" -> LovelaceCard.Shortcut(
                 raw = obj,
@@ -339,6 +341,10 @@ object LovelaceParser {
                         )
                     },
                     segments = parseGaugeSegments(obj["segments"]),
+                    attribute = obj["attribute"]?.asStringOrNull(),
+                    tapAction = parseAction(obj["tap_action"] as? JsonObject),
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 )
             }
             "weather-forecast" -> {
@@ -469,13 +475,31 @@ object LovelaceParser {
             }
             "area" -> {
                 val area = obj["area"]?.asStringOrNull() ?: return LovelaceCard.Unsupported(obj, type)
+                val navPath = obj["navigation_path"]?.asStringOrNull()
+                val explicitTap = parseAction(obj["tap_action"] as? JsonObject)
                 LovelaceCard.Area(
                     raw = obj,
                     area = area,
                     name = obj["name"]?.asStringOrNull(),
                     image = obj["image"]?.asStringOrNull(),
                     entities = parseEntityRows(obj["entities"]),
-                    navigationPath = obj["navigation_path"]?.asStringOrNull(),
+                    navigationPath = navPath,
+                    sensorClasses = parseStringList(obj["sensor_classes"]),
+                    alertClasses = parseStringList(obj["alert_classes"]),
+                    displayType = obj["display_type"]?.asStringOrNull(),
+                    showCamera = obj["show_camera"]?.asBooleanOrNull() ?: false,
+                    cameraView = obj["camera_view"]?.asStringOrNull(),
+                    vertical = obj["vertical"]?.asBooleanOrNull() ?: false,
+                    aspectRatio = obj["aspect_ratio"]?.asStringOrNull(),
+                    excludeEntities = parseFocusEntities(obj["exclude_entities"]),
+                    color = obj["color"]?.asStringOrNull(),
+                    features = parseTileFeatures(obj["features"]),
+                    // A bare navigation_path with no explicit tap_action becomes a
+                    // Navigate tap (HA's area-card default); an explicit tap wins.
+                    tapAction = explicitTap
+                        ?: navPath?.let { LovelaceAction.Navigate(it) },
+                    holdAction = parseAction(obj["hold_action"] as? JsonObject),
+                    doubleTapAction = parseAction(obj["double_tap_action"] as? JsonObject),
                 )
             }
             "history-graph" -> {
@@ -586,6 +610,7 @@ object LovelaceParser {
                 analog = obj["clock_style"]?.asStringOrNull()?.equals("analog", ignoreCase = true) ?: false,
                 clockSize = obj["clock_size"]?.asStringOrNull(),
                 timeFormat = obj["time_format"]?.asStringOrNull(),
+                timeZone = obj["time_zone"]?.asStringOrNull(),
             )
             "distribution" -> LovelaceCard.Distribution(
                 raw = obj,

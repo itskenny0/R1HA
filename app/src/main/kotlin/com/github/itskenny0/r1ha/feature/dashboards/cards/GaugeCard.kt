@@ -23,8 +23,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.attrString
 
 /**
  * Renderer for HA's `gauge` card. A 180° arc that fills clockwise from
@@ -41,16 +44,27 @@ import com.github.itskenny0.r1ha.core.theme.R1
 fun GaugeCard(
     card: LovelaceCard.Gauge,
     stateMap: EntityStates,
+    onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Resolve by raw id (the domain-agnostic state-slice path).
     val state = stateMap.byRaw(card.entityId)
-    // EntityState.raw is Number? (HA reports brightness as Int, volume as Double, etc.).
-    // Coerce to Double for the gauge math; fall back to parsing rawState for sensors
-    // whose raw payload didn't decode to a number (string-typed numeric sensors).
-    val rawValue: Double? = state?.raw?.toDouble() ?: state?.rawState?.toDoubleOrNull()
+    // The gauged number: an attribute when configured (HA's `attribute`), else
+    // the entity's state. EntityState.raw is Number? (HA reports brightness as
+    // Int, volume as Double, etc.); fall back to parsing the string for
+    // string-typed numeric sensors and attributes.
+    val rawValue: Double? = gaugeNumericValue(card.attribute, state)
+    // Distinguish "no numeric to show" causes so the warning matches HA: an
+    // unavailable entity vs a present-but-non-numeric state.
+    val unavailable = state == null || !state.isAvailable
     val name = resolveName(card.name, state, card.entityId)
     val unit = card.unit ?: state?.unit
+    val actions = resolveCardActions(
+        tapAction = card.tapAction,
+        holdAction = card.holdAction,
+        doubleTapAction = card.doubleTapAction,
+        cardEntityId = card.entityId,
+    )
     // Resolve the severity/segment bands once: with `needle: true` HA paints the
     // whole arc into coloured bands behind the needle (segments take precedence
     // over severity, matching hui-gauge-card's `_severityLevels`). Without a
@@ -67,6 +81,7 @@ fun GaugeCard(
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, R1.Hairline, R1.ShapeM)
+            .r1CardActions(actions = actions, onAction = onAction, contentDescription = name)
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -119,6 +134,20 @@ fun GaugeCard(
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
+        // HA renders a warning when the gauged value isn't a number: "Entity is
+        // non-numeric" for a present-but-unparseable state, "Entity is
+        // unavailable" when the entity is missing / unavailable.
+        val warning = gaugeWarning(rawValue, unavailable)
+        if (warning != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = warning,
+                style = R1.labelMicro,
+                color = R1.StatusAmber,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
         // HA 2022.7: show the active segment's label in needle mode when a
         // label is configured. Displayed under the name so it gives context
         // (e.g. "Good" / "Poor" / "Hazardous" for an air-quality gauge).
@@ -307,4 +336,30 @@ internal fun activeSegmentLabel(
         if (value >= seg.from) picked = seg.label else break
     }
     return picked
+}
+
+/**
+ * The numeric the gauge plots: an attribute value when [attribute] is set
+ * (HA's `attribute`), else the entity's state. Returns null when the source
+ * isn't a parseable number (a missing entity, a string state/attribute, an
+ * unavailable entity), which drives the dash + warning at render time.
+ */
+internal fun gaugeNumericValue(attribute: String?, state: EntityState?): Double? {
+    if (state == null) return null
+    if (!attribute.isNullOrBlank()) {
+        return state.attrString(attribute)?.trim()?.toDoubleOrNull()
+    }
+    return state.raw?.toDouble() ?: state.rawState?.trim()?.toDoubleOrNull()
+}
+
+/**
+ * The warning line HA shows when the gauge has no numeric to plot. Null when a
+ * value is present (no warning). An unavailable / missing entity reads
+ * "Entity is unavailable"; a present-but-non-numeric value reads "Entity is
+ * non-numeric", mirroring hui-gauge-card's two error states.
+ */
+internal fun gaugeWarning(value: Double?, unavailable: Boolean): String? = when {
+    value != null -> null
+    unavailable -> "Entity is unavailable"
+    else -> "Entity is non-numeric"
 }
