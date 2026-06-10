@@ -652,7 +652,7 @@ private fun LazyListScope.rootCategories(
 ) {
     featuredSection(featured)
     item { CategoryRow(node = SettingsNode.CONNECTION, summary = s.server?.url ?: "Not connected", badge = groupBadge(arrayOf("SERVER")), onClick = { push(SettingsNode.CONNECTION) }) }
-    item { CategoryRow(node = SettingsNode.APPEARANCE, summary = "Theme: ${prettyEnumName(s.theme.name)}", badge = groupBadge(arrayOf("APPEARANCE", "CARD UI")), onClick = { push(SettingsNode.APPEARANCE) }) }
+    item { CategoryRow(node = SettingsNode.APPEARANCE, summary = "Theme: ${prettyEnumName(s.theme.name)} · text size, clock, motion", badge = groupBadge(arrayOf("APPEARANCE", "CARD UI")), onClick = { push(SettingsNode.APPEARANCE) }) }
     item { CategoryRow(node = SettingsNode.INPUT, summary = "Wheel step: ${s.wheel.stepPercent}%", badge = groupBadge(arrayOf("SCROLL WHEEL")), onClick = { push(SettingsNode.INPUT) }) }
     item { CategoryRow(node = SettingsNode.BEHAVIOUR, summary = "Haptics, screen, tiles", badge = groupBadge(arrayOf("BEHAVIOUR")), onClick = { push(SettingsNode.BEHAVIOUR) }) }
     item { CategoryRow(node = SettingsNode.DASHBOARD, summary = "Cards, thresholds, tile order", badge = groupBadge(arrayOf("DASHBOARD")), onClick = { push(SettingsNode.DASHBOARD) }) }
