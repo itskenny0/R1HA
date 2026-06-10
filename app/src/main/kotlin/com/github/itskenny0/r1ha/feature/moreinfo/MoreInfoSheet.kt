@@ -1004,7 +1004,11 @@ private fun ForecastSlot(
     unit: String,
     accent: Color,
 ) {
-    val label = formatForecastLabel(entry.whenIso, kind)
+    val label = formatForecastLabel(
+        entry.whenIso,
+        kind,
+        use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock(),
+    )
     Column(
         modifier = Modifier
             .widthIn(min = 48.dp)

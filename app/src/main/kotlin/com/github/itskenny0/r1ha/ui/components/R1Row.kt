@@ -65,14 +65,22 @@ fun R1Row(
         Modifier
     }
     val labelColor = if (enabled) R1.Ink else R1.InkMuted
+    // List density (Settings → Appearance): COMPACT trades some finger room
+    // for more rows per screenful — 40 dp min height + halved vertical
+    // padding. COMFORTABLE keeps the historical 48 dp MinTarget. One read
+    // here covers every list / settings surface built on R1Row.
+    val compact = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.listDensity ==
+        com.github.itskenny0.r1ha.core.prefs.ListDensity.COMPACT
+    val minHeight = if (compact) 40.dp else R1.MinTarget
+    val verticalPad = if (compact) R1.space.xs else R1.space.s
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .then(surface)
             .then(pressable)
-            .heightIn(min = R1.MinTarget)
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .heightIn(min = minHeight)
+            .padding(horizontal = R1.space.m, vertical = verticalPad),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (leadingContent != null) {

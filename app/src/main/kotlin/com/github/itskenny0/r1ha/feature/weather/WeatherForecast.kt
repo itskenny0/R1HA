@@ -117,13 +117,19 @@ fun classifyForecastKind(entries: List<ForecastEntry>): ForecastKind {
 }
 
 /**
- * Short hour label for an hourly entry, e.g. "14:00" in [zone].
+ * Short hour label for an hourly entry, e.g. "14:00" (or "2 PM" when
+ * [use24h] is false, honouring the Settings clock-format choice) in [zone].
+ * Defaults to 24-hour so existing call sites and tests keep their shape.
  * Falls back to the first five chars of the raw ISO when unparseable.
  */
-fun formatHourLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String =
+fun formatHourLabel(
+    iso: String,
+    zone: ZoneId = ZoneId.systemDefault(),
+    use24h: Boolean = true,
+): String =
     runCatching {
         val zdt = (parseHaInstant(iso) ?: error("unparseable timestamp")).atZone(zone)
-        HOUR_FORMAT.format(zdt)
+        (if (use24h) HOUR_FORMAT else HOUR_FORMAT_12).format(zdt)
     }.getOrElse { iso.take(5) }
 
 /**
@@ -137,13 +143,15 @@ fun formatDayLabel(iso: String, zone: ZoneId = ZoneId.systemDefault()): String =
         DAY_FORMAT.format(zdt)
     }.getOrElse { iso.take(5) }
 
-/** Locale.US label appropriate to the forecast [kind]. */
+/** Locale.US label appropriate to the forecast [kind]. [use24h] only
+ *  affects hourly labels (daily labels carry no time of day). */
 fun formatForecastLabel(
     iso: String,
     kind: ForecastKind,
     zone: ZoneId = ZoneId.systemDefault(),
+    use24h: Boolean = true,
 ): String = when (kind) {
-    ForecastKind.Hourly -> formatHourLabel(iso, zone)
+    ForecastKind.Hourly -> formatHourLabel(iso, zone, use24h)
     ForecastKind.Daily -> formatDayLabel(iso, zone)
 }
 
@@ -161,6 +169,12 @@ private val COMPASS = arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 
 private val HOUR_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+
+/** 12-hour variant. "h a" (not "h:mm a") because hourly forecast entries sit
+ *  on whole hours and the AM/PM marker already costs the label width that
+ *  ":00" would have used. */
+private val HOUR_FORMAT_12: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("h a", Locale.US)
 
 private val DAY_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEE d", Locale.US)

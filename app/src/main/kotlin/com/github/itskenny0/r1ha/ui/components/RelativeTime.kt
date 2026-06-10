@@ -62,22 +62,35 @@ internal fun formatRelativeTime(at: Instant, now: Instant): String {
  * Returns "" when [at] is null so callers can render unconditionally with
  * `Text(text = rememberRelativeTime(at))` and have the label silently
  * disappear for entities that haven't been observed yet.
+ *
+ * Honors the Settings → Cards → Timestamps choice
+ * ([com.github.itskenny0.r1ha.core.prefs.UiOptions.timestampStyle]): the
+ * ABSOLUTE style swaps the ticking delta for wall-clock time via
+ * [formatAbsoluteTimestamp], rendered in the user's 12/24-hour clock format.
+ * The same ticker keeps running either way so an absolute label still rolls
+ * over correctly when "today" stops being today.
  */
 @Composable
 fun rememberRelativeTime(at: Instant?): String {
     if (at == null) return ""
+    val absolute = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.timestampStyle ==
+        com.github.itskenny0.r1ha.core.prefs.TimestampStyle.ABSOLUTE
+    val use24h = rememberUse24HourClock()
     // Defensive: an Instant from a malformed HA timestamp (or one populated
     // by a rehydrated persister with a placeholder epoch) could in theory
     // overflow toEpochMilli(). Wrap in runCatching so any arithmetic
     // problem renders an empty string rather than crashing the whole
     // composable tree. Caller renders unconditionally with `if (rel
     // .isNotEmpty())` so an empty string just hides the label.
-    val initial = runCatching { formatRelativeTime(at, Instant.now()) }.getOrDefault("")
-    val text by produceState(initialValue = initial, at) {
+    fun render(now: Instant): String =
+        if (absolute) formatAbsoluteTimestamp(at, now, java.time.ZoneId.systemDefault(), use24h)
+        else formatRelativeTime(at, now)
+    val initial = runCatching { render(Instant.now()) }.getOrDefault("")
+    val text by produceState(initialValue = initial, at, absolute, use24h) {
         while (true) {
             val r = runCatching {
                 val now = Instant.now()
-                val s = formatRelativeTime(at, now)
+                val s = render(now)
                 val ageSec = abs(now.toEpochMilli() - at.toEpochMilli()) / 1000
                 val nextTickMs = when {
                     ageSec < 60 -> 5_000L

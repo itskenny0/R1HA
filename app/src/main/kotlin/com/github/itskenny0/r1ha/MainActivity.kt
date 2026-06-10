@@ -255,8 +255,22 @@ class MainActivity : ComponentActivity() {
                 initialValue = com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(settings.connection).backgroundRefreshMultiplier,
             )
             R1ThemeHost(themeId = themeNow) {
+                // Global text-size step: multiply the composition's font scale (sp axis
+                // only — dp layout is untouched) so EVERY text in the app honours the
+                // Settings → Appearance → Text size choice, including the card-stack
+                // themes that draw from the raw R1 type ramp. At the DEFAULT step
+                // scaledFontDensity returns the base instance, so existing installs
+                // recompose with an identical Density and render byte-for-byte the same.
+                val baseDensity = androidx.compose.ui.platform.LocalDensity.current
+                val textScaledDensity = remember(baseDensity, uiOptions.textScale) {
+                    com.github.itskenny0.r1ha.core.theme.scaledFontDensity(
+                        baseDensity,
+                        uiOptions.textScale.factor,
+                    )
+                }
                 CompositionLocalProvider(
                     LocalUiOptions provides uiOptions,
+                    androidx.compose.ui.platform.LocalDensity provides textScaledDensity,
                     com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken provides bearerToken,
                     com.github.itskenny0.r1ha.ui.components.LocalBackgroundRefreshMultiplier provides bgRefreshMultiplier,
                 ) {

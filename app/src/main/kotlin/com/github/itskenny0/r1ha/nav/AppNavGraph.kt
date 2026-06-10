@@ -80,12 +80,26 @@ fun AppNavGraph(
     // strand the app on a black screen needing a restart. Removing the animation
     // only for card-stack-targeted transitions closes that race window while
     // keeping the motion for every other destination.
-    val navEnter = fadeIn(animationSpec = tween(R1.motion.navEnterMs)) +
-        slideInVertically(animationSpec = tween(R1.motion.navEnterMs)) { it / 24 }
-    val navExit = fadeOut(animationSpec = tween(R1.motion.navExitMs))
-    val navPopEnter = fadeIn(animationSpec = tween(R1.motion.navEnterMs))
-    val navPopExit = fadeOut(animationSpec = tween(R1.motion.navExitMs)) +
-        slideOutVertically(animationSpec = tween(R1.motion.navExitMs)) { it / 24 }
+    // Reduce motion (Settings → Appearance) turns every screen change into an
+    // instant cut — same shape as the card-stack exception below, applied
+    // app-wide. Reading the CompositionLocal here (provided above the nav
+    // graph from the live settings flow) means a toggle takes effect on the
+    // very next navigation, no restart needed.
+    val reduceMotion = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.reduceMotion
+    val navEnter = if (reduceMotion) EnterTransition.None else {
+        fadeIn(animationSpec = tween(R1.motion.navEnterMs)) +
+            slideInVertically(animationSpec = tween(R1.motion.navEnterMs)) { it / 24 }
+    }
+    val navExit = if (reduceMotion) ExitTransition.None else {
+        fadeOut(animationSpec = tween(R1.motion.navExitMs))
+    }
+    val navPopEnter = if (reduceMotion) EnterTransition.None else {
+        fadeIn(animationSpec = tween(R1.motion.navEnterMs))
+    }
+    val navPopExit = if (reduceMotion) ExitTransition.None else {
+        fadeOut(animationSpec = tween(R1.motion.navExitMs)) +
+            slideOutVertically(animationSpec = tween(R1.motion.navExitMs)) { it / 24 }
+    }
     NavHost(
         navController = navController,
         startDestination = startDestination,

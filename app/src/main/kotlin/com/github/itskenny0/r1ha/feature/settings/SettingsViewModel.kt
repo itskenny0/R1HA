@@ -100,6 +100,16 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(cardPeekMode = mode)) }
     fun setCardScrollSensitivity(percent: Int) =
         update { it.copy(ui = it.ui.copy(cardScrollSensitivity = percent.coerceIn(0, 100))) }
+    fun setTextScale(scale: com.github.itskenny0.r1ha.core.prefs.UiTextScale) =
+        update { it.copy(ui = it.ui.copy(textScale = scale)) }
+    fun setClockFormat(format: com.github.itskenny0.r1ha.core.prefs.ClockFormat) =
+        update { it.copy(ui = it.ui.copy(clockFormat = format)) }
+    fun setListDensity(density: com.github.itskenny0.r1ha.core.prefs.ListDensity) =
+        update { it.copy(ui = it.ui.copy(listDensity = density)) }
+    fun setTimestampStyle(style: com.github.itskenny0.r1ha.core.prefs.TimestampStyle) =
+        update { it.copy(ui = it.ui.copy(timestampStyle = style)) }
+    fun setReduceMotion(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(reduceMotion = enabled)) }
 
     /** Toggle a chrome-row button's visibility. The persistence layer force-
      *  enables GEAR regardless of what's passed here (so a hostile manual edit

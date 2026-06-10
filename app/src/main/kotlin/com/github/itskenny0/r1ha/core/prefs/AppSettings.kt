@@ -39,6 +39,61 @@ enum class CardPeekMode { AUTO, ALWAYS, NEVER }
 enum class TemperatureUnit { AUTO, CELSIUS, FAHRENHEIT }
 
 /**
+ * Global UI text-size step, applied as a multiplier on top of the responsive
+ * type pipeline's per-tier scale. DEFAULT keeps every screen byte-for-byte at
+ * its hand-tuned size. The smaller / larger steps exist for two real
+ * audiences: COMPACT squeezes a little more content onto the R1's tiny panel,
+ * while LARGE / EXTRA_LARGE make a wall-mounted kiosk readable from across
+ * the room without the user having to change the Android system font size
+ * (which kiosk devices often can't reach, and which would also inflate every
+ * other app on the device).
+ *
+ * Implemented as a font-scale multiplier on the composition's Density so it
+ * covers EVERY sp-sized text in the app, including the card-stack themes
+ * that use the raw hand-tuned [com.github.itskenny0.r1ha.core.theme.R1] type
+ * ramp rather than the responsive scaleType pipeline. Container sizes stay
+ * in dp, so the extreme step can tighten tall layouts; the steps are kept
+ * mild for that reason.
+ */
+enum class UiTextScale(val factor: Float) {
+    COMPACT(0.85f),
+    DEFAULT(1.0f),
+    LARGE(1.15f),
+    EXTRA_LARGE(1.3f),
+}
+
+/**
+ * How clock-style time-of-day readouts are rendered (the TODAY greeting
+ * clock, sensor-history row times, hourly forecast labels, chart time axes,
+ * absolute timestamps). AUTO follows the Android system 12/24-hour setting;
+ * H12 / H24 force one style regardless of the device configuration — useful
+ * on kiosk R1s running a GSI where the system setting is wrong or
+ * unreachable. Values that mirror a Home Assistant server string verbatim
+ * (input_datetime raw values, ISO timestamps in debug surfaces) are NOT
+ * reformatted; this only affects displays the app composes itself.
+ */
+enum class ClockFormat { AUTO, H12, H24 }
+
+/**
+ * Vertical density of the shared list row ([com.github.itskenny0.r1ha.ui.components.R1Row])
+ * used across the list-style screens (Devices, Logbook, Settings, pickers).
+ * COMFORTABLE keeps the historical 48 dp minimum touch target; COMPACT
+ * tightens the vertical padding and minimum height so a big HA install's
+ * device / entity lists fit more rows per screenful — a real win on the R1's
+ * short panel where COMFORTABLE shows only a handful of rows at a time.
+ */
+enum class ListDensity { COMFORTABLE, COMPACT }
+
+/**
+ * How "last changed" style timestamps render on cards and list rows.
+ * RELATIVE (default) is the live-ticking '5m ago' label. ABSOLUTE swaps in
+ * wall-clock time ('14:32' today, '3 Jun 14:32' older) for users who think
+ * in clock time rather than deltas — the same toggle HA's own frontend
+ * offers per-user. Honors [UiOptions.clockFormat] for the 12/24-hour style.
+ */
+enum class TimestampStyle { RELATIVE, ABSOLUTE }
+
+/**
  * Shape of the acceleration curve when `wheel.acceleration` is on. The wheel rate (in
  * events/sec) gets folded through the matching slope to produce a step multiplier;
  * SUBTLE keeps the boost small for precise dimming, AGGRESSIVE goes hard so a fast
@@ -209,6 +264,43 @@ data class UiOptions(
      * before.
      */
     val moreInfoEnabledDefault: Boolean = true,
+    /**
+     * Global text-size step. DEFAULT renders every screen at its hand-tuned
+     * size; the other steps multiply the app's font scale so kiosk installs
+     * can be read from across a room (LARGE / EXTRA_LARGE) or the R1 can fit
+     * a little more per screen (COMPACT). See [UiTextScale] for why this is
+     * a font-scale multiplier rather than a responsive-pipeline-only knob.
+     */
+    val textScale: UiTextScale = UiTextScale.DEFAULT,
+    /**
+     * 12 vs 24-hour style for clock readouts the app composes itself (TODAY
+     * greeting clock, sensor-history times, hourly forecast labels, chart
+     * time axes, absolute timestamps). AUTO (default) follows the Android
+     * system setting so existing installs see no change; H12 / H24 force a
+     * style for devices whose system setting is wrong or unreachable.
+     */
+    val clockFormat: ClockFormat = ClockFormat.AUTO,
+    /**
+     * Vertical density of the shared list row. COMFORTABLE (default) keeps
+     * the historical 48 dp touch target; COMPACT trades some finger room for
+     * more rows per screenful on big-install device / entity lists.
+     */
+    val listDensity: ListDensity = ListDensity.COMFORTABLE,
+    /**
+     * RELATIVE (default) renders "last changed" labels as a live-ticking
+     * '5m ago'; ABSOLUTE swaps in wall-clock time for users who think in
+     * clock time. Applies to the card freshness labels and every list row
+     * that uses the shared relative-time label.
+     */
+    val timestampStyle: TimestampStyle = TimestampStyle.RELATIVE,
+    /**
+     * When on, screen-to-screen navigation cuts instantly instead of the
+     * fade + rise transition, and the loading-skeleton pulse freezes to a
+     * static block. For vestibular comfort and for very low-end devices
+     * where the nav animation janks. Off by default — the stock motion is
+     * deliberately quick and most users never notice it.
+     */
+    val reduceMotion: Boolean = false,
 )
 
 @Immutable

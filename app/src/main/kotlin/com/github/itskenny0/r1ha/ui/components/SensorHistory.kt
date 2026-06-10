@@ -32,7 +32,6 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * Vertical plot position (0 = bottom edge, 1 = top edge) for [value] within the chart's
@@ -148,9 +147,10 @@ fun SensorHistoryChart(
             )
         }
         Spacer(Modifier.height(2.dp))
+        val use24h = rememberUse24HourClock()
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = formatTime(tStart), style = R1.labelMicro, color = R1.InkMuted)
-            Text(text = formatTime(tEnd), style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = formatTime(tStart, use24h), style = R1.labelMicro, color = R1.InkMuted)
+            Text(text = formatTime(tEnd, use24h), style = R1.labelMicro, color = R1.InkMuted)
         }
     }
 }
@@ -174,6 +174,7 @@ fun SensorHistoryList(
     }
     // Newest-first, then capped to the user's preferred length.
     val recent = points.asReversed().take(maxEntries)
+    val use24h = rememberUse24HourClock()
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "LAST ${recent.size} CHANGES",
@@ -200,10 +201,12 @@ fun SensorHistoryList(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = formatTime(p.timestamp),
+                        text = formatTime(p.timestamp, use24h),
                         style = R1.labelMicro,
                         color = R1.InkMuted,
-                        modifier = Modifier.width(56.dp),
+                        // 12-hour times carry an AM/PM marker ("12:32 PM"), so the
+                        // fixed time column gets a little extra room in that mode.
+                        modifier = Modifier.width(if (use24h) 56.dp else 72.dp),
                     )
                     Text(
                         text = formatSensorValue(p.state).uppercase(),
@@ -232,12 +235,11 @@ private fun ChartHint(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-private val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
-
-private fun formatTime(instant: Instant): String =
-    // LocalTime.ofInstant is API 31; the atZone().toLocalTime() form is the
-    // equivalent available since API 26 (java.time landed whole in Android 8).
-    instant.atZone(ZoneId.systemDefault()).toLocalTime().format(timeFmt)
+private fun formatTime(instant: Instant, use24h: Boolean): String =
+    // Routed through the shared clock-format helper so these labels honour
+    // the Settings → Appearance → Clock format choice alongside every other
+    // app-composed time readout.
+    formatClockTime(instant, ZoneId.systemDefault(), use24h)
 
 private fun formatSpan(millis: Long): String {
     val hours = millis / 3_600_000L

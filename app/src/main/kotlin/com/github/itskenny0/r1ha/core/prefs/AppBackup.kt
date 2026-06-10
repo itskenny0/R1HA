@@ -83,6 +83,21 @@ data class AppBackup(
     /** Deck-wide default for whether the ultra-detail more-info sheet is offered.
      *  Older backups without this field decode as true, the default. */
     val uiMoreInfoEnabledDefault: Boolean = true,
+    /** Global text-size step. Older backups without this field decode as
+     *  DEFAULT (1.0×), the unchanged historical rendering. */
+    val uiTextScale: UiTextScale = UiTextScale.DEFAULT,
+    /** 12/24-hour clock style. Older backups without this field decode as
+     *  AUTO (follow the Android system setting). */
+    val uiClockFormat: ClockFormat = ClockFormat.AUTO,
+    /** Shared list-row density. Older backups without this field decode as
+     *  COMFORTABLE (the historical 48 dp rows). */
+    val uiListDensity: ListDensity = ListDensity.COMFORTABLE,
+    /** Relative vs absolute timestamps. Older backups without this field
+     *  decode as RELATIVE, the historical ticking '5m ago' labels. */
+    val uiTimestampStyle: TimestampStyle = TimestampStyle.RELATIVE,
+    /** Skip nav transitions + skeleton pulse. Older backups without this
+     *  field decode as false (full motion). */
+    val uiReduceMotion: Boolean = false,
 
     val behaviorHaptics: Boolean = true,
     val behaviorKeepScreenOn: Boolean = true,
@@ -163,6 +178,11 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiCardPeekMode = ui.cardPeekMode,
     uiCardScrollSensitivity = ui.cardScrollSensitivity,
     uiMoreInfoEnabledDefault = ui.moreInfoEnabledDefault,
+    uiTextScale = ui.textScale,
+    uiClockFormat = ui.clockFormat,
+    uiListDensity = ui.listDensity,
+    uiTimestampStyle = ui.timestampStyle,
+    uiReduceMotion = ui.reduceMotion,
     behaviorHaptics = behavior.haptics,
     behaviorKeepScreenOn = behavior.keepScreenOn,
     behaviorTapToToggle = behavior.tapToToggle,
@@ -241,6 +261,11 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             cardPeekMode = uiCardPeekMode,
             cardScrollSensitivity = uiCardScrollSensitivity,
             moreInfoEnabledDefault = uiMoreInfoEnabledDefault,
+            textScale = uiTextScale,
+            clockFormat = uiClockFormat,
+            listDensity = uiListDensity,
+            timestampStyle = uiTimestampStyle,
+            reduceMotion = uiReduceMotion,
         ),
         behavior = Behavior(
             haptics = behaviorHaptics,

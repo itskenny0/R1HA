@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -159,6 +160,20 @@ data class ResponsiveDimens(
     /** True when content should be centred + width-capped rather than filling full-bleed. */
     val capsContentWidth: Boolean get() = maxContentWidth != Dp.Unspecified
 }
+
+/**
+ * Apply the user's global text-size step ([com.github.itskenny0.r1ha.core.prefs.UiTextScale])
+ * on top of a base [Density], scaling ONLY the font axis. Providing the result as
+ * `LocalDensity` at the app root multiplies every sp-sized text in the app — including the
+ * card-stack themes, which use the hand-tuned [R1] type ramp directly rather than
+ * [scaleType] — while dp-sized layout (touch targets, gutters, chart heights) stays put.
+ * That is the point: the user is asking for bigger TEXT, not a zoomed UI.
+ *
+ * Pure (a density + factor in, a density out) so the mapping is unit-testable; 1.0 returns
+ * the base instance untouched so the default setting can never perturb composition keys.
+ */
+fun scaledFontDensity(base: Density, userScale: Float): Density =
+    if (userScale == 1.0f) base else Density(base.density, base.fontScale * userScale)
 
 /** Resolves [ResponsiveDimens] for the current composition from [LocalWindowTier]. */
 @Composable

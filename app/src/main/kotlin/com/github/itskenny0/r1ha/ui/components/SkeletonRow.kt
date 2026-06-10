@@ -34,6 +34,18 @@ import com.github.itskenny0.r1ha.core.theme.R1
 fun SkeletonBlock(
     modifier: Modifier = Modifier,
 ) {
+    // Reduce motion (Settings → Appearance): freeze the pulse to a static
+    // mid-cycle block. The placeholder still reads as "content goes here";
+    // it just stops breathing — and stops burning frames on an infinite
+    // transition while the screen waits on the network.
+    if (com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.reduceMotion) {
+        Box(
+            modifier = modifier
+                .clip(R1.ShapeS)
+                .background(R1.SurfaceMuted.copy(alpha = 0.75f)),
+        )
+        return
+    }
     val transition = rememberInfiniteTransition(label = "skeleton-pulse")
     val alpha by transition.animateFloat(
         initialValue = 0.55f,

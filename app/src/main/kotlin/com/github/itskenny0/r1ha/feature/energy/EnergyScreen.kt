@@ -568,10 +568,14 @@ private fun EnergyBarChart(bars: List<EnergyViewModel.HistoryBar>) {
     val firstStart = bars.first().timestamp
     val lastStart = bars.last().timestamp
     val spanMs = java.time.Duration.between(firstStart, lastStart).toMillis()
-    // HH:mm for sub-day spans, day-of-month for multi-day windows. Matches
-    // the History / Statistics surfaces' axis formatting.
+    // The user's clock format for sub-day spans, day-of-month for multi-day
+    // windows. Matches the History / Statistics surfaces' axis formatting.
+    val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
     val fmt = if (spanMs < java.time.Duration.ofHours(36).toMillis()) {
-        DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+        DateTimeFormatter.ofPattern(
+            com.github.itskenny0.r1ha.ui.components.clockPattern(use24h),
+            java.util.Locale.US,
+        ).withZone(zone)
     } else {
         DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
     }

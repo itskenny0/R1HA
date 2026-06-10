@@ -420,10 +420,14 @@ private fun HistoryChartPanel(ui: HistoryViewModel.UiState) {
         val tSpan = multi.tSpan
         val zone = ZoneId.systemDefault()
         // Pick an axis-label format that scales with the window — for
-        // sub-day windows we show HH:mm; for multi-day windows we drop
-        // the colon for compactness.
+        // sub-day windows we show the user's clock format; for multi-day
+        // windows we drop the time of day for compactness.
+        val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
         val fmt = if (tSpan < Duration.ofHours(36).toMillis()) {
-            DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+            DateTimeFormatter.ofPattern(
+                com.github.itskenny0.r1ha.ui.components.clockPattern(use24h),
+                java.util.Locale.US,
+            ).withZone(zone)
         } else {
             DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
         }
@@ -631,8 +635,12 @@ private fun StateTimelinePanel(name: String, points: List<HistoryPoint>) {
     }
     val zone = ZoneId.systemDefault()
     val span = Duration.between(timeline.tStart, timeline.tEnd).toMillis()
+    val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
     val fmt = if (span < Duration.ofHours(36).toMillis()) {
-        DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+        DateTimeFormatter.ofPattern(
+            com.github.itskenny0.r1ha.ui.components.clockPattern(use24h),
+            java.util.Locale.US,
+        ).withZone(zone)
     } else {
         DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
     }

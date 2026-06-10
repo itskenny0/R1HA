@@ -121,6 +121,38 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { "${it.nightStartHour}:00 → ${it.nightEndHour}:00" },
     ),
     SettingEntry(
+        id = "ui.textScale",
+        category = SettingCategory.APPEARANCE,
+        label = "Text size",
+        description = "Scale every label and readout; larger steps suit wall-mounted kiosks",
+        isDefault = { it.ui.textScale == defaults.ui.textScale },
+        currentDisplay = { uiTextScaleLabel(it.ui.textScale) },
+    ),
+    SettingEntry(
+        id = "ui.clockFormat",
+        category = SettingCategory.APPEARANCE,
+        label = "Clock format",
+        description = "12-hour or 24-hour time readouts; auto follows the Android setting",
+        isDefault = { it.ui.clockFormat == defaults.ui.clockFormat },
+        currentDisplay = { clockFormatLabel(it.ui.clockFormat) },
+    ),
+    SettingEntry(
+        id = "ui.listDensity",
+        category = SettingCategory.APPEARANCE,
+        label = "List density",
+        description = "Comfortable or compact rows on list screens (devices, logbook, settings)",
+        isDefault = { it.ui.listDensity == defaults.ui.listDensity },
+        currentDisplay = { listDensityLabel(it.ui.listDensity) },
+    ),
+    SettingEntry(
+        id = "ui.reduceMotion",
+        category = SettingCategory.APPEARANCE,
+        label = "Reduce motion",
+        description = "Cut screen transitions and the loading pulse; for vestibular comfort and slow devices",
+        isDefault = { it.ui.reduceMotion == defaults.ui.reduceMotion },
+        currentDisplay = { if (it.ui.reduceMotion) "ON" else "OFF" },
+    ),
+    SettingEntry(
         id = "navpanel.sidePanelEnabled",
         category = SettingCategory.APPEARANCE,
         label = "Show side navigation panel",
@@ -333,6 +365,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
                 TemperatureUnit.FAHRENHEIT -> "°F"
             }
         },
+    ),
+    SettingEntry(
+        id = "ui.timestampStyle",
+        category = SettingCategory.CARD_UI,
+        label = "Timestamps",
+        description = "Relative ('5m ago') or absolute ('14:32') last-changed labels",
+        isDefault = { it.ui.timestampStyle == defaults.ui.timestampStyle },
+        currentDisplay = { timestampStyleLabel(it.ui.timestampStyle) },
     ),
     SettingEntry(
         id = "ui.chromeButtons",
@@ -898,6 +938,46 @@ fun cardPeekModeLabel(mode: CardPeekMode): String = when (mode) {
     CardPeekMode.AUTO -> "AUTO"
     CardPeekMode.ALWAYS -> "ALWAYS"
     CardPeekMode.NEVER -> "NEVER"
+}
+
+/**
+ * Compact human label for a [UiTextScale] value. Shared by the Settings
+ * text-size selector and the registry `currentDisplay` so the diff screen
+ * shows the same word the user picked.
+ */
+fun uiTextScaleLabel(scale: UiTextScale): String = when (scale) {
+    UiTextScale.COMPACT -> "SMALL"
+    UiTextScale.DEFAULT -> "DEFAULT"
+    UiTextScale.LARGE -> "LARGE"
+    UiTextScale.EXTRA_LARGE -> "XL"
+}
+
+/**
+ * Compact human label for a [ClockFormat] value. Shared by the Settings
+ * clock-format selector and the registry `currentDisplay`.
+ */
+fun clockFormatLabel(format: ClockFormat): String = when (format) {
+    ClockFormat.AUTO -> "AUTO"
+    ClockFormat.H12 -> "12 H"
+    ClockFormat.H24 -> "24 H"
+}
+
+/**
+ * Compact human label for a [ListDensity] value. Shared by the Settings
+ * list-density selector and the registry `currentDisplay`.
+ */
+fun listDensityLabel(density: ListDensity): String = when (density) {
+    ListDensity.COMFORTABLE -> "COMFORTABLE"
+    ListDensity.COMPACT -> "COMPACT"
+}
+
+/**
+ * Compact human label for a [TimestampStyle] value. Shared by the Settings
+ * timestamps selector and the registry `currentDisplay`.
+ */
+fun timestampStyleLabel(style: TimestampStyle): String = when (style) {
+    TimestampStyle.RELATIVE -> "RELATIVE"
+    TimestampStyle.ABSOLUTE -> "ABSOLUTE"
 }
 
 fun searchSettings(query: String): List<SettingEntry> {

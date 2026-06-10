@@ -318,7 +318,11 @@ private fun ForecastTile(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = formatForecastLabel(entry.whenIso, kind),
+            text = formatForecastLabel(
+                entry.whenIso,
+                kind,
+                use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock(),
+            ),
             style = responsiveType(R1.labelMicro),
             color = R1.InkMuted,
             maxLines = 1,

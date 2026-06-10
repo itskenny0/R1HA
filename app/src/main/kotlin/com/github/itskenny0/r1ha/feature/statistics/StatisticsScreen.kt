@@ -446,11 +446,15 @@ private fun StatisticsChartPanel(vm: StatisticsViewModel, ui: StatisticsViewMode
         val tEnd = proj.tEnd
         val tSpan = proj.tSpan
         val zone = ZoneId.systemDefault()
-        // Window-aware axis label format: HH:mm for short windows, day-of-month
-        // for multi-day spans. Matches HistoryChartPanel's behaviour so the two
-        // surfaces print timestamps the same way.
+        // Window-aware axis label format: the user's clock format for short
+        // windows, day-of-month for multi-day spans. Matches HistoryChartPanel's
+        // behaviour so the two surfaces print timestamps the same way.
+        val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
         val fmt = if (tSpan < Duration.ofHours(36).toMillis()) {
-            DateTimeFormatter.ofPattern("HH:mm").withZone(zone)
+            DateTimeFormatter.ofPattern(
+                com.github.itskenny0.r1ha.ui.components.clockPattern(use24h),
+                java.util.Locale.US,
+            ).withZone(zone)
         } else {
             DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US).withZone(zone)
         }

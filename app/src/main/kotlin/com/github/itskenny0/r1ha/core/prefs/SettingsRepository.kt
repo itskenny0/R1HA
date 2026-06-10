@@ -214,6 +214,22 @@ class SettingsRepository private constructor(
         /** Deck-wide default for whether the ultra-detail more-info sheet is
          *  offered. Absent → true (the affordance is shown). */
         val uiMoreInfoEnabledDefault = booleanPreferencesKey("ui.more_info_enabled_default")
+        /** Global text-size step. Stored as the [UiTextScale] enum name.
+         *  Absent / unknown → DEFAULT (1.0×) so existing installs render
+         *  byte-for-byte unchanged. */
+        val uiTextScale = stringPreferencesKey("ui.text_scale")
+        /** 12/24-hour clock style for app-composed time readouts. Stored as
+         *  the [ClockFormat] enum name. Absent / unknown → AUTO (follow the
+         *  Android system setting, the historical behaviour). */
+        val uiClockFormat = stringPreferencesKey("ui.clock_format")
+        /** Shared list-row density. Stored as the [ListDensity] enum name.
+         *  Absent / unknown → COMFORTABLE (the historical 48 dp rows). */
+        val uiListDensity = stringPreferencesKey("ui.list_density")
+        /** Relative ('5m ago') vs absolute ('14:32') timestamps. Stored as
+         *  the [TimestampStyle] enum name. Absent / unknown → RELATIVE. */
+        val uiTimestampStyle = stringPreferencesKey("ui.timestamp_style")
+        /** Skip nav transitions + skeleton pulse. Absent → false (full motion). */
+        val uiReduceMotion = booleanPreferencesKey("ui.reduce_motion")
 
         val theme = stringPreferencesKey("theme")
         val autoThemeEnabled = booleanPreferencesKey("theme.auto_enabled")
@@ -318,6 +334,19 @@ class SettingsRepository private constructor(
                         ?: CardPeekMode.AUTO,
                     cardScrollSensitivity = (p[K.uiCardScrollSensitivity] ?: 80).coerceIn(0, 100),
                     moreInfoEnabledDefault = p[K.uiMoreInfoEnabledDefault] ?: true,
+                    textScale = p[K.uiTextScale]
+                        ?.let { runCatching { UiTextScale.valueOf(it) }.getOrNull() }
+                        ?: UiTextScale.DEFAULT,
+                    clockFormat = p[K.uiClockFormat]
+                        ?.let { runCatching { ClockFormat.valueOf(it) }.getOrNull() }
+                        ?: ClockFormat.AUTO,
+                    listDensity = p[K.uiListDensity]
+                        ?.let { runCatching { ListDensity.valueOf(it) }.getOrNull() }
+                        ?: ListDensity.COMFORTABLE,
+                    timestampStyle = p[K.uiTimestampStyle]
+                        ?.let { runCatching { TimestampStyle.valueOf(it) }.getOrNull() }
+                        ?: TimestampStyle.RELATIVE,
+                    reduceMotion = p[K.uiReduceMotion] ?: false,
                 ),
                 behavior = Behavior(
                     haptics = p[K.behaviorHaptics] ?: true,
@@ -541,6 +570,11 @@ class SettingsRepository private constructor(
                 p[K.uiCardPeekMode] = next.ui.cardPeekMode.name
                 p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
                 p[K.uiMoreInfoEnabledDefault] = next.ui.moreInfoEnabledDefault
+                p[K.uiTextScale] = next.ui.textScale.name
+                p[K.uiClockFormat] = next.ui.clockFormat.name
+                p[K.uiListDensity] = next.ui.listDensity.name
+                p[K.uiTimestampStyle] = next.ui.timestampStyle.name
+                p[K.uiReduceMotion] = next.ui.reduceMotion
                 p[K.theme] = next.theme.name
                 p[K.autoThemeEnabled] = next.autoThemeEnabled
                 p[K.nightTheme] = next.nightTheme.name

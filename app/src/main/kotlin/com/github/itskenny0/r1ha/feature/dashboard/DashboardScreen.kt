@@ -902,13 +902,16 @@ private fun Greeting() {
     val dateLine = now.toLocalDate().format(
         java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMM").withLocale(locale),
     )
+    // Shared clock-format pipeline: AUTO resolves against the Android system
+    // 12/24-hour setting (which itself defaults from the locale, so existing
+    // installs keep their current rendering), and the Settings → Appearance →
+    // Clock format choice can force either style.
+    val use24h = com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock()
     val timeLine = now.format(
-        // FormatStyle.SHORT is locale-aware: 12-hour with AM/PM in
-        // en-US, 24-hour in en-GB / de-DE / most of EU. The R1's
-        // system locale drives the result.
-        java.time.format.DateTimeFormatter.ofLocalizedTime(
-            java.time.format.FormatStyle.SHORT,
-        ).withLocale(locale),
+        java.time.format.DateTimeFormatter.ofPattern(
+            com.github.itskenny0.r1ha.ui.components.clockPattern(use24h),
+            java.util.Locale.US,
+        ),
     )
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = R1.space.xs, vertical = R1.space.xs)) {
         Row(verticalAlignment = Alignment.Bottom) {

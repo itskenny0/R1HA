@@ -527,6 +527,7 @@ fun SettingsScreen(
                     // ── Appearance ────────────────────────────────────────
                     SettingsNode.APPEARANCE -> appearanceRoot(
                         s = s,
+                        vm = vm,
                         push = push,
                         groupBadge = ::groupBadge,
                     )
@@ -939,6 +940,7 @@ private fun LazyListScope.connectionBackup(
 
 private fun LazyListScope.appearanceRoot(
     s: AppSettings,
+    vm: SettingsViewModel,
     push: (SettingsNode) -> Unit,
     groupBadge: (Array<out String>) -> Int,
 ) {
@@ -964,6 +966,70 @@ private fun LazyListScope.appearanceRoot(
             summary = "Display mode: ${prettyEnumName(s.ui.displayMode.name)}",
             badge = groupBadge(arrayOf("CARD UI")),
             onClick = { push(SettingsNode.APPEARANCE_CARDS) },
+        )
+    }
+    item { SubGroupLabel("DISPLAY") }
+    item {
+        LabeledControl(label = "Text size") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.UiTextScale.entries,
+                selected = s.ui.textScale,
+                label = { com.github.itskenny0.r1ha.core.prefs.uiTextScaleLabel(it) },
+                onSelect = { vm.setTextScale(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Scales every label and readout app-wide. Larger steps keep a " +
+                    "wall-mounted kiosk readable from across the room; SMALL fits a " +
+                    "little more onto the R1's panel.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
+        LabeledControl(label = "Clock format") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.ClockFormat.entries,
+                selected = s.ui.clockFormat,
+                label = { com.github.itskenny0.r1ha.core.prefs.clockFormatLabel(it) },
+                onSelect = { vm.setClockFormat(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Time readouts the app draws itself (greeting clock, history " +
+                    "times, forecast hours, chart axes). Auto follows the Android " +
+                    "system 12/24-hour setting.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
+        LabeledControl(label = "List density") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.ListDensity.entries,
+                selected = s.ui.listDensity,
+                label = { com.github.itskenny0.r1ha.core.prefs.listDensityLabel(it) },
+                onSelect = { vm.setListDensity(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Compact tightens rows on list screens (devices, logbook, " +
+                    "settings) so a big install fits more per screenful.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
+        SwitchRow(
+            label = "Reduce motion",
+            subtitle = "Screens cut instantly instead of fading, and the loading " +
+                "skeleton stops pulsing. For vestibular comfort and for devices " +
+                "where the transition janks.",
+            checked = s.ui.reduceMotion,
+            onCheckedChange = { vm.setReduceMotion(it) },
         )
     }
 }
@@ -1167,6 +1233,24 @@ private fun LazyListScope.appearanceCards(
                 selected = s.ui.maxDecimalPlaces,
                 label = { if (it == 0) "INT" else "$it" },
                 onSelect = { vm.setMaxDecimalPlaces(it) },
+            )
+        }
+    }
+    item {
+        LabeledControl(label = "Timestamps") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.TimestampStyle.entries,
+                selected = s.ui.timestampStyle,
+                label = { com.github.itskenny0.r1ha.core.prefs.timestampStyleLabel(it) },
+                onSelect = { vm.setTimestampStyle(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Relative: live-ticking '5m ago'. Absolute: wall-clock time " +
+                    "('14:32' today, '3 Jun 14:32' older). Applies to card " +
+                    "last-changed labels and list rows.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
             )
         }
     }
