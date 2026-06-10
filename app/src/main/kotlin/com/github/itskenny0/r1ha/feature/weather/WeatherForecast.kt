@@ -63,6 +63,9 @@ data class ForecastEntry(
     val windBearingDeg: Double?,
     /** Textual wind bearing ("NE") when HA passes a compass string. */
     val windBearingText: String?,
+    /** twice_daily `is_daytime` flag: true = the day half, false = the night
+     *  half, null for hourly / daily entries that don't carry it. */
+    val isDaytime: Boolean? = null,
 )
 
 /**
@@ -87,6 +90,7 @@ fun parseForecastEntries(arr: JsonArray?): List<ForecastEntry> {
             windSpeed = obj.dbl("wind_speed"),
             windBearingDeg = bearingRaw?.toDoubleOrNull(),
             windBearingText = bearingRaw?.takeIf { it.toDoubleOrNull() == null },
+            isDaytime = obj.bool("is_daytime"),
         )
     }
 }
@@ -193,3 +197,12 @@ private fun JsonObject.str(key: String): String? =
 
 private fun JsonObject.dbl(key: String): Double? =
     (this[key] as? JsonPrimitive)?.content?.toDoubleOrNull()
+
+private fun JsonObject.bool(key: String): Boolean? =
+    (this[key] as? JsonPrimitive)?.content?.let {
+        when (it.lowercase()) {
+            "true" -> true
+            "false" -> false
+            else -> null
+        }
+    }

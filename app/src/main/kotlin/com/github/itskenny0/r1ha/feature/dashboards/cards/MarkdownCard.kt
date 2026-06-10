@@ -9,37 +9,39 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.lovelace.CardActions
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.MarkdownView
+import com.github.itskenny0.r1ha.ui.components.parseMarkdown
+import kotlinx.coroutines.launch
 
 /**
- * Renderer for HA's `markdown` card. We render the raw [LovelaceCard.Markdown.content]
- * string via a minimal Markdown-to-AnnotatedString converter (headings,
- * bold, italic, inline code, lists, paragraphs). Jinja templating is
- * deliberately NOT executed. the dashboards layer doesn't have a
- * template subscription wired for cards yet; the renderer surfaces the
- * literal `{{ ... }}` text instead.
+ * Renderer for HA's `markdown` card. Mirrors hui-markdown-card.ts: the card's
+ * [LovelaceCard.Markdown.content] is treated as a Jinja template and subscribed
+ * over the `render_template` WebSocket command, so the body re-renders live as
+ * entities change. The rendered string is parsed into a Markdown AST
+ * ([parseMarkdown]) and drawn by [MarkdownView] (tables, lists, code, alerts,
+ * ha-icon / ha-alert / ha-qr-code extensions).
  *
- * The reason for rolling a tiny renderer (rather than dropping in a
- * dependency) is The Unlicense constraint plus the small surface: the
- * dashboards layer doesn't need full CommonMark. bold + italic +
- * headings + lists cover ~95% of the markdown HA users actually paste
- * into a card.
+ * A static (non-templated) body skips the subscription entirely and renders its
+ * literal content. The last rendered result is cached so a scroll-off / scroll-on
+ * (the composable detaches and reattaches) shows the cached output rather than
+ * flashing the raw source while the new subscription warms up.
  */
 @Composable
 fun MarkdownCard(
@@ -47,148 +49,113 @@ fun MarkdownCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val rendered = remember(card.content) { renderMarkdown(card.content) }
-    // Markdown carries no entity; pass the slots through unchanged (no domain
-    // default) and let the shared action layer wire the gestures + haptics.
-    val actions = com.github.itskenny0.r1ha.core.lovelace.CardActions(
+    val repo = LocalHaRepository.current
+    val userName by (repo?.currentUserName ?: remember { kotlinx.coroutines.flow.MutableStateFlow<String?>(null) })
+        .collectAsState()
+
+    // Cache key per card identity; survives detach/reattach via rememberSaveable
+    // so the rendered text persists across a scroll the way HA's CacheManager does.
+    val cacheKey = remember(card.content, card.entityIds, userName) {
+        MarkdownTemplate.cacheKey(card.content, card.entityIds, userName)
+    }
+
+    // Whether the content is a Jinja template at all. A static body needs no
+    // subscription and renders immediately as its own literal text.
+    val templated = remember(card.content) { MarkdownTemplate.looksTemplated(card.content) }
+
+    var rendered by rememberSaveable(cacheKey) {
+        mutableStateOf(if (templated) null else card.content)
+    }
+    var failure by remember(cacheKey) { mutableStateOf<MarkdownTemplate.Result.Failed?>(null) }
+
+    if (templated && repo != null) {
+        val scope = rememberCoroutineScope()
+        DisposableEffect(cacheKey, repo) {
+            var sub: HaRepository.TemplateSubscription? = null
+            val job = scope.launch {
+                val variables = MarkdownTemplate.buildVariables(card.raw, userName)
+                repo.subscribeTemplateDetailed(
+                    template = card.content,
+                    variables = variables,
+                    entityIds = card.entityIds,
+                    strict = true,
+                    reportErrors = true,
+                    onRender = { event ->
+                        when (event) {
+                            is HaRepository.TemplateRender.Ok -> {
+                                rendered = event.result
+                                failure = null
+                            }
+                            is HaRepository.TemplateRender.Error -> {
+                                val level = if (event.level.equals("WARNING", true)) {
+                                    MarkdownTemplate.ErrorLevel.WARNING
+                                } else {
+                                    MarkdownTemplate.ErrorLevel.ERROR
+                                }
+                                failure = MarkdownTemplate.selectError(
+                                    failure,
+                                    MarkdownTemplate.Result.Failed(event.message, level),
+                                )
+                            }
+                        }
+                    },
+                ).onSuccess { sub = it }
+                    .onFailure {
+                        // Subscribe failed (offline / unsupported): fall back to the
+                        // literal content like HA's frontend does on a connect error.
+                        if (rendered == null) rendered = card.content
+                    }
+            }
+            onDispose {
+                job.cancel()
+                val handle = sub
+                if (handle != null) {
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        runCatching { handle.cancel() }
+                    }
+                }
+            }
+        }
+    }
+
+    // show_empty: false hides the whole card once an empty result lands.
+    if (MarkdownTemplate.shouldHide(rendered, card.showEmpty)) return
+
+    val nodes = remember(rendered) { rendered?.let { parseMarkdown(it) } ?: emptyList() }
+    val actions = CardActions(
         tap = card.tapAction,
         hold = card.holdAction,
         doubleTap = card.doubleTapAction,
     )
-    Column(
-        modifier = modifier
+
+    val container = if (card.textOnly) {
+        // Chromeless: no surface, no border, title suppressed.
+        modifier
+            .fillMaxWidth()
+            .r1CardActions(actions = actions, onAction = onAction)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    } else {
+        modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
             .border(1.dp, R1.Hairline, R1.ShapeM)
             .r1CardActions(actions = actions, onAction = onAction)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
-        if (!card.title.isNullOrBlank()) {
-            Text(
-                text = card.title,
-                style = R1.sectionHeader,
-                color = R1.InkSoft,
-            )
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    }
+
+    Column(modifier = container) {
+        failure?.let { err ->
+            Text(text = err.message, style = R1.labelMicro, color = R1.StatusRed)
+            Spacer(Modifier.height(6.dp))
+        }
+        if (!card.textOnly && !card.title.isNullOrBlank()) {
+            Text(text = card.title, style = R1.sectionHeader, color = R1.InkSoft)
             Spacer(Modifier.height(8.dp))
         }
-        Text(
-            text = rendered,
-            style = R1.body,
-            color = R1.Ink,
+        MarkdownView(
+            nodes = nodes,
+            onOpenLink = { url -> onAction(LovelaceAction.Url(url)) },
         )
-    }
-}
-
-/**
- * Very-small-surface Markdown -> AnnotatedString converter. Handles:
- *  - `#`, `##`, `###` headings (rendered in titleCard style + bold)
- *  - `**bold**`, `*italic*`, `` `inline code` ``
- *  - `- ` / `* ` bulleted lists (rendered with a leading bullet)
- *  - blank-line-separated paragraphs
- *
- * Anything outside that subset (links, images, tables, blockquotes,
- * code fences) renders as plain text. That's a deliberate scope cap;
- * dashboards rarely use those constructs and the renderer stays
- * predictable + bounded.
- */
-internal fun renderMarkdown(source: String): AnnotatedString = buildAnnotatedString {
-    val lines = source.split('\n')
-    lines.forEachIndexed { idx, raw ->
-        if (idx > 0) append('\n')
-        val trimmed = raw.trimEnd()
-        // Heading levels read by SIZE, not just weight, so an `#`/`##`/`###`
-        // hierarchy is actually visible (the old renderer made every level look
-        // the same bold body line). Sizes step down from the screen-title scale.
-        when {
-            trimmed.startsWith("### ") -> {
-                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp)) {
-                    appendInline(trimmed.removePrefix("### "))
-                }
-            }
-            trimmed.startsWith("## ") -> {
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 17.sp)) {
-                    appendInline(trimmed.removePrefix("## "))
-                }
-            }
-            trimmed.startsWith("# ") -> {
-                withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 20.sp)) {
-                    appendInline(trimmed.removePrefix("# "))
-                }
-            }
-            // Horizontal rule (`---` / `***` / `___`) renders as a thin glyph row.
-            trimmed.matches(HR_REGEX) -> append("──────────")
-            trimmed.startsWith("- ") || trimmed.startsWith("* ") -> {
-                append("· ")
-                appendInline(trimmed.drop(2))
-            }
-            // Ordered list ("1. ", "2. ", ...): keep the author's number.
-            ORDERED_ITEM.matchEntire(trimmed) != null -> {
-                val m = ORDERED_ITEM.matchEntire(trimmed)!!
-                append("${m.groupValues[1]}. ")
-                appendInline(m.groupValues[2])
-            }
-            trimmed.isBlank() -> Unit // blank line
-            else -> appendInline(trimmed)
-        }
-    }
-}
-
-/** A markdown horizontal rule: three-or-more of `-`, `*`, or `_` on a line. */
-private val HR_REGEX = Regex("""^([-*_])\1{2,}$""")
-
-/** A markdown ordered-list item: leading number, dot, space, then content. */
-private val ORDERED_ITEM = Regex("""^(\d+)\.\s+(.*)$""")
-
-/**
- * Inline-style scanner: emits the input string with bold / italic /
- * inline-code spans applied. Single-pass, depth-1 (no nested emphasis
- * markup); markup that doesn't pair off gets emitted as plain text.
- */
-private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInline(text: String) {
-    var i = 0
-    while (i < text.length) {
-        when {
-            text.startsWith("**", i) -> {
-                val end = text.indexOf("**", i + 2)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        append(text.substring(i + 2, end))
-                    }
-                    i = end + 2
-                } else { append(text[i]); i++ }
-            }
-            text[i] == '*' -> {
-                val end = text.indexOf('*', i + 1)
-                if (end > 0) {
-                    withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
-                        append(text.substring(i + 1, end))
-                    }
-                    i = end + 1
-                } else { append(text[i]); i++ }
-            }
-            text[i] == '`' -> {
-                val end = text.indexOf('`', i + 1)
-                if (end > 0) {
-                    withStyle(R1.monoSpan) { append(text.substring(i + 1, end)) }
-                    i = end + 1
-                } else { append(text[i]); i++ }
-            }
-            // `[label](url)` link: render the label in the warm accent (the
-            // dashboards layer has no in-card navigation, so the URL is dropped
-            // but the visible text still reads as a link). A malformed pair
-            // (missing `](` or closing `)`) falls back to literal text.
-            text[i] == '[' -> {
-                val close = text.indexOf("](", i + 1)
-                val paren = if (close > 0) text.indexOf(')', close + 2) else -1
-                if (close > 0 && paren > 0) {
-                    withStyle(SpanStyle(color = R1.AccentWarm)) {
-                        append(text.substring(i + 1, close))
-                    }
-                    i = paren + 1
-                } else { append(text[i]); i++ }
-            }
-            else -> { append(text[i]); i++ }
-        }
     }
 }
