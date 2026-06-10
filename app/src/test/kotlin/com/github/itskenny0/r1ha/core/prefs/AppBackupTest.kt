@@ -49,24 +49,66 @@ class AppBackupTest {
         assertThat(applied.behavior.showWhatsNew).isTrue()
     }
 
-    /** The font face is an explicit preference, so it travels with the backup. */
-    @Test fun `fontFace round-trips through encode and apply`() {
-        val source = AppSettings(ui = UiOptions(fontFace = FontFace.SERIF))
+    /** The font family is an explicit preference, so it travels with the backup. */
+    @Test fun `fontFamilyName round-trips through encode and apply`() {
+        val source = AppSettings(ui = UiOptions(fontFamilyName = "serif"))
         val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
 
         val applied = decodeBackup(raw).applyOnto(AppSettings())
 
-        assertThat(applied.ui.fontFace).isEqualTo(FontFace.SERIF)
+        assertThat(applied.ui.fontFamilyName).isEqualTo("serif")
     }
 
-    /** Old backups predate the field; they must decode as DEFAULT (today's mix). */
-    @Test fun `backups without fontFace decode as DEFAULT`() {
+    /** Vendor families have no legacy face; they still round-trip via the new slot. */
+    @Test fun `vendor fontFamilyName round-trips even though the legacy face cannot carry it`() {
+        val source = AppSettings(ui = UiOptions(fontFamilyName = "vendor-grotesk"))
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(AppSettings())
+
+        assertThat(applied.ui.fontFamilyName).isEqualTo("vendor-grotesk")
+    }
+
+    /**
+     * Backups from the eight-face era carry only the legacy uiFontFace slot;
+     * restore must map it onto the family-name model instead of dropping it.
+     */
+    @Test fun `eight-face-era backups map the legacy uiFontFace onto a family name`() {
         val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))
-        val stripped = raw.replace(Regex("\"uiFontFace\"\\s*:\\s*\"\\w+\",?"), "")
+        // Simulate an old file: no new field, an explicit legacy face.
+        val legacy = raw
+            .replace(Regex("\"uiFontFamilyName\"\\s*:\\s*\"[^\"]*\",?"), "")
+            .replace("\"uiFontFace\": \"DEFAULT\"", "\"uiFontFace\": \"SERIF\"")
+        assertThat(legacy).doesNotContain("uiFontFamilyName")
+
+        val applied = decodeBackup(legacy).applyOnto(AppSettings())
+
+        assertThat(applied.ui.fontFamilyName).isEqualTo("serif")
+    }
+
+    /** Old backups predate both font fields; they must decode as "" (the stock mix). */
+    @Test fun `backups without any font field decode as the stock mix`() {
+        val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))
+        val stripped = raw
+            .replace(Regex("\"uiFontFace\"\\s*:\\s*\"\\w+\",?"), "")
+            .replace(Regex("\"uiFontFamilyName\"\\s*:\\s*\"[^\"]*\",?"), "")
         assertThat(stripped).doesNotContain("uiFontFace")
+        assertThat(stripped).doesNotContain("uiFontFamilyName")
 
         val applied = decodeBackup(stripped).applyOnto(AppSettings())
 
-        assertThat(applied.ui.fontFace).isEqualTo(FontFace.DEFAULT)
+        assertThat(applied.ui.fontFamilyName).isEmpty()
+    }
+
+    /** New backups materialise the legacy slot so older builds restore close. */
+    @Test fun `new backups write a best-effort legacy uiFontFace for older builds`() {
+        val backup = AppSettings(ui = UiOptions(fontFamilyName = "monospace"))
+            .toBackup(createdAt = "2026-06-10T00:00:00Z")
+
+        assertThat(backup.uiFontFace).isEqualTo(FontFace.MONO)
+        // No legacy equivalent collapses to DEFAULT, never to a wrong face.
+        val vendor = AppSettings(ui = UiOptions(fontFamilyName = "vendor-grotesk"))
+            .toBackup(createdAt = "2026-06-10T00:00:00Z")
+        assertThat(vendor.uiFontFace).isEqualTo(FontFace.DEFAULT)
     }
 }

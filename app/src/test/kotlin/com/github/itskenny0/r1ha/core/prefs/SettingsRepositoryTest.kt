@@ -36,6 +36,15 @@ class SettingsRepositoryTest {
         }
     }
 
+    @Test fun setThenReadFontFamilyName() = runTest {
+        val repo = newRepo()
+        repo.update { it.copy(ui = it.ui.copy(fontFamilyName = "serif-monospace")) }
+        repo.settings.test {
+            assertThat(awaitItem().ui.fontFamilyName).isEqualTo("serif-monospace")
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     @Test fun setThenReadWheelStep() = runTest {
         val repo = newRepo()
         repo.update { it.copy(wheel = it.wheel.copy(stepPercent = 10, acceleration = false)) }

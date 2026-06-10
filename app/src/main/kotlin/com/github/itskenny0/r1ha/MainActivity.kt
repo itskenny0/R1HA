@@ -255,7 +255,7 @@ class MainActivity : ComponentActivity() {
                 initialValue = com.github.itskenny0.r1ha.core.ha.ConnectionTuning.from(settings.connection).backgroundRefreshMultiplier,
             )
             // Swappable global design tokens: the theme-settings accent override and the
-            // font face feed R1.AccentWarm / the R1 type ramp at EVERY call site (chips,
+            // font family feed R1.AccentWarm / the R1 type ramp at EVERY call site (chips,
             // buttons, spinners, top bars), not just the card accent resolution that
             // LocalThemeAccentOverride covers. Two-part contract with R1Dynamic:
             //   1. The write happens DURING composition (remember runs its calculation
@@ -263,19 +263,19 @@ class MainActivity : ComponentActivity() {
             //      first frame and a key()-triggered rebuild read the fresh values. A
             //      SideEffect alone would run after the rebuilt subtree had already read
             //      stale tokens. The write is idempotent, so re-running it is safe.
-            //   2. key(accentArgb, fontFace) discards the whole subtree on change so any
+            //   2. key(accentArgb, fontFamilyName) discards the whole subtree on change so any
             //      remember-ed captures of the old token values are dropped.
             // On the first composition `settings` is the locked `initial` value, so the
             // seed is in place before any content composes.
             val accentArgb = settings.themeAccentArgb
-            val fontFace = uiOptions.fontFace
-            remember(accentArgb, fontFace) {
-                com.github.itskenny0.r1ha.core.theme.R1Dynamic.apply(accentArgb, fontFace)
+            val fontFamilyName = uiOptions.fontFamilyName
+            remember(accentArgb, fontFamilyName) {
+                com.github.itskenny0.r1ha.core.theme.R1Dynamic.apply(accentArgb, fontFamilyName)
             }
             androidx.compose.runtime.SideEffect {
-                com.github.itskenny0.r1ha.core.theme.R1Dynamic.apply(accentArgb, fontFace)
+                com.github.itskenny0.r1ha.core.theme.R1Dynamic.apply(accentArgb, fontFamilyName)
             }
-            androidx.compose.runtime.key(accentArgb, fontFace) {
+            androidx.compose.runtime.key(accentArgb, fontFamilyName) {
             R1ThemeHost(themeId = themeNow) {
                 // Global text-size step: multiply the composition's font scale (sp axis
                 // only — dp layout is untouched) so EVERY text in the app honours the
@@ -605,7 +605,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
-            } // key(accentArgb, fontFace)
+            } // key(accentArgb, fontFamilyName)
         }
     }
 

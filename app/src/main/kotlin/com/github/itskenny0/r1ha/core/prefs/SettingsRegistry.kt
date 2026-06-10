@@ -132,9 +132,9 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         id = "ui.fontFace",
         category = SettingCategory.APPEARANCE,
         label = "Font",
-        description = "Font face / typeface for the whole UI: plain sans, narrow, light, serif, casual (comic), script, mono",
-        isDefault = { it.ui.fontFace == defaults.ui.fontFace },
-        currentDisplay = { fontFaceLabel(it.ui.fontFace) },
+        description = "Font face / typeface for the whole UI: any system font family, or the default mix with monospace readouts",
+        isDefault = { it.ui.fontFamilyName == defaults.ui.fontFamilyName },
+        currentDisplay = { fontFamilyLabel(it.ui.fontFamilyName) },
     ),
     SettingEntry(
         id = "ui.clockFormat",
@@ -961,20 +961,13 @@ fun uiTextScaleLabel(scale: UiTextScale): String = when (scale) {
 }
 
 /**
- * Compact human label for a [FontFace] value. Shared by the Settings font
- * selector and the registry `currentDisplay` so the diff screen shows the
- * same word the user picked.
+ * Human label for a [UiOptions.fontFamilyName] value. Shared by the Settings
+ * font dropdown and the registry `currentDisplay` so the diff screen shows
+ * the same words the user picked in the picker.
  */
-fun fontFaceLabel(face: FontFace): String = when (face) {
-    FontFace.DEFAULT -> "DEFAULT"
-    FontFace.SANS -> "SANS"
-    FontFace.CONDENSED -> "NARROW"
-    FontFace.LIGHT -> "LIGHT"
-    FontFace.SERIF -> "SERIF"
-    FontFace.CASUAL -> "CASUAL"
-    FontFace.CURSIVE -> "SCRIPT"
-    FontFace.MONO -> "MONO"
-}
+fun fontFamilyLabel(name: String): String =
+    if (name.isEmpty()) "Default (mixed)"
+    else com.github.itskenny0.r1ha.core.theme.prettyFontFamilyName(name)
 
 /**
  * Compact human label for a [ClockFormat] value. Shared by the Settings

@@ -86,9 +86,15 @@ data class AppBackup(
     /** Global text-size step. Older backups without this field decode as
      *  DEFAULT (1.0×), the unchanged historical rendering. */
     val uiTextScale: UiTextScale = UiTextScale.DEFAULT,
-    /** Global font face. Older backups without this field decode as DEFAULT
-     *  (the monospace-numerals + sans mix), the unchanged historical look. */
+    /** Legacy eight-face font slot kept for back-compat in both directions:
+     *  older backup files carry the user's face here, and older builds
+     *  restoring a NEW backup read this field. New writes materialise it via
+     *  [fontFaceFromFamilyName] (vendor families collapse to DEFAULT). */
     val uiFontFace: FontFace = FontFace.DEFAULT,
+    /** Global font family name ("" = the stock mix); wins over [uiFontFace]
+     *  on restore. Older backup files without this field decode as "" and
+     *  fall back to mapping the legacy face in [applyOnto]. */
+    val uiFontFamilyName: String = "",
     /** 12/24-hour clock style. Older backups without this field decode as
      *  AUTO (follow the Android system setting). */
     val uiClockFormat: ClockFormat = ClockFormat.AUTO,
@@ -185,7 +191,8 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiCardScrollSensitivity = ui.cardScrollSensitivity,
     uiMoreInfoEnabledDefault = ui.moreInfoEnabledDefault,
     uiTextScale = ui.textScale,
-    uiFontFace = ui.fontFace,
+    uiFontFace = fontFaceFromFamilyName(ui.fontFamilyName),
+    uiFontFamilyName = ui.fontFamilyName,
     uiClockFormat = ui.clockFormat,
     uiListDensity = ui.listDensity,
     uiTimestampStyle = ui.timestampStyle,
@@ -270,7 +277,12 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             cardScrollSensitivity = uiCardScrollSensitivity,
             moreInfoEnabledDefault = uiMoreInfoEnabledDefault,
             textScale = uiTextScale,
-            fontFace = uiFontFace,
+            // New family-name slot wins when present. "" is ambiguous between
+            // "explicitly the stock mix" and "old backup without the field",
+            // but a new backup always writes a consistent legacy face (DEFAULT
+            // maps to ""), so falling through to the legacy mapping is correct
+            // in both cases.
+            fontFamilyName = uiFontFamilyName.ifEmpty { fontFaceToFamilyName(uiFontFace) },
             clockFormat = uiClockFormat,
             listDensity = uiListDensity,
             timestampStyle = uiTimestampStyle,

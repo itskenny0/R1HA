@@ -50,7 +50,7 @@ fun whatsNewAction(
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Lights get a live colour wheel: drag to recolour in real time, from the HUE button or the detail sheet.",
-    "Pick a font for the whole UI in Settings: the stock mix, a narrow face, serif, or full monospace.",
+    "Pick a font for the whole UI in Settings: browse every system font in a dropdown, previewed live.",
     "The accent colour in theme settings now tints the whole app: buttons, chips, and chrome, not just cards.",
     "Weather grows up on phones: a full-page view with a stat grid, and forecasts open on DAILY.",
     "Colourful Cards: a per-card colour override now recolours the card's gradient itself.",

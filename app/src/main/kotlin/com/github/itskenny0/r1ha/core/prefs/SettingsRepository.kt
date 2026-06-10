@@ -225,10 +225,14 @@ class SettingsRepository private constructor(
          *  Absent / unknown → DEFAULT (1.0×) so existing installs render
          *  byte-for-byte unchanged. */
         val uiTextScale = stringPreferencesKey("ui.text_scale")
-        /** Global font face. Stored as the [FontFace] enum name. Absent /
-         *  unknown → DEFAULT (the monospace-numerals + sans mix) so existing
-         *  installs render byte-for-byte unchanged. */
+        /** Legacy global font face from the fixed eight-face era. Stored as
+         *  the [FontFace] enum name. Never written any more; read only as the
+         *  migration source when [uiFontFamilyName] is absent. */
         val uiFontFace = stringPreferencesKey("ui.font_face")
+        /** Global font family name ("" = the stock monospace-numerals + sans
+         *  mix). Absent → fall back to mapping the legacy [uiFontFace] value,
+         *  so eight-face-era installs keep their chosen look on upgrade. */
+        val uiFontFamilyName = stringPreferencesKey("ui.font_family")
         /** 12/24-hour clock style for app-composed time readouts. Stored as
          *  the [ClockFormat] enum name. Absent / unknown → AUTO (follow the
          *  Android system setting, the historical behaviour). */
@@ -348,9 +352,10 @@ class SettingsRepository private constructor(
                     textScale = p[K.uiTextScale]
                         ?.let { runCatching { UiTextScale.valueOf(it) }.getOrNull() }
                         ?: UiTextScale.DEFAULT,
-                    fontFace = p[K.uiFontFace]
-                        ?.let { runCatching { FontFace.valueOf(it) }.getOrNull() }
-                        ?: FontFace.DEFAULT,
+                    fontFamilyName = resolveFontFamilyName(
+                        stored = p[K.uiFontFamilyName],
+                        legacyFaceName = p[K.uiFontFace],
+                    ),
                     clockFormat = p[K.uiClockFormat]
                         ?.let { runCatching { ClockFormat.valueOf(it) }.getOrNull() }
                         ?: ClockFormat.AUTO,
@@ -594,7 +599,7 @@ class SettingsRepository private constructor(
                 p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
                 p[K.uiMoreInfoEnabledDefault] = next.ui.moreInfoEnabledDefault
                 p[K.uiTextScale] = next.ui.textScale.name
-                p[K.uiFontFace] = next.ui.fontFace.name
+                p[K.uiFontFamilyName] = next.ui.fontFamilyName
                 p[K.uiClockFormat] = next.ui.clockFormat.name
                 p[K.uiListDensity] = next.ui.listDensity.name
                 p[K.uiTimestampStyle] = next.ui.timestampStyle.name
@@ -994,6 +999,21 @@ class SettingsRepository private constructor(
  * delete and re-create get a stable default id.
  */
 private val pagesJsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+/**
+ * Read-time resolution of [UiOptions.fontFamilyName]. The new `ui.font_family`
+ * key wins whenever it has been written (including an explicit "" = stock mix);
+ * otherwise the legacy eight-face `ui.font_face` enum name is mapped through
+ * [fontFaceToFamilyName] so an upgrade keeps the user's chosen look without a
+ * one-shot rewrite pass. Absent / unrecognised everything → "" (stock mix),
+ * so fresh installs render byte-for-byte unchanged.
+ */
+internal fun resolveFontFamilyName(stored: String?, legacyFaceName: String?): String =
+    stored
+        ?: legacyFaceName
+            ?.let { runCatching { FontFace.valueOf(it) }.getOrNull() }
+            ?.let(::fontFaceToFamilyName)
+        ?: ""
 
 private fun decodePages(raw: String?, legacyFavorites: List<String>): List<FavoritePage> {
     val parsed = raw

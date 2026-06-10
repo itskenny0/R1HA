@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -275,7 +276,18 @@ fun SettingsScreen(
             listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
         }.collect { scrollOffsets[node.name] = it }
     }
-    WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+    // Font-picker dialog flag. Lives at screen scope (like the quick-tile
+    // picker below) so the dialog renders above the page body AND the outer
+    // wheel collector can suspend while it's open; otherwise a wheel spin
+    // would scroll the dialog's list and the Appearance page behind it at
+    // the same time.
+    val fontPickerOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    WheelScrollFor(
+        wheelInput = wheelInput,
+        listState = listState,
+        settings = settings,
+        enabled = !fontPickerOpen.value,
+    )
 
     val matchedEntries = androidx.compose.runtime.remember(settingsQuery) {
         com.github.itskenny0.r1ha.core.prefs.searchSettings(settingsQuery)
@@ -530,6 +542,7 @@ fun SettingsScreen(
                         vm = vm,
                         push = push,
                         groupBadge = ::groupBadge,
+                        onOpenFontPicker = { fontPickerOpen.value = true },
                     )
                     SettingsNode.APPEARANCE_THEME -> appearanceTheme(s = s, vm = vm, onOpenThemePicker = onOpenThemePicker)
                     SettingsNode.APPEARANCE_NAVPANEL -> appearanceNavPanel(s = s, vm = vm)
@@ -620,6 +633,19 @@ fun SettingsScreen(
                 item("__tail_spacer") { Spacer(Modifier.height(48.dp)) }
             }
         }
+    }
+
+    if (fontPickerOpen.value) {
+        FontPickerDialog(
+            selected = s.ui.fontFamilyName,
+            wheelInput = wheelInput,
+            settings = settings,
+            onSelect = { name ->
+                vm.setFontFamilyName(name)
+                fontPickerOpen.value = false
+            },
+            onDismiss = { fontPickerOpen.value = false },
+        )
     }
 
     if (tilePickerOpen.value) {
@@ -943,6 +969,7 @@ private fun LazyListScope.appearanceRoot(
     vm: SettingsViewModel,
     push: (SettingsNode) -> Unit,
     groupBadge: (Array<out String>) -> Int,
+    onOpenFontPicker: () -> Unit,
 ) {
     item {
         CategorySubRow(
@@ -989,23 +1016,42 @@ private fun LazyListScope.appearanceRoot(
     }
     item {
         LabeledControl(label = "Font") {
-            // Eight faces don't fit one segmented row on the R1's 240dp panel;
-            // stack two four-cell rows instead of shrinking cells to slivers.
-            for (rowFaces in com.github.itskenny0.r1ha.core.prefs.FontFace.entries.chunked(4)) {
-                SegmentedEnumPicker(
-                    options = rowFaces,
-                    selected = s.ui.fontFace,
-                    label = { com.github.itskenny0.r1ha.core.prefs.fontFaceLabel(it) },
-                    onSelect = { vm.setFontFace(it) },
-                )
-                Spacer(Modifier.height(R1.space.xs))
+            // Dropdown trigger: the current family's display name rendered IN
+            // that family, so the row itself is the first live preview. Tap
+            // opens the full picker dialog with every discovered system font.
+            val currentName = s.ui.fontFamilyName
+            val currentFamily = androidx.compose.runtime.remember(currentName) {
+                if (currentName.isEmpty()) androidx.compose.ui.text.font.FontFamily.SansSerif
+                else com.github.itskenny0.r1ha.core.theme.namedFontFamily(currentName)
             }
-            Spacer(Modifier.height(R1.space.xs))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = R1.MinTarget)
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                    .r1Pressable(onClick = onOpenFontPicker, contentDescription = "Choose font")
+                    .padding(horizontal = R1.space.m),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = com.github.itskenny0.r1ha.core.prefs.fontFamilyLabel(currentName),
+                    style = R1.bodyEmph.copy(fontFamily = currentFamily),
+                    color = R1.Ink,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(R1.space.s))
+                Text(text = "▾", style = R1.bodyEmph, color = R1.InkSoft)
+            }
+            Spacer(Modifier.height(R1.space.s))
             Text(
-                text = "Typeface for the whole UI, system fonts only. SANS, LIGHT, " +
-                    "CASUAL, and SCRIPT replace everything including numbers; " +
-                    "DEFAULT, NARROW, and SERIF keep the monospace readouts; MONO " +
-                    "goes monospace everywhere.",
+                text = "Typeface for the whole UI, picked from the fonts this " +
+                    "device ships. The default keeps monospace readouts with a " +
+                    "sans face elsewhere; any named font replaces everything, " +
+                    "numbers included.",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )
@@ -2728,6 +2774,118 @@ private fun LabeledControl(label: String, content: @Composable () -> Unit) {
         Text(label, style = R1.bodyEmph, color = R1.Ink)
         Spacer(Modifier.height(R1.space.s))
         content()
+    }
+}
+
+/**
+ * Font picker for Appearance → Font: every named system family from
+ * [com.github.itskenny0.r1ha.core.theme.SystemFontCatalog], each row rendered
+ * in its own typeface so the list IS the preview. The first row is the stock
+ * mix (monospace numerals, sans chrome); a tap selects, closes, and applies
+ * immediately through the live R1Dynamic plumbing. Same 480dp-capped card
+ * idiom as the ToDo edit dialog; the wheel drives the list because the picker
+ * is exactly the kind of long list the R1's wheel exists for.
+ */
+@Composable
+private fun FontPickerDialog(
+    selected: String,
+    wheelInput: WheelInput,
+    settings: SettingsRepository,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        // Discovery is cached per process, but keep the lookup inside the
+        // dialog so the Typeface work never runs for users who don't open it.
+        val families = remember { com.github.itskenny0.r1ha.core.theme.SystemFontCatalog.families() }
+        val listState = remember { LazyListState() }
+        WheelScrollFor(wheelInput = wheelInput, listState = listState, settings = settings)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 480.dp)
+                // Cap below full height so the card reads as a dialog and the
+                // backdrop stays tappable for dismiss even with dozens of fonts.
+                .fillMaxHeight(0.85f)
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(R1.space.l),
+        ) {
+            Text(text = "FONT", style = R1.sectionHeader, color = R1.InkSoft)
+            Spacer(Modifier.height(R1.space.s))
+            LazyColumn(state = listState, modifier = Modifier.weight(1f)) {
+                item("__default") {
+                    FontPickerRow(
+                        displayName = "Default (mixed)",
+                        family = androidx.compose.ui.text.font.FontFamily.SansSerif,
+                        note = "Numerals stay monospace",
+                        isSelected = selected.isEmpty(),
+                        onClick = { onSelect("") },
+                    )
+                }
+                items(families, key = { it.name }) { info ->
+                    val family = remember(info.name) {
+                        com.github.itskenny0.r1ha.core.theme.namedFontFamily(info.name)
+                    }
+                    FontPickerRow(
+                        displayName = info.displayName,
+                        family = family,
+                        note = null,
+                        isSelected = selected == info.name,
+                        onClick = { onSelect(info.name) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One row of the font picker: the family's display name plus a sample line,
+ * both set in the family itself (the live preview). Selection uses the accent
+ * border idiom the customize pickers use; rows keep the 48dp target.
+ */
+@Composable
+private fun FontPickerRow(
+    displayName: String,
+    family: androidx.compose.ui.text.font.FontFamily,
+    note: String?,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clip(R1.ShapeS)
+            .background(if (isSelected) R1.SurfaceMuted else R1.Surface)
+            .border(
+                1.dp,
+                if (isSelected) R1.AccentWarm else R1.Hairline,
+                R1.ShapeS,
+            )
+            .r1Pressable(onClick = onClick, contentDescription = "Use font $displayName")
+            .heightIn(min = R1.MinTarget)
+            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+    ) {
+        Text(
+            text = displayName,
+            style = R1.bodyEmph.copy(fontFamily = family),
+            color = if (isSelected) R1.AccentWarm else R1.Ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            text = "Sample 0123 AaBb",
+            style = R1.body.copy(fontFamily = family),
+            color = R1.InkSoft,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        if (note != null) {
+            Text(text = note, style = R1.labelMicro, color = R1.InkMuted)
+        }
     }
 }
 

@@ -63,33 +63,42 @@ enum class UiTextScale(val factor: Float) {
 }
 
 /**
- * Global UI font face (typeface, not size — that's [UiTextScale]). DEFAULT is
- * today's hand-tuned mix: monospace numerals with sans-serif labels, titles,
- * and body. CONDENSED and SERIF swap the labels / titles / body to the
- * matching system family while numerals stay monospace (tabular digits keep
- * readouts steady while values tick); MONO goes monospace everywhere for the
- * full terminal look. System typefaces only — the app bundles no font assets,
- * so the public-domain dedication stays clean. The face → role → family
- * mapping lives in [com.github.itskenny0.r1ha.core.theme.buildTypeRamp].
+ * Legacy fixed font-face palette, superseded by [UiOptions.fontFamilyName]
+ * (any named system family, discovered at runtime). Kept ONLY so values
+ * persisted by the eight-face era still decode: the old `ui.font_face`
+ * preference key and the `uiFontFace` backup field both store these enum
+ * names. New code never selects a [FontFace]; reads map each value onto the
+ * family-name model via [fontFaceToFamilyName].
  */
-enum class FontFace {
-    /** Today's mix: monospace numerals, sans chrome and prose. */
-    DEFAULT,
-    /** Plain system sans everywhere, numerals included: the 'normal font'. */
-    SANS,
-    /** sans-serif-condensed chrome and prose; numerals stay monospace. */
-    CONDENSED,
-    /** sans-serif-light everywhere. */
-    LIGHT,
-    /** System serif chrome and prose; numerals stay monospace. */
-    SERIF,
-    /** The system 'casual' handwritten face everywhere (the comic one). */
-    CASUAL,
-    /** The system 'cursive' script face everywhere. */
-    CURSIVE,
-    /** Monospace everywhere. */
-    MONO,
+enum class FontFace { DEFAULT, SANS, CONDENSED, LIGHT, SERIF, CASUAL, CURSIVE, MONO }
+
+/**
+ * Migration table from the legacy eight-face palette to the family-name
+ * model: each face becomes the Android named family it used for chrome and
+ * prose, DEFAULT becomes "" (the stock mix). Note the deliberate semantic
+ * drift for CONDENSED and SERIF: they used to keep monospace numerals, but
+ * the family-name model applies one family to the whole ramp, so migrated
+ * installs get matching numerals too, closer to what picking "serif" means.
+ */
+fun fontFaceToFamilyName(face: FontFace): String = when (face) {
+    FontFace.DEFAULT -> ""
+    FontFace.SANS -> "sans-serif"
+    FontFace.CONDENSED -> "sans-serif-condensed"
+    FontFace.LIGHT -> "sans-serif-light"
+    FontFace.SERIF -> "serif"
+    FontFace.CASUAL -> "casual"
+    FontFace.CURSIVE -> "cursive"
+    FontFace.MONO -> "monospace"
 }
+
+/**
+ * Best-effort reverse of [fontFaceToFamilyName], used to materialise the
+ * legacy `uiFontFace` backup field so a pre-rework build restoring a new
+ * backup still lands near the chosen look. Vendor families with no legacy
+ * equivalent collapse to DEFAULT (the stock mix): safe, never garish.
+ */
+fun fontFaceFromFamilyName(name: String): FontFace =
+    FontFace.entries.firstOrNull { fontFaceToFamilyName(it) == name } ?: FontFace.DEFAULT
 
 /**
  * How clock-style time-of-day readouts are rendered (the TODAY greeting
@@ -302,11 +311,15 @@ data class UiOptions(
      */
     val textScale: UiTextScale = UiTextScale.DEFAULT,
     /**
-     * Global font face. DEFAULT keeps today's monospace-numerals + sans mix;
-     * CONDENSED / SERIF restyle labels, titles, and body while numerals stay
-     * monospace; MONO is monospace everywhere. See [FontFace].
+     * Android named font family applied to the WHOLE type ramp, numerals
+     * included ("serif", "casual", or any vendor family the device's
+     * fonts.xml declares; see [com.github.itskenny0.r1ha.core.theme.SystemFontCatalog]).
+     * Empty string = the stock mix: monospace numerals (tabular digits keep
+     * readouts steady while values tick) with sans-serif chrome and prose.
+     * System typefaces only: the app bundles no font assets, so the
+     * public-domain dedication stays clean.
      */
-    val fontFace: FontFace = FontFace.DEFAULT,
+    val fontFamilyName: String = "",
     /**
      * 12 vs 24-hour style for clock readouts the app composes itself (TODAY
      * greeting clock, sensor-history times, hourly forecast labels, chart
