@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,25 +16,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
-import androidx.compose.ui.layout.ContentScale
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
-import com.github.itskenny0.r1ha.core.theme.LocalHaBearerToken
-import com.github.itskenny0.r1ha.core.theme.LocalHaServerUrl
 import com.github.itskenny0.r1ha.core.theme.R1
-import com.github.itskenny0.r1ha.ui.components.AsyncBitmap
+import com.github.itskenny0.r1ha.ui.components.HuiImage
+import com.github.itskenny0.r1ha.ui.components.ImageEngine
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Renderer for HA's `picture-glance` card. A background image (static URL
- * or a camera / entity's `entity_picture`) with a row of small state chips
- * overlaid along the bottom. Each chip fires its entity's default action.
- *
- * Image URLs are resolved + authenticated via the same [AsyncBitmap] the
- * media cards use; when no image is available the card falls back to a
- * muted surface so the chips remain usable.
+ * Renderer for HA's `picture-glance` card. A background image (static URL,
+ * camera entity, or state-mapped URL) with a row of small state chips overlaid
+ * along the bottom. Delegates image sizing, camera polling, and filtering to
+ * [HuiImage].
  */
 @Composable
 fun PictureGlanceCard(
@@ -44,8 +38,23 @@ fun PictureGlanceCard(
     onAction: (LovelaceAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cameraState = card.cameraImage?.let { safeEntityId(it)?.let { id -> stateMap[id] } }
-    val imageUrl = card.image ?: entityPictureOf(cameraState)
+    val camEntityId = card.cameraImage?.let { safeEntityId(it)?.let { _ -> it } }
+    val camState = camEntityId?.let { stateMap.byRaw(it) }
+
+    val entityState = camState?.rawState
+
+    // state_image resolution: if configured and entity state matches, use that URL;
+    // otherwise fall back to card.image, then entity_picture of the camera entity.
+    @Suppress("UNCHECKED_CAST")
+    val resolvedImage = ImageEngine.resolveStateImage(card.stateImage as kotlin.collections.Map<String, String>?, entityState)
+        ?: card.image
+        ?: entityPictureOf(camState)
+
+    // state_filter resolution
+    @Suppress("UNCHECKED_CAST")
+    val effectiveFilter = entityState?.let { (card.stateFilter as kotlin.collections.Map<String, String>?)?.get(it) }
+        ?: card.filter
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -60,12 +69,20 @@ fun PictureGlanceCard(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(160.dp),
-        ) {
-            PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp), fitModeScale(card.fitMode))
+        Box(modifier = Modifier.fillMaxWidth()) {
+            HuiImage(
+                imageUrl = resolvedImage,
+                cameraEntityId = if (card.cameraImage != null && ImageEngine.cameraMode(card.cameraImage, card.cameraView) != ImageEngine.CameraMode.Static) card.cameraImage else null,
+                cameraView = card.cameraView,
+                entityState = entityState,
+                entityId = camEntityId,
+                filter = effectiveFilter,
+                aspectRatioStr = card.aspectRatio,
+                fitMode = card.fitMode,
+                darkModeFilter = card.darkModeFilter,
+                contentDescription = card.title,
+                modifier = Modifier.fillMaxWidth(),
+            )
             // Chips strip overlaid along the bottom edge, on a darkening scrim.
             Row(
                 modifier = Modifier
@@ -86,7 +103,7 @@ fun PictureGlanceCard(
 /**
  * Renderer for HA's `picture-entity` card. A background image bound to one
  * entity, with the entity's name + state overlaid; tapping fires the
- * entity's action (or the configured `tap_action`).
+ * entity's action. Delegates all image logic to [HuiImage].
  */
 @Composable
 fun PictureEntityCard(
@@ -98,18 +115,47 @@ fun PictureEntityCard(
     val state = stateMap.byRaw(card.entityId)
     val name = resolveName(card.name, state, card.entityId)
     val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
-    val imageUrl = card.image ?: entityPictureOf(imageEntityState) ?: entityPictureOf(state)
+
+    // camera_image is a separate camera entity (gap item #10)
+    val camEntityId = card.cameraImage?.takeUnless { it.isBlank() }
+    val camState = camEntityId?.let { stateMap.byRaw(it) }
+    val entityState = state?.rawState
+
+    // state_image resolution
+    @Suppress("UNCHECKED_CAST")
+    val resolvedImage = ImageEngine.resolveStateImage(card.stateImage as kotlin.collections.Map<String, String>?, entityState)
+        ?: card.image
+        ?: entityPictureOf(imageEntityState)
+        ?: entityPictureOf(state)
+
+    // state_filter resolution
+    @Suppress("UNCHECKED_CAST")
+    val effectiveFilter = entityState?.let { (card.stateFilter as kotlin.collections.Map<String, String>?)?.get(it) }
+        ?: card.filter
+
     val action = (card.tapAction ?: defaultTapAction(card.entityId)).boundTo(card.entityId)
     val accent = stateAccentFor(card.entityId, state)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(160.dp)
             .clip(R1.ShapeM)
             .border(1.dp, R1.Hairline, R1.ShapeM)
             .r1Pressable(onClick = { onAction(action) }),
     ) {
-        PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp), fitModeScale(card.fitMode))
+        HuiImage(
+            imageUrl = resolvedImage,
+            cameraEntityId = if (camEntityId != null && ImageEngine.cameraMode(camEntityId, card.cameraView) != ImageEngine.CameraMode.Static) camEntityId else null,
+            cameraView = card.cameraView,
+            entityState = entityState,
+            entityId = card.entityId,
+            filter = effectiveFilter,
+            aspectRatioStr = card.aspectRatio,
+            fitMode = card.fitMode,
+            darkModeFilter = card.darkModeFilter,
+            contentDescription = name,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -144,7 +190,7 @@ fun PictureEntityCard(
 /**
  * Renderer for HA's plain `picture` card. Shows [card.image] (a static URL) or,
  * when [card.imageEntity] is set, that entity's `entity_picture` attribute.
- * The whole card fires [card.tapAction] when set.
+ * Delegates image sizing, camera support, and filtering to [HuiImage].
  */
 @Composable
 fun PicturePlainCard(
@@ -154,43 +200,44 @@ fun PicturePlainCard(
     modifier: Modifier = Modifier,
 ) {
     val imageEntityState = card.imageEntity?.let { stateMap.byRaw(it) }
-    val imageUrl = card.image ?: entityPictureOf(imageEntityState)
+    val entityState = imageEntityState?.rawState
+
+    // state_image resolution
+    @Suppress("UNCHECKED_CAST")
+    val resolvedImage = ImageEngine.resolveStateImage(card.stateImage as kotlin.collections.Map<String, String>?, entityState)
+        ?: card.image
+        ?: entityPictureOf(imageEntityState)
+
+    @Suppress("UNCHECKED_CAST")
+    val effectiveFilter = entityState?.let { (card.stateFilter as kotlin.collections.Map<String, String>?)?.get(it) }
+        ?: card.filter
+
+    val camEntityId = card.cameraImage?.takeUnless { it.isBlank() }
+
     val clickModifier = card.tapAction?.let { action ->
         Modifier.r1Pressable(onClick = { onAction(action) })
     } ?: Modifier
+
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(160.dp)
             .clip(R1.ShapeM)
             .border(1.dp, R1.Hairline, R1.ShapeM)
             .then(clickModifier),
     ) {
-        PictureBackground(imageUrl, Modifier.fillMaxWidth().height(160.dp))
+        HuiImage(
+            imageUrl = resolvedImage,
+            cameraEntityId = if (camEntityId != null && ImageEngine.cameraMode(camEntityId, card.cameraView) != ImageEngine.CameraMode.Static) camEntityId else null,
+            cameraView = card.cameraView,
+            entityState = entityState,
+            entityId = card.imageEntity,
+            filter = effectiveFilter,
+            aspectRatioStr = card.aspectRatio,
+            darkModeFilter = card.darkModeFilter,
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
-}
-
-@Composable
-private fun PictureBackground(url: String?, modifier: Modifier, contentScale: ContentScale = ContentScale.Crop) {
-    if (url.isNullOrBlank()) {
-        Box(modifier = modifier.background(R1.SurfaceMuted))
-        return
-    }
-    AsyncBitmap(
-        url = url,
-        serverUrl = LocalHaServerUrl.current,
-        bearerToken = LocalHaBearerToken.current,
-        modifier = modifier,
-        contentDescription = null,
-        contentScale = contentScale,
-    )
-}
-
-/** Map HA's fit_mode string to a Compose ContentScale. Defaults to Crop (HA's default). */
-private fun fitModeScale(fitMode: String?): ContentScale = when (fitMode?.lowercase()) {
-    "contain" -> ContentScale.Fit
-    "fill" -> ContentScale.FillBounds
-    else -> ContentScale.Crop
 }
 
 @Composable
@@ -217,9 +264,7 @@ private fun PictureChip(
     }
 }
 
-/** Pull an entity's `entity_picture` attribute (camera snapshot, person
- *  avatar, etc.) for use as a card background. Null when the attribute
- *  isn't present. */
+/** Pull an entity's `entity_picture` attribute for use as a card background. */
 internal fun entityPictureOf(state: EntityState?): String? {
     val prim = state?.attributesJson?.get("entity_picture") as? JsonPrimitive ?: return null
     return prim.content.takeUnless { it.isBlank() }

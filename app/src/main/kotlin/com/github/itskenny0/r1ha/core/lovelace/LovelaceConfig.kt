@@ -347,6 +347,22 @@ sealed class LovelaceCard {
         val image: String?,
         val imageEntity: String?,
         val tapAction: LovelaceAction?,
+        /** HA aspect_ratio ("16:9", "50%", "1.78"). Null = intrinsic sizing. */
+        val aspectRatio: String? = null,
+        /** camera_image entity id for JPEG-poll background. */
+        val cameraImage: String? = null,
+        /** "auto" (10 s poll) or "live" (1 s poll). Null defaults to "auto". */
+        val cameraView: String? = null,
+        /** Per-state image URL map keyed by entity raw state. */
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        /** CSS-ish filter string applied to the image. */
+        val filter: String? = null,
+        /** Per-state filter override map, keyed by entity raw state. */
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        /** Dark-mode variant image URL. */
+        val darkModeImage: String? = null,
+        /** Additional filter applied only in dark mode. */
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture"
     }
@@ -369,6 +385,13 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
+        val aspectRatio: String? = null,
+        val cameraView: String? = null,
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        val filter: String? = null,
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        val darkModeImage: String? = null,
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-glance"
     }
@@ -392,6 +415,15 @@ sealed class LovelaceCard {
         val tapAction: LovelaceAction?,
         /** HA 2025.5: image scaling mode. "cover" / "contain" / "fill". Null = cover. */
         val fitMode: String? = null,
+        val aspectRatio: String? = null,
+        /** camera_image: separate camera entity overriding the card's main entity picture. */
+        val cameraImage: String? = null,
+        val cameraView: String? = null,
+        val stateImage: kotlin.collections.Map<String, String>? = null,
+        val filter: String? = null,
+        val stateFilter: kotlin.collections.Map<String, String>? = null,
+        val darkModeImage: String? = null,
+        val darkModeFilter: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-entity"
     }
@@ -665,6 +697,8 @@ sealed class LovelaceCard {
         val image: String?,
         val cameraImage: String?,
         val elements: List<PictureElement>,
+        val aspectRatio: String? = null,
+        val cameraView: String? = null,
     ) : LovelaceCard() {
         override val type: String = "picture-elements"
     }
