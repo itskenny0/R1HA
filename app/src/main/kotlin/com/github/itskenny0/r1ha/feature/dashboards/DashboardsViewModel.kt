@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.github.itskenny0.r1ha.core.ha.ConnectionState
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HaThemeCatalogue
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceConfig
@@ -192,9 +193,43 @@ class DashboardsViewModel(
      */
     private val strategyKeys = mutableSetOf<String>()
 
+    /**
+     * Url-paths of every dashboard config loaded this session, keyed by cache
+     * key, so a WS reconnect can force-refetch each one. The `lovelace_updated`
+     * subscription only fires for live edits; updates that happened while the
+     * socket was down are never replayed, so we refetch on reconnect.
+     */
+    private val loadedUrlPaths = mutableMapOf<String, String?>()
+
+    init {
+        observeReconnect()
+    }
+
+    /**
+     * Refetch every loaded dashboard config when the WS transitions back to
+     * [ConnectionState.Connected] from a non-connected state. The first emission
+     * (the initial connect) does not trigger a refetch because nothing is loaded
+     * yet; [loadConfig] handles the first fetch.
+     */
+    private fun observeReconnect() {
+        viewModelScope.launch {
+            var wasConnected = haRepository.connection.value is ConnectionState.Connected
+            haRepository.connection.collect { conn ->
+                val nowConnected = conn is ConnectionState.Connected
+                if (shouldRefetchOnReconnect(wasConnected, nowConnected)) {
+                    loadedUrlPaths.values.toList().forEach { urlPath ->
+                        loadConfig(urlPath, force = true)
+                    }
+                }
+                wasConnected = nowConnected
+            }
+        }
+    }
+
     fun loadConfig(urlPath: String?, force: Boolean = false) {
         viewModelScope.launch {
             val cacheKey = urlPath ?: DEFAULT_KEY
+            loadedUrlPaths[cacheKey] = urlPath
             // A strategy dashboard always re-expands on (re-)entry so a registry
             // change since the last visit is reflected; concrete dashboards serve
             // the cache.
@@ -520,6 +555,15 @@ class DashboardsViewModel(
 
         /** Storage key for the synthesised default-dashboard entry. */
         const val DEFAULT_KEY: String = "_default_"
+
+        /**
+         * True when the connection just transitioned disconnected -> connected,
+         * the cue to refetch dashboard configs (missed `lovelace_updated` events
+         * during the gap aren't replayed). Staying connected, or going down, is
+         * not a reconnect.
+         */
+        fun shouldRefetchOnReconnect(wasConnected: Boolean, nowConnected: Boolean): Boolean =
+            nowConnected && !wasConnected
 
         /** Synthetic descriptor for HA's default dashboard. The user-visible
          *  title is intentionally Title-Case-no-em-dashes for parity with the
