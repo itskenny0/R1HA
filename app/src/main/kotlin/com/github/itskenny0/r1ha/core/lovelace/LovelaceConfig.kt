@@ -102,15 +102,23 @@ sealed class LovelaceCard {
      *  both rely on this being preserved verbatim. */
     abstract val raw: JsonObject
 
-    /** Vertical list of entity rows. */
+    /** Vertical list of entity rows (and optional special rows). */
     @Immutable
     data class Entities(
         override val raw: JsonObject,
         val title: String?,
         val showHeaderToggle: Boolean?,
-        val entities: List<EntityRow>,
+        /**
+         * Items in the card's `entities:` array. Each is either a regular
+         * [EntityRow] or a [SpecialRow] (divider, section, button, etc.).
+         * Use [rowItems] to iterate over both; [entities] is kept for
+         * backward compatibility and returns only the entity rows.
+         */
+        val rowItems: List<EntitiesItem>,
     ) : LovelaceCard() {
         override val type: String = "entities"
+        /** Backward-compat view: only the entity rows. */
+        val entities: List<EntityRow> get() = rowItems.filterIsInstance<EntitiesItem.Entity>().map { it.row }
     }
 
     /** Compact grid of entity glyphs + state readouts. */
@@ -696,6 +704,21 @@ sealed class LovelaceCard {
 }
 
 /**
+ * One item in a [LovelaceCard.Entities] or similar list. Either a regular
+ * entity row or a special non-entity structural row (divider, section, etc.).
+ * Typed union so the card renderer can iterate a single list with both kinds.
+ */
+@Immutable
+sealed class EntitiesItem {
+    /** A regular entity row (the historic entities-card row type). */
+    @Immutable
+    data class Entity(val row: EntityRow) : EntitiesItem()
+    /** A special non-entity structural row (section, divider, button, etc.). */
+    @Immutable
+    data class Special(val row: SpecialRow) : EntitiesItem()
+}
+
+/**
  * One row inside an entities-card-like list (entities / glance).
  *
  * HA accepts either a bare entity_id string or a richer object with name +
@@ -723,7 +746,167 @@ data class EntityRow(
      * entity's friendly_name (the historic default).
      */
     val nameType: String? = null,
+    /**
+     * HA timestamp display format for sensor/event/timer rows. Mirrors
+     * hui-timestamp-display's `format:` option: relative / total / date /
+     * time / datetime. Null means auto: the row uses RELATIVE for timestamp
+     * device-class sensors and falls back to raw state for everything else.
+     */
+    val format: TimestampFormat? = null,
+    /**
+     * HA `type:` explicit row-renderer override. When set the parser bypasses
+     * domain-based dispatch and uses this renderer (e.g. "toggle", "button",
+     * "simple") regardless of the entity's domain. An unknown or custom type
+     * falls back to a labeled placeholder. Null = use domain-based dispatch.
+     */
+    val explicitType: String? = null,
 )
+
+/**
+ * Timestamp rendering format for sensor / event / timer entity rows.
+ * Mirrors HA's TimestampRenderingFormat (src/panels/lovelace/components/types.ts).
+ *
+ *  - [RELATIVE]: live-ticking "5m ago" / "in 2h" (default for timestamp sensors)
+ *  - [TOTAL]: elapsed/remaining as HH:MM:SS (uptime / timer countdown default)
+ *  - [DATE]: locale-formatted date only ("3 Jun 2025")
+ *  - [TIME]: locale-formatted time only ("14:32" / "2:32 PM")
+ *  - [DATETIME]: locale-formatted date + time ("3 Jun 14:32")
+ */
+enum class TimestampFormat { RELATIVE, TOTAL, DATE, TIME, DATETIME }
+
+/**
+ * A special non-entity row inside the entities card's `entities:` list.
+ * HA identifies these by a `type:` key on the item rather than an `entity:` key.
+ * Each variant carries the raw config so renderers can access optional fields.
+ *
+ * Unlike [EntityRow], special rows are NOT entity rows. They carry no live entity
+ * state and render structural UI (dividers, section headers, labels, links, or
+ * static action buttons) rather than entity readouts.
+ */
+@Immutable
+sealed class SpecialRow {
+    abstract val raw: JsonObject
+
+    /** `type: section` — horizontal rule + optional label heading. */
+    @Immutable
+    data class Section(
+        override val raw: JsonObject,
+        val label: String?,
+    ) : SpecialRow()
+
+    /** `type: divider` — plain horizontal rule (no label). */
+    @Immutable
+    data class Divider(override val raw: JsonObject) : SpecialRow()
+
+    /**
+     * `type: attribute` — display one attribute value from an entity.
+     * [attribute] is the attribute key; [prefix] / [suffix] wrap it.
+     * [format] triggers timestamp rendering when the attribute is a date/time.
+     */
+    @Immutable
+    data class Attribute(
+        override val raw: JsonObject,
+        val entityId: String,
+        val attribute: String,
+        val name: String?,
+        val icon: String?,
+        val prefix: String?,
+        val suffix: String?,
+        val format: TimestampFormat?,
+    ) : SpecialRow()
+
+    /**
+     * `type: button` — name + RUN button firing tap_action (with optional
+     * hold / double-tap and confirmation). `call-service` rows are the same
+     * shape: the action is pre-wired as a perform-action tap_action.
+     */
+    @Immutable
+    data class Button(
+        override val raw: JsonObject,
+        val entityId: String?,
+        val name: String?,
+        val icon: String?,
+        val actionName: String?,
+        val tapAction: LovelaceAction?,
+        val holdAction: LovelaceAction?,
+        val doubleTapAction: LovelaceAction?,
+    ) : SpecialRow()
+
+    /**
+     * `type: buttons` — horizontal row of icon buttons, one per entry.
+     * Each entry carries an optional entity, icon, name, and tap_action.
+     */
+    @Immutable
+    data class Buttons(
+        override val raw: JsonObject,
+        val entries: List<ButtonEntry>,
+    ) : SpecialRow() {
+        @Immutable
+        data class ButtonEntry(
+            val entityId: String?,
+            val icon: String?,
+            val name: String?,
+            val tapAction: LovelaceAction?,
+        )
+    }
+
+    /**
+     * `type: conditional` wrapping a `row:` — show or hide the wrapped row
+     * based on the evaluated conditions. The wrapped row is itself a
+     * SpecialRow or EntityRow (carried as a [ConditionalRowPayload]).
+     */
+    @Immutable
+    data class Conditional(
+        override val raw: JsonObject,
+        val conditions: List<LovelaceCondition>,
+        val row: ConditionalRowPayload,
+    ) : SpecialRow()
+
+    /** `type: text` — static icon + name + text value. */
+    @Immutable
+    data class Text(
+        override val raw: JsonObject,
+        val name: String,
+        val text: String,
+        val icon: String?,
+    ) : SpecialRow()
+
+    /**
+     * `type: weblink` — tappable link row. Opens in the system browser.
+     * [newTab] and [download] are accepted but treated as hints.
+     */
+    @Immutable
+    data class Weblink(
+        override val raw: JsonObject,
+        val name: String,
+        val url: String,
+        val icon: String?,
+    ) : SpecialRow()
+
+    /** `type: cast` — browser-only feature; renders a muted placeholder. */
+    @Immutable
+    data class Cast(override val raw: JsonObject) : SpecialRow()
+
+    /** A special-row type we don't model. Renders a labeled placeholder. */
+    @Immutable
+    data class Unknown(
+        override val raw: JsonObject,
+        val typeName: String,
+    ) : SpecialRow()
+}
+
+/**
+ * The payload carried by a [SpecialRow.Conditional]. Either a wrapped entity
+ * row or a wrapped special row (HA allows both inside `type: conditional`'s
+ * `row:` key). Modelled as a sealed pair so the renderer can switch on it.
+ */
+@Immutable
+sealed class ConditionalRowPayload {
+    @Immutable
+    data class EntityRowPayload(val row: EntityRow) : ConditionalRowPayload()
+    @Immutable
+    data class SpecialRowPayload(val row: SpecialRow) : ConditionalRowPayload()
+}
 
 /** One entry of a [LovelaceCard.Distribution]'s `entities:` list. */
 @Immutable

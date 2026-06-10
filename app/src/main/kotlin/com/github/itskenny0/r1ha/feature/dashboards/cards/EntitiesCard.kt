@@ -19,9 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.EntitiesItem
 import com.github.itskenny0.r1ha.core.lovelace.EntityRow
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.lovelace.evaluateLovelaceConditions
+import com.github.itskenny0.r1ha.core.lovelace.SpecialRow
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.formatWithPrecision
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -56,11 +59,11 @@ fun EntitiesCard(
     // `show_header_toggle` surfaces a master on/off control in the header that
     // flips every toggleable entity in the card at once. HA shows it whenever
     // the card has at least one toggleable entity and the option isn't false.
-    val toggleableIds = remember(card.entities) {
-        card.entities.map { it.entityId }.filter { headerToggleableDomain(it) }
+    val toggleableIds = remember(card.rowItems) {
+        card.rowItems.filterIsInstance<EntitiesItem.Entity>()
+            .map { it.row.entityId }.filter { headerToggleableDomain(it) }
     }
     val showToggle = (card.showHeaderToggle ?: true) && toggleableIds.isNotEmpty()
-
     CardSurface(modifier = modifier, title = if (showToggle) null else title) {
         if (showToggle) {
             HeaderToggleRow(
@@ -70,13 +73,33 @@ fun EntitiesCard(
                 onAction = onAction,
             )
         }
-        if (card.entities.isEmpty()) {
+        if (card.rowItems.isEmpty()) {
             EmptyRow(text = "No entities configured")
             return@CardSurface
         }
-        card.entities.forEachIndexed { idx, row ->
-            if (idx > 0) Divider1dp()
-            EntityRowItem(row = row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
+        // Dividers are drawn between consecutive entity/non-divider rows only;
+        // section headers and dividers themselves don't get an extra separator.
+        var needsDivider = false
+        card.rowItems.forEach { item ->
+            when (item) {
+                is EntitiesItem.Entity -> {
+                    if (needsDivider) Divider1dp()
+                    EntityRowItem(row = item.row, stateMap = stateMap, onAction = onAction, stateColor = stateColor)
+                    needsDivider = true
+                }
+                is EntitiesItem.Special -> {
+                    // Section and divider rows reset the divider so no double-line appears.
+                    val isSeparator = item.row is SpecialRow.Section || item.row is SpecialRow.Divider
+                    if (needsDivider && !isSeparator) Divider1dp()
+                    SpecialRowItem(
+                        row = item.row,
+                        stateMap = stateMap,
+                        onAction = onAction,
+                        stateColor = stateColor,
+                    )
+                    needsDivider = !isSeparator
+                }
+            }
         }
     }
 }
@@ -164,6 +187,13 @@ internal fun ToggleSwitch(checked: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Dispatch one entity row to the correct domain-specific renderer. Display
+ * rows for event / weather / timer get specialised composables; everything else
+ * uses the generic read-only display row. An explicit `type:` override (e.g.
+ * "toggle", "simple") forces the generic renderer regardless of domain, matching
+ * HA's create-row-element behaviour.
+ */
 @Composable
 private fun EntityRowItem(
     row: EntityRow,
@@ -172,16 +202,43 @@ private fun EntityRowItem(
     stateColor: Boolean = false,
 ) {
     val state = stateMap.byRaw(row.entityId)
+    val accent = stateAccentFor(row.entityId, state)
+    val domain = row.entityId.substringBefore('.', missingDelimiterValue = "")
+    // An explicit per-row `type:` forces the generic display row and skips domain
+    // dispatch (matches HA's create-row-element: the config type beats the domain).
+    // Unknown custom types (e.g. "custom:my-row") also fall through to generic.
+    val forced = row.explicitType
+    when {
+        forced == null && domain == "event" ->
+            EventEntityRow(row, state, accent, onAction, stateColor)
+        forced == null && domain == "weather" ->
+            WeatherEntityRow(row, state, accent, onAction, stateColor)
+        forced == null && domain == "timer" ->
+            TimerEntityRow(row, state, accent, onAction, stateColor)
+        else -> DisplayEntityRow(row, state, accent, onAction, stateColor, explicitType = forced)
+    }
+}
+
+/**
+ * Generic read-only display row. Shows the entity name + a state chip.
+ * Also used when an explicit `type:` forces the generic renderer.
+ */
+@Composable
+private fun DisplayEntityRow(
+    row: EntityRow,
+    state: EntityState?,
+    accent: androidx.compose.ui.graphics.Color,
+    onAction: (LovelaceAction) -> Unit,
+    stateColor: Boolean,
+    explicitType: String? = null,
+) {
     val name = resolveDisplayName(row.name, row.nameType, state, row.entityId)
     val secondary = row.secondaryInfo?.let { secondaryInfoLine(it, state) }
-    // Genuinely-absent state hides the readout rather than printing a "."
-    // placeholder; a blank chip just looks like a rendering glitch.
     val stateText = state?.let { compactStateText(it) }
-    val accent = stateAccentFor(row.entityId, state)
-    // `state_color: true` tints the name with the entity's accent while it's
-    // active; otherwise the name reads neutral ink and only the chip carries
-    // colour (HA's default).
     val nameColor = if (stateColor && state?.isOn == true) accent else R1.Ink
+    // Unknown custom type: render a muted "type (unsupported)" label in the chip area.
+    val isUnknownType = explicitType != null &&
+        explicitType !in setOf("toggle", "simple", "display", "button", "lock", "cover")
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -215,9 +272,11 @@ private fun EntityRowItem(
                 )
             }
         }
-        if (stateText != null) {
-            Spacer(Modifier.width(10.dp))
-            StateChip(text = stateText, accent = accent)
+        Spacer(Modifier.width(10.dp))
+        when {
+            isUnknownType -> StateChip(text = explicitType ?: "?", accent = R1.InkMuted)
+            stateText != null && stateText.isNotBlank() -> StateChip(text = stateText, accent = accent)
+            else -> Unit
         }
     }
 }
@@ -341,7 +400,15 @@ internal fun secondaryInfoLine(kind: String, state: EntityState?): String? {
         "entity-id" -> state.id.value
         "area" -> state.area
         "state" -> state.rawState
-        "last-changed", "last-triggered", "last-updated" -> "since " + relativeTimeShort(state.lastChanged)
+        "last-changed" -> "since " + relativeTimeShort(state.lastChanged)
+        // last-triggered: automation / script "last ran" time. Falls back to
+        // last-changed when the entity has never been triggered (lastTriggered null).
+        "last-triggered" -> "since " + relativeTimeShort(state.lastTriggered ?: state.lastChanged)
+        // last-updated: HA's wire field distinct from last-changed. EntityState does not
+        // carry it yet (only lastChanged is mapped); fall back to lastChanged so the
+        // label is accurate for states that HA doesn't suppress re-reports on, and
+        // silently omit rather than crash. This is a known delta vs. HA's frontend.
+        "last-updated" -> "since " + relativeTimeShort(state.lastChanged)
         // Numeric cover/light attributes HA surfaces under the row. Each reads
         // the live attribute and renders nothing when the entity doesn't carry
         // it (so a non-cover gets no spurious "Position:" line).
