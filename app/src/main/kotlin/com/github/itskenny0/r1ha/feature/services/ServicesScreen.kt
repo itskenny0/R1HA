@@ -29,6 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -94,7 +98,12 @@ fun ServicesScreen(
             // routes through PullToRefreshBox's overlay instead, so pulling
             // to refresh no longer blanks the list out from under the user.
             ui.loading && ui.all.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading services"
+                    },
             ) {
                 SkeletonList()
             }

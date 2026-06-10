@@ -92,4 +92,34 @@ class DevicesA11yTest {
             ),
         ).isEqualTo("Temp, sensor.temp")
     }
+
+    @Test
+    fun registrySummary_readsAsOneSentence() {
+        assertThat(
+            DevicesA11y.registrySummaryDescription(
+                devices = 128,
+                areas = 12,
+                makers = 9,
+                entities = 940,
+            ),
+        ).isEqualTo(
+            "Device registry. 128 devices, 12 areas, 9 makers, 940 entities. " +
+                "Select a device to inspect its entities.",
+        )
+    }
+
+    @Test
+    fun registrySummary_singularAndZeroCounts() {
+        assertThat(
+            DevicesA11y.registrySummaryDescription(
+                devices = 1,
+                areas = 0,
+                makers = 1,
+                entities = 0,
+            ),
+        ).isEqualTo(
+            "Device registry. 1 device, no areas, 1 maker, no entities. " +
+                "Select a device to inspect its entities.",
+        )
+    }
 }

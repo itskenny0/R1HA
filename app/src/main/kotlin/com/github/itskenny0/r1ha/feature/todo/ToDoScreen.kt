@@ -36,6 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -117,8 +121,14 @@ fun ToDoScreen(
                 )
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when {
-                        ui.loadingLists && ui.lists.isEmpty() ->
+                        ui.loadingLists && ui.lists.isEmpty() -> Box(
+                            modifier = Modifier.semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                contentDescription = "Loading to-do lists"
+                            },
+                        ) {
                             SkeletonList()
+                        }
                         ui.error != null && ui.lists.isEmpty() ->
                             EmptyText("Could not load to-do lists.\n\n${ui.error}")
                         ui.lists.isEmpty() ->
@@ -130,8 +140,14 @@ fun ToDoScreen(
                             )
                         ui.activeEntityId == null ->
                             EmptyText("Pick a list to view items.")
-                        ui.loadingItems && ui.items.isEmpty() ->
+                        ui.loadingItems && ui.items.isEmpty() -> Box(
+                            modifier = Modifier.semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                contentDescription = "Loading to-do items"
+                            },
+                        ) {
                             SkeletonList()
+                        }
                         ui.items.isEmpty() ->
                             EmptyText("List is empty.\n\nType below to add the first item.")
                         else ->

@@ -40,7 +40,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -180,6 +183,10 @@ fun CamerasScreen(
             ui.loading && ui.cameras.isEmpty() -> Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading cameras"
+                    }
                     .padding(horizontal = R1.space.m, vertical = R1.space.s),
                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {
@@ -349,7 +356,20 @@ private fun CamerasSummaryPane(cameras: List<CamerasViewModel.Camera>) {
     val recording = cameras.count { it.state.lowercase() == "recording" }
     val offline = cameras.count { it.state.lowercase() in setOf("unavailable", "unknown") }
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // One spoken sentence instead of eight disjoint nodes (four bare
+            // numerals, then four bare labels). Nothing in the pane is
+            // interactive, so clearing the subtree loses nothing.
+            modifier = Modifier.clearAndSetSemantics {
+                contentDescription = camerasSummaryDescription(
+                    total = cameras.size,
+                    streaming = streaming,
+                    recording = recording,
+                    offline = offline,
+                )
+            },
+        ) {
             Text(
                 text = "CAMERAS",
                 style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),

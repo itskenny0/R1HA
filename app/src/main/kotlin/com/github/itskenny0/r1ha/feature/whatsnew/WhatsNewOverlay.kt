@@ -25,6 +25,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.BuildConfig
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -73,7 +77,10 @@ fun WhatsNewOverlay(
                 .clip(R1.ShapeS)
                 .background(R1.Surface)
                 .border(1.dp, R1.Hairline, R1.ShapeS)
-                .padding(R1.space.l),
+                .padding(R1.space.l)
+                // Announce the panel as a pane change ("What's new") when it
+                // appears over the start destination, the way a dialog would.
+                .semantics { paneTitle = "What's new" },
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
@@ -102,7 +109,10 @@ fun WhatsNewOverlay(
                                 indication = null,
                                 onClickLabel = "More options",
                                 onClick = { menuOpen.value = !menuOpen.value },
-                            ),
+                            )
+                            // Without this the node announces as the bare "⋯"
+                            // glyph; the onClickLabel only covers the action hint.
+                            .semantics { contentDescription = "More options" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(text = "⋯", style = R1.numeralM, color = R1.InkMuted)
@@ -141,7 +151,10 @@ fun WhatsNewOverlay(
                 verticalArrangement = Arrangement.spacedBy(R1.space.s),
             ) {
                 WHATS_NEW_ENTRIES.forEach { entry ->
-                    Row {
+                    // Each bullet reads as its entry text alone; without the
+                    // override TalkBack announces the decorative "•" glyph as
+                    // its own node before every line.
+                    Row(modifier = Modifier.clearAndSetSemantics { contentDescription = entry }) {
                         Text(text = "•", style = R1.body, color = R1.AccentWarm)
                         Spacer(Modifier.width(R1.space.s))
                         Text(text = entry, style = R1.body, color = R1.InkSoft)

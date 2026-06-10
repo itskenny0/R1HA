@@ -28,8 +28,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -120,7 +123,14 @@ fun CalendarsScreen(
         )
         com.github.itskenny0.r1ha.ui.components.R1CenteredContent(modifier = Modifier.weight(1f)) {
         when {
-            ui.loading -> Box(modifier = Modifier.fillMaxSize()) {
+            ui.loading -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading calendars"
+                    },
+            ) {
                 com.github.itskenny0.r1ha.ui.components.SkeletonList()
             }
             // Calendar registry fetch failed; distinct from "no calendar

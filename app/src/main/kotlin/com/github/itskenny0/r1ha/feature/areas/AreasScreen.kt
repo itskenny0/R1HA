@@ -38,7 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -192,7 +195,12 @@ fun AreasScreen(
         com.github.itskenny0.r1ha.ui.layout.AdaptiveContent(modifier = Modifier.weight(1f)) {
         when {
             ui.loading -> Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading areas"
+                    },
             ) {
                 SkeletonList()
             }
@@ -265,7 +273,17 @@ fun AreasScreen(
 private fun AreasSummaryPane(ui: AreasViewModel.UiState) {
     val totalEntities = remember(ui.areas) { ui.areas.sumOf { area -> area.entityIds.size } }
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // One spoken sentence instead of bare numerals + bare labels.
+            // Nothing in the pane is interactive, so clearing loses nothing.
+            modifier = Modifier.clearAndSetSemantics {
+                contentDescription = areasSummaryDescription(
+                    areas = ui.areas.size,
+                    entities = totalEntities,
+                )
+            },
+        ) {
             Text(
                 text = "AREAS",
                 style = com.github.itskenny0.r1ha.core.theme.responsiveType(R1.sectionHeader),

@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -77,7 +78,12 @@ fun SkeletonList(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = R1.space.m, vertical = R1.space.s),
+            .padding(horizontal = R1.space.m, vertical = R1.space.s)
+            // Placeholders are decorative: keep the whole subtree invisible to
+            // TalkBack so a screen reader never lands on a fake row. The one
+            // polite "Loading …" announcement belongs to the screen's wrapping
+            // container (see the loading Boxes around every call site).
+            .clearAndSetSemantics {},
         verticalArrangement = Arrangement.spacedBy(R1.space.s),
     ) {
         repeat(rows) { SkeletonRow() }

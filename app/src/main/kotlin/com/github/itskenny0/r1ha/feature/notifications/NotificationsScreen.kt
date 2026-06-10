@@ -31,6 +31,10 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
@@ -169,6 +173,10 @@ fun NotificationsScreen(
             ui.loading && ui.notifications.isEmpty() && ui.error == null -> Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .semantics {
+                        liveRegion = LiveRegionMode.Polite
+                        contentDescription = "Loading notifications"
+                    }
                     .padding(horizontal = dimens.screenGutter, vertical = R1.space.s),
                 verticalArrangement = Arrangement.spacedBy(R1.space.xs),
             ) {

@@ -43,6 +43,29 @@ object DevicesA11y {
     }
 
     /**
+     * Spoken phrase for the two-pane registry summary, e.g. "Device registry.
+     * 128 devices, 12 areas, 9 makers, 940 entities. Select a device to inspect
+     * its entities." Replaces the pane's four bare numerals + four bare labels
+     * (eight disjoint nodes) with one sentence.
+     */
+    fun registrySummaryDescription(devices: Int, areas: Int, makers: Int, entities: Int): String {
+        val stats = listOf(
+            countPhrase(devices, "device", "devices"),
+            countPhrase(areas, "area", "areas"),
+            countPhrase(makers, "maker", "makers"),
+            entityCountPhrase(entities),
+        ).joinToString(", ")
+        return "Device registry. $stats. Select a device to inspect its entities."
+    }
+
+    /** "1 area" / "5 areas" / "no areas", pluralised for speech. */
+    internal fun countPhrase(count: Int, singular: String, plural: String): String = when {
+        count <= 0 -> "no $plural"
+        count == 1 -> "1 $singular"
+        else -> "$count $plural"
+    }
+
+    /**
      * Spoken coverage phrase for the drill-in entities header, e.g. "3 of 5
      * reporting". Live state only arrives for entities HA is actively
      * reporting, so spelling out the ratio keeps the count honest about how

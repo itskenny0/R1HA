@@ -33,8 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -153,7 +156,10 @@ fun DevicesScreen(
                     ui.loading && ui.devices.isEmpty() -> Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .semantics { contentDescription = "Loading devices" },
+                            .semantics {
+                                liveRegion = LiveRegionMode.Polite
+                                contentDescription = "Loading devices"
+                            },
                     ) {
                         SkeletonList()
                     }
@@ -270,7 +276,20 @@ private fun RegistrySummaryPane(ui: DevicesViewModel.UiState) {
         ui.devices.mapNotNull { it.manufacturer?.takeIf { m -> m.isNotBlank() } }.toSet().size
     }
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // One spoken sentence instead of eight disjoint nodes (four bare
+            // numerals, then four bare labels). Nothing in the pane is
+            // interactive, so clearing the subtree loses nothing.
+            modifier = Modifier.clearAndSetSemantics {
+                contentDescription = DevicesA11y.registrySummaryDescription(
+                    devices = ui.devices.size,
+                    areas = ui.areas.size,
+                    makers = manufacturers,
+                    entities = ui.entities.size,
+                )
+            },
+        ) {
             Text(text = "DEVICE REGISTRY", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
             Spacer(Modifier.height(R1.space.l))
             Row(horizontalArrangement = Arrangement.spacedBy(R1.space.xl)) {
