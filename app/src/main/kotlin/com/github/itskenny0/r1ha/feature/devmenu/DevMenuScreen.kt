@@ -960,8 +960,19 @@ private fun LogShippingPanel(
                             )
                         } else {
                             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                com.github.itskenny0.r1ha.core.util.OkHttpLogPoster(client)
-                                    .probe(endpoint)
+                                // Probe the same expanded URL the shipper will
+                                // POST to, so TEST validates what actually runs.
+                                val expanded = com.github.itskenny0.r1ha.core.util
+                                    .normalizeLogEndpoint(endpoint)
+                                if (expanded == null) {
+                                    com.github.itskenny0.r1ha.core.util.LogPoster.ProbeResult(
+                                        ok = false,
+                                        detail = "endpoint does not parse as host or URL",
+                                    )
+                                } else {
+                                    com.github.itskenny0.r1ha.core.util.OkHttpLogPoster(client)
+                                        .probe(expanded)
+                                }
                             }
                         }
                         testResult = if (result.ok) "OK: ${result.detail}" else "FAILED: ${result.detail}"

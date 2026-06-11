@@ -112,6 +112,35 @@ private fun appendJsonString(sb: StringBuilder, s: String) {
 }
 
 /**
+ * Expand whatever the user typed into the endpoint field to a full shipping
+ * URL, so entering a bare host or IP is enough:
+ *  - no scheme -> http:// (the receiver lives on the LAN)
+ *  - no port -> :19192 (the receiver's default)
+ *  - no path (or "/") -> /log
+ * A full URL passes through untouched apart from the missing pieces, so an
+ * https reverse-proxied receiver on :443/somewhere still works. Returns null
+ * for blank input or anything that doesn't parse as a URL.
+ */
+fun normalizeLogEndpoint(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    val withScheme = if ("://" in trimmed) trimmed else "http://$trimmed"
+    val uri = runCatching { java.net.URI(withScheme) }.getOrNull() ?: return null
+    val host = uri.host ?: return null
+    val scheme = uri.scheme ?: "http"
+    val port = when {
+        uri.port != -1 -> uri.port
+        // An explicit scheme without a port keeps that scheme's default port
+        // (https reverse proxies); only the bare-host shorthand gets 19192.
+        "://" in trimmed -> -1
+        else -> 19192
+    }
+    val path = uri.path?.takeIf { it.isNotEmpty() && it != "/" } ?: "/log"
+    val portPart = if (port == -1) "" else ":$port"
+    return "$scheme://$host$portPart$path"
+}
+
+/**
  * Abstraction over the actual HTTP transport so tests can inject a fake and the
  * shipper stays free of OkHttp. [postBatch] POSTs the already-joined NDJSON body
  * to the configured endpoint; [probe] does the GET the settings TEST button
@@ -218,7 +247,9 @@ class LogShipper(
      *  send), which keeps the code path simple and lets a re-enable resume
      *  without re-launching. */
     fun configure(enabled: Boolean, endpoint: String) {
-        this.endpoint = endpoint.trim()
+        // The user may enter just a host/IP; the shipper always works with the
+        // expanded URL (scheme + default port + /log).
+        this.endpoint = normalizeLogEndpoint(endpoint).orEmpty()
         this.enabled = enabled && this.endpoint.isNotBlank()
         if (this.enabled && drainJob == null) start()
     }

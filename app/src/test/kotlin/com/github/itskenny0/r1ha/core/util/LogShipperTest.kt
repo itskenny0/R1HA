@@ -182,4 +182,23 @@ class LogShipperTest {
         assertThat(body).contains("\"level\":\"warn\"")
         assertThat(body).contains("dropped 2 entries")
     }
+
+    @Test fun `normalizeLogEndpoint expands a bare host with scheme port and path`() {
+        assertThat(normalizeLogEndpoint("192.168.1.10")).isEqualTo("http://192.168.1.10:19192/log")
+        assertThat(normalizeLogEndpoint(" myhost.lan ")).isEqualTo("http://myhost.lan:19192/log")
+    }
+
+    @Test fun `normalizeLogEndpoint keeps explicit pieces`() {
+        assertThat(normalizeLogEndpoint("http://192.168.1.10:19192/log"))
+            .isEqualTo("http://192.168.1.10:19192/log")
+        assertThat(normalizeLogEndpoint("https://logs.example.com/r1ha"))
+            .isEqualTo("https://logs.example.com/r1ha")
+        assertThat(normalizeLogEndpoint("http://host:8080")).isEqualTo("http://host:8080/log")
+    }
+
+    @Test fun `normalizeLogEndpoint rejects blank and unparseable input`() {
+        assertThat(normalizeLogEndpoint("")).isNull()
+        assertThat(normalizeLogEndpoint("   ")).isNull()
+        assertThat(normalizeLogEndpoint("http://")).isNull()
+    }
 }
