@@ -37,6 +37,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.loadWhenSized
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.flow.first
@@ -80,7 +81,11 @@ fun PanelViewerScreen(
     // token (plus its real expiry) and let the frontend's own refresh try.
     val tokenInfo by produceState<TokenInfo?>(null, tokens, refresher) {
         value = runCatching {
-            refresher.ensureFresh()
+            // Wide skew: seeding a token with only a minute or two left makes
+            // the page swap tokens in the middle of its (fragile) bootstrap.
+            // Shipped readbacks showed expMin:2 envelopes; start the page with
+            // at least 10 minutes instead.
+            refresher.ensureFresh(skewMillis = 10 * 60_000L)
             val t = tokens.load() ?: return@runCatching TokenInfo(null, null, 0L)
             TokenInfo(
                 t.accessToken,
@@ -385,7 +390,18 @@ private fun PanelWebView(
             // rendering the header almost always failed inside its own JS, and
             // without this the shipped logs end at a successful token inject.
             webChromeClient = com.github.itskenny0.r1ha.core.util.ConsoleShippingChromeClient("PanelViewer.console")
-            loadUrl(panelUrl)
+            // Do NOT load here: the factory runs before the view is attached
+            // and measured, so the page would boot at 0x0 and get resized to
+            // the real size mid-bootstrap. HA's frontend recomputes `narrow`
+            // from the viewport on resize, and ha-menu-button's willUpdate
+            // dereferences this.hass.kioskMode on a narrow flip that can land
+            // before hass is first assigned — the uncaught TypeError wedges
+            // the panel element and its content stays invisible under a drawn
+            // header (root cause of the blank ESPHome/HACS panels, shipped as
+            // 'reading kioskMode of undefined' on every cold open). Loading
+            // only once the view has real dimensions removes the resize from
+            // the bootstrap window entirely.
+            loadWhenSized(panelUrl)
         }
     }
 

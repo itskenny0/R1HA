@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -111,9 +112,15 @@ class HaWebSocketClientTest {
         server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
         server.start()
         val url = server.url("/api/websocket").toString().replace("http", "ws")
+        // Unconfined (eager) dispatch: with StandardTestDispatcher the connect
+        // coroutine sits queued until the single test thread services the
+        // scheduler, and on a loaded CI runner that dispatch starved past even
+        // a 30s Turbine timeout while the test waited in real time. Eager
+        // start runs connect() to its first suspension at the call site; the
+        // watchdog delay itself still runs on the virtual clock.
         val client = HaWebSocketClient(
             http = http(),
-            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
             handshakeWatchdogMillis = 5_000,
         )
 
@@ -142,9 +149,10 @@ class HaWebSocketClientTest {
         server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
         server.start()
         val url = server.url("/api/websocket").toString().replace("http", "ws")
+        // Unconfined dispatch for the same reason as the force-fail test above.
         val client = HaWebSocketClient(
             http = http(),
-            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
             handshakeWatchdogMillis = 5_000,
         )
 

@@ -38,6 +38,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.loadWhenSized
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.flow.first
@@ -84,7 +85,9 @@ fun LovelaceScreen(
     // lifetime (typically 30 min) without bouncing to the login mask.
     val tokenInfo by produceState<Triple<String?, String?, Long>?>(null, tokens, refresher) {
         value = runCatching {
-            refresher.ensureFresh()
+            // Wide skew so the page never has to swap tokens mid-bootstrap;
+            // see PanelViewerScreen.
+            refresher.ensureFresh(skewMillis = 10 * 60_000L)
             val t = tokens.load() ?: return@runCatching Triple(null, null, 0L)
             Triple(
                 t.accessToken,
@@ -385,10 +388,12 @@ private fun LovelaceWebView(
             }
             // Ship in-page console warnings/errors; see PanelViewerScreen.
             webChromeClient = com.github.itskenny0.r1ha.core.util.ConsoleShippingChromeClient("Lovelace.console")
-            // Load the dashboard root. HA's frontend redirects to the
-            // default Lovelace view at /lovelace; we just point at /
-            // and let HA's own routing decide.
-            loadUrl("${serverUrl.trimEnd('/')}/")
+            // Load the dashboard root (HA's own routing redirects to the
+            // default view) — but only once the view has real dimensions:
+            // booting the page at 0x0 and resizing mid-bootstrap trips an
+            // unguarded this.hass dereference in HA's narrow handling and
+            // wedges the panel blank. See loadWhenSized / PanelViewerScreen.
+            loadWhenSized("${serverUrl.trimEnd('/')}/")
         }
     }
 

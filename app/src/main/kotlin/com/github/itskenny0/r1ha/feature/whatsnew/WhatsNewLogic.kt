@@ -49,6 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Pinned panels (ESPHome, HACS, Terminal...) actually draw now: a resize during page boot wedged them blank.",
     "Widgets repaint the moment their entity changes while the app runs, plus once at every app start.",
     "Fixed a crash entering a dashboard's edit mode when a view holds the same card twice.",
     "Editing or deleting a duplicated card now targets the copy you tapped, not the first match.",
