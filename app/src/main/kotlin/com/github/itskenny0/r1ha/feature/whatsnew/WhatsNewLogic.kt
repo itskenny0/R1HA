@@ -49,11 +49,12 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Lights get a live colour wheel: drag to recolour in real time, from the HUE button or the detail sheet.",
-    "Pick a font for the whole UI in Settings: browse every system font in a dropdown, previewed live.",
-    "The accent colour in theme settings now tints the whole app: buttons, chips, and chrome, not just cards.",
-    "Weather grows up on phones: a full-page view with a stat grid, and forecasts open on DAILY.",
-    "Colourful Cards: a per-card colour override now recolours the card's gradient itself.",
-    "Recent Activity opens on a fast 1-hour window; the wider ranges stay one tap away.",
-    "Smarter onboarding errors, ADD ALL in the favourites picker, forecasts above attributes in more-info.",
+    "Full Lovelace parity: every dashboard card, row, badge, and feature from the HA frontend now renders natively.",
+    "Auto dashboards work: strategy views (the default HA dashboard, Areas, Home) expand right on the device.",
+    "Energy arrives in dashboards: usage graphs, distribution circles, gauges, and a shared period picker.",
+    "Hold and double-tap fire everywhere, with HA's confirmation dialogs and full action targets.",
+    "Live camera cards, picture-elements floorplans, Jinja markdown, calendars, and todo editing.",
+    "More-info grows history and logbook embeds, favourites editing, and every remaining domain control.",
+    "Pin any favourite to your home screen as a live widget, and pin HA panels like HACS to the sidebar.",
+    "HA themes tint your dashboards; per-card and per-view theme options are honoured.",
 )
