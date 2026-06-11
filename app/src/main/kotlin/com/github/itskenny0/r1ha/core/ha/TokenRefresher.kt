@@ -25,11 +25,19 @@ import okhttp3.Request
  * which on the user's side looks like the app silently lost its login. With this, the repository
  * refreshes proactively before reconnect and reactively after an AuthLost transition.
  */
+/**
+ * The OAuth client id this app registered with HA (the GitHub Pages URL; see the
+ * onboarding flow). HA binds refresh tokens to the client id that issued them, so
+ * EVERY place that refreshes a token (this class, and the hassTokens envelope the
+ * WebView screens inject for HA's own frontend) must present this exact value.
+ */
+const val HA_OAUTH_CLIENT_ID = "https://itskenny0.github.io/R1HA/"
+
 class TokenRefresher(
     private val http: OkHttpClient,
     private val settings: SettingsRepository,
     private val tokens: TokenStore,
-    private val clientId: String = "https://itskenny0.github.io/R1HA/",
+    private val clientId: String = HA_OAUTH_CLIENT_ID,
 ) {
     @Serializable
     private data class RefreshResponse(

@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.github.itskenny0.r1ha.core.ha.HA_OAUTH_CLIENT_ID
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -250,6 +251,15 @@ private fun LovelaceWebView(
                         // refreshed tokens on every subsequent
                         // navigation, defeating the refresh flow.
                         val expiresAt = System.currentTimeMillis() + 30 * 60 * 1000
+                        // hassUrl is computed IN PAGE from location: the frontend
+                        // accepts stored tokens only when data.hassUrl equals
+                        // `${protocol}//${host}` EXACTLY (hawsjs getAuth), and
+                        // location.host drops default ports / lowercases, so any
+                        // formatting difference in the configured server URL would
+                        // make the tokens silently ignored forever. clientId must
+                        // be the app's real OAuth client id: HA binds refresh
+                        // tokens to the client id that issued them, so the
+                        // frontend's own 30-minute refresh fails with null here.
                         val script = "if (!localStorage.getItem('hassTokens')) { " +
                             "localStorage.setItem('hassTokens', " +
                             "JSON.stringify({" +
@@ -257,11 +267,13 @@ private fun LovelaceWebView(
                             "token_type: 'Bearer'," +
                             "expires_in: 1800," +
                             "refresh_token: ${jsString(refreshToken ?: "")}," +
-                            "hassUrl: ${jsString(serverUrl.trimEnd('/'))}," +
-                            "clientId: null," +
+                            "hassUrl: location.protocol + '//' + location.host," +
+                            "clientId: ${jsString(HA_OAUTH_CLIENT_ID)}," +
                             "expires: $expiresAt" +
-                            "})); }"
-                        view.evaluateJavascript(script) {
+                            "})); } " +
+                            "JSON.stringify({present: !!localStorage.getItem('hassTokens'), origin: location.protocol + '//' + location.host})"
+                        view.evaluateJavascript(script) { readback ->
+                            R1Log.i("LovelaceScreen", "token inject: $readback url=$url")
                             if (!authBounceDone && url.contains("/auth/authorize")) {
                                 authBounceDone = true
                                 R1Log.i("LovelaceScreen", "auth race lost; retrying with seeded tokens")
