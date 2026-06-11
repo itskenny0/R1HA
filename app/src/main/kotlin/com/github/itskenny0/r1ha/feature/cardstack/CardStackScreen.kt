@@ -285,7 +285,11 @@ fun CardStackScreen(
     // at screen scope (not per PageDeck) because observeRaw's entity-set
     // registration is last-writer-wins: with beyondViewportPageCount = 1 two
     // adjacent pages would otherwise clobber each other's subscription.
-    val lovelaceEntityIds = androidx.compose.runtime.remember(state.deckByPage) {
+    // Keyed on state.pages (changes only on a settings write) rather than the
+    // deckByPage map identity (rebuilt per state tick): the card set, and so
+    // the entity union, can only change when the stored pages do. The deck
+    // snapshot read inside is emitted atomically with pages by the VM.
+    val lovelaceEntityIds = androidx.compose.runtime.remember(state.pages) {
         val sink = LinkedHashSet<String>()
         state.deckByPage.values.forEach { items ->
             items.forEach { item ->
@@ -1715,45 +1719,6 @@ fun CardStackScreen(
             )
         }
 
-        // ── Structured card editor ──────────────────────────────────────────────────
-        // The type-aware mini editor (entity picker / url + aspect / markdown
-        // body, with EDIT JSON as the advanced escape hatch). Saves write back
-        // through the VM so the deck re-renders on the settings echo.
-        val editingPinnedTarget = editingPinned.value
-        if (editingPinnedTarget != null) {
-            val (editPageId, editCardId, editRaw) = editingPinnedTarget
-            CardMiniEditor(
-                initialRaw = editRaw,
-                haRepository = haRepository,
-                onSave = { newRaw ->
-                    vm.updatePinnedCard(editPageId, editCardId, newRaw)
-                    editingPinned.value = null
-                },
-                onDismiss = { editingPinned.value = null },
-            )
-        }
-
-        // ── Add-cards sheet ─────────────────────────────────────────────────────────
-        // Three paths: pick cards from a server dashboard (primary), import a
-        // whole dashboard as pages, or author a new card via the type grid +
-        // structured editor.
-        val addTargetPageId = addCardsForPageId.value
-        if (addTargetPageId != null) {
-            AddLovelaceCardSheet(
-                haRepository = haRepository,
-                pageName = appSettings.pages.firstOrNull { it.id == addTargetPageId }?.name ?: "",
-                onAddCards = { raws ->
-                    vm.addPinnedCards(addTargetPageId, raws)
-                    addCardsForPageId.value = null
-                },
-                onImportPages = { specs ->
-                    vm.importViewsAsPages(specs)
-                    addCardsForPageId.value = null
-                },
-                onDismiss = { addCardsForPageId.value = null },
-            )
-        }
-
         // ── Ultra-detail more-info sheet ────────────────────────────────────────────
         // Opened from the card context menu's MORE INFO action (which only
         // offers itself when the effective per-entity moreInfoEnabled is true).
@@ -1841,6 +1806,48 @@ fun CardStackScreen(
                     onDismiss = { pinnedCardsForId.value = null },
                 )
             }
+        }
+
+        // ── Structured card editor ──────────────────────────────────────────────────
+        // The type-aware mini editor (entity picker / url + aspect / markdown
+        // body, with EDIT JSON as the advanced escape hatch). Saves write back
+        // through the VM so the deck re-renders on the settings echo. Composed
+        // AFTER the manager / tab dialog so it draws above the sheets that can
+        // open it (the Box stack paints bottom-up).
+        val editingPinnedTarget = editingPinned.value
+        if (editingPinnedTarget != null) {
+            val (editPageId, editCardId, editRaw) = editingPinnedTarget
+            CardMiniEditor(
+                initialRaw = editRaw,
+                haRepository = haRepository,
+                onSave = { newRaw ->
+                    vm.updatePinnedCard(editPageId, editCardId, newRaw)
+                    editingPinned.value = null
+                },
+                onDismiss = { editingPinned.value = null },
+            )
+        }
+
+        // ── Add-cards sheet ─────────────────────────────────────────────────────────
+        // Three paths: pick cards from a server dashboard (primary), import a
+        // whole dashboard as pages, or author a new card via the type grid +
+        // structured editor. Composed after the manager for the same z-order
+        // reason as the editor above.
+        val addTargetPageId = addCardsForPageId.value
+        if (addTargetPageId != null) {
+            AddLovelaceCardSheet(
+                haRepository = haRepository,
+                pageName = appSettings.pages.firstOrNull { it.id == addTargetPageId }?.name ?: "",
+                onAddCards = { raws ->
+                    vm.addPinnedCards(addTargetPageId, raws)
+                    addCardsForPageId.value = null
+                },
+                onImportPages = { specs ->
+                    vm.importViewsAsPages(specs)
+                    addCardsForPageId.value = null
+                },
+                onDismiss = { addCardsForPageId.value = null },
+            )
         }
 
         // Quick-actions sheet — currently only 'all off' on the active page.
