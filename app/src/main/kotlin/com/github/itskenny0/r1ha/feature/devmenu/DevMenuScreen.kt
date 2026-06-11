@@ -964,7 +964,7 @@ private fun LogShippingPanel(
                                     .probe(endpoint)
                             }
                         }
-                        testResult = if (result.ok) "OK — ${result.detail}" else "FAILED — ${result.detail}"
+                        testResult = if (result.ok) "OK: ${result.detail}" else "FAILED: ${result.detail}"
                         testing = false
                     }
                 }
