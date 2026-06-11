@@ -17,6 +17,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HaWebSocketClientTest {
@@ -50,7 +51,7 @@ class HaWebSocketClientTest {
             scope = TestScope(StandardTestDispatcher(testScheduler)),
             handshakeWatchdogMillis = 0,
         )
-        client.state.test {
+        client.state.test(timeout = 30.seconds) {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
             awaitState(ConnectionState.Authenticating)
@@ -116,7 +117,7 @@ class HaWebSocketClientTest {
             handshakeWatchdogMillis = 5_000,
         )
 
-        client.state.test {
+        client.state.test(timeout = 30.seconds) {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
             // Socket upgrades but the server stays mute (no auth_required).
@@ -147,7 +148,7 @@ class HaWebSocketClientTest {
             handshakeWatchdogMillis = 5_000,
         )
 
-        client.state.test {
+        client.state.test(timeout = 30.seconds) {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
             recorder.awaitOpen()
@@ -175,6 +176,12 @@ class HaWebSocketClientTest {
  * awaitItem() is racy on slow runners (it failed on CI while passing locally).
  * Turbine's own timeout still bounds the wait, so a wrong terminal state fails
  * loudly rather than hanging.
+ *
+ * That timeout is wall-clock and defaults to 3 seconds, which a loaded CI
+ * runner can blow through while OkHttp's real socket threads deliver onOpen —
+ * the watchdog tests failed that way on CI while passing locally. Each test
+ * block passes an explicit 30s timeout: generous because it only ever bites on
+ * a genuine hang, while the virtual-clock determinism is untouched.
  */
 private suspend fun app.cash.turbine.TurbineTestContext<ConnectionState>.awaitState(
     expected: ConnectionState,
