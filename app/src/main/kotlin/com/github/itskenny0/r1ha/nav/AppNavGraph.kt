@@ -912,6 +912,17 @@ private fun CardStackDestination(
     wheelInput: com.github.itskenny0.r1ha.core.input.WheelInput,
     focusEntity: String?,
 ) {
+    // Debounce stamp for the favourites-picker push. Holds the elapsed-time of
+    // the last accepted push so a rapid double-fire (double-tap, or a tap that
+    // lands while a pager swipe is still settling) collapses to one open.
+    // Survives recompositions; resets only when the destination leaves the
+    // back stack. Trusting the tap over the route lets the open work even when
+    // currentDestination is null / mid-transition / a restored stack, which is
+    // what the earlier route-allowlist dropped (shipped logs: consecutive
+    // silent skips until a restart).
+    val lastFavoritesOpenAt = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(0L)
+    }
     CardStackScreen(
         haRepository = haRepository,
         settings = settings,
@@ -921,19 +932,14 @@ private fun CardStackDestination(
         // double-fire of the swipe gesture can't stack two copies of the same screen
         // on the back stack (which would otherwise need two back-presses to escape).
         onOpenFavoritesPicker = {
-    // Guard against duplicate / mid-transition navigation. Rapid taps on
-    // the hamburger (or a tap that lands while a pager swipe is still
-    // animating) could otherwise fire the navigate twice; launchSingleTop
-    // alone has historically not been enough to prevent a second nav from
-    // racing through while the back-stack entry for the first is still
-    // being created. Restricting to the deck routes makes it a no-op unless
-    // we're actually still on the deck — and that means BOTH of them: a
-    // widget tap enters through CARD_STACK_FOCUS, and accepting only the
-    // plain route made every add-favourites tap a silent no-op for the rest
-    // of that process (shipped logs: 15 consecutive skips until a restart).
-    if (navController.currentDestination?.route == Routes.CARD_STACK ||
-        navController.currentDestination?.route == Routes.CARD_STACK_FOCUS
+    val now = android.os.SystemClock.elapsedRealtime()
+    if (shouldOpenFavoritesPicker(
+            currentRoute = navController.currentDestination?.route,
+            lastOpenedAtMillis = lastFavoritesOpenAt.value,
+            nowMillis = now,
+        )
     ) {
+        lastFavoritesOpenAt.value = now
         com.github.itskenny0.r1ha.core.util.R1Log.i(
             "Nav.openFavoritesPicker",
             "navigating to FAVORITES_PICKER",
