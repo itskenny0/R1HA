@@ -160,6 +160,34 @@ class EnergyMathTest {
         assertThat(carbonConsumedGauge(EnergySumData(total = EnergyRouteTotals(fromGrid = 10.0)), null)).isNull()
     }
 
+    @Test fun `fossil consumption sums the period map`() {
+        // HA's highCarbonEnergy = Object.values(map).reduce((s,a)=>s+a, 0).
+        assertThat(sumFossilEnergyConsumption(mapOf("2026-06-01" to 3.0, "2026-06-02" to 4.5)))
+            .isWithin(1e-9).of(7.5)
+        assertThat(sumFossilEnergyConsumption(emptyMap())).isEqualTo(0.0)
+        assertThat(sumFossilEnergyConsumption(null)).isEqualTo(0.0)
+    }
+
+    @Test fun `carbon gauge from a fixture fossil map`() {
+        // fixture-only verified wire shape: 4 kWh fossil out of 13 consumed.
+        val data = EnergySumData(total = EnergyRouteTotals(fromGrid = 10.0, solar = 4.0, toGrid = 1.0))
+        val fossil = mapOf("a" to 1.5, "b" to 2.5)
+        val value = carbonConsumedGauge(data, sumFossilEnergyConsumption(fossil))!!
+        assertThat(value).isWithin(1e-6).of((1.0 - 4.0 / 13.0) * 100.0)
+    }
+
+    @Test fun `grid consumption stat ids pick grid from-meters`() {
+        val prefs = EnergyPreferences(
+            sources = listOf(
+                grid(from = "sensor.grid_in", to = "sensor.grid_out"),
+                solar("sensor.solar"),
+                grid(from = "sensor.grid_in2"),
+            ),
+        )
+        assertThat(gridConsumptionStatIds(prefs))
+            .containsExactly("sensor.grid_in", "sensor.grid_in2").inOrder()
+    }
+
     // ---- SI normalisation ----
 
     @Test fun `scale energy down to wh`() {

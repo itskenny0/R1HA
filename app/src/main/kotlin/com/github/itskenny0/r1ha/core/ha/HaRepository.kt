@@ -799,6 +799,25 @@ interface HaRepository {
     ): Result<Map<String, List<StatisticsBucket>>>
 
     /**
+     * `energy/fossil_energy_consumption`: the fossil-derived portion of the given
+     * grid-import [energyStatisticIds] over [start]..[end], scaled by the CO2
+     * signal statistic [co2StatisticId]. Returns a period-keyed kWh map (HA's
+     * `FossilEnergyConsumption = Record<string, number>`); the carbon-consumed
+     * gauge sums it for `highCarbonEnergy`. Parameters mirror src/data/energy.ts
+     * `getFossilEnergyConsumption`.
+     *
+     * UNVERIFIED OFFLINE: the wire shape is fixture-only verified; confirm against
+     * a live HA energy setup with a CO2-signal source.
+     */
+    suspend fun getFossilEnergyConsumption(
+        energyStatisticIds: List<String>,
+        co2StatisticId: String,
+        start: java.time.Instant,
+        end: java.time.Instant?,
+        period: String,
+    ): Result<Map<String, Double>>
+
+    /**
      * Fetch the raw `lovelace/config` blob for the dashboard at [urlPath].
      * Pass null to load HA's default dashboard. Returns the raw JsonObject
      * so the parser can stay in the lovelace module without R1HA's

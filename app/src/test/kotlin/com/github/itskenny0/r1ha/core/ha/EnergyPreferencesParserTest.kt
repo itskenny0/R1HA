@@ -84,4 +84,18 @@ class EnergyPreferencesParserTest {
         assertThat(parseEnergyInfo(null).costSensors).isEmpty()
         assertThat(info("""{}""").costSensors).isEmpty()
     }
+
+    @Test fun `parses fossil energy consumption period map`() {
+        // FIXTURE-ONLY: HA's FossilEnergyConsumption = Record<string, number>.
+        val map = parseFossilEnergyConsumption(
+            Json.parseToJsonElement("""{"2026-06-01T00:00:00+00:00": 12.5, "2026-06-02T00:00:00+00:00": 8.0}"""),
+        )
+        assertThat(map).containsEntry("2026-06-01T00:00:00+00:00", 12.5)
+        assertThat(map).hasSize(2)
+    }
+
+    @Test fun `fossil consumption empty for non-object`() {
+        assertThat(parseFossilEnergyConsumption(null)).isEmpty()
+        assertThat(parseFossilEnergyConsumption(Json.parseToJsonElement("""[]"""))).isEmpty()
+    }
 }

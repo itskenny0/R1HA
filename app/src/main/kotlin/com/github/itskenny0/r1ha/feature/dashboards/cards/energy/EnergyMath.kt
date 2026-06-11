@@ -357,6 +357,26 @@ fun gridNeutralityGauge(data: EnergySumData): Double? {
  * [highCarbonEnergy] is the fossil-derived grid energy (from
  * `energy/fossil_energy_consumption`); when null the gauge is unavailable.
  */
+/**
+ * Sum the values of an `energy/fossil_energy_consumption` reply
+ * (`Record<period -> kWh>`) into the total high-carbon (fossil) grid energy, the
+ * `highCarbonEnergy` HA's carbon-consumed gauge derives by
+ * `Object.values(...).reduce((s,a)=>s+a, 0)`. An empty/absent map sums to 0.0.
+ */
+fun sumFossilEnergyConsumption(consumption: Map<String, Double>?): Double =
+    consumption?.values?.sum() ?: 0.0
+
+/**
+ * Pick the grid-import statistic ids the fossil-consumption call needs (HA's
+ * `consumptionStatIDs`): every grid source's `stat_energy_from`. These are the
+ * import meters whose fossil fraction the CO2 signal scales.
+ */
+fun gridConsumptionStatIds(prefs: EnergyPreferences): List<String> =
+    prefs.sources
+        .filter { it.type == "grid" }
+        .mapNotNull { it.statEnergyFrom?.takeIf { id -> id.isNotBlank() } }
+        .distinct()
+
 fun carbonConsumedGauge(data: EnergySumData, highCarbonEnergy: Double?): Double? {
     if (highCarbonEnergy == null) return null
     val totalGridConsumption = data.total.fromGrid

@@ -51,6 +51,10 @@ data class EnergyCollectionData(
     val stats: Map<String, List<StatisticsBucket>> = emptyMap(),
     /** Recorder buckets for the comparison window (compare mode), keyed by id. */
     val statsCompare: Map<String, List<StatisticsBucket>> = emptyMap(),
+    /** `energy/fossil_energy_consumption` reply (period-start -> fossil kWh) when
+     *  a CO2 signal source is configured; null when there is none (the
+     *  carbon-consumed gauge then stays on its needs-source note). */
+    val fossilEnergyConsumption: Map<String, Double>? = null,
     val loading: Boolean = true,
     /** True once a fetch has resolved (success or empty). */
     val loaded: Boolean = false,
@@ -193,15 +197,46 @@ private suspend fun fetchInto(state: EnergyCollectionState, repo: HaRepository) 
     } else {
         emptyMap()
     }
+    // Fossil-energy-consumption for the carbon-consumed gauge. Resolve the CO2
+    // signal statistic (HA scans for a co2signal-platform % sensor); when none
+    // exists the gauge keeps its needs-source note (fossilEnergyConsumption=null).
+    val co2StatId = resolveCo2SignalStatId(repo)
+    val gridIds = gridConsumptionStatIds(prefs)
+    val fossil = if (co2StatId != null && gridIds.isNotEmpty()) {
+        repo.getFossilEnergyConsumption(gridIds, co2StatId, period.start, period.end, bucket)
+            .getOrNull()
+    } else {
+        null
+    }
     state.publish(
         cur.copy(
             prefs = prefs,
             info = info,
             stats = stats,
             statsCompare = compareStats,
+            fossilEnergyConsumption = fossil,
             loading = false,
             loaded = true,
             error = null,
         ),
     )
+}
+
+/**
+ * Resolve the CO2-signal statistic id HA's fossil-consumption call needs: the
+ * `co2signal`-platform entity reporting a `%` value (the grid fossil-fuel
+ * percentage). Returns null when no such entity exists, so the carbon-consumed
+ * gauge stays unavailable rather than guessing.
+ */
+private suspend fun resolveCo2SignalStatId(repo: HaRepository): String? {
+    val registry = repo.listEntityRegistry().getOrNull() ?: return null
+    val candidates = registry
+        .filter { it.platform == "co2signal" }
+        .map { it.entityId }
+    if (candidates.isEmpty()) return null
+    // Of the co2signal entities, pick the one whose live unit is "%".
+    val states = repo.listAllEntities().getOrNull().orEmpty().associateBy { it.id.value }
+    return candidates.firstOrNull { id ->
+        states[id]?.unit?.trim() == "%"
+    } ?: candidates.first()
 }

@@ -98,9 +98,14 @@ private fun EnergyBody(kind: EnergyCardKind, data: EnergyCollectionData) {
             label = "Grid neutrality", min = -100.0, max = 100.0, suffix = "%",
         )
         EnergyCardKind.CARBON_CONSUMED_GAUGE -> EnergyGauge(
-            // Fossil consumption needs energy/fossil_energy_consumption, which the
-            // R1 collection does not yet fetch; gauge shows unavailable until then.
-            value = carbonConsumedGauge(data.summed, highCarbonEnergy = null),
+            // High-carbon (fossil) grid energy from energy/fossil_energy_consumption,
+            // summed per HA's carbon-consumed gauge. Null when no CO2 signal source
+            // is configured, which keeps the needs-source note.
+            value = carbonConsumedGauge(
+                data.summed,
+                highCarbonEnergy = data.fossilEnergyConsumption
+                    ?.let { sumFossilEnergyConsumption(it) },
+            ),
             label = "Low-carbon", min = 0.0, max = 100.0, suffix = "%",
             unavailableNote = "Needs a CO2 signal source",
         )

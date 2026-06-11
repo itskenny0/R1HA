@@ -115,6 +115,20 @@ fun parseEnergyInfo(payload: JsonElement?): EnergyInfo {
     return EnergyInfo(costSensors = costs)
 }
 
+/**
+ * Pure parser for the `energy/fossil_energy_consumption` reply: HA's
+ * `FossilEnergyConsumption = Record<string, number>` (a map of period-start
+ * ISO string to fossil kWh). Non-numeric / non-object payloads yield an empty
+ * map. Each value is read leniently (numeric string or number).
+ */
+fun parseFossilEnergyConsumption(payload: JsonElement?): Map<String, Double> {
+    val obj = payload as? JsonObject ?: return emptyMap()
+    return obj.entries.mapNotNull { (k, v) ->
+        val d = (v as? JsonPrimitive)?.content?.toDoubleOrNull() ?: return@mapNotNull null
+        k to d
+    }.toMap()
+}
+
 private fun parseDeviceList(el: JsonElement?): List<EnergyDevicePref> =
     (el as? JsonArray).orEmptyArray().mapNotNull { item ->
         val row = item as? JsonObject ?: return@mapNotNull null

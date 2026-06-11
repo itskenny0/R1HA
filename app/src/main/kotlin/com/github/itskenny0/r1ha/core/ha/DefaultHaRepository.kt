@@ -4334,6 +4334,35 @@ class DefaultHaRepository(
     }
 
 
+    override suspend fun getFossilEnergyConsumption(
+        energyStatisticIds: List<String>,
+        co2StatisticId: String,
+        start: java.time.Instant,
+        end: java.time.Instant?,
+        period: String,
+    ): Result<Map<String, Double>> = withContext(Dispatchers.IO) {
+        if (energyStatisticIds.isEmpty() || co2StatisticId.isBlank()) {
+            return@withContext Result.success(emptyMap())
+        }
+        val extras = kotlinx.serialization.json.buildJsonObject {
+            put("start_time", JsonPrimitive(start.toString()))
+            end?.let { put("end_time", JsonPrimitive(it.toString())) }
+            put(
+                "energy_statistic_ids",
+                kotlinx.serialization.json.buildJsonArray {
+                    energyStatisticIds.forEach { add(JsonPrimitive(it)) }
+                },
+            )
+            put("co2_statistic_id", JsonPrimitive(co2StatisticId))
+            put("period", JsonPrimitive(period))
+        }
+        callWsExpectingPayload("energy/fossil_energy_consumption", extras).mapCatching { payload ->
+            parseFossilEnergyConsumption(payload)
+        }.onFailure { t ->
+            R1Log.w("HaRepo.energy", "fossil_energy_consumption failed: ${t.message}")
+        }
+    }
+
     /**
      * Fetch Energy dashboard user prefs via the `energy/get_prefs` WS command.
      * Parses `device_consumption[].stat_consumption` (entity/stat id) and
