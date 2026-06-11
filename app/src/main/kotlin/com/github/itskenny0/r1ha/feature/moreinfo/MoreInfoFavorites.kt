@@ -131,6 +131,65 @@ object MoreInfoFavorites {
     fun removeColorAt(colors: List<FavoriteColor>, index: Int): List<FavoriteColor> =
         if (index in colors.indices) colors.filterIndexed { i, _ -> i != index } else colors
 
+    /** Replace the swatch at [index] in place (position preserved); out-of-range
+     *  indices return the list unchanged so a stale tap can't corrupt it. */
+    fun replaceColorAt(colors: List<FavoriteColor>, index: Int, newColor: FavoriteColor): List<FavoriteColor> =
+        if (index in colors.indices) {
+            colors.mapIndexed { i, c -> if (i == index) newColor else c }
+        } else {
+            colors
+        }
+
+    /** Append a user-picked swatch to the end of the favourites list. */
+    fun appendColor(colors: List<FavoriteColor>, color: FavoriteColor): List<FavoriteColor> =
+        colors + color
+
+    /**
+     * Hue (0-360) + saturation (0-1) at full value to an opaque ARGB int: the
+     * payload shape the rgb_color favourite stores. Hand-rolled HSV-to-RGB so the
+     * conversion stays a pure JVM function the tests can pin down exactly.
+     */
+    fun hsToArgb(hue: Float, saturation: Float): Int {
+        val h = ((hue % 360f) + 360f) % 360f
+        val s = saturation.coerceIn(0f, 1f)
+        val c = s
+        val x = c * (1f - kotlin.math.abs((h / 60f) % 2f - 1f))
+        val m = 1f - c
+        val (r1, g1, b1) = when {
+            h < 60f -> Triple(c, x, 0f)
+            h < 120f -> Triple(x, c, 0f)
+            h < 180f -> Triple(0f, c, x)
+            h < 240f -> Triple(0f, x, c)
+            h < 300f -> Triple(x, 0f, c)
+            else -> Triple(c, 0f, x)
+        }
+        val r = ((r1 + m) * 255f).toInt().coerceIn(0, 255)
+        val g = ((g1 + m) * 255f).toInt().coerceIn(0, 255)
+        val b = ((b1 + m) * 255f).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
+    /**
+     * ARGB back to (hue 0-360, saturation 0-1), ignoring value: seeds the picker
+     * wheel from a stored rgb favourite. Greys (r==g==b) report hue 0.
+     */
+    fun argbToHs(argb: Int): Pair<Float, Float> {
+        val r = ((argb shr 16) and 0xFF) / 255f
+        val g = ((argb shr 8) and 0xFF) / 255f
+        val b = (argb and 0xFF) / 255f
+        val max = maxOf(r, g, b)
+        val min = minOf(r, g, b)
+        val delta = max - min
+        val hue = when {
+            delta == 0f -> 0f
+            max == r -> 60f * (((g - b) / delta) % 6f)
+            max == g -> 60f * (((b - r) / delta) + 2f)
+            else -> 60f * (((r - g) / delta) + 4f)
+        }.let { ((it % 360f) + 360f) % 360f }
+        val sat = if (max == 0f) 0f else delta / max
+        return hue to sat
+    }
+
     /**
      * Whether a copy of one entity's favourites can target [candidateDomain]. HA
      * only lets you copy favourites between entities of the SAME domain (the

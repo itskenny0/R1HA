@@ -135,4 +135,44 @@ class MoreInfoFavoritesTest {
         val report = MoreInfoFavorites.summariseCopy(listOf("light.a" to true))
         assertThat(report.allOk).isTrue()
     }
+
+    @Test fun `replaceColorAt swaps in place and preserves order`() {
+        val colors = listOf(FavoriteColor.Rgb(0xFFFF0000.toInt()), FavoriteColor.ColorTemp(2700))
+        val replaced = MoreInfoFavorites.replaceColorAt(colors, 0, FavoriteColor.Rgb(0xFF00FF00.toInt()))
+        assertThat(replaced).containsExactly(FavoriteColor.Rgb(0xFF00FF00.toInt()), colors[1]).inOrder()
+    }
+
+    @Test fun `replaceColorAt out of range returns the list unchanged`() {
+        val colors = listOf(FavoriteColor.ColorTemp(2700))
+        assertThat(MoreInfoFavorites.replaceColorAt(colors, 3, FavoriteColor.ColorTemp(4000))).isEqualTo(colors)
+        assertThat(MoreInfoFavorites.replaceColorAt(colors, -1, FavoriteColor.ColorTemp(4000))).isEqualTo(colors)
+    }
+
+    @Test fun `appendColor adds at the end`() {
+        val colors = listOf(FavoriteColor.ColorTemp(2700))
+        val appended = MoreInfoFavorites.appendColor(colors, FavoriteColor.Rgb(0xFF0000FF.toInt()))
+        assertThat(appended).containsExactly(colors[0], FavoriteColor.Rgb(0xFF0000FF.toInt())).inOrder()
+    }
+
+    @Test fun `hsToArgb hits the primary hues at full saturation`() {
+        assertThat(MoreInfoFavorites.hsToArgb(0f, 1f)).isEqualTo(0xFFFF0000.toInt())
+        assertThat(MoreInfoFavorites.hsToArgb(120f, 1f)).isEqualTo(0xFF00FF00.toInt())
+        assertThat(MoreInfoFavorites.hsToArgb(240f, 1f)).isEqualTo(0xFF0000FF.toInt())
+    }
+
+    @Test fun `hsToArgb at zero saturation is white regardless of hue`() {
+        assertThat(MoreInfoFavorites.hsToArgb(123f, 0f)).isEqualTo(0xFFFFFFFF.toInt())
+    }
+
+    @Test fun `argbToHs round-trips the primaries and reports grey as unsaturated`() {
+        val (rh, rs) = MoreInfoFavorites.argbToHs(0xFFFF0000.toInt())
+        assertThat(rh).isWithin(0.5f).of(0f)
+        assertThat(rs).isWithin(0.01f).of(1f)
+        val (bh, bs) = MoreInfoFavorites.argbToHs(0xFF0000FF.toInt())
+        assertThat(bh).isWithin(0.5f).of(240f)
+        assertThat(bs).isWithin(0.01f).of(1f)
+        val (gh, gs) = MoreInfoFavorites.argbToHs(0xFF808080.toInt())
+        assertThat(gh).isEqualTo(0f)
+        assertThat(gs).isEqualTo(0f)
+    }
 }

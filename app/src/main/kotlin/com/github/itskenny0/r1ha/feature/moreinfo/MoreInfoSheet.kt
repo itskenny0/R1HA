@@ -1026,6 +1026,9 @@ private fun RegistryFavoriteColors(
     // Working copy while editing; seeded from the stored swatches (defaults are
     // read-only until the user edits, at which point they materialise as stored).
     var working by remember(entity.id, stored.colors) { mutableStateOf(swatches) }
+    // Index being edited via the picker overlay; -1 = picking a NEW colour to
+    // append; null = picker closed.
+    var pickerIndex by remember(entity.id) { mutableStateOf<Int?>(null) }
 
     // Persist the working colours to the registry, invalidate the cache, refetch.
     val persist: (List<com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor>) -> Unit = { colors ->
@@ -1052,32 +1055,37 @@ private fun RegistryFavoriteColors(
             if (editing) working = swatches
         }
     }
+    // Removal while editing is the explicit x badge; tapping the swatch body
+    // opens the picker to EDIT that favourite in place. Outside edit mode a tap
+    // applies the colour to the light, as before.
+    val removeAt: (Int) -> Unit = { index ->
+        working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+            .removeColorAt(working, index)
+        persist(working)
+    }
     ChipStrip {
         (if (editing) working else swatches).forEachIndexed { index, fav ->
             when (fav) {
                 is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb -> ColorSwatch(
                     color = Color(fav.argb),
                     selected = false,
-                    description = if (editing) "Remove colour" else "Favourite colour",
+                    description = if (editing) "Edit colour" else "Favourite colour",
                     onClick = {
                         if (editing) {
-                            working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
-                                .removeColorAt(working, index)
-                            persist(working)
+                            pickerIndex = index
                         } else {
                             dispatch(favoriteColorAction(entity, fav.argb))
                         }
                     },
+                    onRemove = if (editing) ({ removeAt(index) }) else null,
                 )
                 is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.ColorTemp -> ColorSwatch(
                     color = Color(com.github.itskenny0.r1ha.ui.components.kelvinToArgb(fav.kelvin)),
                     selected = !editing && entity.colorTempK == fav.kelvin,
-                    description = if (editing) "Remove ${fav.kelvin} K" else "${fav.kelvin} K",
+                    description = if (editing) "Edit ${fav.kelvin} K" else "${fav.kelvin} K",
                     onClick = {
                         if (editing) {
-                            working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
-                                .removeColorAt(working, index)
-                            persist(working)
+                            pickerIndex = index
                         } else {
                             dispatch(
                                 ServiceCall.setLightColorTemp(
@@ -1088,14 +1096,65 @@ private fun RegistryFavoriteColors(
                             )
                         }
                     },
+                    onRemove = if (editing) ({ removeAt(index) }) else null,
                 )
             }
+        }
+        if (editing && supportsColor) {
+            AddSwatchChip { pickerIndex = -1 }
         }
     }
     if (editing) {
         ChipStrip {
             DetailChip(label = "RESET", accent = R1.StatusAmber) { confirmReset = true }
             DetailChip(label = "COPY TO", accent = accent) { copyOpen = true }
+        }
+    }
+    // Picker overlay: kelvin favourites edit on the temperature slider (staying
+    // kelvin entries); rgb favourites and new colours edit on the HS wheel.
+    pickerIndex?.let { idx ->
+        val editingFav = working.getOrNull(idx)
+        val apply: (com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor) -> Unit = { picked ->
+            working = if (idx >= 0) {
+                com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                    .replaceColorAt(working, idx, picked)
+            } else {
+                com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                    .appendColor(working, picked)
+            }
+            persist(working)
+            pickerIndex = null
+        }
+        if (editingFav is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.ColorTemp) {
+            com.github.itskenny0.r1ha.ui.components.KelvinPickerOverlaySheet(
+                title = entity.friendlyName.ifBlank { entity.id.value },
+                initialKelvin = editingFav.kelvin,
+                minKelvin = entity.minColorTempK ?: 2000,
+                maxKelvin = entity.maxColorTempK ?: 6500,
+                onConfirm = { k ->
+                    apply(com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.ColorTemp(k))
+                },
+                onDismiss = { pickerIndex = null },
+            )
+        } else {
+            val seed = when {
+                editingFav is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb ->
+                    com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.argbToHs(editingFav.argb)
+                else -> (entity.hue?.toFloat() ?: 30f) to 1f
+            }
+            com.github.itskenny0.r1ha.ui.components.ColorPickerOverlaySheet(
+                title = entity.friendlyName.ifBlank { entity.id.value },
+                initialHue = seed.first,
+                initialSaturation = seed.second,
+                onConfirm = { h, s ->
+                    apply(
+                        com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb(
+                            com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.hsToArgb(h, s),
+                        ),
+                    )
+                },
+                onDismiss = { pickerIndex = null },
+            )
         }
     }
     // Reset-to-defaults confirm: clears the stored favourites so the computed
@@ -2697,19 +2756,56 @@ private fun ColorSwatch(
     selected: Boolean,
     description: String,
     onClick: () -> Unit,
+    onRemove: (() -> Unit)? = null,
 ) {
+    Box {
+        Box(
+            modifier = Modifier
+                .size(R1.MinTarget)
+                .clip(R1.ShapeS)
+                .background(color)
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) R1.Ink else R1.Hairline,
+                    shape = R1.ShapeS,
+                )
+                .r1Pressable(onClick = onClick, contentDescription = description),
+        )
+        // Explicit removal affordance while editing: a corner x badge, so the
+        // swatch body stays the edit target and a tap can never delete by
+        // accident. Slightly oversized hit area for the small badge.
+        if (onRemove != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(18.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(R1.Bg)
+                    .border(1.dp, R1.Hairline, androidx.compose.foundation.shape.CircleShape)
+                    .r1Pressable(onClick = onRemove, contentDescription = "Remove favourite"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text = "x", style = R1.labelMicro, color = R1.StatusRed)
+            }
+        }
+    }
+}
+
+/** The + chip ending the favourites strip in edit mode: opens the colour picker
+ *  to append a user-defined favourite. */
+@Composable
+private fun AddSwatchChip(onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(R1.MinTarget)
             .clip(R1.ShapeS)
-            .background(color)
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = if (selected) R1.Ink else R1.Hairline,
-                shape = R1.ShapeS,
-            )
-            .r1Pressable(onClick = onClick, contentDescription = description),
-    )
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable(onClick = onClick, contentDescription = "Add favourite colour"),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = "+", style = R1.numeralM, color = R1.InkSoft)
+    }
 }
 
 /** Wrap that drops a section when its content renders nothing measurable. Compose can't

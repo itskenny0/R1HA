@@ -267,6 +267,155 @@ fun ColorTempSlider(
  * the same hs_color and the thumb tracks whichever moved last via the entity
  * echo in [hue]/[saturation].
  */
+/**
+ * Modal HS colour PICKER: unlike [ColorWheelOverlaySheet] nothing fires while
+ * dragging; the wheel edits local state behind a live preview swatch and the
+ * caller only hears about the colour when USE is tapped. Used by the
+ * favourite-colour editor, where dragging must not recolour the actual bulb.
+ */
+@Composable
+fun ColorPickerOverlaySheet(
+    title: String,
+    initialHue: Float,
+    initialSaturation: Float,
+    onConfirm: (hue: Float, saturation: Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var hue by remember { mutableStateOf(initialHue) }
+    var sat by remember { mutableStateOf(initialSaturation) }
+    PickerOverlayScaffold(
+        title = title,
+        previewColor = Color.hsv(hue.coerceIn(0f, 360f), sat.coerceIn(0f, 1f), 1f),
+        onConfirm = { onConfirm(hue, sat) },
+        onDismiss = onDismiss,
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            val wheelSize = minOf(maxWidth, maxHeight, 240.dp)
+            ColorWheel(
+                hue = hue,
+                saturation = sat,
+                onHsChange = { h, s -> hue = h; sat = s },
+                onHsChangeFinished = { h, s -> hue = h; sat = s },
+                modifier = Modifier.size(wheelSize),
+            )
+        }
+    }
+}
+
+/**
+ * Modal colour-temperature PICKER: the kelvin twin of [ColorPickerOverlaySheet],
+ * so editing a kelvin favourite keeps it a kelvin entry instead of silently
+ * converting it to RGB.
+ */
+@Composable
+fun KelvinPickerOverlaySheet(
+    title: String,
+    initialKelvin: Int,
+    minKelvin: Int,
+    maxKelvin: Int,
+    onConfirm: (kelvin: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var kelvin by remember { mutableStateOf(initialKelvin.coerceIn(minKelvin, maxKelvin)) }
+    PickerOverlayScaffold(
+        title = title,
+        previewColor = Color(kelvinToArgb(kelvin)),
+        previewLabel = "$kelvin K",
+        onConfirm = { onConfirm(kelvin) },
+        onDismiss = onDismiss,
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            ColorTempSlider(
+                kelvin = kelvin,
+                minKelvin = minKelvin,
+                maxKelvin = maxKelvin,
+                onKelvinChange = { kelvin = it },
+                onKelvinChangeFinished = { kelvin = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            )
+        }
+    }
+}
+
+/** Shared chrome for the modal pickers: dim backdrop, header with a preview
+ *  swatch, USE confirm chip + CLOSE/back dismissal (the overlay convention
+ *  [ColorWheelOverlaySheet] established). */
+@Composable
+private fun PickerOverlayScaffold(
+    title: String,
+    previewColor: Color,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    previewLabel: String? = null,
+    content: @Composable () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.96f))
+            .r1Pressable(onClick = onDismiss, hapticOnClick = false, contentDescription = "Close colour picker"),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(R1.ShapeS)
+                        .background(previewColor)
+                        .semantics { contentDescription = "Picked colour preview" },
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    text = previewLabel ?: "PICK A COLOUR",
+                    style = R1.sectionHeader,
+                    color = R1.Ink,
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .r1Pressable(onClick = onConfirm)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(text = "USE", style = R1.labelMicro, color = R1.Ink)
+                }
+                Spacer(Modifier.size(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(R1.ShapeS)
+                        .background(R1.SurfaceMuted)
+                        .r1Pressable(onClick = onDismiss)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(text = "CLOSE", style = R1.labelMicro, color = R1.InkSoft)
+                }
+            }
+            Text(
+                text = title,
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Swallow stray taps inside the content so a near-miss doesn't
+                    // dismiss; backdrop + CLOSE + back all still do.
+                    .r1Pressable(onClick = {}, hapticOnClick = false),
+            ) {
+                content()
+            }
+        }
+    }
+}
+
 @Composable
 fun ColorWheelOverlaySheet(
     title: String,
