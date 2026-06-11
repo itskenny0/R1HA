@@ -80,6 +80,31 @@ internal fun LovelacePageDeck(
 ) {
     val pagerState = rememberPagerState(pageCount = { cards.size })
     val scope = rememberCoroutineScope()
+    // Pending tap-action confirmation (HA `confirmation:` config). The dispatch
+    // suspends on the deferred until the overlay's CONFIRM / CANCEL resolves
+    // it, so confirmations actually gate instead of silently passing.
+    val pendingConfirm = remember {
+        androidx.compose.runtime.mutableStateOf<Pair<String, kotlinx.coroutines.CompletableDeferred<Boolean>>?>(null)
+    }
+
+    if (cards.isEmpty()) {
+        // Every stored blob failed to parse: leave a repair affordance rather
+        // than a void (the raw strings are still listed in the manage sheet).
+        Box(
+            modifier = modifier.fillMaxSize().padding(top = 64.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.r1Pressable(onClick = onManageCards),
+            ) {
+                Text(text = "NO RENDERABLE CARDS", style = R1.labelMicro, color = R1.InkSoft)
+                Spacer(Modifier.size(4.dp))
+                Text(text = "Tap to manage this page's pinned cards.", style = R1.body, color = R1.InkMuted)
+            }
+        }
+        return
+    }
 
     // Wheel-to-page: two detents step one card, matching the select-cycle
     // accumulator threshold so the wheel vocabulary stays consistent. Only the
@@ -106,10 +131,11 @@ internal fun LovelacePageDeck(
         }
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
     VerticalPager(
         state = pagerState,
         contentPadding = PaddingValues(top = 64.dp, bottom = 14.dp),
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         key = { idx -> "pinned-$idx" },
     ) { idx ->
         val card = cards.getOrNull(idx) ?: return@VerticalPager
@@ -135,11 +161,65 @@ internal fun LovelacePageDeck(
                         onOpenUrl = onOpenUrl,
                         onMoreInfo = onMoreInfo,
                         stateLookup = { rawId -> states.byRaw(rawId) },
+                        confirmGate = { confirmation, _ ->
+                            val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                            pendingConfirm.value = (confirmation.text ?: "Are you sure?") to deferred
+                            try {
+                                deferred.await()
+                            } finally {
+                                pendingConfirm.value = null
+                            }
+                        },
                     )
                 }
             },
             onManageCards = onManageCards,
         )
+    }
+
+    // Confirmation overlay for `confirmation:`-gated tap actions.
+    pendingConfirm.value?.let { (text, deferred) ->
+        androidx.activity.compose.BackHandler { deferred.complete(false) }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(R1.Bg.copy(alpha = 0.92f))
+                .r1Pressable(onClick = { deferred.complete(false) }),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .clip(R1.ShapeM)
+                    .background(R1.Surface)
+                    .border(1.dp, accent.copy(alpha = 0.6f), R1.ShapeM)
+                    .padding(16.dp)
+                    .r1Pressable(onClick = {}),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(text = text, style = R1.body, color = R1.Ink)
+                Spacer(Modifier.size(12.dp))
+                Row {
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeRound)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, R1.Hairline, R1.ShapeRound)
+                            .r1Pressable(onClick = { deferred.complete(false) })
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    ) { Text("CANCEL", style = R1.labelMicro, color = R1.InkSoft) }
+                    Spacer(Modifier.size(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(R1.ShapeRound)
+                            .background(R1.SurfaceMuted)
+                            .border(1.dp, accent.copy(alpha = 0.7f), R1.ShapeRound)
+                            .r1Pressable(onClick = { deferred.complete(true) })
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                    ) { Text("CONFIRM", style = R1.labelMicro, color = accent) }
+                }
+            }
+        }
+    }
     }
 }
 
@@ -227,11 +307,18 @@ private fun PinnedCardSlot(
                     LocalHaRepository provides haRepository,
                     LocalHaServerUrl provides serverUrl,
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
-                    ) {
+                    // Iframe slots skip the scroll wrapper: the WebView already
+                    // owns vertical drags inside its bounds, and stacking a
+                    // second scroll consumer around a fixed-aspect box only
+                    // fights the pager. (Page by dragging the bezel margin.)
+                    // Other card types can outgrow the slot, so they scroll.
+                    val isIframe = card is LovelaceCard.Unsupported && card.url != null
+                    val bodyModifier = if (isIframe) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    }
+                    Column(modifier = bodyModifier) {
                         LovelaceCardRenderer(
                             card = card,
                             stateMap = states.sliceFor(card),

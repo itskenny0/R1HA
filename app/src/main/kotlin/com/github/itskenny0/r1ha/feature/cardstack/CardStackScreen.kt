@@ -267,6 +267,18 @@ fun CardStackScreen(
     val pinnedCardsForId = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
+    // Entity whose ultra-detail more-info sheet is open; null = closed. Opened
+    // from the card context menu's MORE INFO action AND from a wheel-spin on a
+    // read-only card (sensor / action / wheel-disabled) when the effective
+    // moreInfoEnabled flag is on — routing the otherwise-inert wheel to the
+    // detail view makes the ultra-detail surface discoverable from the deck.
+    // Hoisted to screen scope (alongside the other overlay-visibility flags) so
+    // the wheel handler below can both read it (modal gate), set it (open), and
+    // the pinned-cards state collector can re-assert its observeRaw set when
+    // the sheet closes.
+    val moreInfoEntityId = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
     // ── Pinned Lovelace cards ("cards pages") ──────────────────────────────────
     // A page with no favourites but pinned card configs renders LovelacePageDeck
     // instead of the entity deck. Parsing + entity-reference collection happen
@@ -285,18 +297,27 @@ fun CardStackScreen(
         }
         sink.toSet()
     }
-    val lovelaceStatesRaw by androidx.compose.runtime.produceState(
-        initialValue = emptyMap<String, com.github.itskenny0.r1ha.core.ha.EntityState>(),
-        lovelaceEntityIds,
-    ) {
+    // Plain state + LaunchedEffect rather than produceState: the effect restarts
+    // not only when the entity set changes but also when the more-info sheet
+    // CLOSES — MoreInfoSheet's own observeRaw overwrites the repository's
+    // last-writer-wins entity-set registration, and without the re-assert the
+    // pinned cards would silently stop receiving live state after the first
+    // more-info open. Keeping the map in a separate remember preserves the last
+    // states across the restart so the cards never flash back to dashes.
+    val lovelaceStatesRaw = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(
+            emptyMap<String, com.github.itskenny0.r1ha.core.ha.EntityState>(),
+        )
+    }
+    LaunchedEffect(lovelaceEntityIds, moreInfoEntityId.value == null) {
         if (lovelaceEntityIds.isEmpty()) {
-            value = emptyMap()
-        } else {
-            haRepository.observeRaw(lovelaceEntityIds).collect { value = it }
+            lovelaceStatesRaw.value = emptyMap()
+        } else if (moreInfoEntityId.value == null) {
+            haRepository.observeRaw(lovelaceEntityIds).collect { lovelaceStatesRaw.value = it }
         }
     }
-    val lovelaceStates = androidx.compose.runtime.remember(lovelaceStatesRaw) {
-        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(lovelaceStatesRaw)
+    val lovelaceStates = androidx.compose.runtime.remember(lovelaceStatesRaw.value) {
+        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(lovelaceStatesRaw.value)
     }
     // Wheel detents routed to the active cards page's deck (two detents = one
     // card step). Separate from jumpRequests: those carry absolute indices for
@@ -370,16 +391,6 @@ fun CardStackScreen(
     // so letting wheel events through is the synergy, not a leak.
     val colorWheelFor = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityId?>(null)
-    }
-    // Entity whose ultra-detail more-info sheet is open; null = closed. Opened
-    // from the card context menu's MORE INFO action AND from a wheel-spin on a
-    // read-only card (sensor / action / wheel-disabled) when the effective
-    // moreInfoEnabled flag is on — routing the otherwise-inert wheel to the
-    // detail view makes the ultra-detail surface discoverable from the deck.
-    // Hoisted to screen scope (alongside the other overlay-visibility flags) so
-    // the wheel handler below can both read it (modal gate) and set it (open).
-    val moreInfoEntityId = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
     }
     // Widget deep-link: scroll the deck to the entity's card. The jump/tab flows
     // have no replay and only the ACTIVE deck collects jumps, so the sequence is

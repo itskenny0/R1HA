@@ -56,6 +56,10 @@ internal fun PinnedCardsSheet(
     var pickerOpen by remember { mutableStateOf(false) }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     fun persist() = onSave(cards.toList())
+    // Back dismisses this sheet; the picker/editor compose later so their own
+    // handlers win while they're open (innermost-first), giving the natural
+    // editor -> picker -> sheet unwind instead of popping the whole deck.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
 
     Box(
         modifier = Modifier

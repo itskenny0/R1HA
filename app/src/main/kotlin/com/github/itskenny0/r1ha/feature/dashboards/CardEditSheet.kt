@@ -57,6 +57,9 @@ fun CardEditSheet(
     var text by remember { mutableStateOf(initialText) }
     val parsed = remember(text) { parseCardJsonBlob(text) }
     val canSave = parsed != null
+    // Back closes the editor (unsaved edits discarded, same as CANCEL) rather
+    // than popping the screen under the overlay.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
 
     Box(
         modifier = Modifier

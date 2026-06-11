@@ -43,6 +43,9 @@ fun CardPickerSheet(
     onDismiss: () -> Unit,
     onPick: (JsonObject) -> Unit,
 ) {
+    // Back closes the picker rather than falling through to the nav graph and
+    // popping the screen underneath.
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
     Box(
         modifier = Modifier
             .fillMaxSize()
