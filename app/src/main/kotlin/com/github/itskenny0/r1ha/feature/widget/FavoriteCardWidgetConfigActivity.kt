@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,6 +90,12 @@ class FavoriteCardWidgetConfigActivity : ComponentActivity() {
                         .orEmpty()
                 }
             }
+            // Compute the grouped listing once per (settings, friendly-name)
+            // change rather than on every recomposition: it was previously built
+            // twice per frame (the empty-check guard and the PickerPane argument).
+            val favoritePages = remember(current, friendlyNames) {
+                current?.let { buildWidgetFavoritePages(it, friendlyNames) }.orEmpty()
+            }
             R1ThemeHost(themeId = current?.theme ?: ThemeId.PRAGMATIC_HYBRID) {
                 Box(Modifier.fillMaxSize().background(R1.Bg)) {
                     when {
@@ -96,11 +103,11 @@ class FavoriteCardWidgetConfigActivity : ComponentActivity() {
                         current.server == null -> MessagePane(
                             message = "Sign in to Home Assistant in R1HA first, then add this widget again.",
                         )
-                        buildWidgetFavoritePages(current, friendlyNames).isEmpty() -> MessagePane(
+                        favoritePages.isEmpty() -> MessagePane(
                             message = "No favorites yet. Add favorites to the card stack in R1HA, then add this widget again.",
                         )
                         else -> PickerPane(
-                            pages = buildWidgetFavoritePages(current, friendlyNames),
+                            pages = favoritePages,
                             onPick = ::completeConfiguration,
                         )
                     }
