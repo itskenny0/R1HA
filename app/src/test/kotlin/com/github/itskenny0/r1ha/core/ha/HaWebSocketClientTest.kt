@@ -135,7 +135,11 @@ class HaWebSocketClientTest {
         client.scope.cancel()
     }
 
-    @Test fun `handshake watchdog does not fire after a successful auth_ok`() = runTest {
+    @Test fun `disconnect disarms the handshake watchdog`() = runTest {
+        // A client_disconnect during the connecting window must cancel the armed watchdog so it
+        // can't later fire a spurious Disconnected over an already-torn-down (or freshly replaced)
+        // connection. Deterministic: the server stays mute, so only the watchdog could move state,
+        // and disconnect() runs before we advance the virtual clock past the watchdog budget.
         server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
         server.start()
         val url = server.url("/api/websocket").toString().replace("http", "ws")
@@ -145,18 +149,23 @@ class HaWebSocketClientTest {
             handshakeWatchdogMillis = 5_000,
         )
 
-        client.connect(url, accessToken = "TOK")
-        val opened = recorder.awaitOpen()
-        opened.send("""{"type":"auth_required"}""")
-        recorder.awaitTextMessage()
-        opened.send("""{"type":"auth_ok","ha_version":"2026.5.0"}""")
-        advanceUntilIdle()
-        assertThat(client.state.value).isInstanceOf(ConnectionState.Connected::class.java)
+        client.state.test {
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
+            client.connect(url, accessToken = "TOK")
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
+            recorder.awaitOpen()
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
 
-        // Advancing past the watchdog budget must NOT knock a healthy Connected back to Disconnected.
-        advanceTimeBy(10_000)
-        advanceUntilIdle()
-        assertThat(client.state.value).isInstanceOf(ConnectionState.Connected::class.java)
-        client.disconnect(); client.scope.cancel()
+            // Client-side disconnect: state goes Idle and the watchdog is cancelled.
+            client.disconnect()
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
+
+            // Advancing past the (now-cancelled) watchdog budget must NOT resurrect a Disconnected.
+            advanceTimeBy(10_000)
+            advanceUntilIdle()
+            expectNoEvents()
+            cancelAndConsumeRemainingEvents()
+        }
+        client.scope.cancel()
     }
 }
