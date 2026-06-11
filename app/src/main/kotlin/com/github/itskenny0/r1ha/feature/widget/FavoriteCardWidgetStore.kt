@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.widget
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.channels.awaitClose
 
 /**
  * Widget-instance to entity binding for the favorite-card widget. Plain
@@ -55,4 +56,23 @@ object FavoriteCardWidgetStore {
             val entity = (value as? String)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
             id to entity
         }.toMap()
+
+    /**
+     * [allBindings] as a cold flow: emits the current map immediately, then on
+     * every binding change (configure / re-bind / delete). Drives the live
+     * widget refresher so it re-targets its observation without polling.
+     */
+    fun bindingsFlow(context: Context): kotlinx.coroutines.flow.Flow<Map<Int, String>> =
+        kotlinx.coroutines.flow.callbackFlow {
+            val p = prefs(context)
+            // The listener reference must stay strong for the flow's lifetime:
+            // SharedPreferences holds listeners weakly and a lambda-only
+            // registration gets GC'd silently.
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+                trySend(allBindings(context))
+            }
+            p.registerOnSharedPreferenceChangeListener(listener)
+            trySend(allBindings(context))
+            awaitClose { p.unregisterOnSharedPreferenceChangeListener(listener) }
+        }
 }

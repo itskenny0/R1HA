@@ -320,10 +320,16 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         /** Ask the host to repaint [widgetId] now — used right after configuration. */
-        fun requestUpdate(context: Context, widgetId: Int) {
+        fun requestUpdate(context: Context, widgetId: Int) =
+            requestUpdate(context, intArrayOf(widgetId))
+
+        /** Repaint several instances in one broadcast (one shared state fetch);
+         *  used by the live refresher when bound entities change state. */
+        fun requestUpdate(context: Context, widgetIds: IntArray) {
+            if (widgetIds.isEmpty()) return
             val intent = Intent(context, FavoriteCardWidgetProvider::class.java).apply {
                 action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(widgetId))
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds)
             }
             context.sendBroadcast(intent)
         }

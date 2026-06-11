@@ -227,6 +227,17 @@ class App : Application() {
             }
             R1Log.i("App.onCreate", "haRepository.start() returned")
         }
+        // Live favorite-card widget refresh: repaint bound instances the moment
+        // their entity changes state, instead of waiting for the launcher's
+        // 30-minute tick. Runs for the process lifetime; the first emission also
+        // repaints everything once so widgets recover from cold-process
+        // staleness at startup.
+        appScope.launch {
+            com.github.itskenny0.r1ha.feature.widget.FavoriteCardWidgetLivePush.run(
+                this@App,
+                graph.haRepository,
+            )
+        }
         androidx.tracing.Trace.endSection()
         // Kick off the HA-backed settings sync manager. Idle until the user
         // opts in via Settings → Integrations → "Sync with Home Assistant";
