@@ -7,6 +7,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
@@ -41,7 +42,14 @@ class HaWebSocketClientTest {
         server.start()
         val url = server.url("/api/websocket").toString().replace("http", "ws")
 
-        val client = HaWebSocketClient(http = http(), scope = TestScope(StandardTestDispatcher(testScheduler)))
+        // Watchdog disabled: this test drives the virtual clock with advanceUntilIdle, which would
+        // otherwise fast-forward into the watchdog delay and fail the connection before the real
+        // socket finishes its (real-time) auth handshake.
+        val client = HaWebSocketClient(
+            http = http(),
+            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            handshakeWatchdogMillis = 0,
+        )
         client.state.test {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
@@ -68,7 +76,13 @@ class HaWebSocketClientTest {
         server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
         server.start()
         val url = server.url("/api/websocket").toString().replace("http", "ws")
-        val client = HaWebSocketClient(http = http(), scope = TestScope(StandardTestDispatcher(testScheduler)))
+        // Watchdog disabled (see the Connected test): advanceUntilIdle below would otherwise
+        // fast-forward into the watchdog delay mid-test.
+        val client = HaWebSocketClient(
+            http = http(),
+            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            handshakeWatchdogMillis = 0,
+        )
 
         client.connect(url, accessToken = "TOK")
         val opened = recorder.awaitOpen()
@@ -88,5 +102,70 @@ class HaWebSocketClientTest {
         assertThat(frame1).contains("\"type\":\"subscribe_trigger\"")
         assertThat(frame2).contains("\"type\":\"call_service\"")
         client.disconnect(); client.scope.cancel()
+    }
+
+    @Test fun `handshake watchdog force-fails a socket that never sends auth_required`() = runTest {
+        // The wedge: the WS upgrades at the transport layer (onOpen -> Authenticating) but the HA
+        // backend never delivers auth_required, so AuthOk/AuthInvalid/onClosed/onFailure never run
+        // and the state would otherwise sit on Authenticating forever. The watchdog must break it.
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+        val url = server.url("/api/websocket").toString().replace("http", "ws")
+        val client = HaWebSocketClient(
+            http = http(),
+            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            handshakeWatchdogMillis = 5_000,
+        )
+
+        client.state.test {
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
+            client.connect(url, accessToken = "TOK")
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
+            // Socket upgrades but the server stays mute (no auth_required).
+            recorder.awaitOpen()
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
+
+            // Advance past the watchdog budget on the virtual clock; nothing else has settled it.
+            advanceTimeBy(5_001)
+            advanceUntilIdle()
+            val failed = awaitItem()
+            assertThat(failed).isInstanceOf(ConnectionState.Disconnected::class.java)
+            cancelAndConsumeRemainingEvents()
+        }
+        client.scope.cancel()
+    }
+
+    @Test fun `disconnect disarms the handshake watchdog`() = runTest {
+        // A client_disconnect during the connecting window must cancel the armed watchdog so it
+        // can't later fire a spurious Disconnected over an already-torn-down (or freshly replaced)
+        // connection. Deterministic: the server stays mute, so only the watchdog could move state,
+        // and disconnect() runs before we advance the virtual clock past the watchdog budget.
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+        val url = server.url("/api/websocket").toString().replace("http", "ws")
+        val client = HaWebSocketClient(
+            http = http(),
+            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            handshakeWatchdogMillis = 5_000,
+        )
+
+        client.state.test {
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
+            client.connect(url, accessToken = "TOK")
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
+            recorder.awaitOpen()
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
+
+            // Client-side disconnect: state goes Idle and the watchdog is cancelled.
+            client.disconnect()
+            assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
+
+            // Advancing past the (now-cancelled) watchdog budget must NOT resurrect a Disconnected.
+            advanceTimeBy(10_000)
+            advanceUntilIdle()
+            expectNoEvents()
+            cancelAndConsumeRemainingEvents()
+        }
+        client.scope.cancel()
     }
 }

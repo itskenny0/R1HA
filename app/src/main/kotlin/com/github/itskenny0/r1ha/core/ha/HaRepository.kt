@@ -695,6 +695,18 @@ interface HaRepository {
     fun reconnectNow()
 
     /**
+     * Foreground-resume nudge. Unlike [reconnectNow] (an explicit user "retry" that resets the
+     * backoff counter), this is the implicit kick fired when the app returns to the foreground.
+     * It reconnects out of Idle / Disconnected, leaves a healthy in-flight handshake alone, and —
+     * critically — rescues a handshake that has been stuck in Connecting / Authenticating longer
+     * than [ReconnectDecisions.RESUME_STALE_CONNECTING_MS] by tearing it down and reconnecting.
+     * That stale-Connecting rescue is the foreground-side backstop for the "connecting forever"
+     * wedge, complementing the in-WS handshake watchdog. AuthLost is left to the repository's own
+     * refresh loop. No-op when already Connected.
+     */
+    fun nudgeReconnect()
+
+    /**
      * Full /api/error_log fetch, capped client-side at [maxBytes]. Same streaming
      * tail mechanic as [fetchErrorLog] but with a larger ceiling so the native
      * Logs viewer can show meaningfully more than the 32 KB tail the System

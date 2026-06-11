@@ -749,4 +749,127 @@ class DefaultHaRepositoryTest {
         http.dispatcher.executorService.shutdown()
         http.connectionPool.evictAll()
     }
+
+    /**
+     * Regression for "connecting forever": a handshake that opened the socket but never received
+     * auth_required leaves ws.state pinned on Connecting / Authenticating. A foreground resume
+     * (nudgeReconnect) must rescue it by tearing the dead socket down once it has aged past the
+     * staleness threshold — restarting the app should NOT be the only recovery path.
+     */
+    @Test fun `nudgeReconnect rescues a handshake wedged in Connecting`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl), favorites = listOf("light.kitchen")) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+        val wsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // Long watchdog so it can't self-disconnect during the test — we're exercising the
+        // foreground-resume rescue path, not the in-WS watchdog (covered in HaWebSocketClientTest).
+        val ws = HaWebSocketClient(http = http, scope = wsScope, handshakeWatchdogMillis = 600_000)
+
+        // Open the socket but NEVER send auth_required: the state wedges on Authenticating.
+        val wsUrl = baseUrl.replace("http://", "ws://") + "/api/websocket"
+        ws.connect(wsUrl, "TOK")
+        recorder.awaitOpen(5_000)
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertThat(ws.state.value).isInstanceOf(ConnectionState.Authenticating::class.java)
+
+        // Controllable monotonic clock: starts at a base, then jumps past the staleness threshold.
+        // AtomicLong so the repo's IO-scoped state observer reads a coherent value across threads.
+        val fakeNow = java.util.concurrent.atomic.AtomicLong(100_000L)
+        val repo = DefaultHaRepository(
+            ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            elapsedRealtimeMillis = { fakeNow.get() },
+        )
+        repo.start()
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        // Advance the clock so the handshake has aged well past RESUME_STALE_CONNECTING_MS, then
+        // nudge: the repo must tear the wedged socket down (state leaves Authenticating).
+        fakeNow.addAndGet(ReconnectDecisions.RESUME_STALE_CONNECTING_MS + 5_000)
+        repo.nudgeReconnect()
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(300)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        assertThat(ws.state.value).isNotInstanceOf(ConnectionState.Authenticating::class.java)
+
+        repo.stop()
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
+
+    /**
+     * Complement to the rescue test: a FRESH handshake (not yet stale) must be left alone so a
+     * resume that lands milliseconds into a legitimate connect doesn't thrash the WS client.
+     */
+    @Test fun `nudgeReconnect leaves a fresh in-flight handshake alone`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+
+        val ctx = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val prefs = SettingsRepository.forTesting(ctx, datastoreName = "t_${System.nanoTime()}")
+        val tokens = TokenStore(
+            ctx,
+            datastoreName = "tk_${System.nanoTime()}",
+            keyAlias = "ta_${System.nanoTime()}",
+            keystoreProvider = SoftwareKeyProvider(),
+        )
+        val baseUrl = server.url("/").toString().trimEnd('/')
+        prefs.update { it.copy(server = ServerConfig(url = baseUrl), favorites = listOf("light.kitchen")) }
+        tokens.save(Tokens("TOK", "REFRESH", Long.MAX_VALUE))
+
+        val http = OkHttpClient.Builder().readTimeout(0, TimeUnit.MILLISECONDS).build()
+        val wsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val ws = HaWebSocketClient(http = http, scope = wsScope, handshakeWatchdogMillis = 600_000)
+
+        val wsUrl = baseUrl.replace("http://", "ws://") + "/api/websocket"
+        ws.connect(wsUrl, "TOK")
+        recorder.awaitOpen(5_000)
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertThat(ws.state.value).isInstanceOf(ConnectionState.Authenticating::class.java)
+
+        // Clock stays put: the handshake is younger than the staleness threshold.
+        val repo = DefaultHaRepository(
+            ws, http, prefs, tokens,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            elapsedRealtimeMillis = { 100_000L },
+        )
+        repo.start()
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        repo.nudgeReconnect()
+        @Suppress("BlockingMethodInNonBlockingContext")
+        Thread.sleep(200)
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        // Fresh handshake untouched.
+        assertThat(ws.state.value).isInstanceOf(ConnectionState.Authenticating::class.java)
+
+        repo.stop()
+        server.shutdown()
+        http.dispatcher.executorService.shutdown()
+        http.connectionPool.evictAll()
+    }
 }
