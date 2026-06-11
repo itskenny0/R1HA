@@ -301,6 +301,9 @@ private fun MoreInfoContent(
             onOpenLogbook = onOpenLogbook?.let { open -> { open(entity.id.value); onDismiss() } },
         )
 
+        // ── Related (same device + same area) ──────────────────────────────
+        RelatedSection(haRepository = haRepository, entity = entity, accent = accent)
+
         // ── Details (state block + YAML) ───────────────────────────────────
         DetailsSection(entity = entity)
 
@@ -3338,6 +3341,61 @@ private fun ScriptFieldInput(
 }
 
 /**
+ * RELATED section — the R1 equivalent of HA's more-info "Related" tab. Lists the
+ * entities sharing the focused entity's device (same-device) and its area
+ * (same-area), each row tapping through to that entity's own more-info via the
+ * back-stack push ([LocalMoreInfoNavigate]). Groups come from the area-registry
+ * snapshot already cached for area cards; the section renders nothing while the
+ * snapshot resolves or when nothing relates.
+ */
+@Composable
+private fun RelatedSection(haRepository: HaRepository, entity: EntityState, accent: Color) {
+    val push = LocalMoreInfoNavigate.current ?: return
+    val entityId = entity.id.value
+    val related by androidx.compose.runtime.produceState<MoreInfoRelated.Related?>(
+        initialValue = null,
+        entityId,
+    ) {
+        val snap = com.github.itskenny0.r1ha.feature.dashboards.cards.AreaRegistryCache
+            .get(haRepository, System.currentTimeMillis())
+        value = snap?.let {
+            MoreInfoRelated.compute(entityId, it.entitiesByArea, it.deviceByEntity)
+        } ?: MoreInfoRelated.Related(emptyList(), emptyList())
+    }
+    val groups = related ?: return
+    if (groups.isEmpty) return
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
+        Text(text = "RELATED", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
+        if (groups.sameDevice.isNotEmpty()) {
+            Text(text = "SAME DEVICE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+            groups.sameDevice.forEach { memberId ->
+                GroupMemberRow(
+                    haRepository = haRepository,
+                    memberId = memberId,
+                    accent = accent,
+                    onToggle = {},
+                    onOpen = { push(memberId) },
+                    showToggle = false,
+                )
+            }
+        }
+        if (groups.sameArea.isNotEmpty()) {
+            Text(text = "SAME AREA", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+            groups.sameArea.forEach { memberId ->
+                GroupMemberRow(
+                    haRepository = haRepository,
+                    memberId = memberId,
+                    accent = accent,
+                    onToggle = {},
+                    onOpen = { push(memberId) },
+                    showToggle = false,
+                )
+            }
+        }
+    }
+}
+
+/**
  * `group.*` more-info: a member entity list with a compact toggle for switchable
  * members (light / switch / fan / ...) and a tap-through to each member's own
  * more-info via the back-stack push. Non-toggleable members show their state with
@@ -3374,11 +3432,14 @@ private fun GroupMemberRow(
     accent: Color,
     onToggle: (Boolean) -> Unit,
     onOpen: (() -> Unit)?,
+    /** Show the inline ON/OFF toggle chip for switchable members. False (the
+     *  related-section case) renders a tap-through row with no toggle. */
+    showToggle: Boolean = true,
 ) {
     val member by haRepository.observeRaw(setOf(memberId))
         .collectAsState(initial = emptyMap())
     val state = member[memberId]
-    val toggleable = O2.memberIsToggleable(memberId)
+    val toggleable = showToggle && O2.memberIsToggleable(memberId)
     val isOn = state?.isOn == true
     Row(
         verticalAlignment = Alignment.CenterVertically,
