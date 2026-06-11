@@ -219,6 +219,11 @@ private fun LovelaceWebView(
             ) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
             }
+            // Same cold-start race fix as PanelViewerScreen: a fresh WebView's
+            // frontend can check auth before the async injection runs and bounce
+            // to the login mask; retry the target once after the injection
+            // callback confirms the tokens landed.
+            var authBounceDone = false
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                     onLoadingChange(true)
@@ -256,7 +261,13 @@ private fun LovelaceWebView(
                             "clientId: null," +
                             "expires: $expiresAt" +
                             "})); }"
-                        view.evaluateJavascript(script) { }
+                        view.evaluateJavascript(script) {
+                            if (!authBounceDone && url.contains("/auth/authorize")) {
+                                authBounceDone = true
+                                R1Log.i("LovelaceScreen", "auth race lost; retrying with seeded tokens")
+                                view.post { view.loadUrl("${serverUrl.trimEnd('/')}/") }
+                            }
+                        }
                     }
                 }
                 override fun onPageFinished(view: WebView, url: String) {

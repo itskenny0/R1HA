@@ -197,6 +197,13 @@ private fun PanelWebView(
             ) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
             }
+            // On a cold WebView (fresh localStorage) HA's frontend can run its
+            // auth check before the async token injection below executes and
+            // bounce us to the login mask, which never re-checks. When that
+            // happens we retry the panel exactly once AFTER the injection
+            // callback confirms the tokens are written, so the retry lands
+            // signed in. One-shot so a genuinely broken token can't loop.
+            var authBounceDone = false
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(
                     view: WebView,
@@ -222,7 +229,13 @@ private fun PanelWebView(
                             "clientId: null," +
                             "expires: $expiresAt" +
                             "})); }"
-                        view.evaluateJavascript(script) { }
+                        view.evaluateJavascript(script) {
+                            if (!authBounceDone && url.contains("/auth/authorize")) {
+                                authBounceDone = true
+                                R1Log.i("PanelViewer", "auth race lost; retrying panel with seeded tokens")
+                                view.post { view.loadUrl(panelUrl) }
+                            }
+                        }
                     }
                 }
 
