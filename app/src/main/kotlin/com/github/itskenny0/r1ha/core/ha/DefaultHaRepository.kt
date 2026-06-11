@@ -2460,6 +2460,134 @@ class DefaultHaRepository(
         }
     }
 
+    /** Long-read clone of the shared client for `remote.learn_command`,
+     *  whose HTTP response stays open while HA waits for button presses on
+     *  the physical remote. The Broadlink integration allows ~30 s per
+     *  capture phase and RF capture has two phases, so 150 s covers the
+     *  worst case with margin. Lazy: most installs never learn a command. */
+    private val longReadHttp by lazy {
+        http.newBuilder()
+            .readTimeout(150, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+    }
+
+    override suspend fun learnRemoteCommand(
+        entityId: String,
+        device: String,
+        command: String,
+        commandType: String,
+        alternative: Boolean,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(commandType == "ir" || commandType == "rf") {
+                "command_type must be 'ir' or 'rf': '$commandType'"
+            }
+            val s = settings.settings.first()
+            if (s.guestModeEnabled) {
+                error("Guest mode is on. Toggle it off in Settings to learn commands.")
+            }
+            val server = s.server ?: error("Server URL not configured.")
+            refresher?.ensureFresh()
+            val url = "${server.url.trimEnd('/')}/api/services/remote/learn_command"
+            val payload = kotlinx.serialization.json.buildJsonObject {
+                put("entity_id", JsonPrimitive(entityId))
+                put("device", JsonPrimitive(device))
+                put("command", JsonPrimitive(command))
+                put("command_type", JsonPrimitive(commandType))
+                if (alternative) put("alternative", JsonPrimitive(true))
+            }
+            learnCallRawBody(url, payload) ?: run {
+                if (refresher?.forceRefresh() == true) {
+                    R1Log.i("HaRepo.learn", "401 → refreshed; retrying once")
+                    learnCallRawBody(url, payload)
+                        ?: error("Home Assistant returned HTTP 401 for learn_command after refresh.")
+                } else {
+                    error("Home Assistant returned HTTP 401 for learn_command.")
+                }
+            }
+            Unit
+        }.onFailure { t ->
+            R1Log.w("HaRepo.learn", "learn $device/$command ($commandType) failed: ${t.message}")
+        }
+    }
+
+    /** [serviceCallRawBody] twin on the long-read client. Kept separate so
+     *  ordinary service calls keep failing fast on a wedged server. */
+    private suspend fun learnCallRawBody(
+        url: String,
+        payload: kotlinx.serialization.json.JsonObject,
+    ): String? = withContext(Dispatchers.IO) {
+        val t = tokens.load()
+            ?: error("Authentication tokens missing. Sign out & reconnect from Settings.")
+        val mediaType = "application/json".toMediaTypeOrNull()
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer ${t.accessToken}")
+            .post(payload.toString().toRequestBody(mediaType))
+            .build()
+        longReadHttp.newCall(req).execute().use { resp ->
+            if (resp.code == 401) return@withContext null
+            val responseBody = resp.body?.string().orEmpty()
+            require(resp.isSuccessful) {
+                if (responseBody.isNotBlank()) responseBody.trim()
+                else "Home Assistant returned HTTP ${resp.code} for learn_command"
+            }
+            responseBody
+        }
+    }
+
+    override suspend fun fetchAutomationConfig(automationId: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(automationId.isNotBlank()) { "automation id is blank" }
+                val s = settings.settings.first()
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val encodedId = java.net.URLEncoder.encode(automationId, Charsets.UTF_8.name())
+                val url = "${server.url.trimEnd('/')}/api/config/automation/config/$encodedId"
+                simpleAuthedGet(url) ?: run {
+                    if (refresher?.forceRefresh() == true) {
+                        R1Log.i("HaRepo.autoCfg", "401 → refreshed; retrying once")
+                        simpleAuthedGet(url)
+                            ?: error("Home Assistant returned HTTP 401 for the automation config after refresh.")
+                    } else {
+                        error("Home Assistant returned HTTP 401 for the automation config.")
+                    }
+                }
+            }.onFailure { t ->
+                R1Log.w("HaRepo.autoCfg", "fetch $automationId failed: ${t.message}")
+            }
+        }
+
+    override suspend fun saveAutomationConfig(
+        automationId: String,
+        config: kotlinx.serialization.json.JsonObject,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(automationId.isNotBlank()) { "automation id is blank" }
+            val s = settings.settings.first()
+            if (s.guestModeEnabled) {
+                error("Guest mode is on. Toggle it off in Settings to save automations.")
+            }
+            val server = s.server ?: error("Server URL not configured.")
+            refresher?.ensureFresh()
+            val encodedId = java.net.URLEncoder.encode(automationId, Charsets.UTF_8.name())
+            val url = "${server.url.trimEnd('/')}/api/config/automation/config/$encodedId"
+            serviceCallRawBody(url, config) ?: run {
+                if (refresher?.forceRefresh() == true) {
+                    R1Log.i("HaRepo.autoCfg", "401 → refreshed; retrying once")
+                    serviceCallRawBody(url, config)
+                        ?: error("Home Assistant returned HTTP 401 saving the automation after refresh.")
+                } else {
+                    error("Home Assistant returned HTTP 401 saving the automation.")
+                }
+            }
+            Unit
+        }.onFailure { t ->
+            R1Log.w("HaRepo.autoCfg", "save $automationId failed: ${t.message}")
+        }
+    }
+
     /** POST to /api/services/<domain>/<service>. Returns null on HTTP 401
      *  for the refresh + retry pattern; HTTP 400 surfaces HA's error body
      *  as an exception so the Service Caller screen can show it. */
