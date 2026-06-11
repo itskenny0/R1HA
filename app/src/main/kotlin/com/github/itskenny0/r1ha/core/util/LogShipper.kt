@@ -9,7 +9,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -203,8 +202,10 @@ class Backoff(
  *    queued or [FLUSH_INTERVAL_MS] (~3 s) elapses, whichever comes first.
  *  - Failures drive [Backoff] (5 s → 60 s cap) WITHOUT blocking the app: the
  *    queue keeps accepting (and bounding) entries while offline.
- *  - Re-entrancy guard: the shipper never logs its own HTTP activity through
- *    R1Log while the poster runs, so a failure can't recursively enqueue.
+ *  - Re-entrancy contract: [LogPoster] implementations MUST NOT call R1Log.
+ *    [OkHttpLogPoster] satisfies this; the queue's [synchronized] lock then
+ *    serialises concurrent enqueue and drain paths safely without a broader
+ *    posting-guard that would silently drop entries from other threads.
  *
  * The session id is a random hex string minted at construction (one per app
  * process) and is stable for the life of the instance.
@@ -236,10 +237,6 @@ class LogShipper(
     val shippingEnabled: Boolean get() = enabled
     val shippingEndpoint: String get() = endpoint
 
-    /** True while the poster is executing, so the enqueue path can refuse to
-     *  re-enter (the poster must never cause another shippable log). */
-    private val posting = AtomicBoolean(false)
-
     private var drainJob: Job? = null
 
     /** Apply the latest user settings. Starting the drain loop is idempotent;
@@ -257,12 +254,12 @@ class LogShipper(
     private fun isActive(): Boolean = enabled && endpoint.isNotBlank()
 
     /** Enqueue a log line. No-op when disabled. Drops the oldest entries past
-     *  [capacity] and tallies the drop so a gap marker is emitted later. Never
-     *  enqueues while the poster is mid-flight (re-entrancy guard) — that path
-     *  is the shipper's own HTTP code and must not feed itself. */
+     *  [capacity] and tallies the drop so a gap marker is emitted later. Safe
+     *  to call from any thread concurrently with the drain loop: [enqueue] holds
+     *  [lock] for its mutation and the poster ([OkHttpLogPoster]) performs no
+     *  R1Log calls, so re-entrancy cannot occur. */
     fun submit(level: String, tag: String, msg: String) {
         if (!isActive()) return
-        if (posting.get()) return
         enqueue(
             LogEntry(
                 session = session,
@@ -391,13 +388,10 @@ class LogShipper(
     }
 
     private fun runPost(body: String): Boolean {
-        posting.set(true)
         return try {
             poster.postBatch(endpoint, body)
         } catch (_: Throwable) {
             false
-        } finally {
-            posting.set(false)
         }
     }
 

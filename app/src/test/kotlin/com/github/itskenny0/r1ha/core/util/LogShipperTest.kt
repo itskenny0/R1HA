@@ -183,9 +183,69 @@ class LogShipperTest {
         assertThat(body).contains("dropped 2 entries")
     }
 
+    @Test fun `entries submitted while a slow POST is in flight are not dropped`() {
+        // Regression: the old `posting` AtomicBoolean guard in submit() returned
+        // immediately for any R1Log call from ANY thread while a POST was executing,
+        // silently losing entries with no gap marker. The guard has been removed; the
+        // poster's own no-R1Log contract is sufficient for re-entrancy safety.
+        val postStarted = java.util.concurrent.CountDownLatch(1)
+        val releasePost = java.util.concurrent.CountDownLatch(1)
+        val batchesReceived = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val firstBatchDone = java.util.concurrent.CountDownLatch(1)
+        val poster = object : LogPoster {
+            override fun postBatch(endpoint: String, ndjsonBody: String): Boolean {
+                postStarted.countDown()
+                // Simulate a slow network: block until the test unblocks us.
+                releasePost.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                batchesReceived.add(ndjsonBody)
+                firstBatchDone.countDown()
+                return true
+            }
+            override fun probe(endpoint: String) = LogPoster.ProbeResult(true, "200")
+        }
+        val scope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+        )
+        // Small capacity so the first flush fires quickly; batchSize=1 so every
+        // entry triggers an immediate drain without waiting for the flush interval.
+        val s = LogShipper(
+            poster = poster,
+            scope = scope,
+            session = "t",
+            capacity = 20,
+            batchSize = 1,
+            flushIntervalMs = 200L,
+        )
+        s.configure(enabled = true, endpoint = "http://x/log")
+        s.submit(LogEntry.LEVEL_INFO, "t", "first-entry")
+        // Wait for the drain to start the POST.
+        assertThat(postStarted.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+        // While the POST is in progress, submit more entries. These must be accepted
+        // (not silently dropped by a posting guard).
+        repeat(3) { s.submit(LogEntry.LEVEL_INFO, "t", "during-post-$it") }
+        val depthDuringPost = s.queueDepth()
+        // Release the slow POST and let the shipper process the remaining entries.
+        releasePost.countDown()
+        assertThat(firstBatchDone.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue()
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        // The 3 entries submitted during the POST must have been enqueued, not dropped.
+        assertThat(depthDuringPost).isEqualTo(3)
+    }
+
     @Test fun `normalizeLogEndpoint expands a bare host with scheme port and path`() {
         assertThat(normalizeLogEndpoint("192.168.1.10")).isEqualTo("http://192.168.1.10:19192/log")
         assertThat(normalizeLogEndpoint(" myhost.lan ")).isEqualTo("http://myhost.lan:19192/log")
+    }
+
+    @Test fun `normalizeLogEndpoint host-colon-port without scheme uses http and keeps the port`() {
+        // java.net.URI("host:9000") without a scheme prefix would parse "host" as the
+        // scheme and "9000" as the path, returning null host. The normaliser prepends
+        // "http://" before any URI.parse call, so "host:9000" -> "http://host:9000"
+        // and the explicit port (9000) is preserved rather than replaced by 19192.
+        assertThat(normalizeLogEndpoint("host:9000")).isEqualTo("http://host:9000/log")
+        assertThat(normalizeLogEndpoint("192.168.1.10:8080")).isEqualTo("http://192.168.1.10:8080/log")
+        // Default port 19192 still applied when the bare host carries no port.
+        assertThat(normalizeLogEndpoint("192.168.1.10")).isEqualTo("http://192.168.1.10:19192/log")
     }
 
     @Test fun `normalizeLogEndpoint keeps explicit pieces`() {
