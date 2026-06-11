@@ -230,6 +230,13 @@ private fun PanelWebView(
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // Ingress add-ons (Terminal, ESPHome...) open their own WebSocket
+            // through /api/hassio_ingress/ with the ingress_session cookie the
+            // frontend sets via document.cookie. Cookie delivery on nested
+            // contexts is gated by the third-party policy in WebView even for
+            // same-site frames in some versions, so allow it explicitly — the
+            // WebView only ever loads the user's own HA origin.
+            android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             // Lock HTTPS servers to NEVER_ALLOW for mixed content; allow
             // HTTP servers everything (the whole session is already plaintext).
             // Matches the policy in LovelaceScreen's WebView factory.
@@ -265,6 +272,14 @@ private fun PanelWebView(
                             expiresAtMillis = tokenExpiresAtMillis,
                             nowMillis = System.currentTimeMillis(),
                         ),
+                        setOf(rule),
+                    )
+                    // Shim an upstream frontend crash (unguarded this.hass in
+                    // ha-menu-button) that wedges panel content blank on
+                    // narrow viewports; see HassTokensInjection.
+                    androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        HassTokensInjection.hardenFrontendScript(),
                         setOf(rule),
                     )
                 } else {

@@ -171,6 +171,22 @@ class EnergyViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    init {
+        // Re-fetch the live tiles whenever the WS (re)connects. A resume can
+        // race the reconnect: the screen's initial refresh fires while the
+        // socket is still down, every template fails, and the all-errors
+        // banner sat latched until the 30 s auto-tick — observed on device as
+        // 'n/a tiles until manual refresh'. Connected is the exact moment a
+        // retry can succeed, so refresh then instead of waiting out the tick.
+        viewModelScope.launch {
+            haRepository.connection.collect { conn ->
+                if (conn is com.github.itskenny0.r1ha.core.ha.ConnectionState.Connected) {
+                    refresh()
+                }
+            }
+        }
+    }
+
     /**
      * [indicate] marks a user-initiated refresh (pull gesture, REFRESH chip):
      * only those drive the pull-to-refresh indicator. The 30s auto-refresh and
@@ -445,17 +461,29 @@ class EnergyViewModel(
          *  `search` (Python `re.search`) test consumes. */
         private const val PRODUCTION_RE = "\\bsolar\\b|photovoltaic|grid_export|production|\\bpv\\b"
 
+        /** Rejects accumulative counters from instantaneous-power slices.
+         *  Some integrations declare lifetime counters with
+         *  device_class=power (a Zigbee plug's 'Total power' on a live
+         *  install ranked at 79.4 kW among the consumers); their
+         *  state_class is total / total_increasing, which a live W reading
+         *  never carries. rejectattr keeps sensors with NO state_class
+         *  (older integrations) since an undefined attribute fails the
+         *  'in' test and is therefore not rejected. */
+        private const val REJECT_ACCUMULATIVE =
+            "| rejectattr('attributes.state_class','in',['total','total_increasing']) "
+
         /** Sum positive-state device_class=power sensors. Excludes
-         *  unavailable / unknown / non-numeric, and excludes the
-         *  production-heuristic entities (solar / pv / grid_export /
-         *  production): inverters that report production as a positive
-         *  power value would otherwise be counted as consumption here
-         *  AND as production in SUM_PRODUCTION, double-counting them.
-         *  The reject mirrors SUM_PRODUCTION's select so the two slices
-         *  stay disjoint. */
+         *  unavailable / unknown / non-numeric, accumulative counters
+         *  (see REJECT_ACCUMULATIVE), and the production-heuristic
+         *  entities (solar / pv / grid_export / production): inverters
+         *  that report production as a positive power value would
+         *  otherwise be counted as consumption here AND as production in
+         *  SUM_PRODUCTION, double-counting them. The reject mirrors
+         *  SUM_PRODUCTION's select so the two slices stay disjoint. */
         private const val SUM_POWER_DRAW = "{{ states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            REJECT_ACCUMULATIVE +
             "| rejectattr('entity_id','search','$PRODUCTION_RE') " +
             "| map(attribute='state') | map('float',0) " +
             "| select('>',0) | sum | round(0) }}"
@@ -471,12 +499,14 @@ class EnergyViewModel(
         private const val SUM_PRODUCTION = "{% set gen = states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            REJECT_ACCUMULATIVE +
             "| selectattr('entity_id','search','\\bsolar\\b|photovoltaic|production|\\bpv\\b') " +
             "| map(attribute='state') | map('float',0) " +
             "| select('>',0) | sum %}" +
             "{% set grid = states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
+            REJECT_ACCUMULATIVE +
             "| selectattr('entity_id','search','grid_export') " +
             "| map(attribute='state') | map('float',0) | sum %}" +
             "{% set exp = [(grid * -1), 0] | max %}" +
@@ -508,14 +538,18 @@ class EnergyViewModel(
             "{%- for s in (states.sensor " +
             "| selectattr('attributes.device_class','eq','power') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            "| rejectattr('entity_id','search','$PRODUCTION_RE') " +
-            "| sort(attribute='state', reverse=True))[:8] -%}" +
+            REJECT_ACCUMULATIVE +
+            "| rejectattr('entity_id','search','$PRODUCTION_RE')) -%}" +
             "{%- set w = s.state | float(0) -%}" +
             "{%- if w > 0 -%}" +
             "{%- set out.items = out.items + [[s.entity_id, s.name, w]] -%}" +
             "{%- endif -%}" +
             "{%- endfor -%}" +
-            "{{ out.items | tojson }}"
+            // Sort AFTER float conversion (index 2 of each triple): the old
+            // sort(attribute='state') compared raw state STRINGS, so "999"
+            // outranked "1000" and the pre-cut [:8] could drop true top
+            // consumers entirely on installs with many power sensors.
+            "{{ (out.items | sort(attribute='2', reverse=true))[:8] | tojson }}"
 
         // ---- water / gas templates -------------------------------------------
         // UNVERIFIED OFFLINE: both templates mirror SUM_TODAY_KWH exactly, with

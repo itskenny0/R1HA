@@ -49,11 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Pin Lovelace cards to the deck: a page without favourites can host iframes, gauges, markdown and more.",
-    "Pinned panels (ESPHome, HACS, Terminal...) actually draw now: a resize during page boot wedged them blank.",
-    "Widgets repaint the moment their entity changes while the app runs, plus once at every app start.",
-    "Fixed a crash entering a dashboard's edit mode when a view holds the same card twice.",
-    "Editing or deleting a duplicated card now targets the copy you tapped, not the first match.",
-    "Iframe panels pointing at another host stay embedded instead of leaving a blank pane.",
-    "Blank WebView panels explain themselves: page errors and failed requests ship to your log endpoint.",
+    "Pin Lovelace cards to the deck: an empty page now offers PIN LOVELACE CARDS right on its face.",
+    "Pinned panels: shimmed the HA frontend crash that wedged ESPHome, HACS and Terminal blank.",
+    "Energy no longer ranks lifetime counters as live consumers, and recovers itself after a reconnect.",
+    "Add-favourites works again when the app was opened from a widget tap.",
+    "Widgets repaint the moment their entity changes while the app runs.",
 )

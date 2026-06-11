@@ -112,6 +112,34 @@ object HassTokensInjection {
         """.trimIndent()
     }
 
+    /**
+     * Hardening shim for an upstream HA frontend bug, registered at document
+     * start alongside the token script. ha-menu-button's willUpdate guards the
+     * OLD hass with `?.` but dereferences `this.hass.kioskMode` bare, so any
+     * update that runs before `hass` is first assigned throws an uncaught
+     * TypeError inside lit's async update — observed from the device as
+     * `reading 'kioskMode' of undefined` on every cold panel open, with the
+     * panel content wedged invisible behind a drawn header. Narrow viewports
+     * (the R1, phones) are exactly where the element composes early, which is
+     * why desktop browsers never see it. The patch defers the element's
+     * willUpdate until hass exists; lit re-runs it when hass is assigned.
+     */
+    fun hardenFrontendScript(): String = """
+        (function () {
+          try {
+            customElements.whenDefined("ha-menu-button").then(function () {
+              var proto = customElements.get("ha-menu-button").prototype;
+              var orig = proto.willUpdate;
+              if (typeof orig !== "function") return;
+              proto.willUpdate = function (changed) {
+                if (!this.hass) return;
+                return orig.call(this, changed);
+              };
+            });
+          } catch (e) { /* never break the page over a missing shim */ }
+        })();
+    """.trimIndent()
+
     /** Quote-and-escape a value for embedding in the script. The token alphabet
      *  is base64-ish (alnum + `-_./=`) so only quote + backslash bite; both are
      *  covered defensively. */

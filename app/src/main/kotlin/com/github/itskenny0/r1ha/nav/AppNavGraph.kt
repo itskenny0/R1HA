@@ -926,9 +926,14 @@ private fun CardStackDestination(
     // animating) could otherwise fire the navigate twice; launchSingleTop
     // alone has historically not been enough to prevent a second nav from
     // racing through while the back-stack entry for the first is still
-    // being created. Restricting to the CARD_STACK route makes it a no-op
-    // unless we're actually still on the deck.
-    if (navController.currentDestination?.route == Routes.CARD_STACK) {
+    // being created. Restricting to the deck routes makes it a no-op unless
+    // we're actually still on the deck — and that means BOTH of them: a
+    // widget tap enters through CARD_STACK_FOCUS, and accepting only the
+    // plain route made every add-favourites tap a silent no-op for the rest
+    // of that process (shipped logs: 15 consecutive skips until a restart).
+    if (navController.currentDestination?.route == Routes.CARD_STACK ||
+        navController.currentDestination?.route == Routes.CARD_STACK_FOCUS
+    ) {
         com.github.itskenny0.r1ha.core.util.R1Log.i(
             "Nav.openFavoritesPicker",
             "navigating to FAVORITES_PICKER",

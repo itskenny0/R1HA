@@ -1167,6 +1167,7 @@ fun CardStackScreen(
                             onOpenFavoritesPicker = onOpenFavoritesPicker,
                             onOpenSettings = onOpenSettings,
                             onRetry = { haRepository.reconnectNow() },
+                            onPinCards = { pinnedCardsForId.value = page.id },
                         )
                     } else {
                         PageDeck(
@@ -2407,6 +2408,11 @@ private fun EmptyState(
     onOpenFavoritesPicker: () -> Unit,
     onOpenSettings: () -> Unit,
     onRetry: () -> Unit,
+    /** Opens the pinned-Lovelace-cards manager for this page; null hides the
+     *  affordance (e.g. while loading). The empty page is where users look for
+     *  "how do I put a card here", so the entry must exist here, not only
+     *  behind the tab long-press. */
+    onPinCards: (() -> Unit)? = null,
 ) {
     // After STALLED_AFTER_MS of loading without any cards arriving, surface a "Stuck?"
     // affordance pointing to Settings. Without it, an unreachable HA leaves the user on a
@@ -2502,6 +2508,20 @@ private fun EmptyState(
             text = if (loading) "EDIT FAVOURITES" else "ADD FAVOURITES",
             onClick = onOpenFavoritesPicker,
         )
+        if (!loading && onPinCards != null) {
+            Spacer(Modifier.height(10.dp))
+            R1Button(
+                text = "PIN LOVELACE CARDS",
+                onClick = onPinCards,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Iframes, gauges, markdown and other HA cards as this page's deck.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+        }
         // Stalled-loading affordance. Two paths once we know the spinner has lingered too
         // long: a one-tap "retry connection" (cancels the backoff, fires immediately) and a
         // fallback "open settings" for the case where the auth tokens themselves are the

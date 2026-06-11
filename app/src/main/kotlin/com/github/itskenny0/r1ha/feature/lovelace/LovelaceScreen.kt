@@ -230,6 +230,9 @@ private fun LovelaceWebView(
         WebView(context).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            // Allow cookies on nested contexts (ingress iframes open their own
+            // WebSocket with the ingress_session cookie); see PanelViewerScreen.
+            android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             // Mixed-content policy keyed to the base URL scheme. The previous
             // COMPATIBILITY_MODE blanket-allowed HTTP subresources on an HTTPS
             // page — a sub-resource downgrade attacker could swap a CDN-served
@@ -274,6 +277,13 @@ private fun LovelaceWebView(
                             expiresAtMillis = tokenExpiresAtMillis,
                             nowMillis = System.currentTimeMillis(),
                         ),
+                        setOf(rule),
+                    )
+                    // Shim an upstream frontend crash that wedges panels blank
+                    // on narrow viewports; see HassTokensInjection.
+                    androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        HassTokensInjection.hardenFrontendScript(),
                         setOf(rule),
                     )
                 } else {
