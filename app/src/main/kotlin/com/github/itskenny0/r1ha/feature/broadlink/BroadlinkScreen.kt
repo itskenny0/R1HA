@@ -102,6 +102,11 @@ fun BroadlinkScreen(
 
     BackHandler {
         when {
+            // Backing out of an in-flight capture stops the client-side wait
+            // first; the next press leaves the learn section.
+            section == BroadlinkSection.LEARN &&
+                ui.learn.phase == BroadlinkViewModel.LearnPhase.CAPTURING ->
+                vm.cancelCapture()
             section != BroadlinkSection.CATALOG -> section = BroadlinkSection.CATALOG
             selectedDevice != null -> selectedDevice = null
             else -> onBack()
@@ -628,7 +633,13 @@ private fun CommandSheet(
     var renameText by remember(command.name) { mutableStateOf(command.label) }
     var deleteArmed by remember(command.name) { mutableStateOf(false) }
     var pagePickerOpen by remember(command.name) { mutableStateOf(false) }
-    BackHandler(onBack = onDismiss)
+    // Dialog window rather than an in-tree overlay: this sheet opens from
+    // deep inside the catalog's list/detail Column, where a fillMaxSize Box
+    // would only cover the remaining (zero) column height.
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -794,6 +805,7 @@ private fun CommandSheet(
             }
         }
     }
+    } // Dialog
     if (pagePickerOpen) {
         PagePickerDialog(
             pages = pages,
@@ -822,7 +834,12 @@ internal fun PagePickerDialog(
     onPick: (pageId: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    BackHandler(onBack = onDismiss)
+    // Dialog window for the same reason as the command sheet: call sites
+    // live inside Columns whose remaining height is zero.
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -889,4 +906,5 @@ internal fun PagePickerDialog(
             )
         }
     }
+    } // Dialog
 }

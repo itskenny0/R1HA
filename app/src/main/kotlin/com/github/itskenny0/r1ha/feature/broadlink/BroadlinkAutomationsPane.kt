@@ -560,18 +560,25 @@ private fun AutomationBuilder(
         }
     }
     if (entityPickerOpen) {
-        com.github.itskenny0.r1ha.feature.settings.EntityPickerSheet(
-            haRepository = haRepository,
-            onPick = { picked ->
-                entityId = picked
-                entityPickerOpen = false
-            },
-            onDismiss = { entityPickerOpen = false },
-            domains = setOf(
-                "binary_sensor", "sensor", "person", "switch", "light",
-                "input_boolean", "lock", "cover", "media_player", "climate",
-            ),
-        )
+        // Dialog window: this builder is a Column, so the picker's own
+        // fillMaxSize overlay would otherwise get zero remaining height.
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { entityPickerOpen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            com.github.itskenny0.r1ha.feature.settings.EntityPickerSheet(
+                haRepository = haRepository,
+                onPick = { picked ->
+                    entityId = picked
+                    entityPickerOpen = false
+                },
+                onDismiss = { entityPickerOpen = false },
+                domains = setOf(
+                    "binary_sensor", "sensor", "person", "switch", "light",
+                    "input_boolean", "lock", "cover", "media_player", "climate",
+                ),
+            )
+        }
     }
 }
 
