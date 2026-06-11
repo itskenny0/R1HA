@@ -1274,6 +1274,59 @@ data class FavoritePage(
 )
 
 /**
+ * One learned (or registered) IR/RF command inside a [BroadlinkDevice].
+ *
+ * [name] is the HA-side command name and is the identity key: HA stores the
+ * captured code under `device + command` in its server-side .storage, and the
+ * API offers no rename. The app therefore never mutates [name]; user-facing
+ * renames land in [label] only.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class BroadlinkCommand(
+    val name: String,
+    /** "ir" or "rf" — recorded at learn/register time. Cosmetic after capture
+     *  (HA encodes the kind in the stored code's first byte) but drives the
+     *  type badge and the learn-flow guidance. */
+    val type: String = "ir",
+    /** Display label override. Empty = show [name]. Registry-side only: the
+     *  HA-stored code stays keyed by [name]. */
+    val label: String = "",
+    val notes: String = "",
+    /** ISO-8601 UTC instant of the last in-app fire. Null = never fired
+     *  through the app. */
+    val lastFiredAt: String? = null,
+) {
+    val displayLabel: String get() = label.ifBlank { name }
+}
+
+/**
+ * A controlled device (TV, amp, fan...) scoped to one `remote.*` entity.
+ * Identity is the ([remoteEntityId], [name]) pair — Broadlink scopes stored
+ * codes per device name on each remote, so the same device name on two
+ * blasters is two distinct catalogs.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class BroadlinkDevice(
+    val name: String,
+    val remoteEntityId: String,
+    val commands: List<BroadlinkCommand> = emptyList(),
+)
+
+/**
+ * App-side Broadlink command registry. This is the source of truth for
+ * browsing: HA keeps learned codes in server-side .storage and exposes no
+ * API to enumerate them, so the app records what it learns/registers and
+ * surfaces a "register existing" flow for codes captured outside the app.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class BroadlinkSettings(
+    val devices: List<BroadlinkDevice> = emptyList(),
+)
+
+/**
  * @Immutable: every field is `val` and the nested data classes are themselves
  * @Immutable. Tells Compose to use equals() for recomposition skipping rather
  * than the conservative default that treats the Map fields as unstable.
@@ -1407,6 +1460,14 @@ data class AppSettings(
      * alongside the other diagnostic options.
      */
     val logShipping: LogShippingSettings = LogShippingSettings(),
+    /**
+     * Broadlink IR/RF command registry. HA stores learned codes server-side
+     * (.storage) and exposes no API to enumerate them, so the app keeps its
+     * own catalog of devices + commands per remote entity. Updated when the
+     * user learns / registers / deletes through the Broadlink console.
+     * Additive + defaulted for back-compat; rides AppBackup + HA sync.
+     */
+    val broadlink: BroadlinkSettings = BroadlinkSettings(),
 )
 
 /**
