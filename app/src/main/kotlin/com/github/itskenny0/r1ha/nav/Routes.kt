@@ -84,7 +84,7 @@ object Routes {
      *  assist pipeline (STT → conversation → TTS) and plays the response. */
     const val VOICE_SATELLITE = "voice_satellite"
 
-    /** Broadlink IR/RF console — learn, fire, catalog and automate
+    /** Broadlink IR/RF console: learn, fire, catalog and automate
      *  remote.send_command codes; reached from Settings → Integrations. */
     const val BROADLINK = "broadlink"
 

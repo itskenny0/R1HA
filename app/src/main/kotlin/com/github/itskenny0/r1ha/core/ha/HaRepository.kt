@@ -215,7 +215,7 @@ interface HaRepository {
     ): Result<Unit>
 
     /**
-     * GET `/api/config/automation/config/<id>` — the editable config body
+     * GET `/api/config/automation/config/<id>`: the editable config body
      * (alias, triggers, conditions, actions, mode) of a UI-managed
      * automation. [automationId] is the automation's `id` attribute, NOT its
      * entity_id; YAML-defined automations carry no id and aren't addressable
@@ -225,7 +225,7 @@ interface HaRepository {
     suspend fun fetchAutomationConfig(automationId: String): Result<String>
 
     /**
-     * POST `/api/config/automation/config/<id>` — create or replace a
+     * POST `/api/config/automation/config/<id>`: create or replace a
      * UI-managed automation's config. HA persists the body into its
      * automation store and reloads automations, so the new/updated entity
      * appears without an explicit `automation.reload`. Creating: pass a

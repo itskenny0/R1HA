@@ -1285,7 +1285,7 @@ data class FavoritePage(
 @kotlinx.serialization.Serializable
 data class BroadlinkCommand(
     val name: String,
-    /** "ir" or "rf" — recorded at learn/register time. Cosmetic after capture
+    /** "ir" or "rf", recorded at learn/register time. Cosmetic after capture
      *  (HA encodes the kind in the stored code's first byte) but drives the
      *  type badge and the learn-flow guidance. */
     val type: String = "ir",
@@ -1302,7 +1302,7 @@ data class BroadlinkCommand(
 
 /**
  * A controlled device (TV, amp, fan...) scoped to one `remote.*` entity.
- * Identity is the ([remoteEntityId], [name]) pair — Broadlink scopes stored
+ * Identity is the ([remoteEntityId], [name]) pair; Broadlink scopes stored
  * codes per device name on each remote, so the same device name on two
  * blasters is two distinct catalogs.
  */
