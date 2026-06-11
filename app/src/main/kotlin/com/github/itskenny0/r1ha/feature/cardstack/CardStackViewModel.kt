@@ -47,7 +47,7 @@ import kotlin.math.roundToInt
  */
 @androidx.compose.runtime.Stable
 data class CardStackUiState(
-    /** The ENTITY cards of the active page in deck order. The HA cache snapshot —
+    /** The ENTITY cards of the active page in deck order. The HA cache snapshot,
      *  what the server has confirmed. The UI should bind to [displayedCards] instead so
      *  optimistic wheel/tap updates are visible *immediately* rather than after the round-
      *  trip; this raw view is kept so the activeState getter and the optimistic-filter in
@@ -489,7 +489,7 @@ class CardStackViewModel(
                 // emissions whenever a page's deck is equivalent to the
                 // previous build. Without this, every entityMap emit produced
                 // a fresh List for every page even when nothing on that page
-                // had changed — and Compose, seeing a new List reference,
+                // had changed, and Compose, seeing a new List reference,
                 // recomposed every PageDeck (including inactive neighbours
                 // peeked via the beyondViewportPageCount=1 horizontal pager).
                 // With ref preservation, only pages whose contents actually

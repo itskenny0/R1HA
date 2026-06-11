@@ -151,7 +151,7 @@ internal fun LovelaceDeckCard(
                 )
             }
         }
-        // "…" menu affordance — same dot-cluster mark as the entity cards'
+        // "…" menu affordance: same dot-cluster mark as the entity cards'
         // detail button, anchored bottom-right where that button lives.
         if (isFocused) {
             Box(

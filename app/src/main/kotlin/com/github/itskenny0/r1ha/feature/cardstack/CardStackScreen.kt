@@ -539,7 +539,7 @@ fun CardStackScreen(
             }
             // Focused Lovelace card: there's no entity for the wheel to drive
             // and "open more-info" is meaningless for an arbitrary card, so
-            // the wheel takes the same inert path read-only entity cards do —
+            // the wheel takes the same inert path read-only entity cards do:
             // surface the navigation hint and stop. activeState is already
             // null for card slots, but gating here keeps the hint immediate
             // instead of falling into the silent `active == null` branch.
@@ -1129,7 +1129,7 @@ fun CardStackScreen(
                     // used; just scoped per-page. Lovelace card slots pass
                     // through untouched (no entity to override).
                     //
-                    // Memoised — the prior version allocated a fresh list via
+                    // Memoised: the prior version allocated a fresh list via
                     // .map { ... } on every recomp, including the ones
                     // HorizontalPager peek triggered for both neighbour pages.
                     // With beyondViewportPageCount=1, three pages re-derived
@@ -2352,7 +2352,7 @@ private fun PageDeck(
                 // Shared slot treatment for BOTH card kinds: full-bleed in the
                 // slot, rounded clip, fading shadow, slight scale on the
                 // incoming card. Lovelace slots wearing the exact same outer
-                // chrome as entity cards is the point — a pinned card reads
+                // chrome as entity cards is the point; a pinned card reads
                 // as a native member of the deck, not an embedded fragment.
                 val slotModifier = Modifier
                     .fillMaxSize()
