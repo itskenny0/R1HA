@@ -114,6 +114,23 @@ fun LovelaceScreen(
             }
             return@Column
         }
+        // Do NOT mount the WebView until the token load has RESOLVED: the
+        // WebViewClient captures the token values at first composition (see
+        // PanelViewerScreen for the full story); mounting early captured null
+        // forever and the injection never ran.
+        if (tokenPair == null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(R1.Bg),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = R1.AccentWarm,
+                )
+            }
+            return@Column
+        }
         Box(modifier = Modifier.fillMaxSize()) {
             LovelaceWebView(
                 serverUrl = url,
@@ -191,6 +208,10 @@ private fun LovelaceWebView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // Defense in depth for the stale-capture bug: read CURRENT token values,
+    // not whatever the first composition captured.
+    val liveAccessToken = rememberUpdatedState(accessToken)
+    val liveRefreshToken = rememberUpdatedState(refreshToken)
     val webView = remember(context, serverUrl) {
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -236,6 +257,11 @@ private fun LovelaceWebView(
                     // refresh_token); we synthesise a minimal one with
                     // a far-future expiry so the frontend doesn't try
                     // to refresh.
+                    val accessToken = liveAccessToken.value
+                    val refreshToken = liveRefreshToken.value
+                    if (accessToken.isNullOrBlank()) {
+                        R1Log.w("LovelaceScreen", "token inject skipped: no access token at page start url=$url")
+                    }
                     if (!accessToken.isNullOrBlank()) {
                         // Build the hassTokens envelope HA's frontend
                         // reads from localStorage on bootstrap. Passing

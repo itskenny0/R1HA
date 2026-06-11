@@ -109,6 +109,26 @@ fun PanelViewerScreen(
         // Build the panel URL from the server base and the url_path.
         val panelUrl = "${url.trimEnd('/')}/$panelUrlPath"
 
+        // Do NOT mount the WebView until the token load has RESOLVED. The
+        // WebViewClient is created once inside remember and captures the token
+        // values from that composition; mounting while the async TokenStore read
+        // was still in flight captured null forever, the hassTokens injection
+        // never ran, and the frontend showed its login mask on every open. The
+        // root cause of the persistent sign-in prompt.
+        if (tokenPair == null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(R1.Bg),
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                    color = R1.AccentWarm,
+                )
+            }
+            return@Column
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             PanelWebView(
                 panelUrl = panelUrl,
@@ -180,6 +200,11 @@ private fun PanelWebView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // Defense in depth for the stale-capture bug: the client reads the CURRENT
+    // token values through rememberUpdatedState instead of whatever the first
+    // composition happened to capture.
+    val liveAccessToken = rememberUpdatedState(accessToken)
+    val liveRefreshToken = rememberUpdatedState(refreshToken)
     val webView = remember(context, panelUrl) {
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -217,6 +242,13 @@ private fun PanelWebView(
                     // Guarded with !localStorage.getItem('hassTokens') so we only
                     // inject on the first page-start and never clobber a fresh
                     // frontend-refreshed token on subsequent navigations.
+                    val accessToken = liveAccessToken.value
+                    val refreshToken = liveRefreshToken.value
+                    if (accessToken.isNullOrBlank()) {
+                        // This branch hid the stale-capture bug: it was silent, so
+                        // shipped logs carried no evidence. Never again.
+                        R1Log.w("PanelViewer", "token inject skipped: no access token at page start url=$url")
+                    }
                     if (!accessToken.isNullOrBlank()) {
                         val expiresAt = System.currentTimeMillis() + 30 * 60 * 1000
                         // hassUrl is computed IN PAGE from location: the frontend
