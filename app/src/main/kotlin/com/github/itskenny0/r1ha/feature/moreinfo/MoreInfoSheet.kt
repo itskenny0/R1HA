@@ -129,6 +129,10 @@ fun MoreInfoSheet(
      *  MEDIA button that closes the sheet and opens the media-browse screen with
      *  this player preselected. Null hides the button. */
     onOpenMediaBrowse: ((entityId: String) -> Unit)? = null,
+    /** "Show more" hook for the logbook embed — when set, the logbook section
+     *  offers a SHOW MORE chip that closes the sheet and opens the native Logbook
+     *  screen scoped to the entity. Null hides the chip. */
+    onOpenLogbook: ((entityId: String) -> Unit)? = null,
 ) {
     // Internal back-stack: opening a group member's more-info pushes its id here so
     // the system Back pops to the parent instead of dismissing the whole sheet.
@@ -198,6 +202,7 @@ fun MoreInfoSheet(
                         onDismiss = { if (stack.size > 1) stack.removeAt(stack.size - 1) else onDismiss() },
                         onOpenHistory = onOpenHistory,
                         onOpenMediaBrowse = onOpenMediaBrowse,
+                        onOpenLogbook = onOpenLogbook,
                     )
                 }
 
@@ -216,6 +221,7 @@ private fun MoreInfoContent(
     onDismiss: () -> Unit,
     onOpenHistory: ((entityId: String) -> Unit)?,
     onOpenMediaBrowse: ((entityId: String) -> Unit)? = null,
+    onOpenLogbook: ((entityId: String) -> Unit)? = null,
 ) {
     val domain = entity.id.domain
     val accent = accentForDomain(domain, entity.deviceClass)
@@ -288,7 +294,12 @@ private fun MoreInfoContent(
         RecentActivitySection(haRepository = haRepository, entity = entity)
 
         // ── Logbook (24h, collapsible) ─────────────────────────────────────
-        LogbookSection(haRepository = haRepository, entity = entity)
+        LogbookSection(
+            haRepository = haRepository,
+            entity = entity,
+            accent = accent,
+            onOpenLogbook = onOpenLogbook?.let { open -> { open(entity.id.value); onDismiss() } },
+        )
 
         // ── Details (state block + YAML) ───────────────────────────────────
         DetailsSection(entity = entity)
@@ -1994,7 +2005,14 @@ private fun RecentActivitySection(
  * and human-readable messages), fetched server-side filtered to the entity.
  */
 @Composable
-private fun LogbookSection(haRepository: HaRepository, entity: EntityState) {
+private fun LogbookSection(
+    haRepository: HaRepository,
+    entity: EntityState,
+    accent: Color = R1.AccentWarm,
+    /** SHOW MORE hook: closes the sheet and opens the native Logbook scoped to
+     *  this entity. Null hides the chip. */
+    onOpenLogbook: (() -> Unit)? = null,
+) {
     val numericNow = entity.rawState?.toDoubleOrNull() != null || entity.raw != null
     val sensorLike = entity.id.domain == Domain.SENSOR ||
         entity.id.domain == Domain.NUMBER ||
@@ -2058,6 +2076,13 @@ private fun LogbookSection(haRepository: HaRepository, entity: EntityState) {
                             verticalArrangement = Arrangement.spacedBy(R1.space.s),
                         ) {
                             visible.forEach { row -> LogbookRow(row) }
+                        }
+                    }
+                    // SHOW MORE: open the full Logbook scoped to this entity, the
+                    // logbook analogue of the history embed's SHOW MORE.
+                    if (onOpenLogbook != null) {
+                        ChipStrip {
+                            DetailChip(label = "SHOW MORE", accent = accent, onClick = onOpenLogbook)
                         }
                     }
                 }

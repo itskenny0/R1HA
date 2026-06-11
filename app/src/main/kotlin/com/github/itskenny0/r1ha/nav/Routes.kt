@@ -33,6 +33,10 @@ object Routes {
     const val ASSIST = "assist"
     const val SCENES = "scenes"
     const val LOGBOOK = "logbook"
+    /** Logbook scoped to one entity (the more-info logbook SHOW MORE). The no-arg
+     *  [LOGBOOK] route stays the global feed. */
+    const val LOGBOOK_FOR = "logbook/{entityId}"
+    fun logbookRoute(entityId: String): String = "logbook/$entityId"
     const val TEMPLATE = "template"
     const val SERVICE_CALLER = "service_caller"
     const val NOTIFICATIONS = "notifications"

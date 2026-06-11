@@ -214,6 +214,9 @@ fun AppNavGraph(
                 onOpenHistory = { eid ->
                     navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
                 },
+                onOpenLogbook = { eid ->
+                    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
+                },
                 onOpenDashboardRoute = { route ->
                     navController.navigate(route) { launchSingleTop = true }
                 },
@@ -357,6 +360,25 @@ fun AppNavGraph(
                 onOpenHistory = { eid ->
                     navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
                 },
+            )
+        }
+        composable(
+            route = Routes.LOGBOOK_FOR,
+            arguments = listOf(
+                androidx.navigation.navArgument("entityId") {
+                    type = androidx.navigation.NavType.StringType
+                },
+            ),
+        ) { backStackEntry ->
+            com.github.itskenny0.r1ha.feature.logbook.LogbookScreen(
+                haRepository = haRepository,
+                settings = settings,
+                wheelInput = wheelInput,
+                onBack = { navController.popBackStack() },
+                onOpenHistory = { eid ->
+                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                },
+                initialEntityFilter = backStackEntry.arguments?.getString("entityId"),
             )
         }
         composable(Routes.TEMPLATE) {
@@ -762,6 +784,9 @@ fun AppNavGraph(
                 },
                 onOpenMediaBrowse = { eid ->
                     navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
+                },
+                onOpenLogbook = { eid ->
+                    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
                 },
                 onOpenView = { navPath ->
                     // A `navigate` tap_action's navigation_path. Mapping (empty /

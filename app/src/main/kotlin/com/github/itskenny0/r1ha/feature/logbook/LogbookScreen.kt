@@ -91,9 +91,20 @@ fun LogbookScreen(
      *  closing the loop between "what just changed" and "what was it
      *  doing earlier today". */
     onOpenHistory: (entityId: String) -> Unit = {},
+    /** When set (the more-info logbook SHOW MORE entry point), scope the feed to
+     *  this entity once on first composition. Blank/null keeps the unfiltered
+     *  feed. */
+    initialEntityFilter: String? = null,
 ) {
     val vm: LogbookViewModel = viewModel(factory = LogbookViewModel.factory(haRepository, settings))
     val ui by vm.ui.collectAsState()
+
+    // Pre-scope the feed to the entity passed in by more-info, once.
+    androidx.compose.runtime.LaunchedEffect(initialEntityFilter) {
+        if (!initialEntityFilter.isNullOrBlank()) {
+            vm.setEntityFilter(initialEntityFilter)
+        }
+    }
     // Query-filtered rows, derived off Main in the ViewModel. Collected here so the
     // list doesn't re-filter the full buffer on every recomposition (incl. the
     // per-second relative-timestamp ticks).

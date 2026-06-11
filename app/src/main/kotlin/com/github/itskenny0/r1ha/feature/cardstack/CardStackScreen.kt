@@ -123,6 +123,9 @@ fun CardStackScreen(
     onOpenWeather: () -> Unit = {},
     onOpenPersons: () -> Unit = {},
     onOpenHistory: (entityId: String) -> Unit = {},
+    /** Open the native Logbook scoped to an entity (the more-info logbook SHOW
+     *  MORE). Default no-op keeps previews / tests cheap. */
+    onOpenLogbook: (entityId: String) -> Unit = {},
     /** Navigate to a pinned Lovelace dashboard VIEW by its full
      *  [com.github.itskenny0.r1ha.nav.Routes.dashboardsViewRoute] string. Surfaced
      *  in the QuickActions drawer's DASHBOARDS section so phone users (no nav rail)
@@ -1538,6 +1541,8 @@ fun CardStackScreen(
                 // "Browse media" opens the media-browse screen with the player
                 // preselected.
                 onOpenMediaBrowse = { eid -> onOpenMediaBrowseFor(eid) },
+                // Logbook "Show more" opens the native Logbook scoped to the entity.
+                onOpenLogbook = { eid -> onOpenLogbook(eid) },
             )
         }
 

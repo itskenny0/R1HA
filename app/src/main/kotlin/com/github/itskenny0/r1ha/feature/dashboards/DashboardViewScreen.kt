@@ -121,6 +121,9 @@ fun DashboardViewScreen(
     /** Open media-browse pre-seeded with a player (the more-info "Browse media"
      *  button). No-op default keeps the screen renderable in isolation. */
     onOpenMediaBrowse: (String) -> Unit = {},
+    /** Open the native Logbook scoped to an entity (the more-info logbook SHOW
+     *  MORE). No-op default keeps the screen renderable in isolation. */
+    onOpenLogbook: (String) -> Unit = {},
     /** Settings repository, used to resolve the effective per-entity
      *  ultra-detail `moreInfoEnabled` flag and to feed the more-info sheet.
      *  Null (the isolation-render default) suppresses the in-screen sheet and
@@ -476,6 +479,7 @@ fun DashboardViewScreen(
             onDismiss = { moreInfoEntityId = null },
             onOpenHistory = { eid -> onOpenHistory(eid) },
             onOpenMediaBrowse = { eid -> onOpenMediaBrowse(eid) },
+            onOpenLogbook = { eid -> onOpenLogbook(eid) },
         )
     }
 
