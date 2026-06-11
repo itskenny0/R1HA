@@ -50,14 +50,10 @@ class R1haWidgetProvider : AppWidgetProvider() {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        // Bind the tap intent to the two visible children. The root LinearLayout
-        // carries no id of its own, so we can't attach a single click to it from
-        // here; binding the icon and the label covers every pixel the user can
-        // actually see. (Giving the root an id in the layout XML would let one
-        // click cover the padding too: see the SHARED CHANGE REQUEST in the
-        // widget layout.)
-        views.setOnClickPendingIntent(R.id.widget_icon, pending)
-        views.setOnClickPendingIntent(R.id.widget_label, pending)
+        // One click on the root covers every pixel of the tile, the surrounding
+        // padding included, so there is no dead launch zone around the icon and
+        // label.
+        views.setOnClickPendingIntent(R.id.widget_root, pending)
         manager.updateAppWidget(widgetId, views)
     }
 
