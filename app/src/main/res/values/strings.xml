@@ -49,6 +49,12 @@
     <string name="widget_description">Quick-launch R1HA</string>
     <string name="widget_button_label">R1HA</string>
 
+    <!-- Favorite-card widget: picker-catalog name + description, and the
+         static contentDescription the layout carries until the provider
+         swaps in the live "name: state" description at first paint. -->
+    <string name="widget_favorite_card_label">Favorite card</string>
+    <string name="widget_favorite_card_description">A favorite as a live card: name, state and accent</string>
+
     <!-- ── Dialog buttons ─────────────────────────────────────────── -->
     <string name="dialog_cancel">CANCEL</string>
     <string name="dialog_ok">OK</string>
