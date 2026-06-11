@@ -204,14 +204,18 @@ class App : Application() {
         }
         appScope.launch {
             // Wait for the first settings emission so we resend against the user's
-            // real config rather than the pre-load defaults.
+            // real config rather than the pre-load defaults. Normalize the endpoint
+            // the same way the shipper does in configure() — resendPending passes it
+            // straight to OkHttpLogPoster which requires a valid URL.
             val ls = graph.settings.settings.first().logShipping
+            val normalizedEndpoint =
+                com.github.itskenny0.r1ha.core.util.normalizeLogEndpoint(ls.endpoint).orEmpty()
             com.github.itskenny0.r1ha.core.util.CrashShipping.resendPending(
                 store = crashStore,
                 poster = crashPoster,
                 session = graph.logShipper.session,
-                enabled = ls.enabled && ls.endpoint.isNotBlank(),
-                endpoint = ls.endpoint,
+                enabled = ls.enabled && normalizedEndpoint.isNotBlank(),
+                endpoint = normalizedEndpoint,
             )
         }
         appScope.launch {
