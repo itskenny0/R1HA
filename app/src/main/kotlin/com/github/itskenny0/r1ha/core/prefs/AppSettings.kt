@@ -1264,13 +1264,49 @@ data class FavoritePage(
     /**
      * Pinned Lovelace cards, each stored as the card config's raw JSON text
      * (the same shape HA stores in a dashboard; parsed by LovelaceParser at
-     * render time). A page whose [favorites] is empty and whose [pinnedCards]
-     * is not renders these as its deck instead of entity cards — iframes,
-     * markdown, gauges, any card the native dashboards engine can paint.
-     * Stored as raw strings rather than a typed model so unknown future card
-     * types round-trip untouched. Additive + defaulted for back-compat.
+     * render time). Pinned cards render as first-class deck slots interleaved
+     * with the page's entity cards (see [deckOrder]); iframes, markdown,
+     * gauges, any card the native dashboards engine can paint. Stored as raw
+     * strings rather than a typed model so unknown future card types
+     * round-trip untouched. Additive + defaulted for back-compat.
      */
     val pinnedCards: List<String> = emptyList(),
+    /**
+     * Stable ids for [pinnedCards], parallel by index. Deck ordering and the
+     * pager's item keys reference cards by these ids so a delete or reorder
+     * never re-targets a neighbouring card the way a bare index would.
+     *
+     * Invariants (enforced by the healing pass in DeckOrder.kt, never assumed
+     * by readers):
+     *  - ids are unique within the page;
+     *  - the list is the same length as [pinnedCards] after any write path
+     *    runs; a shorter list (older blob, hand-edited backup) is padded with
+     *    deterministic positional fallbacks at read time, a longer one is
+     *    truncated.
+     * Old app versions ignore this field (pages JSON decodes with
+     * ignoreUnknownKeys) and keep rendering [pinnedCards] by position.
+     */
+    val pinnedCardIds: List<String> = emptyList(),
+    /**
+     * Interleaved deck order: a list of item refs, "e:&lt;entity_id&gt;" for a
+     * favourite and "c:&lt;pinned card id&gt;" for a pinned Lovelace card.
+     * [favorites] and [pinnedCards] stay the storage of record; this list only
+     * captures how the two interleave on the deck.
+     *
+     * Degradation contract (see DeckOrder.kt):
+     *  - empty or missing list = favourites first, then cards, both in their
+     *    own stored order (exactly what pre-interleave builds rendered);
+     *  - refs that no longer resolve (entity un-favourited, card deleted) are
+     *    dropped at read time, so deleting an item heals the order;
+     *  - items missing from the list (added by an older build, or by HA
+     *    settings sync from a build that doesn't write deckOrder) append at
+     *    the end in storage order;
+     *  - duplicate refs collapse to their first occurrence.
+     * Old app versions ignore the field entirely and fall back to
+     * favourites-then-cards, which is always a valid (if un-interleaved)
+     * rendering of the same items.
+     */
+    val deckOrder: List<String> = emptyList(),
 )
 
 /**
