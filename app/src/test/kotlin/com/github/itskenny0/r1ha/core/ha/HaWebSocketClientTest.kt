@@ -53,8 +53,7 @@ class HaWebSocketClientTest {
         client.state.test {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
+            awaitState(ConnectionState.Authenticating)
 
             // Server side: receive auth, then respond auth_ok
             val opened = recorder.awaitOpen()
@@ -120,10 +119,9 @@ class HaWebSocketClientTest {
         client.state.test {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
             // Socket upgrades but the server stays mute (no auth_required).
             recorder.awaitOpen()
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
+            awaitState(ConnectionState.Authenticating)
 
             // Advance past the watchdog budget on the virtual clock; nothing else has settled it.
             advanceTimeBy(5_001)
@@ -152,9 +150,8 @@ class HaWebSocketClientTest {
         client.state.test {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
             client.connect(url, accessToken = "TOK")
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Connecting)
             recorder.awaitOpen()
-            assertThat(awaitItem()).isEqualTo(ConnectionState.Authenticating)
+            awaitState(ConnectionState.Authenticating)
 
             // Client-side disconnect: state goes Idle and the watchdog is cancelled.
             client.disconnect()
@@ -167,5 +164,23 @@ class HaWebSocketClientTest {
             cancelAndConsumeRemainingEvents()
         }
         client.scope.cancel()
+    }
+}
+
+/**
+ * Await until the state flow reaches [expected], skipping conflated
+ * intermediates. ConnectionState is a conflated StateFlow: rapid transitions
+ * (Connecting then Authenticating off OkHttp's real callback thread) can
+ * collapse into one observed emission, so asserting every hop with a strict
+ * awaitItem() is racy on slow runners (it failed on CI while passing locally).
+ * Turbine's own timeout still bounds the wait, so a wrong terminal state fails
+ * loudly rather than hanging.
+ */
+private suspend fun app.cash.turbine.TurbineTestContext<ConnectionState>.awaitState(
+    expected: ConnectionState,
+) {
+    while (true) {
+        val item = awaitItem()
+        if (item == expected) return
     }
 }
