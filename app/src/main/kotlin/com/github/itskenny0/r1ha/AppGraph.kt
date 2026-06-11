@@ -227,6 +227,21 @@ class AppGraph(context: Context) {
     }
 
     /**
+     * Remote log shipper. Streams R1Log entries + crashes to a user-configured
+     * HTTP endpoint over the SHARED [okHttp] client (so it inherits the app's
+     * timeouts / TLS pinning / mTLS and adds no new HTTP stack). Idle until the
+     * user enables it in the dev menu; [App.onCreate] installs it on [R1Log] and
+     * pushes settings changes into it. Lazy so a fresh install that never enables
+     * shipping doesn't allocate the queue or the drain scope.
+     */
+    val logShipper: com.github.itskenny0.r1ha.core.util.LogShipper by lazy {
+        com.github.itskenny0.r1ha.core.util.LogShipper(
+            poster = com.github.itskenny0.r1ha.core.util.OkHttpLogPoster(okHttp),
+            scope = appScope,
+        )
+    }
+
+    /**
      * Local-only Lovelace overrides store. Backs the native dashboards
      * editor: reorder / replace / delete / append operations land in a
      * separate DataStore file so the main settings preferences blob

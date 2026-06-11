@@ -335,6 +335,11 @@ fun DevMenuScreen(
                 item { SectionDivider() }
             }
 
+            // ── Log shipping ────────────────────────────────────────────────
+            item { Section("LOG SHIPPING") }
+            item(key = "panel-log-shipping") { LogShippingPanel(state.logShipping, vm) }
+            item { SectionDivider() }
+
             // ── Log viewer ──────────────────────────────────────────────────────────
             item { Section("APP LOG") }
             item(key = "panel-log-viewer") { LogViewer() }
@@ -892,6 +897,92 @@ private fun WebhookPanel(
         Spacer(Modifier.height(6.dp))
         Text(
             text = "HA configuration.yaml: webhook → automation trigger 'webhook' with id '${advanced.webhookId}'. The action can target the URL printed in the persistent notification.",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+        )
+    }
+}
+
+/**
+ * Log shipping controls. Streams R1Log entries (and crashes) to a remote HTTP
+ * endpoint as NDJSON over the app's shared OkHttp client. The TEST button does a
+ * GET probe against the same URL and reports the result; field changes persist
+ * to DataStore immediately and the App-level collector pushes them into the live
+ * shipper without an app restart.
+ */
+@Composable
+private fun LogShippingPanel(
+    logShipping: com.github.itskenny0.r1ha.core.prefs.LogShippingSettings,
+    vm: com.github.itskenny0.r1ha.feature.settings.SettingsViewModel,
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var testing by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var testResult by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+        DevSwitchRow(
+            label = "Ship logs to endpoint",
+            subtitle = "Stream this app's log entries (and crashes) to a remote HTTP endpoint as NDJSON. A background coroutine batches and sends them; failures back off without blocking the app. Off by default.",
+            checked = logShipping.enabled,
+            onChange = { v -> vm.updateLogShipping { it.copy(enabled = v) } },
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(text = "ENDPOINT URL", style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(2.dp))
+        com.github.itskenny0.r1ha.ui.components.R1TextField(
+            value = logShipping.endpoint,
+            onValueChange = { v ->
+                vm.updateLogShipping { it.copy(endpoint = v.trim()) }
+                testResult = null
+            },
+            placeholder = "http://192.168.1.10:19192/log",
+            monospace = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        val canTest = logShipping.endpoint.isNotBlank() && !testing
+        com.github.itskenny0.r1ha.ui.components.R1Button(
+            text = if (testing) "TESTING…" else "TEST",
+            onClick = {
+                if (canTest) {
+                    testing = true
+                    testResult = null
+                    val endpoint = logShipping.endpoint
+                    scope.launch {
+                        val client = (context.applicationContext as? com.github.itskenny0.r1ha.App)
+                            ?.graph?.okHttp
+                        val result = if (client == null) {
+                            com.github.itskenny0.r1ha.core.util.LogPoster.ProbeResult(
+                                ok = false,
+                                detail = "no HTTP client",
+                            )
+                        } else {
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.github.itskenny0.r1ha.core.util.OkHttpLogPoster(client)
+                                    .probe(endpoint)
+                            }
+                        }
+                        testResult = if (result.ok) "OK: ${result.detail}" else "FAILED: ${result.detail}"
+                        testing = false
+                    }
+                }
+            },
+            enabled = canTest,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        testResult?.let { msg ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = msg,
+                style = R1.labelMicro,
+                color = if (msg.startsWith("OK")) R1.AccentWarm else R1.StatusRed,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "Privacy: shipped logs may include entity names and states from your Home Assistant install. Only point this at an endpoint you control.",
             style = R1.labelMicro,
             color = R1.InkMuted,
         )

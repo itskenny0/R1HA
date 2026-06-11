@@ -45,6 +45,29 @@ class SettingsRepositoryTest {
         }
     }
 
+    @Test fun logShippingDefaultsDisabledWithEmptyEndpoint() = runTest {
+        val repo = newRepo()
+        repo.settings.test {
+            val ls = awaitItem().logShipping
+            assertThat(ls.enabled).isFalse()
+            assertThat(ls.endpoint).isEmpty()
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test fun setThenReadLogShipping() = runTest {
+        val repo = newRepo()
+        repo.update {
+            it.copy(logShipping = it.logShipping.copy(enabled = true, endpoint = "http://192.168.1.10:19192/log"))
+        }
+        repo.settings.test {
+            val ls = awaitItem().logShipping
+            assertThat(ls.enabled).isTrue()
+            assertThat(ls.endpoint).isEqualTo("http://192.168.1.10:19192/log")
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     @Test fun setThenReadWheelStep() = runTest {
         val repo = newRepo()
         repo.update { it.copy(wheel = it.wheel.copy(stepPercent = 10, acceleration = false)) }

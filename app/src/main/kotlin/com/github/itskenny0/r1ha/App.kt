@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -108,8 +109,38 @@ class App : Application() {
         // user can EXPORT the logs to a file via SAF for diagnostics.
         // Without this, every crash on the R1 was a black box; logcat isn't
         // accessible to most users.
+        // Install the remote log shipper on R1Log so every log call (while the
+        // user has shipping enabled) also enqueues a wire entry. The instance is
+        // idle until the settings collector below pushes the user's enabled +
+        // endpoint into it; assigning it here (not in the collector) means a
+        // crash on a very early code path still has a session id + queue to ship
+        // through if shipping was already configured on a prior run.
+        R1Log.shipper = graph.logShipper
+        // Crash store under filesDir/crash/ for the log-shipping crash capture +
+        // next-startup resend. Independent of the existing last_crash.txt dev-menu
+        // surface (which stays as-is); this directory feeds the wire protocol.
+        val crashStore = com.github.itskenny0.r1ha.core.util.CrashStore.forFilesDir(filesDir)
+        val crashPoster = com.github.itskenny0.r1ha.core.util.OkHttpLogPoster(graph.okHttp)
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, ex ->
+            // Log-shipping crash capture: synchronously write a crash file, then
+            // make a best-effort immediate ship on a separate thread joined with
+            // a hard 2 s timeout so a dead network can't hang the dying process.
+            // Reads the shipper's live enabled/endpoint snapshot. Wrapped so a
+            // failure here can never mask the real crash or block the chain.
+            runCatching {
+                com.github.itskenny0.r1ha.core.util.CrashShipping.captureAndShip(
+                    store = crashStore,
+                    poster = crashPoster,
+                    session = graph.logShipper.session,
+                    threadName = thread.name,
+                    throwable = ex,
+                    versionName = BuildConfig.VERSION_NAME,
+                    nowMillis = System.currentTimeMillis(),
+                    enabled = graph.logShipper.shippingEnabled,
+                    endpoint = graph.logShipper.shippingEndpoint,
+                )
+            }
             runCatching {
                 R1Log.e(
                     "App.uncaught",
@@ -156,6 +187,33 @@ class App : Application() {
             previousHandler?.uncaughtException(thread, ex)
         }
         R1Log.i("App.onCreate", "application starting")
+        // Push the user's log-shipping config into the shipper on every change so
+        // a toggle / endpoint edit takes effect without an app restart; the first
+        // emission also seeds shippingEnabled/Endpoint that the crash handler reads.
+        // Then resend any crash files left by a previous process: best-effort
+        // immediate ship at crash time can miss (process dying, network down), so
+        // this is the reliable path — ship with resend=true, delete on confirmed
+        // 200, keep at most the newest few otherwise.
+        appScope.launch {
+            graph.settings.settings
+                .map { it.logShipping }
+                .distinctUntilChanged()
+                .collect { ls ->
+                    graph.logShipper.configure(enabled = ls.enabled, endpoint = ls.endpoint)
+                }
+        }
+        appScope.launch {
+            // Wait for the first settings emission so we resend against the user's
+            // real config rather than the pre-load defaults.
+            val ls = graph.settings.settings.first().logShipping
+            com.github.itskenny0.r1ha.core.util.CrashShipping.resendPending(
+                store = crashStore,
+                poster = crashPoster,
+                session = graph.logShipper.session,
+                enabled = ls.enabled && ls.endpoint.isNotBlank(),
+                endpoint = ls.endpoint,
+            )
+        }
         appScope.launch {
             androidx.tracing.Trace.beginSection("R1HA.haRepository.start")
             try {
