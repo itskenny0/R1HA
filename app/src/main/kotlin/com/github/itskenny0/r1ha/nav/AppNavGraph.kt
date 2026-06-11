@@ -66,9 +66,25 @@ fun AppNavGraph(
                 "logbook" -> Routes.LOGBOOK
                 // Widget deep-link: "entity/<entity_id>" opens the deck with
                 // that entity's more-info sheet already up.
-                else -> route.takeIf { it.startsWith("entity/") }
-                    ?.removePrefix("entity/")?.takeIf { it.isNotBlank() }
-                    ?.let { Routes.cardStackFocusRoute(it) }
+                // Pinned-card navigate action: "dashview:<navigation_path>"
+                // ("/dashboard/view") opens the native dashboards renderer at
+                // that view. A single-segment path means a view on the default
+                // dashboard.
+                else -> when {
+                    route.startsWith("entity/") ->
+                        route.removePrefix("entity/").takeIf { it.isNotBlank() }
+                            ?.let { Routes.cardStackFocusRoute(it) }
+                    route.startsWith("dashview:") -> {
+                        val segs = route.removePrefix("dashview:").trim('/').split('/')
+                        when {
+                            segs.size >= 2 -> Routes.dashboardsViewRoute(segs[0], segs[1])
+                            segs.size == 1 && segs[0].isNotBlank() ->
+                                Routes.dashboardsViewRoute(null, segs[0])
+                            else -> null
+                        }
+                    }
+                    else -> null
+                }
             }
             if (target != null) {
                 navController.navigate(target) { launchSingleTop = true }

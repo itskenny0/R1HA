@@ -1261,6 +1261,16 @@ data class FavoritePage(
      *  than a constrained type means a future build can add new presets
      *  without a schema bump. Additive + nullable for back-compat. */
     val icon: String? = null,
+    /**
+     * Pinned Lovelace cards, each stored as the card config's raw JSON text
+     * (the same shape HA stores in a dashboard; parsed by LovelaceParser at
+     * render time). A page whose [favorites] is empty and whose [pinnedCards]
+     * is not renders these as its deck instead of entity cards — iframes,
+     * markdown, gauges, any card the native dashboards engine can paint.
+     * Stored as raw strings rather than a typed model so unknown future card
+     * types round-trip untouched. Additive + defaulted for back-compat.
+     */
+    val pinnedCards: List<String> = emptyList(),
 )
 
 /**

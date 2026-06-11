@@ -49,6 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Pin Lovelace cards to the deck: a page without favourites can host iframes, gauges, markdown and more.",
     "Pinned panels (ESPHome, HACS, Terminal...) actually draw now: a resize during page boot wedged them blank.",
     "Widgets repaint the moment their entity changes while the app runs, plus once at every app start.",
     "Fixed a crash entering a dashboard's edit mode when a view holds the same card twice.",

@@ -335,6 +335,11 @@ val PICKER_TEMPLATES: List<Pair<String, JsonObject>> = listOf(
         put("type", kotlinx.serialization.json.JsonPrimitive("markdown"))
         put("content", kotlinx.serialization.json.JsonPrimitive("## Hello\n\nMarkdown body."))
     },
+    "iframe" to buildJsonObject {
+        put("type", kotlinx.serialization.json.JsonPrimitive("iframe"))
+        put("url", kotlinx.serialization.json.JsonPrimitive(""))
+        put("aspect_ratio", kotlinx.serialization.json.JsonPrimitive("16:9"))
+    },
     "heading" to buildJsonObject {
         put("type", kotlinx.serialization.json.JsonPrimitive("heading"))
         put("heading", kotlinx.serialization.json.JsonPrimitive("Section"))

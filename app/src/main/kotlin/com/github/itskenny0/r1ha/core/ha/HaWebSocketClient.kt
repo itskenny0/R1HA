@@ -31,7 +31,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * "one connection, cleanly handled."
  */
 class HaWebSocketClient internal constructor(
-    private val http: OkHttpClient,
+    /** WebSocket transport. Production passes the shared [OkHttpClient] (which
+     *  IS a WebSocket.Factory); the watchdog unit tests pass a scripted fake so
+     *  they run with no real sockets — mixing MockWebServer's real I/O threads
+     *  with the virtual test clock made them flake on loaded CI runners. */
+    private val http: WebSocket.Factory,
     internal val scope: CoroutineScope,
     /**
      * How long the handshake (Connecting -> Authenticating -> Connected) may take before the

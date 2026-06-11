@@ -105,37 +105,40 @@ class HaWebSocketClientTest {
         client.disconnect(); client.scope.cancel()
     }
 
+    // ── Watchdog tests ─────────────────────────────────────────────────────────
+    // These run on a SCRIPTED transport, not MockWebServer: they mix the virtual
+    // test clock (the watchdog delay) with transport callbacks, and doing that
+    // over real localhost sockets made them the suite's recurring CI flake —
+    // four different timeout failures across runs while passing locally. With a
+    // fake WebSocket.Factory the listener is invoked synchronously on the test
+    // thread and the only clock is the virtual one. The transport-level tests
+    // above keep MockWebServer for real frame-parsing coverage.
+
     @Test fun `handshake watchdog force-fails a socket that never sends auth_required`() = runTest {
         // The wedge: the WS upgrades at the transport layer (onOpen -> Authenticating) but the HA
         // backend never delivers auth_required, so AuthOk/AuthInvalid/onClosed/onFailure never run
         // and the state would otherwise sit on Authenticating forever. The watchdog must break it.
-        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
-        server.start()
-        val url = server.url("/api/websocket").toString().replace("http", "ws")
-        // Unconfined (eager) dispatch: with StandardTestDispatcher the connect
-        // coroutine sits queued until the single test thread services the
-        // scheduler, and on a loaded CI runner that dispatch starved past even
-        // a 30s Turbine timeout while the test waited in real time. Eager
-        // start runs connect() to its first suspension at the call site; the
-        // watchdog delay itself still runs on the virtual clock.
+        val factory = FakeWsFactory()
         val client = HaWebSocketClient(
-            http = http(),
+            http = factory,
             scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
             handshakeWatchdogMillis = 5_000,
         )
 
         client.state.test(timeout = 30.seconds) {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
-            client.connect(url, accessToken = "TOK")
-            // Socket upgrades but the server stays mute (no auth_required).
-            recorder.awaitOpen()
+            client.connect("wss://ha.test/api/websocket", accessToken = "TOK")
+            awaitState(ConnectionState.Connecting)
+            // Transport upgrades, but the server stays mute (no auth_required).
+            factory.openLatest()
             awaitState(ConnectionState.Authenticating)
 
             // Advance past the watchdog budget on the virtual clock; nothing else has settled it.
             advanceTimeBy(5_001)
             advanceUntilIdle()
-            val failed = awaitItem()
+            val failed = awaitState(ConnectionState.Disconnected::class.java)
             assertThat(failed).isInstanceOf(ConnectionState.Disconnected::class.java)
+            assertThat(factory.sockets.single().first.cancelled).isTrue()
             cancelAndConsumeRemainingEvents()
         }
         client.scope.cancel()
@@ -144,22 +147,20 @@ class HaWebSocketClientTest {
     @Test fun `disconnect disarms the handshake watchdog`() = runTest {
         // A client_disconnect during the connecting window must cancel the armed watchdog so it
         // can't later fire a spurious Disconnected over an already-torn-down (or freshly replaced)
-        // connection. Deterministic: the server stays mute, so only the watchdog could move state,
-        // and disconnect() runs before we advance the virtual clock past the watchdog budget.
-        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
-        server.start()
-        val url = server.url("/api/websocket").toString().replace("http", "ws")
-        // Unconfined dispatch for the same reason as the force-fail test above.
+        // connection. The transport stays mute, so only the watchdog could move state, and
+        // disconnect() runs before we advance the virtual clock past the watchdog budget.
+        val factory = FakeWsFactory()
         val client = HaWebSocketClient(
-            http = http(),
+            http = factory,
             scope = TestScope(UnconfinedTestDispatcher(testScheduler)),
             handshakeWatchdogMillis = 5_000,
         )
 
         client.state.test(timeout = 30.seconds) {
             assertThat(awaitItem()).isEqualTo(ConnectionState.Idle)
-            client.connect(url, accessToken = "TOK")
-            recorder.awaitOpen()
+            client.connect("wss://ha.test/api/websocket", accessToken = "TOK")
+            awaitState(ConnectionState.Connecting)
+            factory.openLatest()
             awaitState(ConnectionState.Authenticating)
 
             // Client-side disconnect: state goes Idle and the watchdog is cancelled.
@@ -173,6 +174,43 @@ class HaWebSocketClientTest {
             cancelAndConsumeRemainingEvents()
         }
         client.scope.cancel()
+    }
+}
+
+/** Scripted in-memory WebSocket: records writes, never does I/O. */
+private class FakeWebSocket(private val req: okhttp3.Request) : okhttp3.WebSocket {
+    var cancelled = false
+        private set
+    override fun request(): okhttp3.Request = req
+    override fun queueSize(): Long = 0
+    override fun send(text: String): Boolean = true
+    override fun send(bytes: okio.ByteString): Boolean = true
+    override fun close(code: Int, reason: String?): Boolean = true
+    override fun cancel() { cancelled = true }
+}
+
+/** Captures each (socket, listener) pair so tests can drive callbacks directly. */
+private class FakeWsFactory : okhttp3.WebSocket.Factory {
+    val sockets = mutableListOf<Pair<FakeWebSocket, okhttp3.WebSocketListener>>()
+    override fun newWebSocket(
+        request: okhttp3.Request,
+        listener: okhttp3.WebSocketListener,
+    ): okhttp3.WebSocket {
+        val ws = FakeWebSocket(request)
+        sockets += ws to listener
+        return ws
+    }
+
+    /** Deliver onOpen for the most recent connection attempt (a 101 upgrade). */
+    fun openLatest() {
+        val (ws, listener) = sockets.last()
+        val resp = okhttp3.Response.Builder()
+            .request(ws.request())
+            .protocol(okhttp3.Protocol.HTTP_1_1)
+            .code(101)
+            .message("Switching Protocols")
+            .build()
+        listener.onOpen(ws, resp)
     }
 }
 
@@ -197,5 +235,15 @@ private suspend fun app.cash.turbine.TurbineTestContext<ConnectionState>.awaitSt
     while (true) {
         val item = awaitItem()
         if (item == expected) return
+    }
+}
+
+/** [awaitState] by class, for states that carry payloads (e.g. Disconnected). */
+private suspend fun app.cash.turbine.TurbineTestContext<ConnectionState>.awaitState(
+    expected: Class<out ConnectionState>,
+): ConnectionState {
+    while (true) {
+        val item = awaitItem()
+        if (expected.isInstance(item)) return item
     }
 }

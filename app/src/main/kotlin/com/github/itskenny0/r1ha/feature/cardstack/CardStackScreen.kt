@@ -261,6 +261,52 @@ fun CardStackScreen(
     val tabManagementForId = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
+    // Pinned-cards management overlay (page id being managed, null = closed).
+    // Opened from TabManageDialog's PINNED CARDS row and from the provenance
+    // chip on a pinned card slot.
+    val pinnedCardsForId = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    // ── Pinned Lovelace cards ("cards pages") ──────────────────────────────────
+    // A page with no favourites but pinned card configs renders LovelacePageDeck
+    // instead of the entity deck. Parsing + entity-reference collection happen
+    // once at screen scope (not per PageDeck) because observeRaw's entity-set
+    // registration is last-writer-wins: with beyondViewportPageCount = 1 two
+    // adjacent cards pages would otherwise clobber each other's subscription.
+    val lovelaceCardsByPage = androidx.compose.runtime.remember(state.pages) {
+        state.pages
+            .filter { it.favorites.isEmpty() && it.pinnedCards.isNotEmpty() }
+            .associate { p -> p.id to parsePinnedCards(p.pinnedCards) }
+    }
+    val lovelaceEntityIds = androidx.compose.runtime.remember(lovelaceCardsByPage) {
+        val sink = LinkedHashSet<String>()
+        lovelaceCardsByPage.values.flatten().forEach {
+            com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, sink)
+        }
+        sink.toSet()
+    }
+    val lovelaceStatesRaw by androidx.compose.runtime.produceState(
+        initialValue = emptyMap<String, com.github.itskenny0.r1ha.core.ha.EntityState>(),
+        lovelaceEntityIds,
+    ) {
+        if (lovelaceEntityIds.isEmpty()) {
+            value = emptyMap()
+        } else {
+            haRepository.observeRaw(lovelaceEntityIds).collect { value = it }
+        }
+    }
+    val lovelaceStates = androidx.compose.runtime.remember(lovelaceStatesRaw) {
+        com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(lovelaceStatesRaw)
+    }
+    // Wheel detents routed to the active cards page's deck (two detents = one
+    // card step). Separate from jumpRequests: those carry absolute indices for
+    // the entity deck; this carries raw signed detents.
+    val lovelaceWheelSteps = remember {
+        kotlinx.coroutines.flow.MutableSharedFlow<Int>(
+            extraBufferCapacity = 8,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+    }
     /** Quick-actions sheet visibility — opened by a long-press on the chrome
      *  hamburger. Holds 'all off on this page' as the only action today;
      *  designed to grow into a generic per-page quick-actions surface. */
@@ -439,6 +485,24 @@ fun CardStackScreen(
             // updated via setCurrentIndex / setActivePage.
             if (horizontalPagerAnimating.value || verticalPagerAnimating.value) {
                 return@collect
+            }
+            // Cards page (pinned Lovelace cards): the wheel's only useful verb
+            // there is stepping the deck, so route raw detents to the active
+            // LovelacePageDeck and stop. Read through vm.state.value so the
+            // collector never holds a stale captured page list.
+            run {
+                val s = vm.state.value
+                val activePage = s.pages.firstOrNull { it.id == s.activePageId }
+                if (activePage != null &&
+                    activePage.favorites.isEmpty() &&
+                    activePage.pinnedCards.isNotEmpty()
+                ) {
+                    val dirSign = com.github.itskenny0.r1ha.core.input.WheelInput.applyDirection(
+                        event.direction, appSettings.wheel.invertDirection,
+                    )
+                    lovelaceWheelSteps.tryEmit(dirSign)
+                    return@collect
+                }
             }
             val active = vm.state.value.activeState
             val dir = event.direction
@@ -1047,7 +1111,41 @@ fun CardStackScreen(
                             }
                         }
                     }
-                    if (pageCards.isEmpty()) {
+                    val pinnedForPage = lovelaceCardsByPage[page.id]
+                    if (pinnedForPage != null) {
+                        // Cards page: the deck is pinned Lovelace cards painted
+                        // by the native dashboards engine (iframes included).
+                        val pageAccent = page.accentArgb?.let { androidx.compose.ui.graphics.Color(it) }
+                            ?: R1.AccentWarm
+                        LovelacePageDeck(
+                            cards = pinnedForPage,
+                            states = lovelaceStates,
+                            accent = pageAccent,
+                            isActive = isActive,
+                            haRepository = haRepository,
+                            serverUrl = appSettings.server?.url,
+                            wheelSteps = lovelaceWheelSteps,
+                            onMoreInfo = { id -> moreInfoEntityId.value = id },
+                            onNavigatePath = { path ->
+                                // HA navigation_path ("/dashboard/view") routes to
+                                // the native dashboards renderer via ShortcutBus.
+                                com.github.itskenny0.r1ha.core.util.ShortcutBus.request(
+                                    "dashview:$path",
+                                )
+                            },
+                            onOpenUrl = { url ->
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(url),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            },
+                            onManageCards = { pinnedCardsForId.value = page.id },
+                        )
+                    } else if (pageCards.isEmpty()) {
                         val reconnectAt by haRepository.reconnectNextAttemptAtMillis
                             .collectAsStateWithLifecycle()
                         EmptyState(
@@ -1618,8 +1716,41 @@ fun CardStackScreen(
                 onMoveRight = { id -> vm.movePageRight(id) },
                 onSetAccent = { id, argb -> vm.setPageAccent(id, argb) },
                 onSetIcon = { id, icon -> vm.setPageIcon(id, icon) },
+                onManagePinnedCards = { id ->
+                    tabManagementForId.value = null
+                    pinnedCardsForId.value = id
+                },
                 onDismiss = { tabManagementForId.value = null },
             )
+        }
+
+        // ── Pinned-cards manager ────────────────────────────────────────────────────
+        // Lists / adds / edits the Lovelace cards pinned to a page. Mutations
+        // persist straight into the page's pinnedCards via the settings store;
+        // the screen-level parse + observeRaw derivations above pick the change
+        // up on the next settings emission.
+        val pinnedPageId = pinnedCardsForId.value
+        if (pinnedPageId != null) {
+            val targetPage = appSettings.pages.firstOrNull { it.id == pinnedPageId }
+            if (targetPage == null) {
+                pinnedCardsForId.value = null
+            } else {
+                PinnedCardsSheet(
+                    page = targetPage,
+                    onSave = { newCards ->
+                        scope.launch {
+                            settings.update { s ->
+                                s.copy(
+                                    pages = s.pages.map { p ->
+                                        if (p.id == pinnedPageId) p.copy(pinnedCards = newCards) else p
+                                    },
+                                )
+                            }
+                        }
+                    },
+                    onDismiss = { pinnedCardsForId.value = null },
+                )
+            }
         }
 
         // Quick-actions sheet — currently only 'all off' on the active page.
@@ -2707,6 +2838,8 @@ private fun TabManageDialog(
     onMoveRight: (String) -> Unit,
     onSetAccent: (pageId: String, accentArgb: Int?) -> Unit,
     onSetIcon: (pageId: String, icon: String?) -> Unit,
+    /** Opens the pinned-Lovelace-cards manager for this page. */
+    onManagePinnedCards: (pageId: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val initial = if (isAdd) "NEW" else (page?.name ?: "")
@@ -2942,6 +3075,22 @@ private fun TabManageDialog(
             // 'CONFIRM DELETE · TAP AGAIN'), second tap commits. Auto-disarms
             // after 3 seconds via a LaunchedEffect so a stray arm doesn't sit
             // hot indefinitely. Mirrors how desktop OSes guard accidental
+            // Pinned Lovelace cards: pages without favourites can host
+            // dashboards-engine cards (iframes, gauges, markdown...) as their
+            // deck. The row reads as installed-module count so a cards page is
+            // recognisable at a glance from the manage dialog.
+            if (!isAdd && page != null) {
+                Spacer(Modifier.height(8.dp))
+                R1Button(
+                    text = if (page.pinnedCards.isEmpty()) {
+                        "PINNED CARDS · NONE"
+                    } else {
+                        "PINNED CARDS · ${page.pinnedCards.size}"
+                    },
+                    onClick = { onManagePinnedCards(page.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             // destructive actions — a one-tap delete on a populated page was
             // too easy to fire from muscle memory.
             if (!isAdd && page != null && canDelete) {

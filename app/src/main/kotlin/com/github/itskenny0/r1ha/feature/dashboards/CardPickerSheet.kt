@@ -115,6 +115,7 @@ private fun describe(type: String): String = when (type) {
     "light" -> "Brightness orb"
     "gauge" -> "Numeric arc"
     "markdown" -> "Markdown body"
+    "iframe" -> "Embedded web page"
     "heading" -> "Section heading"
     "weather-forecast" -> "Weather + forecast"
     "vertical-stack" -> "Column of cards"
