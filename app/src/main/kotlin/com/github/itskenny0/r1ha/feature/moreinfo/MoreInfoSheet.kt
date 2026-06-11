@@ -125,6 +125,10 @@ fun MoreInfoSheet(
      *  closes the sheet and opens the native History screen for the entity. Null
      *  (the default) hides the chip, so callers without a nav host stay valid. */
     onOpenHistory: ((entityId: String) -> Unit)? = null,
+    /** Media-browse hook — when set, a media_player's more-info offers a BROWSE
+     *  MEDIA button that closes the sheet and opens the media-browse screen with
+     *  this player preselected. Null hides the button. */
+    onOpenMediaBrowse: ((entityId: String) -> Unit)? = null,
 ) {
     // Internal back-stack: opening a group member's more-info pushes its id here so
     // the system Back pops to the parent instead of dismissing the whole sheet.
@@ -193,6 +197,7 @@ fun MoreInfoSheet(
                         dispatch = dispatch,
                         onDismiss = { if (stack.size > 1) stack.removeAt(stack.size - 1) else onDismiss() },
                         onOpenHistory = onOpenHistory,
+                        onOpenMediaBrowse = onOpenMediaBrowse,
                     )
                 }
 
@@ -210,6 +215,7 @@ private fun MoreInfoContent(
     dispatch: (ServiceCall) -> Unit,
     onDismiss: () -> Unit,
     onOpenHistory: ((entityId: String) -> Unit)?,
+    onOpenMediaBrowse: ((entityId: String) -> Unit)? = null,
 ) {
     val domain = entity.id.domain
     val accent = accentForDomain(domain, entity.deviceClass)
@@ -249,6 +255,21 @@ private fun MoreInfoContent(
                     .alpha(0.4f),
             ) {
                 SectionWrap(control)
+            }
+        }
+
+        // ── Browse media ───────────────────────────────────────────────────
+        // HA's more-info-media_player offers a "Browse media" entry point for a
+        // player advertising BROWSE_MEDIA. When a nav host is wired, surface a
+        // button that closes the sheet and opens the media-browse screen with
+        // this player preselected.
+        if (onOpenMediaBrowse != null &&
+            domain == Domain.MEDIA_PLAYER &&
+            entity.hasMediaFeature(EntityState.MediaPlayerFeature.BROWSE_MEDIA)
+        ) {
+            ActionButton(label = "BROWSE MEDIA", accent = accent) {
+                onOpenMediaBrowse(entity.id.value)
+                onDismiss()
             }
         }
 

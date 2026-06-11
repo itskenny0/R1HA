@@ -62,6 +62,10 @@ object Routes {
      *  same set HA's frontend shows under Settings > System > Repairs. */
     const val REPAIRS = "repairs"
     const val MEDIA_BROWSE = "media_browse"
+    /** Media-browse pre-seeded with a player entity (more-info "Browse media").
+     *  The no-arg [MEDIA_BROWSE] route stays the manual-entry entry point. */
+    const val MEDIA_BROWSE_FOR = "media_browse/{entityId}"
+    fun mediaBrowseRoute(entityId: String): String = "media_browse/$entityId"
     const val BACKUPS = "backups"
     /** Zigbee pairing surface — opens the network for joins via ZHA / Z2M / deCONZ
      *  and surfaces newly-discovered entities as they enrol. */

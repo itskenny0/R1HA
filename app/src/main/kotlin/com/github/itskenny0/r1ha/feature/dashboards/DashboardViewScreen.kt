@@ -115,6 +115,12 @@ fun DashboardViewScreen(
      *  keeps the screen renderable in isolation. Wired distinctly from
      *  [onOpenView] so the assist action isn't mistaken for a view path. */
     onOpenAssist: () -> Unit = {},
+    /** Open the native History screen for an entity (the more-info history embed's
+     *  SHOW MORE). No-op default keeps the screen renderable in isolation. */
+    onOpenHistory: (String) -> Unit = {},
+    /** Open media-browse pre-seeded with a player (the more-info "Browse media"
+     *  button). No-op default keeps the screen renderable in isolation. */
+    onOpenMediaBrowse: (String) -> Unit = {},
     /** Settings repository, used to resolve the effective per-entity
      *  ultra-detail `moreInfoEnabled` flag and to feed the more-info sheet.
      *  Null (the isolation-render default) suppresses the in-screen sheet and
@@ -468,6 +474,8 @@ fun DashboardViewScreen(
             settings = settings,
             entityId = moreInfoId,
             onDismiss = { moreInfoEntityId = null },
+            onOpenHistory = { eid -> onOpenHistory(eid) },
+            onOpenMediaBrowse = { eid -> onOpenMediaBrowse(eid) },
         )
     }
 

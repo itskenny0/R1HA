@@ -202,6 +202,9 @@ fun AppNavGraph(
                 onOpenMediaBrowse = {
                     navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true }
                 },
+                onOpenMediaBrowseFor = { eid ->
+                    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
+                },
                 onOpenWeather = {
                     navController.navigate(Routes.WEATHER) { launchSingleTop = true }
                 },
@@ -529,6 +532,20 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(
+            route = Routes.MEDIA_BROWSE_FOR,
+            arguments = listOf(
+                androidx.navigation.navArgument("entityId") {
+                    type = androidx.navigation.NavType.StringType
+                },
+            ),
+        ) { backStackEntry ->
+            com.github.itskenny0.r1ha.feature.mediabrowse.MediaBrowseScreen(
+                haRepository = haRepository,
+                onBack = { navController.popBackStack() },
+                initialEntityId = backStackEntry.arguments?.getString("entityId"),
+            )
+        }
         composable(Routes.BACKUPS) {
             com.github.itskenny0.r1ha.feature.backups.BackupsScreen(
                 haRepository = haRepository,
@@ -739,6 +756,12 @@ fun AppNavGraph(
                 },
                 onOpenAssist = {
                     navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+                },
+                onOpenHistory = { eid ->
+                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                },
+                onOpenMediaBrowse = { eid ->
+                    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
                 },
                 onOpenView = { navPath ->
                     // A `navigate` tap_action's navigation_path. Mapping (empty /

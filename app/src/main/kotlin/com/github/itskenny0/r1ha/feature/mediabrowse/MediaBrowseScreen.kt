@@ -254,10 +254,21 @@ private class MediaBrowseViewModel(
 fun MediaBrowseScreen(
     haRepository: HaRepository,
     onBack: () -> Unit,
+    /** When set (the more-info "Browse media" entry point), auto-open this
+     *  player's root once on first composition instead of waiting for manual
+     *  entity entry. Blank/null keeps the manual-entry flow. */
+    initialEntityId: String? = null,
 ) {
     val vm: MediaBrowseViewModel = viewModel(factory = MediaBrowseViewModel.factory(haRepository))
     val ui by vm.ui.collectAsState()
     var entityInput by remember { mutableStateOf("") }
+
+    // Pre-seed the browse with the player passed in by more-info, once.
+    androidx.compose.runtime.LaunchedEffect(initialEntityId) {
+        if (!initialEntityId.isNullOrBlank() && ui.entityId == null) {
+            vm.openRoot(initialEntityId)
+        }
+    }
 
     // Transient per-row "PLAY tapped" set, kept screen-local (the ViewModel has no
     // per-row in-flight flag and editing it is out of slice). A tapped playable row

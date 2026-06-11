@@ -360,6 +360,7 @@ data class EntityState(
         const val PLAY = 16384
         const val SHUFFLE_SET = 32768
         const val SELECT_SOUND_MODE = 65536
+        const val BROWSE_MEDIA = 131072
         const val REPEAT_SET = 262144
         const val GROUPING = 524288
     }

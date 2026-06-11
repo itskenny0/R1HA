@@ -117,6 +117,9 @@ fun CardStackScreen(
      *  Default no-ops keep previews / tests cheap. */
     onOpenCameras: () -> Unit = {},
     onOpenMediaBrowse: () -> Unit = {},
+    /** Open media-browse pre-seeded with a specific player (more-info "Browse
+     *  media"). Default no-op keeps previews / tests cheap. */
+    onOpenMediaBrowseFor: (entityId: String) -> Unit = {},
     onOpenWeather: () -> Unit = {},
     onOpenPersons: () -> Unit = {},
     onOpenHistory: (entityId: String) -> Unit = {},
@@ -1532,6 +1535,9 @@ fun CardStackScreen(
                 // "Show more" in the history embed opens the native History screen
                 // for the entity (the card stack already wires onOpenHistory).
                 onOpenHistory = { eid -> onOpenHistory(eid) },
+                // "Browse media" opens the media-browse screen with the player
+                // preselected.
+                onOpenMediaBrowse = { eid -> onOpenMediaBrowseFor(eid) },
             )
         }
 
