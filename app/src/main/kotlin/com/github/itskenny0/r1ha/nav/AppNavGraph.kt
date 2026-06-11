@@ -897,7 +897,7 @@ private fun CardStackDestination(
         haRepository = haRepository,
         settings = settings,
         wheelInput = wheelInput,
-        initialMoreInfoEntityId = focusEntity,
+        initialFocusEntityId = focusEntity,
                 // launchSingleTop = true on every push so a rapid double-tap on the gear or a
         // double-fire of the swipe gesture can't stack two copies of the same screen
         // on the back stack (which would otherwise need two back-presses to escape).

@@ -79,6 +79,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
@@ -88,10 +89,11 @@ fun CardStackScreen(
     wheelInput: WheelInput,
     onOpenFavoritesPicker: () -> Unit,
     onOpenSettings: () -> Unit,
-    /** Entity whose more-info sheet opens as soon as the deck composes; the
-     *  home-screen widget deep-link lands here so a widget tap surfaces the
-     *  tapped card immediately instead of just the deck. Null = normal start. */
-    initialMoreInfoEntityId: String? = null,
+    /** Entity the deck scrolls to as soon as its content loads; the home-screen
+     *  widget deep-link lands here so a widget tap surfaces the tapped CARD
+     *  (page switch + jump), with the detail sheet staying one tap away.
+     *  Null = normal start. */
+    initialFocusEntityId: String? = null,
     /** Surfaced from the QuickActions sheet (long-press hamburger →
      *  TODAY). Lets the user jump to the at-a-glance dashboard without
      *  going through Settings. */
@@ -331,7 +333,37 @@ fun CardStackScreen(
     // Hoisted to screen scope (alongside the other overlay-visibility flags) so
     // the wheel handler below can both read it (modal gate) and set it (open).
     val moreInfoEntityId = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(initialMoreInfoEntityId)
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    // Widget deep-link: scroll the deck to the entity's card. The jump/tab flows
+    // have no replay and only the ACTIVE deck collects jumps, so the sequence is
+    // orchestrated: wait for content, switch page, await activation, then emit
+    // the jump a few times spaced out (idempotent: same target index) to absorb
+    // the collector's startup window. Runs once per entry into the route; a
+    // second widget tap re-navigates and re-runs it.
+    androidx.compose.runtime.LaunchedEffect(initialFocusEntityId) {
+        val target = initialFocusEntityId ?: return@LaunchedEffect
+        val loaded = vm.state.first { it.pages.isNotEmpty() && it.cardsByPage.isNotEmpty() }
+        val pageId = loaded.pages.firstOrNull { p ->
+            loaded.cardsByPage[p.id]?.any { c -> c.id.value == target } == true
+        }?.id
+        if (pageId == null) {
+            com.github.itskenny0.r1ha.core.util.R1Log.w(
+                "CardStack.focus",
+                "deep-link entity not in any page: $target",
+            )
+            return@LaunchedEffect
+        }
+        val cardIdx = loaded.cardsByPage[pageId].orEmpty().indexOfFirst { it.id.value == target }
+        if (pageId != loaded.activePageId) {
+            kotlinx.coroutines.delay(150)
+            tabTapRequests.emit(pageId)
+            vm.state.first { it.activePageId == pageId }
+        }
+        repeat(3) {
+            kotlinx.coroutines.delay(300)
+            jumpRequests.emit(cardIdx)
+        }
     }
     // "Any pager mid-animation" gates wheel events. Two writers feed this:
     //   - the screen-level HorizontalPager (tab swipes) — wired below
