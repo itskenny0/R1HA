@@ -5,11 +5,12 @@
   FrameLayout, RelativeLayout, GridLayout, plus a handful of widgets).
   Compose isn't usable here without the Glance dependency.
 
-  The whole layout is bound to a tap-intent via setOnClickPendingIntent
-  in R1haWidgetProvider — we don't break the launcher into icon vs label
-  click regions because the whole tile is one launch affordance.
+  The root carries an id so the whole tile, padding included, is one tap
+  target: R1haWidgetProvider binds the launch intent to widget_root rather
+  than to the icon and label separately, which would leave the padding dead.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
