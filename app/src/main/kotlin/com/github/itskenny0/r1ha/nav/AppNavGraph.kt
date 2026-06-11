@@ -63,7 +63,11 @@ fun AppNavGraph(
                 "notifications" -> Routes.NOTIFICATIONS
                 "cameras" -> Routes.CAMERAS
                 "logbook" -> Routes.LOGBOOK
-                else -> null
+                // Widget deep-link: "entity/<entity_id>" opens the deck with
+                // that entity's more-info sheet already up.
+                else -> route.takeIf { it.startsWith("entity/") }
+                    ?.removePrefix("entity/")?.takeIf { it.isNotBlank() }
+                    ?.let { Routes.cardStackFocusRoute(it) }
             }
             if (target != null) {
                 navController.navigate(target) { launchSingleTop = true }
@@ -138,91 +142,22 @@ fun AppNavGraph(
             )
         }
         composable(Routes.CARD_STACK) {
-            CardStackScreen(
-                haRepository = haRepository,
-                settings = settings,
-                wheelInput = wheelInput,
-                // launchSingleTop = true on every push so a rapid double-tap on the gear or a
-                // double-fire of the swipe gesture can't stack two copies of the same screen
-                // on the back stack (which would otherwise need two back-presses to escape).
-                onOpenFavoritesPicker = {
-                    // Guard against duplicate / mid-transition navigation. Rapid taps on
-                    // the hamburger (or a tap that lands while a pager swipe is still
-                    // animating) could otherwise fire the navigate twice; launchSingleTop
-                    // alone has historically not been enough to prevent a second nav from
-                    // racing through while the back-stack entry for the first is still
-                    // being created. Restricting to the CARD_STACK route makes it a no-op
-                    // unless we're actually still on the deck.
-                    if (navController.currentDestination?.route == Routes.CARD_STACK) {
-                        com.github.itskenny0.r1ha.core.util.R1Log.i(
-                            "Nav.openFavoritesPicker",
-                            "navigating to FAVORITES_PICKER",
-                        )
-                        navController.navigate(Routes.FAVORITES_PICKER) { launchSingleTop = true }
-                    } else {
-                        com.github.itskenny0.r1ha.core.util.R1Log.w(
-                            "Nav.openFavoritesPicker",
-                            "skipping navigate; currentDestination=${navController.currentDestination?.route}",
-                        )
-                    }
+            CardStackDestination(navController, haRepository, settings, wheelInput, focusEntity = null)
+        }
+        // Widget deep-link target: the same deck, but with the tapped entity's
+        // more-info sheet already open so the widget surfaces its card
+        // immediately instead of just the app home screen.
+        composable(
+            Routes.CARD_STACK_FOCUS,
+            arguments = listOf(
+                androidx.navigation.navArgument("focusEntity") {
+                    type = androidx.navigation.NavType.StringType
                 },
-                onOpenSettings = {
-                    navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
-                },
-                onOpenDashboard = {
-                    navController.navigate(Routes.DASHBOARD) { launchSingleTop = true }
-                },
-                onOpenSearch = {
-                    navController.navigate(Routes.SEARCH) { launchSingleTop = true }
-                },
-                onOpenAssist = {
-                    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
-                },
-                onOpenAutomations = {
-                    navController.navigate(Routes.AUTOMATIONS) { launchSingleTop = true }
-                },
-                onOpenEnergy = {
-                    navController.navigate(Routes.ENERGY) { launchSingleTop = true }
-                },
-                onOpenScenes = {
-                    navController.navigate(Routes.SCENES) { launchSingleTop = true }
-                },
-                onOpenNotifications = {
-                    navController.navigate(Routes.NOTIFICATIONS) { launchSingleTop = true }
-                },
-                onOpenZones = {
-                    navController.navigate(Routes.ZONES) { launchSingleTop = true }
-                },
-                onOpenDevice = {
-                    navController.navigate(Routes.DEVICE) { launchSingleTop = true }
-                },
-                onOpenCameras = {
-                    navController.navigate(Routes.CAMERAS) { launchSingleTop = true }
-                },
-                onOpenMediaBrowse = {
-                    navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true }
-                },
-                onOpenMediaBrowseFor = { eid ->
-                    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
-                },
-                onOpenWeather = {
-                    navController.navigate(Routes.WEATHER) { launchSingleTop = true }
-                },
-                onOpenPersons = {
-                    navController.navigate(Routes.PERSONS) { launchSingleTop = true }
-                },
-                onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
-                },
-                onOpenLogbook = { eid ->
-                    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
-                },
-                onOpenDashboardRoute = { route ->
-                    navController.navigate(route) { launchSingleTop = true }
-                },
-                onOpenRoute = { route ->
-                    navController.navigate(route) { launchSingleTop = true }
-                },
+            ),
+        ) { entry ->
+            CardStackDestination(
+                navController, haRepository, settings, wheelInput,
+                focusEntity = entry.arguments?.getString("focusEntity"),
             )
         }
         composable(Routes.FAVORITES_PICKER) {
@@ -947,5 +882,102 @@ private fun SettingsRouteContent(
             }
         },
         onBack = { navController.popBackStack() },
+    )
+}
+
+@androidx.compose.runtime.Composable
+private fun CardStackDestination(
+    navController: androidx.navigation.NavHostController,
+    haRepository: com.github.itskenny0.r1ha.core.ha.HaRepository,
+    settings: com.github.itskenny0.r1ha.core.prefs.SettingsRepository,
+    wheelInput: com.github.itskenny0.r1ha.core.input.WheelInput,
+    focusEntity: String?,
+) {
+    CardStackScreen(
+        haRepository = haRepository,
+        settings = settings,
+        wheelInput = wheelInput,
+        initialMoreInfoEntityId = focusEntity,
+                // launchSingleTop = true on every push so a rapid double-tap on the gear or a
+        // double-fire of the swipe gesture can't stack two copies of the same screen
+        // on the back stack (which would otherwise need two back-presses to escape).
+        onOpenFavoritesPicker = {
+    // Guard against duplicate / mid-transition navigation. Rapid taps on
+    // the hamburger (or a tap that lands while a pager swipe is still
+    // animating) could otherwise fire the navigate twice; launchSingleTop
+    // alone has historically not been enough to prevent a second nav from
+    // racing through while the back-stack entry for the first is still
+    // being created. Restricting to the CARD_STACK route makes it a no-op
+    // unless we're actually still on the deck.
+    if (navController.currentDestination?.route == Routes.CARD_STACK) {
+        com.github.itskenny0.r1ha.core.util.R1Log.i(
+            "Nav.openFavoritesPicker",
+            "navigating to FAVORITES_PICKER",
+        )
+        navController.navigate(Routes.FAVORITES_PICKER) { launchSingleTop = true }
+    } else {
+        com.github.itskenny0.r1ha.core.util.R1Log.w(
+            "Nav.openFavoritesPicker",
+            "skipping navigate; currentDestination=${navController.currentDestination?.route}",
+        )
+    }
+        },
+        onOpenSettings = {
+    navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
+        },
+        onOpenDashboard = {
+    navController.navigate(Routes.DASHBOARD) { launchSingleTop = true }
+        },
+        onOpenSearch = {
+    navController.navigate(Routes.SEARCH) { launchSingleTop = true }
+        },
+        onOpenAssist = {
+    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+        },
+        onOpenAutomations = {
+    navController.navigate(Routes.AUTOMATIONS) { launchSingleTop = true }
+        },
+        onOpenEnergy = {
+    navController.navigate(Routes.ENERGY) { launchSingleTop = true }
+        },
+        onOpenScenes = {
+    navController.navigate(Routes.SCENES) { launchSingleTop = true }
+        },
+        onOpenNotifications = {
+    navController.navigate(Routes.NOTIFICATIONS) { launchSingleTop = true }
+        },
+        onOpenZones = {
+    navController.navigate(Routes.ZONES) { launchSingleTop = true }
+        },
+        onOpenDevice = {
+    navController.navigate(Routes.DEVICE) { launchSingleTop = true }
+        },
+        onOpenCameras = {
+    navController.navigate(Routes.CAMERAS) { launchSingleTop = true }
+        },
+        onOpenMediaBrowse = {
+    navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true }
+        },
+        onOpenMediaBrowseFor = { eid ->
+    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
+        },
+        onOpenWeather = {
+    navController.navigate(Routes.WEATHER) { launchSingleTop = true }
+        },
+        onOpenPersons = {
+    navController.navigate(Routes.PERSONS) { launchSingleTop = true }
+        },
+        onOpenHistory = { eid ->
+    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+        },
+        onOpenLogbook = { eid ->
+    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
+        },
+        onOpenDashboardRoute = { route ->
+    navController.navigate(route) { launchSingleTop = true }
+        },
+        onOpenRoute = { route ->
+    navController.navigate(route) { launchSingleTop = true }
+        },
     )
 }

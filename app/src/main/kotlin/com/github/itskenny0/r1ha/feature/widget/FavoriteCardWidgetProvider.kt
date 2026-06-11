@@ -195,7 +195,9 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
                 tapPending = if (widgetTapActsInPlace(domain)) {
                     tapPending(context, widgetId)
                 } else {
-                    openAppPending(context, widgetId)
+                    // Read-only domains open the app ON the tapped card: the
+                    // deck with this entity's more-info sheet already up.
+                    openAppPending(context, widgetId, entityId)
                 }
             }
         }
@@ -273,12 +275,19 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun openAppPending(context: Context, widgetId: Int): PendingIntent =
+    private fun openAppPending(context: Context, widgetId: Int, entityId: String? = null): PendingIntent =
         PendingIntent.getActivity(
             context,
             widgetId,
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                // Deep-link straight to the tapped entity's card: MainActivity
+                // forwards this route through the ShortcutBus on both cold and
+                // warm starts, and the nav graph opens the deck with the
+                // more-info sheet already up.
+                if (entityId != null) {
+                    putExtra(MainActivity.EXTRA_INITIAL_ROUTE, "entity/$entityId")
+                }
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

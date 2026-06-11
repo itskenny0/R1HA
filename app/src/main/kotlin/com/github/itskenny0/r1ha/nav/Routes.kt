@@ -4,6 +4,11 @@ package com.github.itskenny0.r1ha.nav
 object Routes {
     const val ONBOARDING = "onboarding"
     const val CARD_STACK = "card_stack"
+
+    /** Card stack with one entity's more-info sheet pre-opened: the favorite
+     *  widget's tap target, so the tapped card surfaces immediately. */
+    const val CARD_STACK_FOCUS = "card_stack/{focusEntity}"
+    fun cardStackFocusRoute(entityId: String): String = "card_stack/$entityId"
     const val FAVORITES_PICKER = "favorites_picker"
     const val SETTINGS = "settings"
 

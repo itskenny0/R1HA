@@ -88,6 +88,10 @@ fun CardStackScreen(
     wheelInput: WheelInput,
     onOpenFavoritesPicker: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** Entity whose more-info sheet opens as soon as the deck composes; the
+     *  home-screen widget deep-link lands here so a widget tap surfaces the
+     *  tapped card immediately instead of just the deck. Null = normal start. */
+    initialMoreInfoEntityId: String? = null,
     /** Surfaced from the QuickActions sheet (long-press hamburger →
      *  TODAY). Lets the user jump to the at-a-glance dashboard without
      *  going through Settings. */
@@ -327,7 +331,7 @@ fun CardStackScreen(
     // Hoisted to screen scope (alongside the other overlay-visibility flags) so
     // the wheel handler below can both read it (modal gate) and set it (open).
     val moreInfoEntityId = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<String?>(null)
+        androidx.compose.runtime.mutableStateOf<String?>(initialMoreInfoEntityId)
     }
     // "Any pager mid-animation" gates wheel events. Two writers feed this:
     //   - the screen-level HorizontalPager (tab swipes) — wired below
