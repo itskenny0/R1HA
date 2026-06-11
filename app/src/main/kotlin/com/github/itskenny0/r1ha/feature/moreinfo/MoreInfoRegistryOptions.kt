@@ -64,6 +64,49 @@ fun decodeRegistryFavorites(options: JsonObject?, domain: String): RegistryFavor
     return RegistryFavorites(positions = positions, tiltPositions = tilt, colors = colors)
 }
 
+/**
+ * Encode favourite positions into the per-domain options object HA persists
+ * (`{ favorite_positions: [...] }`). Pure so the codec round-trips under test.
+ * Used by the more-info favourites editor to write back via
+ * [HaRepository.updateEntityRegistryOptions].
+ */
+fun encodeFavoritePositions(positions: List<Int>): JsonObject =
+    kotlinx.serialization.json.buildJsonObject {
+        put("favorite_positions", kotlinx.serialization.json.buildJsonArray {
+            positions.forEach { add(JsonPrimitive(it)) }
+        })
+    }
+
+/**
+ * Encode favourite light colours into the per-domain options object
+ * (`{ favorite_colors: [ {color_temp_kelvin|rgb_color}, ... ] }`). A ColorTemp
+ * favourite encodes as `{color_temp_kelvin: K}`; an Rgb favourite as
+ * `{rgb_color: [r,g,b]}` (the swatch ARGB unpacked back to a triple).
+ */
+fun encodeFavoriteColors(colors: List<FavoriteColor>): JsonObject =
+    kotlinx.serialization.json.buildJsonObject {
+        put("favorite_colors", kotlinx.serialization.json.buildJsonArray {
+            colors.forEach { fav ->
+                add(
+                    kotlinx.serialization.json.buildJsonObject {
+                        when (fav) {
+                            is FavoriteColor.ColorTemp ->
+                                put("color_temp_kelvin", JsonPrimitive(fav.kelvin))
+                            is FavoriteColor.Rgb -> put(
+                                "rgb_color",
+                                kotlinx.serialization.json.buildJsonArray {
+                                    add(JsonPrimitive((fav.argb shr 16) and 0xFF))
+                                    add(JsonPrimitive((fav.argb shr 8) and 0xFF))
+                                    add(JsonPrimitive(fav.argb and 0xFF))
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+        })
+    }
+
 private fun intList(el: kotlinx.serialization.json.JsonElement?): List<Int> =
     (el as? JsonArray)
         ?.mapNotNull { (it as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() }

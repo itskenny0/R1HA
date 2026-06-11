@@ -1018,30 +1018,266 @@ private fun RegistryFavoriteColors(
         )
     }
     if (swatches.isEmpty()) return
-    Text(text = "FAVOURITES", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+    val scope = rememberCoroutineScope()
+    var editing by remember(entity.id) { mutableStateOf(false) }
+    var confirmReset by remember(entity.id) { mutableStateOf(false) }
+    var copyOpen by remember(entity.id) { mutableStateOf(false) }
+    var report by remember(entity.id) { mutableStateOf<com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.CopyReport?>(null) }
+    // Working copy while editing; seeded from the stored swatches (defaults are
+    // read-only until the user edits, at which point they materialise as stored).
+    var working by remember(entity.id, stored.colors) { mutableStateOf(swatches) }
+
+    // Persist the working colours to the registry, invalidate the cache, refetch.
+    val persist: (List<com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor>) -> Unit = { colors ->
+        scope.launch {
+            haRepository.updateEntityRegistryOptions(
+                entity.id.value,
+                "light",
+                com.github.itskenny0.r1ha.feature.moreinfo.encodeFavoriteColors(colors),
+            )
+            com.github.itskenny0.r1ha.feature.dashboards.cards.EntityRegistryOptionsCache
+                .invalidate(entity.id.value)
+        }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "FAVOURITES",
+            style = responsiveType(R1.labelMicro),
+            color = R1.InkMuted,
+            modifier = Modifier.weight(1f),
+        )
+        DetailChip(label = if (editing) "DONE" else "EDIT", accent = accent, selected = editing) {
+            editing = !editing
+            if (editing) working = swatches
+        }
+    }
     ChipStrip {
-        swatches.forEach { fav ->
+        (if (editing) working else swatches).forEachIndexed { index, fav ->
             when (fav) {
                 is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb -> ColorSwatch(
                     color = Color(fav.argb),
                     selected = false,
-                    description = "Favourite colour",
-                    onClick = { dispatch(favoriteColorAction(entity, fav.argb)) },
+                    description = if (editing) "Remove colour" else "Favourite colour",
+                    onClick = {
+                        if (editing) {
+                            working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                                .removeColorAt(working, index)
+                            persist(working)
+                        } else {
+                            dispatch(favoriteColorAction(entity, fav.argb))
+                        }
+                    },
                 )
                 is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.ColorTemp -> ColorSwatch(
                     color = Color(com.github.itskenny0.r1ha.ui.components.kelvinToArgb(fav.kelvin)),
-                    selected = entity.colorTempK == fav.kelvin,
-                    description = "${fav.kelvin} K",
+                    selected = !editing && entity.colorTempK == fav.kelvin,
+                    description = if (editing) "Remove ${fav.kelvin} K" else "${fav.kelvin} K",
                     onClick = {
-                        dispatch(
-                            ServiceCall.setLightColorTemp(
-                                entity.id,
-                                fav.kelvin,
-                                brightnessPct = entity.percent?.takeIf { it > 0 },
-                            ),
-                        )
+                        if (editing) {
+                            working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                                .removeColorAt(working, index)
+                            persist(working)
+                        } else {
+                            dispatch(
+                                ServiceCall.setLightColorTemp(
+                                    entity.id,
+                                    fav.kelvin,
+                                    brightnessPct = entity.percent?.takeIf { it > 0 },
+                                ),
+                            )
+                        }
                     },
                 )
+            }
+        }
+    }
+    if (editing) {
+        ChipStrip {
+            DetailChip(label = "RESET", accent = R1.StatusAmber) { confirmReset = true }
+            DetailChip(label = "COPY TO", accent = accent) { copyOpen = true }
+        }
+    }
+    // Reset-to-defaults confirm: clears the stored favourites so the computed
+    // defaults take over again.
+    if (confirmReset) {
+        ConfirmDialog(
+            title = "Reset favourites?",
+            message = "Restore the default favourite colours for ${entity.friendlyName.ifBlank { entity.id.value }}.",
+            confirmLabel = "RESET",
+            accent = R1.StatusAmber,
+            onConfirm = {
+                confirmReset = false
+                editing = false
+                // Persisting an empty list clears the stored option; the section
+                // then falls back to the computed defaults.
+                persist(emptyList())
+            },
+            onDismiss = { confirmReset = false },
+        )
+    }
+    // Copy-to-compatible-entities: pick targets, then write the current swatches
+    // to each and report partial failures.
+    if (copyOpen) {
+        CopyFavoritesDialog(
+            haRepository = haRepository,
+            sourceEntity = entity,
+            colors = working,
+            accent = accent,
+            onDismiss = { copyOpen = false },
+            onDone = { result ->
+                copyOpen = false
+                report = result
+            },
+        )
+    }
+    report?.let { r ->
+        ConfirmDialog(
+            title = if (r.allOk) "Copied" else "Copied with errors",
+            message = if (r.allOk) {
+                "Favourites copied to ${r.succeeded.size} ${if (r.succeeded.size == 1) "entity" else "entities"}."
+            } else {
+                "Copied to ${r.succeeded.size} of ${r.total}. Failed: ${r.failed.joinToString(", ")}."
+            },
+            confirmLabel = "OK",
+            accent = accent,
+            onConfirm = { report = null },
+            onDismiss = { report = null },
+        )
+    }
+}
+
+/** A small confirm dialog reused by the favourites editor (reset + copy report). */
+@Composable
+private fun ConfirmDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
+    accent: Color,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(R1.ShapeM)
+                .background(R1.Bg)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(R1.space.l),
+            verticalArrangement = Arrangement.spacedBy(R1.space.m),
+        ) {
+            Text(text = title, style = responsiveType(R1.bodyEmph), color = accent)
+            Text(text = message, style = responsiveType(R1.body), color = R1.Ink)
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                DetailChip(label = "CANCEL", accent = R1.InkSoft) { onDismiss() }
+                DetailChip(label = confirmLabel, accent = accent, selected = true) { onConfirm() }
+            }
+        }
+    }
+}
+
+/**
+ * Copy-favourites target picker: lists every same-domain entity that shares the
+ * light colour capability, lets the user multi-select, writes the [colors] to each
+ * selected entity's registry, and reports partial failures back to the caller.
+ */
+@Composable
+private fun CopyFavoritesDialog(
+    haRepository: HaRepository,
+    sourceEntity: EntityState,
+    colors: List<com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor>,
+    accent: Color,
+    onDismiss: () -> Unit,
+    onDone: (com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.CopyReport) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val sourceDomain = sourceEntity.id.domain.prefix
+    val candidates by androidx.compose.runtime.produceState<List<EntityState>>(emptyList(), sourceEntity.id) {
+        value = haRepository.listAllEntities().getOrDefault(emptyList()).filter { cand ->
+            cand.id.value != sourceEntity.id.value &&
+                com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.canCopyTo(
+                    sourceDomain = sourceDomain,
+                    candidateDomain = cand.id.domain.prefix,
+                    // Light copy needs a colour-capable target.
+                    capabilityOk = cand.supportedColorModes.any {
+                        it.lowercase() in COLOR_CAPABLE_MODES || it.lowercase() == "color_temp"
+                    },
+                )
+        }
+    }
+    val selected = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    var busy by remember { mutableStateOf(false) }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(R1.ShapeM)
+                .background(R1.Bg)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .padding(R1.space.l)
+                .heightIn(max = 420.dp),
+            verticalArrangement = Arrangement.spacedBy(R1.space.s),
+        ) {
+            Text(text = "Copy favourites to", style = responsiveType(R1.bodyEmph), color = accent)
+            if (candidates.isEmpty()) {
+                Text(text = "No compatible entities.", style = responsiveType(R1.body), color = R1.InkMuted)
+            } else {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+                ) {
+                    candidates.forEach { cand ->
+                        val on = selected[cand.id.value] == true
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(R1.ShapeS)
+                                .background(R1.Surface)
+                                .r1Pressable(onClick = { selected[cand.id.value] = !on }, hapticOnClick = false)
+                                .padding(horizontal = R1.space.m, vertical = R1.space.s),
+                        ) {
+                            Text(
+                                text = cand.friendlyName.ifBlank { cand.id.value },
+                                style = responsiveType(R1.body),
+                                color = R1.Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(text = if (on) "✓" else "+", style = R1.numeralM, color = if (on) accent else R1.InkMuted)
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(R1.space.s)) {
+                DetailChip(label = "CANCEL", accent = R1.InkSoft) { onDismiss() }
+                val targets = selected.filter { it.value }.keys.toList()
+                DetailChip(
+                    label = if (busy) "COPYING" else "COPY",
+                    accent = accent,
+                    selected = targets.isNotEmpty(),
+                ) {
+                    if (targets.isEmpty() || busy) return@DetailChip
+                    busy = true
+                    scope.launch {
+                        val results = targets.map { id ->
+                            val ok = haRepository.updateEntityRegistryOptions(
+                                id,
+                                "light",
+                                com.github.itskenny0.r1ha.feature.moreinfo.encodeFavoriteColors(colors),
+                            ).isSuccess
+                            if (ok) {
+                                com.github.itskenny0.r1ha.feature.dashboards.cards.EntityRegistryOptionsCache
+                                    .invalidate(id)
+                            }
+                            id to ok
+                        }
+                        onDone(
+                            com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites.summariseCopy(results),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1213,28 +1449,87 @@ private fun RegistryFavoritePositions(
         supportsPosition = supportsPosition,
     )
     if (positions.isEmpty()) return
+    val scope = rememberCoroutineScope()
+    var editing by remember(entity.id) { mutableStateOf(false) }
+    var confirmReset by remember(entity.id) { mutableStateOf(false) }
+    var working by remember(entity.id, stored.positions) { mutableStateOf(positions) }
+    val persist: (List<Int>) -> Unit = { list ->
+        scope.launch {
+            haRepository.updateEntityRegistryOptions(
+                entity.id.value,
+                domain,
+                com.github.itskenny0.r1ha.feature.moreinfo.encodeFavoritePositions(list),
+            )
+            com.github.itskenny0.r1ha.feature.dashboards.cards.EntityRegistryOptionsCache
+                .invalidate(entity.id.value)
+        }
+    }
     Spacer(Modifier.height(R1.space.xs))
-    Text(text = "FAVOURITES", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "FAVOURITES",
+            style = responsiveType(R1.labelMicro),
+            color = R1.InkMuted,
+            modifier = Modifier.weight(1f),
+        )
+        DetailChip(label = if (editing) "DONE" else "EDIT", accent = accent, selected = editing) {
+            editing = !editing
+            if (editing) working = positions
+        }
+    }
     ChipStrip {
-        positions.forEach { pos ->
+        (if (editing) working else positions).forEach { pos ->
             val service = if (domain == "valve") "set_valve_position" else "set_cover_position"
             DetailChip(
-                label = "$pos%",
+                label = if (editing) "$pos% ✕" else "$pos%",
                 accent = accent,
-                selected = entity.percent == pos,
+                selected = !editing && entity.percent == pos,
                 onClick = {
-                    dispatch(
-                        ServiceCall(
-                            entity.id,
-                            service,
-                            kotlinx.serialization.json.buildJsonObject {
-                                put("position", kotlinx.serialization.json.JsonPrimitive(pos))
-                            },
-                        ),
-                    )
+                    if (editing) {
+                        working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                            .removePosition(working, pos)
+                        persist(working)
+                    } else {
+                        dispatch(
+                            ServiceCall(
+                                entity.id,
+                                service,
+                                kotlinx.serialization.json.buildJsonObject {
+                                    put("position", kotlinx.serialization.json.JsonPrimitive(pos))
+                                },
+                            ),
+                        )
+                    }
                 },
             )
         }
+    }
+    if (editing) {
+        ChipStrip {
+            // Add the entity's CURRENT position as a new favourite.
+            entity.percent?.let { cur ->
+                DetailChip(label = "ADD $cur%", accent = accent) {
+                    working = com.github.itskenny0.r1ha.feature.moreinfo.MoreInfoFavorites
+                        .addPosition(working, cur)
+                    persist(working)
+                }
+            }
+            DetailChip(label = "RESET", accent = R1.StatusAmber) { confirmReset = true }
+        }
+    }
+    if (confirmReset) {
+        ConfirmDialog(
+            title = "Reset favourites?",
+            message = "Restore the default favourite positions for ${entity.friendlyName.ifBlank { entity.id.value }}.",
+            confirmLabel = "RESET",
+            accent = R1.StatusAmber,
+            onConfirm = {
+                confirmReset = false
+                editing = false
+                persist(emptyList())
+            },
+            onDismiss = { confirmReset = false },
+        )
     }
     // Tilt favourites (cover only) when the registry carries them.
     if (domain == "cover" && stored.tiltPositions.isNotEmpty()) {

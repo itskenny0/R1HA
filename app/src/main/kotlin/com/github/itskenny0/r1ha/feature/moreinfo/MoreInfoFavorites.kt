@@ -113,6 +113,59 @@ object MoreInfoFavorites {
 
     private fun argb(r: Int, g: Int, b: Int): Int =
         (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+
+    // ── Edit / reset / copy orchestration (pure) ─────────────────────────────
+
+    /**
+     * Add [position] to a favourite-position list, normalising the result (clamp
+     * + de-dupe + first-seen order). Adding a duplicate is a no-op.
+     */
+    fun addPosition(positions: List<Int>, position: Int): List<Int> =
+        normalizePositions(positions + position.coerceIn(0, 100))
+
+    /** Remove [position] from a favourite-position list. */
+    fun removePosition(positions: List<Int>, position: Int): List<Int> =
+        positions.filter { it != position }
+
+    /** Remove the colour swatch at [index] from a colour-favourites list. */
+    fun removeColorAt(colors: List<FavoriteColor>, index: Int): List<FavoriteColor> =
+        if (index in colors.indices) colors.filterIndexed { i, _ -> i != index } else colors
+
+    /**
+     * Whether a copy of one entity's favourites can target [candidateDomain]. HA
+     * only lets you copy favourites between entities of the SAME domain (the
+     * options block is keyed by domain) that also share the relevant capability:
+     *  - light: the target must support the same colour axis (colour or
+     *    colour-temperature) so the swatches are meaningful;
+     *  - cover / valve: the target must support set-position.
+     * [capabilityOk] carries that per-domain capability check the caller resolves
+     * from the candidate's attributes.
+     */
+    fun canCopyTo(
+        sourceDomain: String,
+        candidateDomain: String,
+        capabilityOk: Boolean,
+    ): Boolean = sourceDomain == candidateDomain && capabilityOk
+
+    /** Outcome of a multi-target copy: which entity ids succeeded and which
+     *  failed, so the UI can show a partial-failure report. */
+    data class CopyReport(
+        val succeeded: List<String>,
+        val failed: List<String>,
+    ) {
+        val allOk: Boolean get() = failed.isEmpty()
+        val total: Int get() = succeeded.size + failed.size
+    }
+
+    /**
+     * Aggregate per-target results (entity id -> success) into a [CopyReport],
+     * preserving the input order so the report reads predictably.
+     */
+    fun summariseCopy(results: List<Pair<String, Boolean>>): CopyReport =
+        CopyReport(
+            succeeded = results.filter { it.second }.map { it.first },
+            failed = results.filterNot { it.second }.map { it.first },
+        )
 }
 
 /**

@@ -96,4 +96,43 @@ class MoreInfoFavoritesTest {
         assertThat(out.first()).isEqualTo(FavoriteColor.ColorTemp(2200))
         assertThat(out[3]).isEqualTo(FavoriteColor.ColorTemp(4000))
     }
+
+    // ── Edit / reset / copy orchestration ────────────────────────────────────
+
+    @Test fun `add position normalises and de-dupes`() {
+        assertThat(MoreInfoFavorites.addPosition(listOf(0, 50), 50)).containsExactly(0, 50).inOrder()
+        assertThat(MoreInfoFavorites.addPosition(listOf(0, 50), 75)).containsExactly(0, 50, 75).inOrder()
+        assertThat(MoreInfoFavorites.addPosition(listOf(0), 150)).containsExactly(0, 100).inOrder()
+    }
+
+    @Test fun `remove position drops the matching value`() {
+        assertThat(MoreInfoFavorites.removePosition(listOf(0, 25, 100), 25)).containsExactly(0, 100).inOrder()
+    }
+
+    @Test fun `remove colour at index drops one swatch`() {
+        val colors = listOf(FavoriteColor.ColorTemp(3000), FavoriteColor.Rgb(0xFF112233.toInt()))
+        assertThat(MoreInfoFavorites.removeColorAt(colors, 0)).containsExactly(colors[1])
+        assertThat(MoreInfoFavorites.removeColorAt(colors, 5)).isEqualTo(colors)
+    }
+
+    @Test fun `copy compatibility requires same domain and capability`() {
+        assertThat(MoreInfoFavorites.canCopyTo("light", "light", capabilityOk = true)).isTrue()
+        assertThat(MoreInfoFavorites.canCopyTo("light", "light", capabilityOk = false)).isFalse()
+        assertThat(MoreInfoFavorites.canCopyTo("light", "switch", capabilityOk = true)).isFalse()
+    }
+
+    @Test fun `copy summary partitions successes and failures in order`() {
+        val report = MoreInfoFavorites.summariseCopy(
+            listOf("light.a" to true, "light.b" to false, "light.c" to true),
+        )
+        assertThat(report.succeeded).containsExactly("light.a", "light.c").inOrder()
+        assertThat(report.failed).containsExactly("light.b")
+        assertThat(report.allOk).isFalse()
+        assertThat(report.total).isEqualTo(3)
+    }
+
+    @Test fun `copy summary is all-ok when nothing failed`() {
+        val report = MoreInfoFavorites.summariseCopy(listOf("light.a" to true))
+        assertThat(report.allOk).isTrue()
+    }
 }

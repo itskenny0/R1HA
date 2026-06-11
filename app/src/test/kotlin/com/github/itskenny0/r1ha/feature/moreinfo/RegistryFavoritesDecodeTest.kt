@@ -61,4 +61,20 @@ class RegistryFavoritesDecodeTest {
         // Empty map and the short rgb pair are skipped; only the kelvin survives.
         assertThat(fav.colors).containsExactly(FavoriteColor.ColorTemp(4000))
     }
+
+    @Test fun `position encoder round-trips through the decoder`() {
+        val encoded = JsonObject(mapOf("cover" to encodeFavoritePositions(listOf(0, 25, 100))))
+        val fav = decodeRegistryFavorites(encoded, "cover")
+        assertThat(fav.positions).containsExactly(0, 25, 100).inOrder()
+    }
+
+    @Test fun `colour encoder round-trips through the decoder`() {
+        val colors = listOf(
+            FavoriteColor.ColorTemp(3000),
+            FavoriteColor.Rgb((0xFF shl 24) or (0x11 shl 16) or (0x22 shl 8) or 0x33),
+        )
+        val encoded = JsonObject(mapOf("light" to encodeFavoriteColors(colors)))
+        val fav = decodeRegistryFavorites(encoded, "light")
+        assertThat(fav.colors).isEqualTo(colors)
+    }
 }
