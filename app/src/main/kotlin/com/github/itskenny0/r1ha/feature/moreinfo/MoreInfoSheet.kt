@@ -3660,32 +3660,71 @@ private fun RelatedSection(haRepository: HaRepository, entity: EntityState, acce
     val groups = related ?: return
     if (groups.isEmpty) return
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.xs)) {
-        Text(text = "RELATED", style = responsiveType(R1.sectionHeader), color = R1.InkSoft)
         if (groups.sameDevice.isNotEmpty()) {
-            Text(text = "SAME DEVICE", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
-            groups.sameDevice.forEach { memberId ->
-                GroupMemberRow(
-                    haRepository = haRepository,
-                    memberId = memberId,
-                    accent = accent,
-                    onToggle = {},
-                    onOpen = { push(memberId) },
-                    showToggle = false,
-                )
-            }
+            RelatedGroup(
+                title = "RELATED",
+                memberIds = groups.sameDevice,
+                haRepository = haRepository,
+                accent = accent,
+                onOpen = push,
+            )
         }
         if (groups.sameArea.isNotEmpty()) {
-            Text(text = "SAME AREA", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
-            groups.sameArea.forEach { memberId ->
-                GroupMemberRow(
-                    haRepository = haRepository,
-                    memberId = memberId,
-                    accent = accent,
-                    onToggle = {},
-                    onOpen = { push(memberId) },
-                    showToggle = false,
-                )
-            }
+            RelatedGroup(
+                title = "SAME AREA",
+                memberIds = groups.sameArea,
+                haRepository = haRepository,
+                accent = accent,
+                onOpen = push,
+            )
+        }
+    }
+}
+
+/**
+ * One collapsible group of related entities. Collapsed by default: a long
+ * same-area list would otherwise dominate the sheet's tail and push the
+ * attributes out of reach on the 640px panel; the header carries the count so
+ * a collapsed group still says how much it hides. Same +/- header idiom as
+ * the logbook and attributes sections.
+ */
+@Composable
+private fun RelatedGroup(
+    title: String,
+    memberIds: List<String>,
+    haRepository: HaRepository,
+    accent: Color,
+    onOpen: (String) -> Unit,
+) {
+    var expanded by remember(title, memberIds.size) { mutableStateOf(false) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .r1Pressable(
+                onClick = { expanded = !expanded },
+                hapticOnClick = false,
+                contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+            ),
+    ) {
+        Text(
+            text = "$title (${memberIds.size})",
+            style = responsiveType(R1.sectionHeader),
+            color = R1.InkSoft,
+            modifier = Modifier.weight(1f),
+        )
+        Text(text = if (expanded) "−" else "+", style = R1.numeralM, color = R1.InkSoft)
+    }
+    if (expanded) {
+        memberIds.forEach { memberId ->
+            GroupMemberRow(
+                haRepository = haRepository,
+                memberId = memberId,
+                accent = accent,
+                onToggle = {},
+                onOpen = { onOpen(memberId) },
+                showToggle = false,
+            )
         }
     }
 }
