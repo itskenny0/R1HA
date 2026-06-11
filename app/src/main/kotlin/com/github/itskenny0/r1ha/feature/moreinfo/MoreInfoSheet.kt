@@ -1051,8 +1051,11 @@ private fun RegistryFavoriteColors(
             modifier = Modifier.weight(1f),
         )
         DetailChip(label = if (editing) "DONE" else "EDIT", accent = accent, selected = editing) {
+            // No re-seed of `working` on edit-enter: it already mirrors the latest
+            // persisted swatches (it is the displayed list in both modes), so
+            // re-seeding from the frozen `swatches` here would discard edits made
+            // in a previous DONE cycle when EDIT is tapped again.
             editing = !editing
-            if (editing) working = swatches
         }
     }
     // Removal while editing is the explicit x badge; tapping the swatch body
@@ -1063,8 +1066,14 @@ private fun RegistryFavoriteColors(
             .removeColorAt(working, index)
         persist(working)
     }
+    // Display the working list in BOTH modes. The registry holder fetches once
+    // per sheet (it never re-runs after the post-persist cache invalidation), so
+    // `swatches` is frozen at the first-fetch value; showing it outside edit mode
+    // would snap the strip back to the pre-edit colours the moment DONE is tapped.
+    // `working` is re-seeded from `swatches` whenever the stored colours actually
+    // change, so it stays correct without that revert.
     ChipStrip {
-        (if (editing) working else swatches).forEachIndexed { index, fav ->
+        working.forEachIndexed { index, fav ->
             when (fav) {
                 is com.github.itskenny0.r1ha.feature.moreinfo.FavoriteColor.Rgb -> ColorSwatch(
                     color = Color(fav.argb),
@@ -2773,19 +2782,29 @@ private fun ColorSwatch(
         )
         // Explicit removal affordance while editing: a corner x badge, so the
         // swatch body stays the edit target and a tap can never delete by
-        // accident. Slightly oversized hit area for the small badge.
+        // accident. The visible badge stays a compact 18 dp circle, but the
+        // pressable wraps it in a 30 dp transparent hit box (nudged into the
+        // corner) so the small badge is comfortably tappable on the 640x480 R1
+        // without growing the dot itself. The badge sits above the swatch body in
+        // the Box's draw/hit order, so the enlarged target wins the corner taps.
         if (onRemove != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(18.dp)
-                    .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(R1.Bg)
-                    .border(1.dp, R1.Hairline, androidx.compose.foundation.shape.CircleShape)
+                    .size(30.dp)
                     .r1Pressable(onClick = onRemove, contentDescription = "Remove favourite"),
-                contentAlignment = Alignment.Center,
+                contentAlignment = Alignment.TopEnd,
             ) {
-                Text(text = "x", style = R1.labelMicro, color = R1.StatusRed)
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(R1.Bg)
+                        .border(1.dp, R1.Hairline, androidx.compose.foundation.shape.CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "x", style = R1.labelMicro, color = R1.StatusRed)
+                }
             }
         }
     }
@@ -3792,7 +3811,11 @@ private fun RelatedGroup(
     accent: Color,
     onOpen: (String) -> Unit,
 ) {
-    var expanded by remember(title, memberIds.size) { mutableStateOf(false) }
+    // Keyed on the group title alone (each section renders one RELATED and one
+    // SAME AREA group, both with constant titles). Keying on memberIds.size too
+    // would collapse a group the user expanded if the area snapshot later resolved
+    // to a different member count.
+    var expanded by remember(title) { mutableStateOf(false) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
