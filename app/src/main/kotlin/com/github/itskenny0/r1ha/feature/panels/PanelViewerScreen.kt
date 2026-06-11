@@ -31,7 +31,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.github.itskenny0.r1ha.core.ha.HA_OAUTH_CLIENT_ID
+import com.github.itskenny0.r1ha.core.ha.HassTokensInjection
+import com.github.itskenny0.r1ha.core.ha.TokenRefresher
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -63,6 +64,7 @@ import kotlinx.coroutines.flow.first
 fun PanelViewerScreen(
     settings: SettingsRepository,
     tokens: TokenStore,
+    refresher: TokenRefresher,
     panelUrlPath: String,
     title: String,
     onBack: () -> Unit,
@@ -70,14 +72,25 @@ fun PanelViewerScreen(
     val serverUrl by produceState<String?>(null, settings) {
         value = runCatching { settings.settings.first().server?.url }.getOrNull()
     }
-    val tokenPair by produceState<Pair<String?, String?>?>(null, tokens) {
+    // Refresh BEFORE reading: the app's own WS stays authenticated long after
+    // the stored access token expires, so without this the seeded token can be
+    // hours dead while the app looks connected — HA then rejects the WebView's
+    // connection and the frontend wipes the envelope and shows its login mask.
+    // ensureFresh is best-effort: on failure we fall through to the stored
+    // token (plus its real expiry) and let the frontend's own refresh try.
+    val tokenInfo by produceState<TokenInfo?>(null, tokens, refresher) {
         value = runCatching {
-            val t = tokens.load() ?: return@runCatching null to null
-            t.accessToken to t.refreshToken.takeIf { it.isNotBlank() }
+            refresher.ensureFresh()
+            val t = tokens.load() ?: return@runCatching TokenInfo(null, null, 0L)
+            TokenInfo(
+                t.accessToken,
+                t.refreshToken.takeIf { it.isNotBlank() },
+                t.expiresAtMillis,
+            )
         }.getOrNull()
     }
-    val accessToken = tokenPair?.first
-    val refreshToken = tokenPair?.second
+    val accessToken = tokenInfo?.accessToken
+    val refreshToken = tokenInfo?.refreshToken
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val onBackState = rememberUpdatedState(onBack)
@@ -115,7 +128,7 @@ fun PanelViewerScreen(
         // was still in flight captured null forever, the hassTokens injection
         // never ran, and the frontend showed its login mask on every open. The
         // root cause of the persistent sign-in prompt.
-        if (tokenPair == null) {
+        if (tokenInfo == null) {
             Box(
                 modifier = Modifier.fillMaxSize().background(R1.Bg),
                 contentAlignment = Alignment.Center,
@@ -135,6 +148,7 @@ fun PanelViewerScreen(
                 serverUrl = url,
                 accessToken = accessToken,
                 refreshToken = refreshToken,
+                tokenExpiresAtMillis = tokenInfo?.expiresAtMillis ?: 0L,
                 onLoadingChange = {
                     loading = it
                     if (it) errorMessage = null
@@ -194,6 +208,7 @@ private fun PanelWebView(
     serverUrl: String,
     accessToken: String?,
     refreshToken: String?,
+    tokenExpiresAtMillis: Long,
     onLoadingChange: (Boolean) -> Unit,
     onError: (String) -> Unit,
     onBackHandled: () -> Unit,
@@ -205,6 +220,7 @@ private fun PanelWebView(
     // composition happened to capture.
     val liveAccessToken = rememberUpdatedState(accessToken)
     val liveRefreshToken = rememberUpdatedState(refreshToken)
+    val liveExpiresAt = rememberUpdatedState(tokenExpiresAtMillis)
     val webView = remember(context, panelUrl) {
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -222,6 +238,33 @@ private fun PanelWebView(
                 )
             ) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
+            }
+            // Primary injection path: a document-start script is GUARANTEED to
+            // run before any page script, so the frontend's auth bootstrap can
+            // never race past it (evaluateJavascript at onPageStarted can lose
+            // that race on a cached load — observed on device as a bounce to
+            // /auth/authorize within ~40ms of page start). Feature-gated; the
+            // onPageStarted path below stays as the fallback and the logger.
+            if (!accessToken.isNullOrBlank() &&
+                androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                val rule = HassTokensInjection.originRule(serverUrl)
+                if (rule != null) {
+                    androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        HassTokensInjection.buildScript(
+                            accessToken = accessToken,
+                            refreshToken = refreshToken,
+                            expiresAtMillis = tokenExpiresAtMillis,
+                            nowMillis = System.currentTimeMillis(),
+                        ),
+                        setOf(rule),
+                    )
+                } else {
+                    R1Log.w("PanelViewer", "doc-start inject skipped: unparseable server url")
+                }
             }
             // On a cold WebView (fresh localStorage) HA's frontend can run its
             // auth check before the async token injection below executes and
@@ -243,35 +286,26 @@ private fun PanelWebView(
                     // inject on the first page-start and never clobber a fresh
                     // frontend-refreshed token on subsequent navigations.
                     val accessToken = liveAccessToken.value
-                    val refreshToken = liveRefreshToken.value
                     if (accessToken.isNullOrBlank()) {
                         // This branch hid the stale-capture bug: it was silent, so
                         // shipped logs carried no evidence. Never again.
                         R1Log.w("PanelViewer", "token inject skipped: no access token at page start url=$url")
                     }
                     if (!accessToken.isNullOrBlank()) {
-                        val expiresAt = System.currentTimeMillis() + 30 * 60 * 1000
-                        // hassUrl is computed IN PAGE from location: the frontend
-                        // accepts stored tokens only when data.hassUrl equals
-                        // `${protocol}//${host}` EXACTLY (hawsjs getAuth), and
-                        // location.host drops default ports / lowercases, so any
-                        // formatting difference in the configured server URL would
-                        // make the tokens silently ignored forever. clientId must
-                        // be the app's real OAuth client id: HA binds refresh
-                        // tokens to the client id that issued them, so the
-                        // frontend's own 30-minute refresh fails with null here.
-                        val script = "if (!localStorage.getItem('hassTokens')) { " +
-                            "localStorage.setItem('hassTokens', " +
-                            "JSON.stringify({" +
-                            "access_token: ${jsString(accessToken)}," +
-                            "token_type: 'Bearer'," +
-                            "expires_in: 1800," +
-                            "refresh_token: ${jsString(refreshToken ?: "")}," +
-                            "hassUrl: location.protocol + '//' + location.host," +
-                            "clientId: ${jsString(HA_OAUTH_CLIENT_ID)}," +
-                            "expires: $expiresAt" +
-                            "})); } " +
-                            "JSON.stringify({present: !!localStorage.getItem('hassTokens'), origin: location.protocol + '//' + location.host})"
+                        // Same guarded script as the document-start registration
+                        // (HassTokensInjection validates/repairs the stored
+                        // envelope rather than blindly checking presence — the
+                        // frontend writes the literal string "null" after a
+                        // failed connect, which a presence check mistakes for a
+                        // real session). Running it here too gives a readback to
+                        // ship in the logs: state=ours means the doc-start path
+                        // already seeded it, injected=true means this run did.
+                        val script = HassTokensInjection.buildScript(
+                            accessToken = accessToken,
+                            refreshToken = liveRefreshToken.value,
+                            expiresAtMillis = liveExpiresAt.value,
+                            nowMillis = System.currentTimeMillis(),
+                        )
                         view.evaluateJavascript(script) { readback ->
                             R1Log.i("PanelViewer", "token inject: $readback url=$url")
                             if (!authBounceDone && url.contains("/auth/authorize")) {
@@ -338,8 +372,10 @@ private fun PanelWebView(
     AndroidView(factory = { webView }, modifier = modifier)
 }
 
-/** Quote-and-escape a value for safe embedding in the JavaScript injection script.
- *  The token alphabet is base64-ish (alnum + `-_./=`) so only quote + backslash
- *  need escaping. */
-private fun jsString(raw: String): String =
-    "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+/** Resolved token state for the WebView mount gate: null while the (refresh +)
+ *  load is in flight, non-null with null fields when no token is stored. */
+private data class TokenInfo(
+    val accessToken: String?,
+    val refreshToken: String?,
+    val expiresAtMillis: Long,
+)

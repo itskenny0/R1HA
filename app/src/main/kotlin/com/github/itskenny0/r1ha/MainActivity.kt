@@ -463,6 +463,7 @@ class MainActivity : ComponentActivity() {
                                 haRepository = graph.haRepository,
                                 settings = graph.settings,
                                 tokens = graph.tokens,
+                                tokenRefresher = graph.tokenRefresher,
                                 wheelInput = graph.wheelInput,
                                 overrideStore = graph.lovelaceOverrideStore,
                             )

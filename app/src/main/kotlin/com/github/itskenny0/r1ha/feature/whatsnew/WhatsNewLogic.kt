@@ -49,10 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Reconnect fixed: a stalled handshake no longer shows 'connecting' forever; a watchdog breaks it and retries.",
-    "Pinned panels and the Lovelace view now reliably open signed in on the first try.",
-    "Widget taps jump straight to that card's detail sheet, and widget corners match your launcher's rounding.",
-    "Favourite colours grew up: tap to edit in a floating picker, add your own colours, remove with the x badge.",
-    "Log shipping for diagnostics: stream app logs and crash reports to your own endpoint, off by default.",
-    "Related and same-area entity lists in the detail sheet are collapsible and start collapsed.",
+    "Pinned panel and Lovelace sign-in rebuilt: tokens land before HA boots, expired sessions refresh first.",
+    "A wiped WebView session now repairs itself on the next open instead of showing the login mask.",
+    "Shipped logs record what the sign-in hand-off found and did, so reports pinpoint themselves.",
 )

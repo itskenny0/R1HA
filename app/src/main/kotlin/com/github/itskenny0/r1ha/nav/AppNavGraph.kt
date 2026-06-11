@@ -32,6 +32,7 @@ fun AppNavGraph(
     haRepository: HaRepository,
     settings: SettingsRepository,
     tokens: TokenStore,
+    tokenRefresher: com.github.itskenny0.r1ha.core.ha.TokenRefresher,
     wheelInput: WheelInput,
     /**
      * Lovelace-overrides DataStore for the native dashboards feature.
@@ -538,6 +539,7 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.lovelace.LovelaceScreen(
                 settings = settings,
                 tokens = tokens,
+                refresher = tokenRefresher,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -561,6 +563,7 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.panels.PanelViewerScreen(
                 settings = settings,
                 tokens = tokens,
+                refresher = tokenRefresher,
                 panelUrlPath = urlPath,
                 title = pinnedTitle,
                 onBack = { navController.popBackStack() },

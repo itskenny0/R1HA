@@ -32,7 +32,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.github.itskenny0.r1ha.core.ha.HA_OAUTH_CLIENT_ID
+import com.github.itskenny0.r1ha.core.ha.HassTokensInjection
+import com.github.itskenny0.r1ha.core.ha.TokenRefresher
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -65,6 +66,7 @@ import kotlinx.coroutines.flow.first
 fun LovelaceScreen(
     settings: SettingsRepository,
     tokens: TokenStore,
+    refresher: TokenRefresher,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -74,19 +76,25 @@ fun LovelaceScreen(
     val serverUrl by produceState<String?>(null, settings) {
         value = runCatching { settings.settings.first().server?.url }.getOrNull()
     }
-    // Pull both the access AND refresh tokens — the refresh token is
-    // what lets HA's frontend keep its own session alive past the
-    // access_token expiry (typically 30 min). Without it the user
-    // would have to OAuth a second time inside the WebView after
-    // half an hour.
-    val tokenPair by produceState<Pair<String?, String?>?>(null, tokens) {
+    // Refresh BEFORE reading (see PanelViewerScreen): the stored access token
+    // can be long expired while the app's own WS connection looks healthy, and
+    // seeding a dead token gets the envelope wiped by the frontend. Then pull
+    // both tokens plus the REAL expiry — the refresh token and true expiry are
+    // what let HA's frontend keep its own session alive past the access-token
+    // lifetime (typically 30 min) without bouncing to the login mask.
+    val tokenInfo by produceState<Triple<String?, String?, Long>?>(null, tokens, refresher) {
         value = runCatching {
-            val t = tokens.load() ?: return@runCatching null to null
-            t.accessToken to t.refreshToken.takeIf { it.isNotBlank() }
+            refresher.ensureFresh()
+            val t = tokens.load() ?: return@runCatching Triple(null, null, 0L)
+            Triple(
+                t.accessToken,
+                t.refreshToken.takeIf { it.isNotBlank() },
+                t.expiresAtMillis,
+            )
         }.getOrNull()
     }
-    val accessToken = tokenPair?.first
-    val refreshToken = tokenPair?.second
+    val accessToken = tokenInfo?.first
+    val refreshToken = tokenInfo?.second
     var loading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val onBackState = rememberUpdatedState(onBack)
@@ -118,7 +126,7 @@ fun LovelaceScreen(
         // WebViewClient captures the token values at first composition (see
         // PanelViewerScreen for the full story); mounting early captured null
         // forever and the injection never ran.
-        if (tokenPair == null) {
+        if (tokenInfo == null) {
             Box(
                 modifier = Modifier.fillMaxSize().background(R1.Bg),
                 contentAlignment = Alignment.Center,
@@ -136,6 +144,7 @@ fun LovelaceScreen(
                 serverUrl = url,
                 accessToken = accessToken,
                 refreshToken = refreshToken,
+                tokenExpiresAtMillis = tokenInfo?.third ?: 0L,
                 // A fresh main-frame load also clears a stale error so an
                 // in-page retry / back navigation resets the overlay.
                 onLoadingChange = {
@@ -202,6 +211,7 @@ private fun LovelaceWebView(
     serverUrl: String,
     accessToken: String?,
     refreshToken: String?,
+    tokenExpiresAtMillis: Long,
     onLoadingChange: (Boolean) -> Unit,
     onError: (String) -> Unit,
     onBackHandled: () -> Unit,
@@ -212,6 +222,7 @@ private fun LovelaceWebView(
     // not whatever the first composition captured.
     val liveAccessToken = rememberUpdatedState(accessToken)
     val liveRefreshToken = rememberUpdatedState(refreshToken)
+    val liveExpiresAt = rememberUpdatedState(tokenExpiresAtMillis)
     val webView = remember(context, serverUrl) {
         WebView(context).apply {
             settings.javaScriptEnabled = true
@@ -241,6 +252,31 @@ private fun LovelaceWebView(
             ) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, true)
             }
+            // Primary injection path (see PanelViewerScreen): a document-start
+            // script runs before ANY page script, so the frontend's auth
+            // bootstrap can never race past it. Feature-gated; the
+            // onPageStarted path below stays as the fallback and the logger.
+            if (!accessToken.isNullOrBlank() &&
+                androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                val rule = HassTokensInjection.originRule(serverUrl)
+                if (rule != null) {
+                    androidx.webkit.WebViewCompat.addDocumentStartJavaScript(
+                        this,
+                        HassTokensInjection.buildScript(
+                            accessToken = accessToken,
+                            refreshToken = refreshToken,
+                            expiresAtMillis = tokenExpiresAtMillis,
+                            nowMillis = System.currentTimeMillis(),
+                        ),
+                        setOf(rule),
+                    )
+                } else {
+                    R1Log.w("LovelaceScreen", "doc-start inject skipped: unparseable server url")
+                }
+            }
             // Same cold-start race fix as PanelViewerScreen: a fresh WebView's
             // frontend can check auth before the async injection runs and bounce
             // to the login mask; retry the target once after the injection
@@ -258,46 +294,23 @@ private fun LovelaceWebView(
                     // a far-future expiry so the frontend doesn't try
                     // to refresh.
                     val accessToken = liveAccessToken.value
-                    val refreshToken = liveRefreshToken.value
                     if (accessToken.isNullOrBlank()) {
                         R1Log.w("LovelaceScreen", "token inject skipped: no access token at page start url=$url")
                     }
                     if (!accessToken.isNullOrBlank()) {
-                        // Build the hassTokens envelope HA's frontend
-                        // reads from localStorage on bootstrap. Passing
-                        // refresh_token + a realistic expires_in lets
-                        // the frontend's own refresh path kick in when
-                        // the access token expires, so the user doesn't
-                        // get bounced to a login screen after ~30 min.
-                        //
-                        // Guard with !localStorage.getItem('hassTokens')
-                        // so we only inject on the FIRST page-start
-                        // (before any frontend bootstrap). Without this
-                        // we'd overwrite the frontend's freshly-
-                        // refreshed tokens on every subsequent
-                        // navigation, defeating the refresh flow.
-                        val expiresAt = System.currentTimeMillis() + 30 * 60 * 1000
-                        // hassUrl is computed IN PAGE from location: the frontend
-                        // accepts stored tokens only when data.hassUrl equals
-                        // `${protocol}//${host}` EXACTLY (hawsjs getAuth), and
-                        // location.host drops default ports / lowercases, so any
-                        // formatting difference in the configured server URL would
-                        // make the tokens silently ignored forever. clientId must
-                        // be the app's real OAuth client id: HA binds refresh
-                        // tokens to the client id that issued them, so the
-                        // frontend's own 30-minute refresh fails with null here.
-                        val script = "if (!localStorage.getItem('hassTokens')) { " +
-                            "localStorage.setItem('hassTokens', " +
-                            "JSON.stringify({" +
-                            "access_token: ${jsString(accessToken)}," +
-                            "token_type: 'Bearer'," +
-                            "expires_in: 1800," +
-                            "refresh_token: ${jsString(refreshToken ?: "")}," +
-                            "hassUrl: location.protocol + '//' + location.host," +
-                            "clientId: ${jsString(HA_OAUTH_CLIENT_ID)}," +
-                            "expires: $expiresAt" +
-                            "})); } " +
-                            "JSON.stringify({present: !!localStorage.getItem('hassTokens'), origin: location.protocol + '//' + location.host})"
+                        // Same guarded script as the document-start registration
+                        // (HassTokensInjection validates/repairs the stored
+                        // envelope instead of a bare presence check — the
+                        // frontend writes the literal string "null" after a
+                        // failed connect). The readback ships in the logs:
+                        // state=ours means the doc-start path already seeded
+                        // it, injected=true means this run did.
+                        val script = HassTokensInjection.buildScript(
+                            accessToken = accessToken,
+                            refreshToken = liveRefreshToken.value,
+                            expiresAtMillis = liveExpiresAt.value,
+                            nowMillis = System.currentTimeMillis(),
+                        )
                         view.evaluateJavascript(script) { readback ->
                             R1Log.i("LovelaceScreen", "token inject: $readback url=$url")
                             if (!authBounceDone && url.contains("/auth/authorize")) {
@@ -372,14 +385,4 @@ private fun LovelaceWebView(
 
     AndroidView(factory = { webView }, modifier = modifier)
 }
-
-/** Quote-and-escape a value for safe embedding in the JavaScript
- *  injection script. JSON.stringify would round-trip the token's
- *  hex characters fine, but we'd still need to wrap the result in
- *  string-quote delimiters; doing the escape ourselves keeps the
- *  injection compact. The token alphabet is base64-ish (alnum +
- *  `-_./=`) so the only escapes that bite are quote + backslash;
- *  we cover both defensively. */
-private fun jsString(raw: String): String =
-    "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
