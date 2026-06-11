@@ -175,4 +175,40 @@ class MoreInfoFavoritesTest {
         assertThat(gh).isEqualTo(0f)
         assertThat(gs).isEqualTo(0f)
     }
+
+    @Test fun `argbToHs then hsToArgb preserves a fully-saturated non-primary swatch`() {
+        // The editor seeds the wheel from a stored swatch via argbToHs, then writes
+        // the picked colour back via hsToArgb. For a fully-saturated colour (the
+        // wheel's rim, value == 1) the round trip must land back on the same swatch
+        // so opening then confirming the picker without moving it is a no-op.
+        val orange = MoreInfoFavorites.hsToArgb(30f, 1f) // a pure rim colour
+        val (h, s) = MoreInfoFavorites.argbToHs(orange)
+        assertThat(MoreInfoFavorites.hsToArgb(h, s)).isEqualTo(orange)
+    }
+
+    @Test fun `append then replace mirrors the editor add-and-edit flow`() {
+        // Append a new swatch (the + chip), then edit it in place at its index
+        // (tapping the swatch reopens the picker on the appended entry).
+        val start = listOf(FavoriteColor.ColorTemp(2700))
+        val added = MoreInfoFavorites.appendColor(start, FavoriteColor.Rgb(0xFFFF0000.toInt()))
+        assertThat(added).hasSize(2)
+        val edited = MoreInfoFavorites.replaceColorAt(added, 1, FavoriteColor.Rgb(0xFF00FF00.toInt()))
+        assertThat(edited).containsExactly(
+            FavoriteColor.ColorTemp(2700),
+            FavoriteColor.Rgb(0xFF00FF00.toInt()),
+        ).inOrder()
+    }
+
+    @Test fun `remove then replace at a now-stale index is a safe no-op`() {
+        // Guards the picker-index-after-shrink path: if the working list shrinks
+        // (a remove) while an index from the larger list is still in hand, the
+        // out-of-range replace must leave the list untouched rather than throw.
+        val colors = listOf(
+            FavoriteColor.Rgb(0xFFFF0000.toInt()),
+            FavoriteColor.Rgb(0xFF00FF00.toInt()),
+        )
+        val shrunk = MoreInfoFavorites.removeColorAt(colors, 1)
+        assertThat(MoreInfoFavorites.replaceColorAt(shrunk, 1, FavoriteColor.ColorTemp(4000)))
+            .isEqualTo(shrunk)
+    }
 }

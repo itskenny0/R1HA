@@ -339,7 +339,15 @@ fun KelvinPickerOverlaySheet(
 
 /** Shared chrome for the modal pickers: dim backdrop, header with a preview
  *  swatch, USE confirm chip + CLOSE/back dismissal (the overlay convention
- *  [ColorWheelOverlaySheet] established). */
+ *  [ColorWheelOverlaySheet] established).
+ *
+ *  Hosted in a focusable full-screen [androidx.compose.ui.window.Popup] so the
+ *  picker floats above the whole more-info sheet rather than rendering inline in
+ *  the sheet's scroll column. Without the popup the scaffold's `fillMaxSize()` is
+ *  clamped to the panel width and offset down the scroll, leaving the picker
+ *  half-off-screen with the sheet still tappable behind it. The popup also routes
+ *  system back to [onDismiss] (so back closes only the picker) and swallows the
+ *  outside taps that would otherwise dismiss the sheet's scrim. */
 @Composable
 private fun PickerOverlayScaffold(
     title: String,
@@ -349,7 +357,14 @@ private fun PickerOverlayScaffold(
     previewLabel: String? = null,
     content: @Composable () -> Unit,
 ) {
-    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    androidx.compose.ui.window.Popup(
+        properties = androidx.compose.ui.window.PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+        ),
+        onDismissRequest = onDismiss,
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -413,6 +428,7 @@ private fun PickerOverlayScaffold(
                 content()
             }
         }
+    }
     }
 }
 
