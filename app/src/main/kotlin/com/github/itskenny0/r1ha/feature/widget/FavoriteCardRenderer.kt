@@ -29,8 +29,20 @@ internal object FavoriteCardRenderer {
      * Render the card at [widthPx] x [heightPx]. [density] converts the dp
      * design measurements; callers clamp the pixel size before invoking so a
      * giant resize can't allocate a RemoteViews-rejecting bitmap.
+     *
+     * [cornerPx] is the launcher's widget corner radius: Android 12+ clips every
+     * widget to `system_app_widget_background_radius`, so the card's own corners
+     * must match or the border gets sliced off at the corners and reads broken.
+     * Callers resolve it from the system resource (see the provider) and pass a
+     * pre-31 fallback elsewhere.
      */
-    fun render(model: FavoriteCardModel, widthPx: Int, heightPx: Int, density: Float): Bitmap {
+    fun render(
+        model: FavoriteCardModel,
+        widthPx: Int,
+        heightPx: Int,
+        density: Float,
+        cornerPx: Float = 4f * density,
+    ): Bitmap {
         val w = widthPx.coerceAtLeast(48)
         val h = heightPx.coerceAtLeast(48)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
@@ -44,7 +56,7 @@ internal object FavoriteCardRenderer {
         val stateInk = if (model.available) accent else INK_MUTED
 
         val pad = dp(10f)
-        val corner = dp(4f)
+        val corner = cornerPx.coerceIn(0f, minOf(w, h) / 2f)
         val card = RectF(dp(0.5f), dp(0.5f), w - dp(0.5f), h - dp(0.5f))
 
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {

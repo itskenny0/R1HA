@@ -205,6 +205,7 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
             wPx,
             hPx,
             context.resources.displayMetrics.density,
+            cornerPx = systemWidgetCornerPx(context),
         )
         return RemoteViews(context.packageName, R.layout.favorite_card_widget).apply {
             setImageViewBitmap(R.id.favorite_card_image, bitmap)
@@ -244,6 +245,21 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
         val w = (wDp * density).toInt().coerceIn(48, 1200)
         val h = (hDp * density).toInt().coerceIn(48, 800)
         return w to h
+    }
+
+    /**
+     * The corner radius the launcher clips this widget to. Android 12+ exposes
+     * it as `android.R.dimen.system_app_widget_background_radius`; drawing the
+     * card with the same radius keeps our border visible all the way around
+     * instead of being sliced off at the launcher's rounder corners. Pre-31
+     * launchers don't clip, so the card keeps the in-app 4dp idiom there.
+     */
+    private fun systemWidgetCornerPx(context: Context): Float {
+        val density = context.resources.displayMetrics.density
+        if (android.os.Build.VERSION.SDK_INT < 31) return 4f * density
+        return runCatching {
+            context.resources.getDimension(android.R.dimen.system_app_widget_background_radius)
+        }.getOrDefault(16f * density)
     }
 
     private fun tapPending(context: Context, widgetId: Int): PendingIntent =
