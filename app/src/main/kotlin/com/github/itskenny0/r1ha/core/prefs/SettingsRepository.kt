@@ -180,6 +180,7 @@ class SettingsRepository private constructor(
          *  current value and sets this flag), reads remap stored 12 -> 1. */
         val logbookWindowMigrated = booleanPreferencesKey("integrations.logbook_window_default_migrated")
         val connectionJson = stringPreferencesKey("connection.json")
+        val logShippingJson = stringPreferencesKey("logshipping.json")
         val pagesJson = stringPreferencesKey("pages.json")
         val activePageId = stringPreferencesKey("active_page_id")
         /**
@@ -457,6 +458,13 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: ConnectionSettings(),
+                logShipping = p[K.logShippingJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(LogShippingSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: LogShippingSettings(),
                 pages = decodePages(p[K.pagesJson], favorites),
                 activePageId = p[K.activePageId].orEmpty(),
                 // Absent → 0: a fresh install (or a pre-feature upgrade) starts the
@@ -634,6 +642,10 @@ class SettingsRepository private constructor(
                 p[K.connectionJson] = advancedJson.encodeToString(
                     ConnectionSettings.serializer(),
                     next.connection,
+                )
+                p[K.logShippingJson] = advancedJson.encodeToString(
+                    LogShippingSettings.serializer(),
+                    next.logShipping,
                 )
                 // Pages — encoded as JSON. Keep next.pages canonical and recompute
                 // [favorites] as their flat union before writing so any legacy

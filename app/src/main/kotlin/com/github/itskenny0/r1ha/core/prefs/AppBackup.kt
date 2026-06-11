@@ -129,6 +129,10 @@ data class AppBackup(
     /** Connection-hardening (breaker + polling) prefs. Older backups without this
      *  field decode as the default (strict mode off, conservative breaker dials). */
     val connection: ConnectionSettings = ConnectionSettings(),
+    /** Log shipping (enable + endpoint). Plain config, not a per-device secret,
+     *  so it travels with the backup. Older backups without this field decode as
+     *  the default (disabled, empty endpoint). */
+    val logShipping: LogShippingSettings = LogShippingSettings(),
 
     val pages: List<FavoritePage> = emptyList(),
     val activePageId: String = "",
@@ -211,6 +215,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     navPanel = navPanel,
     integrations = integrations,
     connection = connection,
+    logShipping = logShipping,
     pages = pages,
     activePageId = activePageId,
     favorites = favorites,
@@ -309,6 +314,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         navPanel = navPanel,
         integrations = integrations,
         connection = connection,
+        logShipping = logShipping,
         pages = effectivePages,
         activePageId = activeId,
         favorites = effectivePages.flatMap { it.favorites }.distinct(),

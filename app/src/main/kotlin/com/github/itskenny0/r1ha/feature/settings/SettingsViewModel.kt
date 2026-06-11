@@ -247,6 +247,11 @@ class SettingsViewModel(
     fun updateIotSensors(transform: (com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings) -> com.github.itskenny0.r1ha.core.prefs.IotSensorsSettings) =
         update { it.copy(iotSensors = transform(it.iotSensors)) }
 
+    /** Generic mutator for log shipping (enable + endpoint). Used by the LOG
+     *  SHIPPING section in the dev menu. */
+    fun updateLogShipping(transform: (com.github.itskenny0.r1ha.core.prefs.LogShippingSettings) -> com.github.itskenny0.r1ha.core.prefs.LogShippingSettings) =
+        update { it.copy(logShipping = transform(it.logShipping)) }
+
     // ── Appearance ──────────────────────────────────────────────────────────
 
     fun setTheme(themeId: ThemeId) = update { it.copy(theme = themeId) }

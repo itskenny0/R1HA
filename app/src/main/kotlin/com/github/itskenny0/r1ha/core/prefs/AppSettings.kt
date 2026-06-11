@@ -1085,6 +1085,31 @@ data class AdvancedSettings(
     val mqttClientId: String = "",
 )
 
+/**
+ * Log shipping: stream R1Log entries (and crashes) to a remote HTTP endpoint
+ * that speaks the app's NDJSON wire protocol (one JSON object per line; see
+ * [com.github.itskenny0.r1ha.core.util.LogShipper]). Off by default with an
+ * empty endpoint so a fresh install never ships anything until the user opts
+ * in from Settings (dev menu).
+ *
+ * Both fields are part of [AppBackup] / settings sync: they are plain config
+ * (a toggle + a URL), not a per-device secret like an MJPEG password, so a
+ * user restoring a backup keeps their diagnostic destination. The endpoint is
+ * a LAN URL the user chose; it carries no credentials.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class LogShippingSettings(
+    /** Master switch. Off → the R1Log hook drops every entry on the floor and
+     *  no background drain runs. */
+    val enabled: Boolean = false,
+    /** Full destination URL the user enters, e.g. http://192.168.1.10:19192/log.
+     *  Entries are POSTed here as NDJSON; the same URL answers a GET probe for
+     *  the settings TEST button. Empty disables shipping regardless of
+     *  [enabled] (there is nowhere to send). */
+    val endpoint: String = "",
+)
+
 @Immutable
 data class ServerConfig(
     val url: String,
@@ -1366,6 +1391,12 @@ data class AppSettings(
      * pre-feature upgrade starts at the first group).
      */
     val featuredRotationIndex: Int = 0,
+    /**
+     * Log shipping — stream app logs + crashes to a remote HTTP endpoint.
+     * Disabled with an empty endpoint by default; surfaced in the dev menu
+     * alongside the other diagnostic options.
+     */
+    val logShipping: LogShippingSettings = LogShippingSettings(),
 )
 
 /**

@@ -49,6 +49,31 @@ class AppBackupTest {
         assertThat(applied.behavior.showWhatsNew).isTrue()
     }
 
+    /** Log shipping is plain config (not a per-device secret), so it travels
+     *  with the backup. */
+    @Test fun `logShipping round-trips through encode and apply`() {
+        val source = AppSettings(
+            logShipping = LogShippingSettings(enabled = true, endpoint = "http://10.0.0.5:19192/log"),
+        )
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(AppSettings())
+
+        assertThat(applied.logShipping.enabled).isTrue()
+        assertThat(applied.logShipping.endpoint).isEqualTo("http://10.0.0.5:19192/log")
+    }
+
+    /** Older backups predate the field; they must decode as the disabled default. */
+    @Test fun `backups without logShipping decode as disabled`() {
+        val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))
+        val stripped = raw.replace(Regex("\"logShipping\"\\s*:\\s*\\{[^}]*},?"), "")
+
+        val applied = decodeBackup(stripped).applyOnto(AppSettings())
+
+        assertThat(applied.logShipping.enabled).isFalse()
+        assertThat(applied.logShipping.endpoint).isEmpty()
+    }
+
     /** The font family is an explicit preference, so it travels with the backup. */
     @Test fun `fontFamilyName round-trips through encode and apply`() {
         val source = AppSettings(ui = UiOptions(fontFamilyName = "serif"))
