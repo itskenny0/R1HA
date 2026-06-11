@@ -49,7 +49,8 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Pinned panel and Lovelace sign-in rebuilt: tokens land before HA boots, expired sessions refresh first.",
-    "A wiped WebView session now repairs itself on the next open instead of showing the login mask.",
-    "Shipped logs record what the sign-in hand-off found and did, so reports pinpoint themselves.",
+    "Fixed a crash entering a dashboard's edit mode when a view holds the same card twice.",
+    "Editing or deleting a duplicated card now targets the copy you tapped, not the first match.",
+    "Iframe panels pointing at another host stay embedded instead of leaving a blank pane.",
+    "Blank WebView panels explain themselves: page errors and failed requests ship to your log endpoint.",
 )

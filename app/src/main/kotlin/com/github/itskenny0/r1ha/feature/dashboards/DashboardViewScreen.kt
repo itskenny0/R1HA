@@ -997,6 +997,26 @@ internal fun distributeIndicesIntoLanes(indices: List<Int>, columns: Int): List<
     return result
 }
 
+/**
+ * Turn a list of (possibly repeating) content hashes into unique keys by
+ * suffixing each with its occurrence number among equal hashes, in list order:
+ * `[7, 9, 7]` becomes `["7#0", "9#0", "7#1"]`. See [EditModeBody] for why.
+ */
+internal fun occurrenceKeys(contentHashes: List<Int>): List<String> {
+    val seen = HashMap<Int, Int>()
+    return contentHashes.map { h ->
+        val occurrence = (seen[h] ?: 0).also { seen[h] = it + 1 }
+        "$h#$occurrence"
+    }
+}
+
+/** Stable-unique wrapper for the edit-mode reorder list; see [EditModeBody]. */
+private data class EditListItem(
+    val key: String,
+    val index: Int,
+    val rendered: com.github.itskenny0.r1ha.core.lovelace.RenderedCard,
+)
+
 @Composable
 private fun EditModeBody(
     cards: List<com.github.itskenny0.r1ha.core.lovelace.RenderedCard>,
@@ -1005,14 +1025,28 @@ private fun EditModeBody(
     onDelete: (Int) -> Unit,
     onAddCard: () -> Unit,
 ) {
+    // Lazy keys must be unique, and a Lovelace view can legally hold the same
+    // card twice (identical raw config), so content hashes alone collide and
+    // crash the LazyColumn (shipped crash: 'Key "(h1, h2)" was already used').
+    // Disambiguate repeats by occurrence: the Nth copy of identical content
+    // gets "<hash>#N", which also survives drag swaps with distinct neighbours
+    // (occurrences are counted in list order, so only swapping a card past an
+    // IDENTICAL copy reassigns keys, and those two rows are indistinguishable
+    // anyway). Carrying the index in the wrapper also fixes edit/delete on a
+    // duplicated card: indexOf() always found the FIRST copy.
+    val editItems = androidx.compose.runtime.remember(cards) {
+        val keys = occurrenceKeys(cards.map { 31 * it.card.raw.hashCode() + it.hashCode() })
+        cards.mapIndexed { idx, c -> EditListItem(key = keys[idx], index = idx, rendered = c) }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         DragReorderColumn(
-            items = cards,
-            keyOf = { it.card.raw.hashCode() to it.hashCode() },
+            items = editItems,
+            keyOf = { it.key },
             onReorder = onReorder,
             modifier = Modifier.fillMaxSize(),
-        ) { item, handle, isDragging ->
-            val idx = cards.indexOf(item)
+        ) { wrapped, handle, isDragging ->
+            val item = wrapped.rendered
+            val idx = wrapped.index
             // Centre + cap each edit card on roomy tiers so the reorder list
             // doesn't stretch one card wall-wide on a 13in panel. The drag
             // column itself stays full-width so the long-press hit area and
