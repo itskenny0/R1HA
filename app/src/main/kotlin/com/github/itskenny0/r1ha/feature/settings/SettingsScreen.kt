@@ -194,6 +194,7 @@ fun SettingsScreen(
     onOpenMediaBrowse: () -> Unit,
     onOpenBackups: () -> Unit,
     onOpenZhaPairing: () -> Unit,
+    onOpenBroadlink: () -> Unit = {},
     onOpenEnergy: () -> Unit,
     onOpenZones: () -> Unit,
     onOpenLovelace: () -> Unit,
@@ -581,6 +582,7 @@ fun SettingsScreen(
                         push = push,
                         groupBadge = ::groupBadge,
                         onOpenCategory = onOpenCategory,
+                        onOpenBroadlink = onOpenBroadlink,
                     )
                     SettingsNode.INTEGRATIONS_REFRESH -> integrationsRefresh(s = s, vm = vm)
                     SettingsNode.INTEGRATIONS_CAMERAS -> integrationsCameras(s = s, vm = vm)
@@ -1811,6 +1813,7 @@ private fun LazyListScope.integrationsRoot(
     push: (SettingsNode) -> Unit,
     groupBadge: (Array<out String>) -> Int,
     onOpenCategory: (SettingsCategory) -> Unit,
+    onOpenBroadlink: () -> Unit,
 ) {
     item { SubGroupLabel("TUNING") }
     item {
@@ -1890,6 +1893,22 @@ private fun LazyListScope.integrationsRoot(
             onClick = { onOpenCategory(SettingsCategory.MQTT) },
             showChevron = true,
             contentDescription = "Open MQTT broker",
+        )
+    }
+    item { SubGroupLabel("IR / RF") }
+    item {
+        R1Row(
+            label = "Broadlink remote",
+            description = "Learn, fire + automate IR/RF commands",
+            value = run {
+                val commands = s.broadlink.devices.sumOf { it.commands.size }
+                if (commands > 0) {
+                    "${s.broadlink.devices.size} devices · $commands commands"
+                } else "Empty catalog"
+            },
+            onClick = onOpenBroadlink,
+            showChevron = true,
+            contentDescription = "Open the Broadlink console",
         )
     }
     item { CategoryResetRow(label = "RESET INTEGRATIONS", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS, vm = vm) }

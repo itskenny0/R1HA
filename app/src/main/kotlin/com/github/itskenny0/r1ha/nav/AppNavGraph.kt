@@ -532,6 +532,14 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.BROADLINK) {
+            com.github.itskenny0.r1ha.feature.broadlink.BroadlinkScreen(
+                haRepository = haRepository,
+                settings = settings,
+                wheelInput = wheelInput,
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.ENERGY) {
             com.github.itskenny0.r1ha.feature.energy.EnergyScreen(
                 haRepository = haRepository,
@@ -881,6 +889,7 @@ private fun SettingsRouteContent(
         onOpenMediaBrowse = { navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true } },
         onOpenBackups = { navController.navigate(Routes.BACKUPS) { launchSingleTop = true } },
         onOpenZhaPairing = { navController.navigate(Routes.ZHA_PAIRING) { launchSingleTop = true } },
+        onOpenBroadlink = { navController.navigate(Routes.BROADLINK) { launchSingleTop = true } },
         onOpenEnergy = { navController.navigate(Routes.ENERGY) { launchSingleTop = true } },
         onOpenZones = { navController.navigate(Routes.ZONES) { launchSingleTop = true } },
         onOpenLovelace = { navController.navigate(Routes.LOVELACE) { launchSingleTop = true } },
