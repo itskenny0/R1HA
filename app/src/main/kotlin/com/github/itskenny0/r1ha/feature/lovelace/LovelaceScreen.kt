@@ -334,6 +334,9 @@ private fun LovelaceWebView(
                     // integration docs link to home-assistant.io, etc.; we
                     // don't want those navigating inside the in-app WebView
                     // and trapping the user away from HA.
+                    // Main frame ONLY: iframe navigations must stay embedded
+                    // or off-host iframe cards/panels render a blank pane.
+                    if (!request.isForMainFrame) return false
                     val target = request.url ?: return false
                     val configured = runCatching {
                         android.net.Uri.parse(serverUrl).host
@@ -354,13 +357,34 @@ private fun LovelaceWebView(
                     request: WebResourceRequest,
                     error: WebResourceError,
                 ) {
-                    if (!request.isForMainFrame) return
                     val desc = runCatching { error.description?.toString() }.getOrNull() ?: "error"
+                    if (!request.isForMainFrame) {
+                        // Ship subframe/subresource failures too; see
+                        // PanelViewerScreen.
+                        R1Log.w("Lovelace", "subresource error: $desc (${request.url})")
+                        return
+                    }
                     R1Log.w("Lovelace", "WebView error: $desc (${request.url})")
                     onError("WebView: $desc")
                     onLoadingChange(false)
                 }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: android.webkit.WebResourceResponse,
+                ) {
+                    // HTTP-level failures (chunk 404, ingress 401) are silent
+                    // in-page; ship them so blank panes explain themselves.
+                    R1Log.w(
+                        "Lovelace",
+                        "http ${errorResponse.statusCode} for ${request.url}" +
+                            if (request.isForMainFrame) " (main frame)" else "",
+                    )
+                }
             }
+            // Ship in-page console warnings/errors; see PanelViewerScreen.
+            webChromeClient = com.github.itskenny0.r1ha.core.util.ConsoleShippingChromeClient("Lovelace.console")
             // Load the dashboard root. HA's frontend redirects to the
             // default Lovelace view at /lovelace; we just point at /
             // and let HA's own routing decide.

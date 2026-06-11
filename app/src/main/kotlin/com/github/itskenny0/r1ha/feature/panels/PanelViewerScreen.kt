@@ -327,6 +327,11 @@ private fun PanelWebView(
                 ): Boolean {
                     // Keep navigation on HA's own host; route external links
                     // (GitHub, integration docs, etc.) to the system browser.
+                    // Main frame ONLY: iframe navigations must stay embedded or
+                    // every iframe/webpage panel pointing off-host (Grafana, an
+                    // add-on docs page) gets kicked to the browser and leaves a
+                    // blank pane behind.
+                    if (!request.isForMainFrame) return false
                     val target = request.url ?: return false
                     val configured = runCatching {
                         android.net.Uri.parse(serverUrl).host
@@ -348,13 +353,38 @@ private fun PanelWebView(
                     request: WebResourceRequest,
                     error: WebResourceError,
                 ) {
-                    if (!request.isForMainFrame) return
                     val desc = runCatching { error.description?.toString() }.getOrNull() ?: "error"
+                    if (!request.isForMainFrame) {
+                        // Subframe/subresource failures don't get the error
+                        // overlay but DO ship: a dead ingress iframe or a
+                        // failed module chunk is exactly the "header renders,
+                        // content never arrives" symptom.
+                        R1Log.w("PanelViewer", "subresource error: $desc (${request.url})")
+                        return
+                    }
                     R1Log.w("PanelViewer", "WebView error: $desc (${request.url})")
                     onError("WebView: $desc")
                     onLoadingChange(false)
                 }
+
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: android.webkit.WebResourceResponse,
+                ) {
+                    // HTTP-level failures (chunk 404, ingress 401) are silent
+                    // in-page; ship them so blank panels explain themselves.
+                    R1Log.w(
+                        "PanelViewer",
+                        "http ${errorResponse.statusCode} for ${request.url}" +
+                            if (request.isForMainFrame) " (main frame)" else "",
+                    )
+                }
             }
+            // Ship in-page console warnings/errors: a panel that stalls after
+            // rendering the header almost always failed inside its own JS, and
+            // without this the shipped logs end at a successful token inject.
+            webChromeClient = com.github.itskenny0.r1ha.core.util.ConsoleShippingChromeClient("PanelViewer.console")
             loadUrl(panelUrl)
         }
     }
