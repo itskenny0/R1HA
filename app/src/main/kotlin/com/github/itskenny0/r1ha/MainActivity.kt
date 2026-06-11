@@ -656,18 +656,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (!::graph.isInitialized) return
-        val conn = graph.haRepository.connection.value
-        // Resume-time reconnect kicks ONLY out of Disconnected / Idle. AuthLost has its
-        // own refresh + reconnect loop owned by the repository; piling onResume on top
-        // would produce a visible flicker (try → 401 → try → 401) until the loop's
-        // refresh path runs to completion, since the token is the same one that just
-        // got rejected.
-        val needsKick = conn is com.github.itskenny0.r1ha.core.ha.ConnectionState.Disconnected ||
-            conn is com.github.itskenny0.r1ha.core.ha.ConnectionState.Idle
-        if (needsKick) {
-            R1Log.i("MainActivity.onResume", "kicking reconnect; conn=$conn")
-            graph.haRepository.reconnectNow()
-        }
+        // Delegate the resume-reconnect decision to the repository. It kicks out of
+        // Idle / Disconnected, leaves AuthLost to its own refresh loop, leaves a healthy
+        // in-flight handshake alone, and rescues a handshake that has been wedged in
+        // Connecting / Authenticating past the staleness threshold (the foreground-side
+        // backstop for the "connecting forever" bug). Keeping the policy in one place means
+        // the wedge-rescue logic is unit-tested rather than duplicated here.
+        R1Log.i("MainActivity.onResume", "nudging reconnect; conn=${graph.haRepository.connection.value}")
+        graph.haRepository.nudgeReconnect()
         // Engage NFC reader mode while the activity is foregrounded — the
         // NfcReader checks the per-feature toggle internally before firing
         // HA events, so calling bind() with the toggle off is a cheap no-op.

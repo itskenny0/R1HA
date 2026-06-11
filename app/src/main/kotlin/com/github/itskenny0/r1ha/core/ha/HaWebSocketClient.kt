@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -32,6 +33,17 @@ import java.util.concurrent.atomic.AtomicInteger
 class HaWebSocketClient internal constructor(
     private val http: OkHttpClient,
     internal val scope: CoroutineScope,
+    /**
+     * How long the handshake (Connecting -> Authenticating -> Connected) may take before the
+     * watchdog force-fails it to [ConnectionState.Disconnected]. See [ReconnectDecisions] for the
+     * full rationale: OkHttp bounds only TCP/TLS establishment, so a half-open socket whose HA
+     * backend never sends `auth_required` would otherwise leave the state stuck on Connecting
+     * forever (none of onOpen/onClosed/onFailure ever runs), which is the "connecting forever
+     * until restart" bug. Injectable so the unit test can use a tiny budget; a value <= 0 disables
+     * the watchdog entirely (tests that drive a virtual clock and don't exercise the watchdog pass
+     * 0 so advanceUntilIdle can't fast-forward into it).
+     */
+    private val handshakeWatchdogMillis: Long = ReconnectDecisions.HANDSHAKE_WATCHDOG_MS,
 ) {
     constructor() : this(http = OkHttpClient(), scope = CoroutineScope(SupervisorJob()))
 
@@ -63,6 +75,12 @@ class HaWebSocketClient internal constructor(
 
     @Volatile private var webSocket: WebSocket? = null
     @Volatile private var receiverJob: Job? = null
+    /**
+     * Bounds the handshake. Started when [connect] enters [ConnectionState.Connecting]; cancelled
+     * the instant the connection settles (Connected, AuthLost, Disconnected, or a fresh connect /
+     * disconnect). If it fires, the handshake never completed — see [forceFailStaleHandshake].
+     */
+    @Volatile private var handshakeWatchdogJob: Job? = null
     /**
      * Outgoing-message buffer. Bounded with DROP_OLDEST so a stalled network can't grow the
      * queue without bound — the wheel can fire 20+ events/sec, and if the WS sender stalls
@@ -97,7 +115,11 @@ class HaWebSocketClient internal constructor(
             _state.value is ConnectionState.Disconnected ||
             _state.value is ConnectionState.AuthLost
         if (!canReconnect) return
+        // A fresh attempt supersedes any previous watchdog (a rapid Disconnected -> connect bounce
+        // could leave the old one armed against a socket we're about to replace).
+        handshakeWatchdogJob?.cancel()
         _state.value = ConnectionState.Connecting
+        R1Log.w("HaWS.connect", "connecting; arming handshake watchdog (${handshakeWatchdogMillis}ms)")
         val req = Request.Builder().url(url).build()
         val listener = object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, resp: Response) {
@@ -131,8 +153,14 @@ class HaWebSocketClient internal constructor(
                         val token = runCatching { tokenProvider() }.getOrNull().orEmpty()
                         ws.send(HaJson.encodeToString<HaOutbound>(HaOutbound.Auth(token)))
                     }
-                    is HaInbound.AuthOk -> _state.value = ConnectionState.Connected(msg.haVersion)
+                    is HaInbound.AuthOk -> {
+                        // Handshake completed — disarm the watchdog before it can fire.
+                        handshakeWatchdogJob?.cancel()
+                        _state.value = ConnectionState.Connected(msg.haVersion)
+                    }
                     is HaInbound.AuthInvalid -> {
+                        // A definitive auth rejection IS a settled handshake; disarm.
+                        handshakeWatchdogJob?.cancel()
                         _state.value = ConnectionState.AuthLost(msg.message)
                         ws.close(1000, "auth_invalid")
                     }
@@ -154,6 +182,8 @@ class HaWebSocketClient internal constructor(
                 // Preserve a sticky AuthLost — we just called ws.close() ourselves in response
                 // to AuthInvalid; the resulting onClosed would otherwise overwrite a meaningful
                 // "auth invalid" message with the generic "server closed".
+                // The connection settled (server closed it); the handshake watchdog is moot.
+                handshakeWatchdogJob?.cancel()
                 if (_state.value !is ConnectionState.AuthLost) {
                     _state.value = ConnectionState.Disconnected(ConnectionState.Cause.ServerClosed, attempt = 0)
                 }
@@ -161,6 +191,8 @@ class HaWebSocketClient internal constructor(
             }
             override fun onFailure(ws: WebSocket, t: Throwable, resp: Response?) {
                 if (this@HaWebSocketClient.webSocket !== ws) return
+                // The connection settled (transport failure); the handshake watchdog is moot.
+                handshakeWatchdogJob?.cancel()
                 if (_state.value !is ConnectionState.AuthLost) {
                     _state.value = ConnectionState.Disconnected(ConnectionState.Cause.Error(t), attempt = 0)
                 }
@@ -169,7 +201,49 @@ class HaWebSocketClient internal constructor(
         }
         // Store the WebSocket immediately so the listener's stale-callback guard works for
         // failures that fire before onOpen (e.g. DNS failure, TLS handshake error).
-        webSocket = http.newWebSocket(req, listener)
+        val newSocket = http.newWebSocket(req, listener)
+        webSocket = newSocket
+        // Arm the handshake watchdog AFTER the socket exists so it can guard exactly this
+        // attempt. If neither AuthOk/AuthInvalid nor onClosed/onFailure has settled the state by
+        // the deadline, the socket is half-open (the root cause of "connecting forever"): tear it
+        // down and synthesise a Disconnected so HaRepository's reconnect loop takes over. A budget
+        // of <= 0 disables the watchdog (test-only path).
+        if (handshakeWatchdogMillis > 0) {
+            handshakeWatchdogJob = scope.launch {
+                delay(handshakeWatchdogMillis)
+                forceFailStaleHandshake(newSocket)
+            }
+        }
+    }
+
+    /**
+     * Watchdog body — runs only when the handshake has been silent for [handshakeWatchdogMillis].
+     * Guards against three races before acting: a newer connection replaced [guarded] (so this
+     * watchdog belongs to a dead attempt), the connection already reached Connected, or it already
+     * settled to AuthLost. In all of those the legitimate callback already disarmed us; the extra
+     * checks are belt-and-braces for the window between a callback firing and its `cancel()` taking
+     * effect. Otherwise it closes the wedged socket and transitions to Disconnected so the
+     * repository schedules a backoff reconnect.
+     */
+    private fun forceFailStaleHandshake(guarded: WebSocket) {
+        if (webSocket !== guarded) return
+        val current = _state.value
+        if (current is ConnectionState.Connected || current is ConnectionState.AuthLost) return
+        R1Log.w(
+            "HaWS.watchdog",
+            "handshake stuck in ${current::class.simpleName} for ${handshakeWatchdogMillis}ms; " +
+                "forcing Disconnected so reconnect can take over",
+        )
+        // close() may be a no-op on an already-dead socket; that's fine. Null the ref first so the
+        // resulting onClosed/onFailure (if any) is treated as stale and doesn't double-fire state.
+        webSocket = null
+        receiverJob?.cancel()
+        runCatching { guarded.close(4000, "handshake_timeout") }
+        guarded.cancel()
+        _state.value = ConnectionState.Disconnected(
+            ConnectionState.Cause.Error(IllegalStateException("Handshake timed out")),
+            attempt = 0,
+        )
     }
 
     /**
@@ -222,6 +296,7 @@ class HaWebSocketClient internal constructor(
     }
 
     fun disconnect(code: Int = 1000, reason: String = "client_disconnect") {
+        handshakeWatchdogJob?.cancel()
         webSocket?.close(code, reason)
         webSocket = null
         receiverJob?.cancel()

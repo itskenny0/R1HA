@@ -409,6 +409,13 @@ class DefaultHaRepository(
      * retry path runs without real-time waits.
      */
     private val historyRetryBackoffMillis: Long = 1_000L,
+    /**
+     * Monotonic clock source for handshake-age arithmetic (the resume-nudge stale-Connecting
+     * rescue). Defaults to [android.os.SystemClock.elapsedRealtime] in production; tests inject a
+     * fake so they can advance the clock deterministically. Monotonic (NOT wall-clock) so a doze
+     * window or an NTP correction during a stuck handshake can't make the age go negative.
+     */
+    private val elapsedRealtimeMillis: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) : HaRepository {
 
     override val connection: StateFlow<ConnectionState> = ws.state
@@ -539,6 +546,17 @@ class DefaultHaRepository(
 
     /** Tracks consecutive reconnect attempts so BackoffPolicy actually backs off. */
     @Volatile private var reconnectAttempt: Int = 0
+
+    /**
+     * Monotonic ([android.os.SystemClock.elapsedRealtime]) timestamp of when the connection most
+     * recently entered Connecting / Authenticating, or null when it isn't mid-handshake. Read by
+     * [nudgeReconnect] to decide whether a foreground resume should rescue a wedged handshake (one
+     * that has been Connecting longer than [ReconnectDecisions.RESUME_STALE_CONNECTING_MS]) versus
+     * leave a healthy in-flight connect alone. Monotonic so doze / wall-clock jumps don't skew the
+     * age. Defense-in-depth on top of the WS handshake watchdog: if the watchdog coroutine was
+     * starved while the process was backgrounded, foregrounding still breaks the wedge.
+     */
+    @Volatile private var connectingSinceElapsed: Long? = null
 
     /**
      * Tracks AuthLost-driven refresh attempts so we don't tight-loop if a misconfigured HA
@@ -701,6 +719,18 @@ class DefaultHaRepository(
             ws.state.onEach { st ->
                 val previous = prevState
                 prevState = st
+                // Stamp / clear the handshake-age clock used by the resume-nudge stale-Connecting
+                // rescue. Only stamp on the FIRST handshake leg so the age measures the whole
+                // attempt: Connecting -> Authenticating shouldn't reset the clock (a handshake that
+                // opens the socket but then wedges waiting for auth_ok must still age out).
+                when (st) {
+                    is ConnectionState.Connecting ->
+                        if (connectingSinceElapsed == null) connectingSinceElapsed = elapsedRealtimeMillis()
+                    is ConnectionState.Authenticating -> {
+                        if (connectingSinceElapsed == null) connectingSinceElapsed = elapsedRealtimeMillis()
+                    }
+                    else -> connectingSinceElapsed = null
+                }
                 when (st) {
                     is ConnectionState.Connected -> {
                         reconnectAttempt = 0
@@ -1075,6 +1105,39 @@ class DefaultHaRepository(
         reconnectAttempt = 0
         R1Log.i("HaRepo.reconnectNow", "forcing immediate reconnect (was $current)")
         scope.launch { connectFromSettings() }
+    }
+
+    override fun nudgeReconnect() {
+        val current = ws.state.value
+        // Age the in-flight handshake (if any) on the monotonic clock so a doze window or NTP jump
+        // can't fool the staleness check. 0 when not mid-handshake; resumeNudgeAction ignores it
+        // for non-handshake states anyway.
+        val ageMillis = connectingSinceElapsed?.let { elapsedRealtimeMillis() - it } ?: 0L
+        when (ReconnectDecisions.resumeNudgeAction(current, ageMillis)) {
+            ReconnectDecisions.ResumeAction.NONE -> {
+                R1Log.i(
+                    "HaRepo.reconnect",
+                    "resume nudge: no action (state=${current::class.simpleName}, handshakeAge=${ageMillis}ms)",
+                )
+            }
+            ReconnectDecisions.ResumeAction.KICK -> {
+                R1Log.w("HaRepo.reconnect", "resume nudge: kicking reconnect (state=${current::class.simpleName})")
+                reconnectNow()
+            }
+            ReconnectDecisions.ResumeAction.RESCUE_STALE -> {
+                // The handshake has been wedged in Connecting / Authenticating past the threshold.
+                // reconnectNow() alone would refuse (it skips Connecting), so tear the dead socket
+                // down first — that flips the WS client to Idle, which reconnectNow() WILL act on.
+                R1Log.w(
+                    "HaRepo.reconnect",
+                    "resume nudge: rescuing stale handshake stuck ${ageMillis}ms in " +
+                        "${current::class.simpleName}; tearing down and reconnecting",
+                )
+                connectingSinceElapsed = null
+                ws.disconnect()
+                reconnectNow()
+            }
+        }
     }
 
     private fun applyEvent(ev: HaInbound.Event) {

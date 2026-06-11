@@ -165,6 +165,12 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Non-Robolectric JVM tests (e.g. HaWebSocketClientTest) exercise production code
+            // that logs via android.util.Log; without this, an un-mocked Log call throws
+            // "Method w in android.util.Log not mocked". Returning defaults lets those tests run
+            // the real code path while ignoring the log side effect. Robolectric tests shadow
+            // android.* themselves, so this flag is a no-op for them.
+            isReturnDefaultValues = true
             all { it.useJUnitPlatform() }
         }
     }
