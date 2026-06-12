@@ -252,7 +252,9 @@ fun DashboardViewScreen(
     // condition: the `person.*` entity whose `user_id` attribute is the current
     // user. Recomputed when the user id or the entity map changes.
     val personStateForUser: () -> String? = remember(currentUserId, entities) {
-        { resolveUserPersonState(currentUserId, entities) }
+        // Shared resolver (feature.dashboards.cards) so the card-stack deck and
+        // this screen agree on which person entity speaks for the user.
+        { com.github.itskenny0.r1ha.feature.dashboards.cards.resolveUserPersonState(currentUserId, entities) }
     }
 
     // Build a stable theme lookup lambda from the current catalogue snapshot.
@@ -907,33 +909,6 @@ private fun SectionRunsColumn(
             }
         }
     }
-}
-
-/**
- * Resolve the state of the current user's person entity for the Lovelace
- * `location` condition: the `person.*` entity whose `user_id` attribute matches
- * [userId] (HA's getUserPerson), returning its state string. Returns null when
- * there is no current user, no entity map, or no matching person entity is in
- * the live set (the condition then fails closed, matching HA when getUserPerson
- * yields nothing).
- *
- * Only person entities already in the dashboards entity stream are visible here;
- * a `location` gate over a person nobody subscribed evaluates as "unknown" until
- * that person is observed (the consumer wiring that subscribes location-condition
- * entities lands in a sibling batch).
- */
-private fun resolveUserPersonState(
-    userId: String?,
-    entities: Map<String, com.github.itskenny0.r1ha.core.ha.EntityState>?,
-): String? {
-    if (userId == null || entities == null) return null
-    for ((rawId, state) in entities) {
-        if (!rawId.startsWith("person.")) continue
-        val attrUserId = (state.attributesJson?.get("user_id")
-            as? kotlinx.serialization.json.JsonPrimitive)?.content
-        if (attrUserId == userId) return state.rawState
-    }
-    return null
 }
 
 /**

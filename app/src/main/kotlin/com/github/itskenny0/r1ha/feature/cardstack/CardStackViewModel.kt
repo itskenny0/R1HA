@@ -16,6 +16,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.WheelSettings
 import com.github.itskenny0.r1ha.core.prefs.encode
 import com.github.itskenny0.r1ha.core.prefs.newPinnedCardId
+import com.github.itskenny0.r1ha.core.prefs.resolvedPinnedCardIds
 import com.github.itskenny0.r1ha.core.prefs.withDeckMoveByRenderedIndex
 import com.github.itskenny0.r1ha.core.prefs.withFavoriteRemoved
 import com.github.itskenny0.r1ha.core.prefs.withPinnedCardRemoved
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -437,17 +439,36 @@ class CardStackViewModel(
              * no-op updates (the per-card map structurally equals).
              */
             val entityOverrides: Map<String, com.github.itskenny0.r1ha.core.prefs.EntityOverride>,
+            /**
+             * Every entity id the pages' PINNED LOVELACE CARDS reference
+             * (rendered entities + condition gates), via the same
+             * [com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds]
+             * walk the screen-level render union uses. Folded into the observed
+             * id set below so the deck rebuild (a) sees those states when
+             * evaluating a conditional card's deck-slot visibility and (b)
+             * re-runs when a gating entity changes, flipping the slot live.
+             */
+            val lovelaceEntityIds: Set<String>,
         )
         val sourceFlow = settings.settings
             .map { s ->
                 val pages = s.pages
                 val unionFavorites = pages.flatMap { it.favorites }.distinct()
+                val lovelaceIds = LinkedHashSet<String>()
+                pages.forEach { p ->
+                    p.pinnedCards.forEach { blob ->
+                        parsePinnedCardCached(blob)?.let {
+                            com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, lovelaceIds)
+                        }
+                    }
+                }
                 PagesSnapshot(
                     pages = pages,
                     activeId = s.activePageId,
                     unionFavorites = unionFavorites,
                     overrides = s.nameOverrides,
                     entityOverrides = s.entityOverrides,
+                    lovelaceEntityIds = lovelaceIds,
                 )
             }
             .distinctUntilChanged()
@@ -456,15 +477,29 @@ class CardStackViewModel(
             .flatMapLatest { snap ->
                 // Subscribe to the UNION of every page so switching pages doesn't
                 // re-resubscribe; observe state is fast that way. The per-page
-                // slicing happens downstream of the entityMap.
-                val ids = snap.unionFavorites.mapNotNull { runCatching { EntityId(it) }.getOrNull() }.toSet()
+                // slicing happens downstream of the entityMap. The pinned cards'
+                // referenced ids ride along: observe() is a pure cache filter
+                // (no subscription registration), and the WS registration + REST
+                // seeding for those ids is asserted by CardStackScreen's
+                // observeRaw union, so widening the filter here costs nothing
+                // and gives the deck build the condition states it gates on.
+                val ids = (snap.unionFavorites + snap.lovelaceEntityIds)
+                    .mapNotNull { runCatching { EntityId(it) }.getOrNull() }
+                    .toSet()
                 if (ids.isEmpty()) {
                     flowOf(snap to emptyMap<EntityId, EntityState>())
                 } else {
                     haRepository.observe(ids).map { snap to it }
                 }
             }
-            .onEach { (snap, entityMap) ->
+            // The current-user id gates Lovelace `user` / `location` conditions.
+            // It is fetched once per connect, so combining (rather than reading a
+            // one-shot snapshot) means a deck built before the fetch lands gets
+            // rebuilt with the real user the moment it arrives.
+            .combine(haRepository.currentUserId) { (snap, entityMap), userId ->
+                Triple(snap, entityMap, userId)
+            }
+            .onEach { (snap, entityMap, currentUserId) ->
                 // Build a Map<pageId, List<EntityState>> in page order so every
                 // horizontal pager page has its deck ready before the user swipes
                 // to it. The active page's slice doubles as `cards` for legacy
@@ -501,12 +536,41 @@ class CardStackViewModel(
                 // stored id + raw blob, which only change on an edit.
                 val prevDeckByPage = _state.value.deckByPage
                 val deckByPage = LinkedHashMap<String, List<DeckItem>>()
+                // Visibility inputs for conditional pinned cards, built once per
+                // emission and only when some page actually pins cards. The
+                // raw-keyed view feeds both the attributes-aware evaluator and
+                // the person-entity resolver behind `location` conditions.
+                val hasPinnedCards = snap.pages.any { it.pinnedCards.isNotEmpty() }
+                val rawStates = if (hasPinnedCards) {
+                    entityMap.mapKeys { it.key.value }
+                } else {
+                    emptyMap()
+                }
+                val conditionStates =
+                    com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(rawStates)
+                val conditionContext = if (hasPinnedCards) {
+                    deckConditionContext(
+                        currentUserId = currentUserId,
+                        statesByRawId = rawStates,
+                    )
+                } else {
+                    null
+                }
                 for (page in snap.pages) {
                     val newList = buildDeckItems(
                         page = page,
                         materializeEntity = { id -> materializeRow(id) },
                         parseCard = { raw -> parsePinnedCardCached(raw) },
+                        // A conditional card whose conditions resolve hidden is
+                        // dropped from the rendered deck (it must not occupy an
+                        // empty full-page slot) while staying in storage, the
+                        // same shape as hide-while-unavailable entities above.
+                        cardIsVisible = { card ->
+                            conditionContext == null ||
+                                deckCardIsVisible(card, conditionStates, conditionContext)
+                        },
                     )
+                    logDeckRenderDiagnostics(page, conditionStates, conditionContext)
                     val prev = prevDeckByPage[page.id]
                     deckByPage[page.id] = if (
                         prev != null &&
@@ -622,9 +686,48 @@ class CardStackViewModel(
     }
 
     private fun trimParseCache(pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage>) {
+        // Diagnostics hashes for pages that no longer exist go with them.
+        deckRenderLogHashes.keys.retainAll(pages.mapTo(HashSet()) { it.id })
         if (pinnedParseCache.isEmpty()) return
         val live = pages.flatMapTo(HashSet()) { it.pinnedCards }
         pinnedParseCache.keys.retainAll(live)
+    }
+
+    /**
+     * Per-page hash of the last logged [deckRenderSummary], so the diagnostics
+     * below only log when a page's rendered composition actually changes.
+     * Only touched from the observeFavorites collector (single coroutine).
+     */
+    private val deckRenderLogHashes = HashMap<String, Int>()
+
+    /**
+     * Per-slot render diagnostics for a page's pinned Lovelace cards, logged at
+     * INFO under "Deck.render" from the deck-build path (once per changed page
+     * build, never per frame). For every pinned card: its stable id, type,
+     * visible / hidden (with the first failing condition kind), and how many of
+     * its referenced entities currently have live state. The summary-hash guard
+     * keeps steady-state emissions silent, so a busy state stream costs one
+     * string build per page and no log spam.
+     */
+    private fun logDeckRenderDiagnostics(
+        page: com.github.itskenny0.r1ha.core.prefs.FavoritePage,
+        states: com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates,
+        context: com.github.itskenny0.r1ha.core.lovelace.LovelaceConditionContext?,
+    ) {
+        if (context == null || page.pinnedCards.isEmpty()) {
+            deckRenderLogHashes.remove(page.id)
+            return
+        }
+        val cardIds = page.resolvedPinnedCardIds()
+        val infos = page.pinnedCards.mapIndexedNotNull { i, blob ->
+            val card = parsePinnedCardCached(blob) ?: return@mapIndexedNotNull null
+            deckCardRenderInfo(cardIds.getOrElse(i) { "?" }, card, states, context)
+        }
+        val summary = deckRenderSummary(page.id, infos)
+        val hash = summary.hashCode()
+        if (deckRenderLogHashes[page.id] == hash) return
+        deckRenderLogHashes[page.id] = hash
+        R1Log.i("Deck.render", summary)
     }
 
     /** Deck-slot equivalence for the reference-preservation pass above. */

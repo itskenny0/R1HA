@@ -103,13 +103,17 @@ internal fun parsePinnedCard(blob: String): LovelaceCard? {
  * each ref into a [DeckItem]. Entity refs resolve through [materializeEntity]
  * (which applies renames / hide-when-unavailable and returns null while HA
  * hasn't sent state); card refs parse through [parseCard] (null for broken
- * blobs). Unresolvable refs drop out, so the rendered deck is always a
- * coherent subset of storage.
+ * blobs) and then gate on [cardIsVisible] (a conditional card whose conditions
+ * resolve hidden must not occupy a full-page deck slot; see
+ * [deckConditionContext] for the policy). Unresolvable / hidden refs drop out,
+ * so the rendered deck is always a coherent subset of storage; the reorder
+ * machinery already translates rendered indices into storage refs.
  */
 fun buildDeckItems(
     page: FavoritePage,
     materializeEntity: (String) -> EntityState?,
     parseCard: (String) -> LovelaceCard?,
+    cardIsVisible: (LovelaceCard) -> Boolean = { true },
 ): List<DeckItem> {
     if (page.pinnedCards.isEmpty()) {
         // Fast path for the overwhelmingly common favourites-only page: no ref
@@ -126,7 +130,9 @@ fun buildDeckItems(
             is DeckRef.Entity -> materializeEntity(ref.entityId)?.let { DeckItem.Entity(it) }
             is DeckRef.Card -> {
                 val raw = rawById[ref.cardId] ?: return@mapNotNull null
-                parseCard(raw)?.let { DeckItem.Card(card = it, raw = raw, id = ref.cardId) }
+                parseCard(raw)
+                    ?.takeIf(cardIsVisible)
+                    ?.let { DeckItem.Card(card = it, raw = raw, id = ref.cardId) }
             }
         }
     }
