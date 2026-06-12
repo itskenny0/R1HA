@@ -722,6 +722,9 @@ private fun CommandSheet(
     var renameText by remember(entry.automationId) { mutableStateOf(entry.alias) }
     var deleteArmed by remember(entry.automationId) { mutableStateOf(false) }
     var pagePickerOpen by remember(entry.automationId) { mutableStateOf(false) }
+    // Pin flow step 2: page picked, structured editor open on the generated
+    // button config (name / icon / show toggles) before it lands on the deck.
+    var pinEditor by remember(entry.automationId) { mutableStateOf<PendingPin?>(null) }
     // Dialog window rather than an in-tree overlay: this sheet opens from
     // deep inside the catalog's list/detail Column, where a fillMaxSize Box
     // would only cover the remaining (zero) column height.
@@ -897,16 +900,66 @@ private fun CommandSheet(
         PagePickerDialog(
             pages = pages,
             onPick = { pageId ->
-                vm.pinEntryToPage(
+                // Don't pin yet: seed the structured editor with the generated
+                // button card so name / icon / show toggles are settable before
+                // the card lands. The ×1 automation.trigger vs ×N send_command
+                // card-shape rule lives in entryCardJson.
+                pinEditor = PendingPin(
                     pageId = pageId,
-                    entry = entry,
-                    label = entry.alias,
-                    repeats = repeats,
+                    seedRaw = vm.entryCardJson(entry, entry.alias, repeats),
                 )
                 pagePickerOpen = false
-                onDismiss()
             },
             onDismiss = { pagePickerOpen = false },
+        )
+    }
+    val pin = pinEditor
+    if (pin != null) {
+        PinCardEditorDialog(
+            haRepository = vm.repositoryForEditor,
+            pin = pin,
+            onSave = { raw ->
+                vm.pinCardToPage(pin.pageId, raw, entry.alias)
+                pinEditor = null
+                onDismiss()
+            },
+            onDismiss = { pinEditor = null },
+        )
+    }
+}
+
+// ── Pin-to-deck editor step (shared with the automations pane) ──────────
+
+/** A pin in flight: the chosen page + the generated card config the
+ *  structured editor opens on. */
+internal data class PendingPin(val pageId: String, val seedRaw: String)
+
+/**
+ * Hosts the deck's structured card editor ([CardMiniEditor]) as the step
+ * between "pick page" and "append": the user sets name / icon / show toggles
+ * (or drops to EDIT JSON) and SAVE pins the edited config. Reusing the deck's
+ * own editor in place, rather than a Broadlink-special form, keeps the two
+ * surfaces' capabilities identical; the Dialog window wrapper exists for the
+ * same reason as [PagePickerDialog]'s (call sites sit inside Columns whose
+ * remaining height is zero, so an in-tree fillMaxSize overlay can't cover
+ * the screen).
+ */
+@Composable
+internal fun PinCardEditorDialog(
+    haRepository: HaRepository,
+    pin: PendingPin,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        com.github.itskenny0.r1ha.feature.cardstack.CardMiniEditor(
+            initialRaw = pin.seedRaw,
+            haRepository = haRepository,
+            onSave = onSave,
+            onDismiss = onDismiss,
         )
     }
 }

@@ -89,14 +89,15 @@ internal fun LovelaceDeckHooks.dispatch(scope: CoroutineScope, action: LovelaceA
  * A pinned Lovelace card as a first-class deck slot. The SLOT (the caller's
  * [modifier], carrying the pager's scale animation) stays full-page so swipe
  * mechanics and the "…" anchor are unchanged, but the VISIBLE SURFACE wraps
- * its content height, vertically centred in the slot: a short tile or
- * markdown card reads as a floating panel rather than a full-height page of
- * empty surface. Tall content clamps at the slot height and scrolls
- * internally. [surfaceModifier] carries the entity cards' rounded clip +
- * fading shadow from PageDeck, applied at the wrapped size, and the surface
- * itself is the plain near-black [R1.Bg] every non-themed card variant
- * paints. No border, no corner ticks, no type chip; the card content itself
- * is the face.
+ * its content height, vertically centred in the slot: a button card is
+ * button-height, a markdown card is text-height. Tall content clamps at the
+ * slot height and scrolls internally (see [DeckCardSurface] for the measure
+ * contract). [surfaceModifier] carries the rounded clip + fading shadow from
+ * PageDeck, applied at the wrapped size. The deck adds NO frame of its own:
+ * card renderers already paint their own bordered panel (ButtonCard,
+ * CardSurface, ...), and wrapping that in another background + padding read
+ * as a redundant full-width frame around every small card. The card content
+ * itself is the face.
  *
  * Interaction map:
  *  - card content owns its taps (the dashboards engine dispatches actions);
@@ -144,21 +145,9 @@ internal fun LovelaceDeckCard(
         ),
         contentAlignment = Alignment.Center,
     ) {
-        // A scrollable column measures to its content height up to the slot's
-        // max, so short cards hug their content and tall ones clamp + scroll.
-        val bodyModifier = if (isIframe) {
-            Modifier.fillMaxWidth()
-        } else {
-            Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-        }
-        Column(
-            modifier = surfaceModifier
-                .fillMaxWidth()
-                .background(R1.Bg)
-                .padding(horizontal = 12.dp, vertical = 12.dp)
-                .then(bodyModifier),
+        DeckCardSurface(
+            scrollable = !isIframe,
+            modifier = surfaceModifier,
         ) {
             LovelaceCardRenderer(
                 card = content,
@@ -195,6 +184,51 @@ internal fun LovelaceDeckCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * The content-hugging surface of a Lovelace deck slot.
+ *
+ * Measure contract (verified by LovelaceDeckSurfaceSizingTest): the
+ * [androidx.compose.foundation.verticalScroll] layout node measures its child
+ * with an unbounded max height and reports min(content height, incoming max),
+ * so under the centering Box's loose constraints the surface
+ *  - WRAPS short content (a button card is button-height),
+ *  - CAPS at the slot height when content is taller, with the overflow
+ *    reachable through the scroll (whose range is exactly the overflow,
+ *    i.e. zero when the content fits, so a short card consumes no drags
+ *    beyond what nested scroll hands to the pager).
+ *
+ * The surface paints the plain near-black [R1.Bg]: invisible against the
+ * page background, but it keeps the layer opaque so the shadow [modifier]
+ * the caller supplies doesn't bleed through the gaps a stack card leaves
+ * between its children. No padding: the card's own chrome is the visible
+ * panel and any deck-side inset would re-introduce the full-width frame
+ * this fixes.
+ *
+ * Iframe slots pass [scrollable] = false: the WebView owns vertical drags
+ * inside its bounds and a second scroll consumer around a fixed-aspect box
+ * only fights the pager.
+ */
+@Composable
+internal fun DeckCardSurface(
+    scrollable: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val bodyModifier = if (scrollable) {
+        Modifier.verticalScroll(rememberScrollState())
+    } else {
+        Modifier
+    }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(R1.Bg)
+            .then(bodyModifier),
+    ) {
+        content()
     }
 }
 

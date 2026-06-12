@@ -8,6 +8,7 @@ import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.ServiceCall
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
+import com.github.itskenny0.r1ha.core.prefs.withPinnedCardsAppended
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.Job
@@ -673,15 +674,17 @@ class BroadlinkViewModel(
 
     // ── Pin to deck ─────────────────────────────────────────────────────
 
-    /** Pin a catalog command. ×1 pins an automation.trigger card (same
-     *  single-source-of-execution rule as in-app fires); ×N pins a
-     *  send_command card because num_repeats only exists at fire time. */
-    fun pinEntryToPage(
-        pageId: String,
-        entry: BroadlinkCatalog.Entry,
-        label: String,
-        repeats: Int = 1,
-    ) {
+    /** Repository handle for the pin-flow card editor (its entity picker
+     *  searches the same all-entities listing every other picker uses). */
+    val repositoryForEditor: HaRepository get() = haRepository
+
+    /**
+     * The button-card config a catalog command pins, as the seed the
+     * structured card editor opens on. ×1 builds an automation.trigger card
+     * (same single-source-of-execution rule as in-app fires); ×N builds a
+     * send_command card because num_repeats only exists at fire time.
+     */
+    fun entryCardJson(entry: BroadlinkCatalog.Entry, label: String, repeats: Int = 1): String {
         val meta = entry.meta
         val card = if (repeats > 1 && meta != null) {
             BroadlinkCards.commandButtonCard(
@@ -694,18 +697,20 @@ class BroadlinkViewModel(
         } else {
             BroadlinkCards.automationButtonCard(entry.entityId, label)
         }
-        appendPinnedCard(pageId, card.toString(), label)
+        return card.toString()
     }
 
-    fun pinAutomationToPage(pageId: String, automationEntityId: String, label: String) {
-        appendPinnedCard(
-            pageId,
-            BroadlinkCards.automationButtonCard(automationEntityId, label).toString(),
-            label,
-        )
-    }
+    /** Editor seed for pinning an automation row: a manual-trigger button. */
+    fun automationCardJson(automationEntityId: String, label: String): String =
+        BroadlinkCards.automationButtonCard(automationEntityId, label).toString()
 
-    private fun appendPinnedCard(pageId: String, cardJson: String, label: String) {
+    /**
+     * Append a (possibly editor-customised) card config to a page's pinned
+     * deck. Goes through [com.github.itskenny0.r1ha.core.prefs.withPinnedCardsAppended]
+     * so the card gets a stable pinnedCardId like every deck-managed card,
+     * instead of the raw-append + legacy index-fallback ids this used before.
+     */
+    fun pinCardToPage(pageId: String, cardJson: String, label: String) {
         viewModelScope.launch {
             var pageName: String? = null
             settings.update { s ->
@@ -713,7 +718,7 @@ class BroadlinkViewModel(
                 pageName = page.name
                 s.copy(
                     pages = s.pages.map { p ->
-                        if (p.id == pageId) p.copy(pinnedCards = p.pinnedCards + cardJson) else p
+                        if (p.id == pageId) p.withPinnedCardsAppended(listOf(cardJson)) else p
                     },
                 )
             }
