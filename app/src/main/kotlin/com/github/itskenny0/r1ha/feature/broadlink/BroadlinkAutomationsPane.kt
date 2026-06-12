@@ -78,7 +78,6 @@ internal fun BroadlinkAutomationsPane(
             vm = vm,
             ui = ui,
             haRepository = haRepository,
-            appSettings = appSettings,
             settings = settings,
             wheelInput = wheelInput,
             onClose = { builderOpen = false },
@@ -180,7 +179,7 @@ private fun AutomationList(
         if (broadlinkOnly) {
             Text(
                 text = if (ui.configsFetched) {
-                    "UI-MANAGED RULES FILTERED BY CONFIG BODY; YAML RULES BY NAME."
+                    "R1HA-TAGGED RULES MATCH EXACTLY; OTHERS BY CONFIG BODY, YAML RULES BY NAME."
                 } else {
                     "FETCHING CONFIG BODIES… FILTER IS NAME-BASED UNTIL DONE."
                 },
@@ -337,7 +336,6 @@ private fun AutomationBuilder(
     vm: BroadlinkViewModel,
     ui: BroadlinkViewModel.UiState,
     haRepository: HaRepository,
-    appSettings: AppSettings,
     settings: SettingsRepository,
     wheelInput: WheelInput,
     onClose: () -> Unit,
@@ -350,7 +348,9 @@ private fun AutomationBuilder(
     var entityId by remember { mutableStateOf("") }
     var toState by remember { mutableStateOf("") }
     var entityPickerOpen by remember { mutableStateOf(false) }
-    val devices = appSettings.broadlink.devices
+    // Source the THEN SEND slots from the HA-resident catalog (across all
+    // blasters: a rule may target any of them).
+    val devices = remember(ui.catalog) { BroadlinkCatalog.allDevices(ui.catalog) }
     var deviceIndex by remember { mutableIntStateOf(0) }
     val device = devices.getOrNull(deviceIndex)
     var commandName by remember(device?.name, device?.remoteEntityId) { mutableStateOf("") }
@@ -453,7 +453,7 @@ private fun AutomationBuilder(
                         }
                     }
                     Spacer(Modifier.height(R1.space.xs))
-                    val commands = device?.commands.orEmpty()
+                    val commands = device?.entries.orEmpty()
                     if (commands.isEmpty()) {
                         Text(
                             text = "No commands catalogued for this device.",
@@ -468,12 +468,13 @@ private fun AutomationBuilder(
                             horizontalArrangement = Arrangement.spacedBy(R1.space.s),
                         ) {
                             commands.forEach { c ->
+                                val cmd = c.meta?.command ?: return@forEach
                                 R1Chip(
-                                    text = c.displayLabel.uppercase(),
+                                    text = c.alias.uppercase(),
                                     variant = R1ChipVariant.Filter,
-                                    selected = commandName == c.name,
-                                    onClick = { commandName = c.name },
-                                    contentDescription = "Send command ${c.displayLabel}",
+                                    selected = commandName == cmd,
+                                    onClick = { commandName = cmd },
+                                    contentDescription = "Send command ${c.alias}",
                                 )
                             }
                         }

@@ -113,6 +113,40 @@ class BroadlinkCardsTest {
         assertThat(trigger.containsKey("to")).isFalse()
     }
 
+    @Test fun `catalog automation config stores the command with empty triggers`() {
+        val meta = BroadlinkMarker.CommandMeta(
+            remote = "remote.rm4",
+            device = "tv",
+            command = "power",
+            type = "ir",
+        )
+        val cfg = BroadlinkCards.commandAutomationConfig(alias = "TV · Power (R1HA IR)", meta = meta)
+        assertThat(cfg.str("alias")).isEqualTo("TV · Power (R1HA IR)")
+        assertThat(cfg.str("mode")).isEqualTo("single")
+        // Empty trigger list: the automation never self-fires; it exists as
+        // the catalog record and the manual-trigger target.
+        assertThat(cfg["trigger"]).isEqualTo(JsonArray(emptyList()))
+        assertThat(cfg["condition"]).isEqualTo(JsonArray(emptyList()))
+        val action = (cfg["action"] as JsonArray).single() as JsonObject
+        assertThat(action.str("service")).isEqualTo("remote.send_command")
+        assertThat(action.obj("target").str("entity_id")).isEqualTo("remote.rm4")
+        assertThat(action.obj("data").str("device")).isEqualTo("tv")
+        assertThat(action.obj("data").str("command")).isEqualTo("power")
+        // No num_repeats in the stored body: repeats is a fire-time option.
+        assertThat(action.obj("data").containsKey("num_repeats")).isFalse()
+        // The description marker round-trips through the marker parser.
+        val parsed = BroadlinkMarker.parse(cfg.str("description"))
+        assertThat(parsed).isEqualTo(BroadlinkMarker.Parsed.Marked(meta))
+    }
+
+    @Test fun `marker-tagged config bodies match the broadlink filter exactly`() {
+        // The marker alone matches: no send_command action, no known
+        // remote ids, even an unknown marker version.
+        val body =
+            """{"alias":"x","description":"R1HA|Broadlink|v9|{}","action":[{"service":"script.turn_on"}]}"""
+        assertThat(BroadlinkCards.isBroadlinkRelated(body, "x", emptySet())).isTrue()
+    }
+
     @Test fun `config bodies referencing send_command are broadlink-related`() {
         val body = """{"alias":"x","action":[{"service":"remote.send_command"}]}"""
         assertThat(BroadlinkCards.isBroadlinkRelated(body, "x", emptySet())).isTrue()

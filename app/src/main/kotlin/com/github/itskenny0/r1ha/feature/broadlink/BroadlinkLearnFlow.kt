@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import com.github.itskenny0.r1ha.core.input.WheelInput
-import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
@@ -55,7 +54,6 @@ import java.util.Locale
 internal fun BroadlinkLearnFlow(
     vm: BroadlinkViewModel,
     ui: BroadlinkViewModel.UiState,
-    appSettings: AppSettings,
     settings: SettingsRepository,
     wheelInput: WheelInput,
     onClose: () -> Unit,
@@ -71,7 +69,6 @@ internal fun BroadlinkLearnFlow(
         BroadlinkViewModel.LearnPhase.FORM -> LearnForm(
             vm = vm,
             ui = ui,
-            appSettings = appSettings,
             settings = settings,
             wheelInput = wheelInput,
             onClose = onClose,
@@ -90,7 +87,6 @@ internal fun BroadlinkLearnFlow(
 private fun LearnForm(
     vm: BroadlinkViewModel,
     ui: BroadlinkViewModel.UiState,
-    appSettings: AppSettings,
     settings: SettingsRepository,
     wheelInput: WheelInput,
     onClose: () -> Unit,
@@ -99,8 +95,8 @@ private fun LearnForm(
     val dimens = rememberResponsiveDimens()
     val scroll = rememberScrollState()
     WheelScrollForScrollState(wheelInput = wheelInput, scrollState = scroll, settings = settings)
-    val existingDevices = remember(appSettings.broadlink, learn.remoteEntityId) {
-        BroadlinkRegistry.devicesFor(appSettings.broadlink, learn.remoteEntityId).map { it.name }
+    val existingDevices = remember(ui.catalog, learn.remoteEntityId) {
+        BroadlinkCatalog.deviceNamesFor(ui.catalog, learn.remoteEntityId)
     }
     R1TopBar(title = "LEARN COMMAND", onBack = onClose)
     Column(
@@ -427,7 +423,6 @@ private fun FailedPhase(
 internal fun BroadlinkRegisterForm(
     vm: BroadlinkViewModel,
     ui: BroadlinkViewModel.UiState,
-    appSettings: AppSettings,
     settings: SettingsRepository,
     wheelInput: WheelInput,
     onClose: () -> Unit,
@@ -440,8 +435,8 @@ internal fun BroadlinkRegisterForm(
     var command by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("ir") }
     var notes by remember { mutableStateOf("") }
-    val existingDevices = remember(appSettings.broadlink, remote) {
-        BroadlinkRegistry.devicesFor(appSettings.broadlink, remote).map { it.name }
+    val existingDevices = remember(ui.catalog, remote) {
+        BroadlinkCatalog.deviceNamesFor(ui.catalog, remote)
     }
     val complete = remote.isNotBlank() && device.isNotBlank() && command.isNotBlank()
     R1TopBar(title = "REGISTER EXISTING", onBack = onClose)
@@ -540,7 +535,7 @@ internal fun BroadlinkRegisterForm(
                         variant = R1ChipVariant.Action,
                         onClick = {
                             if (complete) {
-                                vm.fire(remote, device.trim(), command.trim())
+                                vm.testFire(remote, device.trim(), command.trim())
                             } else {
                                 com.github.itskenny0.r1ha.core.util.Toaster.error(
                                     "Blaster, device and command are required",
