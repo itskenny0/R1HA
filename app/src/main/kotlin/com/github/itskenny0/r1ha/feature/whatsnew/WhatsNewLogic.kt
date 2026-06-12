@@ -54,4 +54,7 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Import a whole dashboard as pages, one tab per view, cards in order.",
     "New-card editor speaks forms now: entity picker, iframe url + aspect, markdown body. JSON stays one tap away.",
     "Reorder the mixed deck from the jump list; long-press a Lovelace card to edit or remove it.",
+    "Broadlink IR/RF console under Settings: guided learn flow with live capture, test-fire, then save.",
+    "Fire, rename, delete or pin learned IR commands to the deck; register codes learned outside the app.",
+    "Build simple automations that fire IR commands, and browse all or Broadlink-only rules.",
 )
