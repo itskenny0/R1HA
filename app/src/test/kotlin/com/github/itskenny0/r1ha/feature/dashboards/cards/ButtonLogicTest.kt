@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import com.github.itskenny0.r1ha.core.ha.EntityId
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.theme.R1
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -58,8 +59,58 @@ class ButtonLogicTest {
         assertEquals(R1.StatusRed, buttonAccent(null, stateColor = true, "light.a", s))
     }
 
-    @Test fun `entityless action button is neutral`() {
-        assertEquals(R1.InkSoft, buttonAccent(null, stateColor = true, null, null))
+    @Test fun `entityless action button takes the warm accent`() {
+        // A bare action button has no state to be "off"; neutral grey read as
+        // a disabled control, so it gets the warm accent (deliberate HA
+        // divergence; see buttonAccent).
+        assertEquals(R1.AccentWarm, buttonAccent(null, stateColor = true, null, null))
+    }
+
+    @Test fun `entityless button still honours an explicit color`() {
+        assertEquals(R1.AccentCool, buttonAccent("blue", stateColor = true, null, null))
+    }
+
+    // ── buttonTapHint ────────────────────────────────────────────────────────
+
+    @Test fun `send_command taps hint SEND`() {
+        val a = LovelaceAction.CallService("remote.send_command", "remote.rm4", null)
+        assertEquals("TAP TO SEND", buttonTapHint(a))
+    }
+
+    @Test fun `press and toggle services hint their own verbs`() {
+        assertEquals(
+            "TAP TO PRESS",
+            buttonTapHint(LovelaceAction.CallService("button.press", "button.bell", null)),
+        )
+        assertEquals(
+            "TAP TO TOGGLE",
+            buttonTapHint(LovelaceAction.CallService("light.toggle", "light.a", null)),
+        )
+    }
+
+    @Test fun `generic services hint RUN`() {
+        assertEquals(
+            "TAP TO RUN",
+            buttonTapHint(LovelaceAction.CallService("scene.turn_on", "scene.movie", null)),
+        )
+        assertEquals(
+            "TAP TO RUN",
+            buttonTapHint(LovelaceAction.CallService("automation.trigger", "automation.a", null)),
+        )
+    }
+
+    @Test fun `builtin and navigation actions hint their verbs`() {
+        assertEquals("TAP TO TOGGLE", buttonTapHint(LovelaceAction.Builtin("toggle", "light.a")))
+        assertEquals("TAP FOR INFO", buttonTapHint(LovelaceAction.Builtin("more-info", "sensor.a")))
+        assertEquals("TAP TO ASK", buttonTapHint(LovelaceAction.Builtin("assist")))
+        assertEquals("TAP TO OPEN", buttonTapHint(LovelaceAction.Navigate("/lovelace/0")))
+        assertEquals("TAP TO OPEN", buttonTapHint(LovelaceAction.Url("https://example.org")))
+    }
+
+    @Test fun `inert surfaces get no hint`() {
+        assertEquals(null, buttonTapHint(null))
+        assertEquals(null, buttonTapHint(LovelaceAction.Builtin("none")))
+        assertEquals(null, buttonTapHint(LovelaceAction.Invalid("nope")))
     }
 
     // ── iconHeightDp ─────────────────────────────────────────────────────────
