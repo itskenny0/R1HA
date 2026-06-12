@@ -54,7 +54,6 @@ import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 
 /**
  * The add-cards surface: three paths onto a page's deck.
@@ -742,25 +741,19 @@ private fun describeCardType(type: String): String = when (type) {
 }
 
 // ── Structured editor ────────────────────────────────────────────────────────
-
-/** Single-entity config key applies to these card types. */
-private val SINGLE_ENTITY_TYPES = setOf(
-    "tile", "light", "gauge", "button", "sensor", "thermostat", "humidifier",
-    "media-control", "alarm-panel", "weather-forecast", "picture-entity",
-    "statistic", "history-graph",
-)
-
-/** Multi-entity list (plain `entities:` array) applies to these. */
-private val MULTI_ENTITY_TYPES = setOf("entities", "glance")
+// (The per-type key ownership + write-back logic lives in CardStructuredEdit.kt
+// so the round-trip is unit-testable; this file owns only the form UI.)
 
 /**
  * Structured per-type card editor: the tight integration replacing the
  * JSON-first flow. Entity-bearing cards get an inline entity picker with
- * search, iframes get url + title + aspect chips, markdown gets a body field;
- * everything else (stacks, conditionals, custom types) lands in the raw JSON
- * mode, which also stays one tap away as the advanced escape hatch. Unknown
- * keys in the config are preserved verbatim, so structured edits never
- * destroy options the form doesn't model.
+ * search, iframes get url + title + aspect chips, markdown gets a body field,
+ * buttons get name + icon + show toggles (so a pinned Broadlink button is as
+ * customisable as any other card); everything else (stacks, conditionals,
+ * custom types) lands in the raw JSON mode, which also stays one tap away as
+ * the advanced escape hatch. Unknown keys in the config are preserved
+ * verbatim, so structured edits never destroy options the form doesn't model
+ * (a Broadlink button's call-service tap_action above all).
  */
 @Composable
 internal fun CardMiniEditor(
@@ -793,6 +786,13 @@ internal fun CardMiniEditor(
     var url by remember { mutableStateOf(initialObj.str("url")) }
     var aspect by remember { mutableStateOf(initialObj.str("aspect_ratio")) }
     var content by remember { mutableStateOf(initialObj.str("content")) }
+    // Button-card fields. The toggle defaults mirror HA's button card so the
+    // chips show how an omitting config actually renders.
+    var name by remember { mutableStateOf(initialObj.str("name")) }
+    var icon by remember { mutableStateOf(initialObj.str("icon")) }
+    var showName by remember { mutableStateOf(initialObj.boolOr("show_name", true)) }
+    var showIcon by remember { mutableStateOf(initialObj.boolOr("show_icon", true)) }
+    var showState by remember { mutableStateOf(initialObj.boolOr("show_state", false)) }
     val multiEntities = remember(initialObj) {
         androidx.compose.runtime.mutableStateListOf<String>().apply {
             addAll(primitiveEntities(initialObj))
@@ -811,32 +811,26 @@ internal fun CardMiniEditor(
 
     fun buildStructured(): JsonObject? {
         val base = initialObj ?: return null
-        return buildJsonObject {
-            base.forEach { (k, v) ->
-                // Edited keys re-emit below; everything else passes through.
-                if (k !in setOf("title", "heading", "entity", "url", "aspect_ratio", "content", "entities")) {
-                    put(k, v)
-                }
-            }
-            fun putIfSet(key: String, value: String) {
-                if (value.isNotBlank()) put(key, JsonPrimitive(value))
-            }
-            if (type == "heading") putIfSet("heading", heading) else putIfSet("title", title)
-            if (type in SINGLE_ENTITY_TYPES) putIfSet("entity", entity)
-            if (type == "iframe") {
-                putIfSet("url", url)
-                putIfSet("aspect_ratio", aspect)
-            }
-            if (type == "markdown") putIfSet("content", content)
-            if (type in MULTI_ENTITY_TYPES) {
-                put(
-                    "entities",
-                    kotlinx.serialization.json.JsonArray(
-                        multiEntities.filter { it.isNotBlank() }.map { JsonPrimitive(it) },
-                    ),
-                )
-            }
-        }
+        // Per-type key ownership + verbatim passthrough live in
+        // buildStructuredCard (CardStructuredEdit.kt), unit-tested there.
+        return buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = type,
+                title = title,
+                heading = heading,
+                entity = entity,
+                url = url,
+                aspect = aspect,
+                content = content,
+                entities = multiEntities.toList(),
+                name = name,
+                icon = icon,
+                showName = showName,
+                showIcon = showIcon,
+                showState = showState,
+            ),
+        )
     }
 
     androidx.activity.compose.BackHandler(onBack = onDismiss)
@@ -893,6 +887,11 @@ internal fun CardMiniEditor(
                                     url = parsed.str("url")
                                     aspect = parsed.str("aspect_ratio")
                                     content = parsed.str("content")
+                                    name = parsed.str("name")
+                                    icon = parsed.str("icon")
+                                    showName = parsed.boolOr("show_name", true)
+                                    showIcon = parsed.boolOr("show_icon", true)
+                                    showState = parsed.boolOr("show_state", false)
                                     multiEntities.clear()
                                     multiEntities.addAll(primitiveEntities(parsed))
                                     jsonMode = false
@@ -937,10 +936,30 @@ internal fun CardMiniEditor(
                     color = if (parsed != null) R1.AccentGreen else R1.StatusRed,
                 )
             } else {
-                if (type == "heading") {
-                    EditorField(label = "HEADING", value = heading, onChange = { heading = it })
-                } else {
-                    EditorField(label = "TITLE", value = title, onChange = { title = it })
+                when (type) {
+                    // Headings label via `heading:`, buttons via `name:` (the
+                    // button card has no `title:` key, so offering TITLE there
+                    // edited a key the renderer never reads).
+                    "heading" -> EditorField(label = "HEADING", value = heading, onChange = { heading = it })
+                    "button" -> EditorField(label = "NAME", value = name, onChange = { name = it })
+                    else -> EditorField(label = "TITLE", value = title, onChange = { title = it })
+                }
+                if (type == "button") {
+                    Spacer(Modifier.height(8.dp))
+                    EditorField(
+                        label = "ICON (MDI:...)",
+                        value = icon,
+                        onChange = { icon = it },
+                        monospace = true,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = "SHOW", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        EditorToggleChip(label = "NAME", selected = showName, onClick = { showName = !showName })
+                        EditorToggleChip(label = "ICON", selected = showIcon, onClick = { showIcon = !showIcon })
+                        EditorToggleChip(label = "STATE", selected = showState, onClick = { showState = !showState })
+                    }
                 }
                 if (type in SINGLE_ENTITY_TYPES) {
                     Spacer(Modifier.height(8.dp))
@@ -1104,6 +1123,30 @@ private fun EditorField(
         placeholder = label,
         monospace = monospace,
     )
+}
+
+/** On/off chip for the button card's show_name / show_icon / show_state
+ *  toggles; same visual language as the iframe aspect presets. */
+@Composable
+private fun EditorToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(R1.ShapeS)
+            .background(if (selected) R1.AccentWarm.copy(alpha = 0.18f) else R1.SurfaceMuted)
+            .border(
+                1.dp,
+                if (selected) R1.AccentWarm.copy(alpha = 0.7f) else R1.Hairline,
+                R1.ShapeS,
+            )
+            .r1Pressable(onClick = onClick, contentDescription = "Toggle show $label")
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(
+            text = label,
+            style = R1.labelMicro,
+            color = if (selected) R1.AccentWarm else R1.InkSoft,
+        )
+    }
 }
 
 @Composable
