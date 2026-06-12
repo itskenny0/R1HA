@@ -1270,6 +1270,25 @@ private fun LazyListScope.appearanceCards(
         )
     }
     item {
+        LabeledControl(label = "Deck layout") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.DeckLayoutMode.entries,
+                selected = s.ui.deckLayoutMode,
+                label = { com.github.itskenny0.r1ha.core.prefs.deckLayoutModeLabel(it) },
+                onSelect = { vm.setDeckLayoutMode(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "Full: every card fills the screen. Dynamic: Lovelace cards " +
+                    "shrink to their content and snap card-to-card (entity cards stay " +
+                    "full-screen; infinite scroll is off in Dynamic). Auto: Full on " +
+                    "small screens, Dynamic on larger ones.",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
         LabeledControl(label = "Peek deck") {
             SegmentedEnumPicker(
                 options = com.github.itskenny0.r1ha.core.prefs.CardPeekMode.entries,
@@ -1281,7 +1300,8 @@ private fun LazyListScope.appearanceCards(
             Text(
                 text = "Half-height cards with the previous and next card peeking. " +
                     "Auto: phone-portrait only. Always: every device (turn on for R1 " +
-                    "or small phones). Never: full-screen cards.",
+                    "or small phones). Never: full-screen cards. Applies when the " +
+                    "deck layout resolves to Full.",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
             )

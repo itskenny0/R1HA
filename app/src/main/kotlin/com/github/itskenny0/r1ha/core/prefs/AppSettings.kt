@@ -32,6 +32,41 @@ enum class DisplayMode { PERCENT, RAW }
 enum class CardPeekMode { AUTO, ALWAYS, NEVER }
 
 /**
+ * How the card-stack deck lays its cards out vertically.
+ *
+ * FULLSCREEN: every card is a uniform full-viewport page (the historical pager), one
+ *             card per swipe, value bar + wheel always at hand. The right call on the
+ *             R1's small panel, where a content-sized block would be too small to read
+ *             or hit.
+ * DYNAMIC:    each card's snap block is sized to its CONTENT. A one-line Lovelace
+ *             toggle takes one line, a forecast card takes its natural height (capped
+ *             at the viewport, scrolling internally past that). Entity cards keep
+ *             their full-viewport height so the wheel / value-bar layout is unchanged.
+ *             Cards still snap into focus as discrete targets; the deck just stops
+ *             marooning a small card in a screen of black.
+ * AUTO:       FULLSCREEN on the small width tiers (R1 / compact), DYNAMIC on medium
+ *             and up, where there is room for several content-sized blocks. This is
+ *             the default. See [com.github.itskenny0.r1ha.feature.cardstack
+ *             .effectiveDeckLayout] for the pure decision function the card stack reads.
+ */
+enum class DeckLayoutMode {
+    AUTO,
+    FULLSCREEN,
+    DYNAMIC,
+    ;
+
+    companion object {
+        /**
+         * Decode a persisted enum name. Absent / unknown (a downgrade from a future
+         * build, a hand-edited backup) falls back to [AUTO] so the deck always has a
+         * sane layout, the same lenient policy every other stored enum uses.
+         */
+        fun fromStored(name: String?): DeckLayoutMode =
+            name?.let { n -> entries.firstOrNull { it.name == n } } ?: AUTO
+    }
+}
+
+/**
  * Display unit for temperature readouts. AUTO follows HA's reported unit
  * (`temperature_unit` attribute on climate entities, defaults to Celsius); CELSIUS and
  * FAHRENHEIT force the display + conversion regardless of HA's setting.
@@ -270,6 +305,18 @@ data class UiOptions(
      * Default AUTO so existing installs see no change on the R1 / sub-compact tier.
      */
     val cardPeekMode: CardPeekMode = CardPeekMode.AUTO,
+    /**
+     * Card-stack deck layout. AUTO (default) keeps the historical full-viewport pager
+     * on the small width tiers (R1 / compact) and switches to the content-height
+     * DYNAMIC snap list on medium and larger tiers; FULLSCREEN / DYNAMIC force one
+     * layout regardless of screen size. When the resolved layout is DYNAMIC it
+     * supersedes the peek deck ([cardPeekMode]): the dynamic list already shows the
+     * neighbouring cards. See [DeckLayoutMode] and [com.github.itskenny0.r1ha.feature
+     * .cardstack.effectiveDeckLayout].
+     *
+     * Default AUTO so existing installs on the R1 / compact tier see no change.
+     */
+    val deckLayoutMode: DeckLayoutMode = DeckLayoutMode.AUTO,
     /**
      * Card-stack scroll sensitivity, expressed as a 0..100 percentage that scales the
      * fling inertia (momentum / coast distance) when touch-scrolling the vertical deck.

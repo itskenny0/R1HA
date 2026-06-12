@@ -98,6 +98,8 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(showZeroPercentWhenOff = enabled)) }
     fun setCardPeekMode(mode: com.github.itskenny0.r1ha.core.prefs.CardPeekMode) =
         update { it.copy(ui = it.ui.copy(cardPeekMode = mode)) }
+    fun setDeckLayoutMode(mode: com.github.itskenny0.r1ha.core.prefs.DeckLayoutMode) =
+        update { it.copy(ui = it.ui.copy(deckLayoutMode = mode)) }
     fun setCardScrollSensitivity(percent: Int) =
         update { it.copy(ui = it.ui.copy(cardScrollSensitivity = percent.coerceIn(0, 100))) }
     fun setTextScale(scale: com.github.itskenny0.r1ha.core.prefs.UiTextScale) =
