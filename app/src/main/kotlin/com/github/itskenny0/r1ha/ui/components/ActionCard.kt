@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot
 import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 import kotlinx.coroutines.delay
@@ -73,9 +74,13 @@ fun ActionCard(
     // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
     // by the wrapper too, so the card stays theme-agnostic.
     val ink = LocalCardInk.current
+    // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card sizes
+    // to its content so every control stays visible; fill mode keeps the
+    // historical full-slot layout.
+    val fillSlot = LocalCardFillSlot.current
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -116,7 +121,9 @@ fun ActionCard(
             Text(text = "ran $ran", style = R1.labelMicro, color = ink.muted, maxLines = 1)
         }
 
-        Spacer(Modifier.weight(1f))
+        // Fill mode floats the ACTIVATE button to the slot bottom; wrap mode
+        // keeps a fixed gap so the card stays content-sized.
+        if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(14.dp))
 
         // ── Big ACTIVATE button ─────────────────────────────────────────────────────
         // Full-width 72dp tile, accent fill, monospace label centred. r1Pressable gives

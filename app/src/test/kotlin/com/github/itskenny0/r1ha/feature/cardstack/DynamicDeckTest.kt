@@ -35,25 +35,23 @@ class DynamicDeckTest {
             .isEqualTo(DeckLayout.DYNAMIC)
     }
 
-    // ── dynamicEntityItemHeightPx: compact entity-item height ───────────────
+    // ── DYNAMIC_VALUE_BAR_HEIGHT_DP: the wrap-mode value-bar band ────────────
+    // Entity items wrap to content now (the old fixed-height-item helper
+    // clipped climate/light controls and is gone); the one concrete height
+    // left in the policy is the value bar's, since the tape meter cannot
+    // answer an intrinsic measurement and must be told a size.
 
-    @Test fun `entity items take the compact height so the stack flows`() {
-        // Band comfortably taller than the preferred compact height: the
-        // compact height wins, leaving room for the next card to peek in.
-        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 900, preferredHeightPx = 440))
-            .isEqualTo(440)
+    @Test fun `wrap-mode value bar leaves room for five labelled ticks`() {
+        // Five tick labels (a climate scale's 35/27/20/12/4) with their tap
+        // padding need roughly 24 dp each to stay distinct touch targets.
+        assertThat(DYNAMIC_VALUE_BAR_HEIGHT_DP).isAtLeast(5 * 24)
     }
 
-    @Test fun `entity items never exceed the viewport band`() {
-        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 300, preferredHeightPx = 440))
-            .isEqualTo(300)
-    }
-
-    @Test fun `degenerate bands clamp to zero instead of going negative`() {
-        assertThat(dynamicEntityItemHeightPx(bandHeightPx = -10, preferredHeightPx = 440))
-            .isEqualTo(0)
-        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 300, preferredHeightPx = -1))
-            .isEqualTo(0)
+    @Test fun `wrap-mode value bar stays under the old clipping card cap`() {
+        // The 220 dp flat item cap was the bug (it clipped rich cards); the
+        // meter band must come in clearly below it so a meter-dominated card
+        // is shorter than the layout this replaces, not taller.
+        assertThat(DYNAMIC_VALUE_BAR_HEIGHT_DP).isLessThan(220)
     }
 
     // ── dynamicEndReachPaddingPx: tight end-of-deck reach padding ───────────

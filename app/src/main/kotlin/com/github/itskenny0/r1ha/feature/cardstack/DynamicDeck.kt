@@ -37,30 +37,29 @@ fun effectiveDeckLayout(mode: DeckLayoutMode, tier: WindowTier): DeckLayout = wh
 }
 
 /**
- * Height of an ENTITY deck item in the DYNAMIC layout, in px.
+ * Concrete height, in dp, of a card's VERTICAL value-bar tape meter when the
+ * card wraps to its content height (the DYNAMIC layout's entity items).
  *
  * Entity cards no longer fill the deck viewport here (user-confirmed: the
  * whole stack should FLOW, several cards visible at once); only the FULLSCREEN
- * layout keeps the full-viewport wheel surface. True wrap-content is not an
- * option for these cards: every variant's interior is a weight-based
- * full-slot layout and the value-bar tape meters are SubcomposeLayout-backed
- * (BoxWithConstraints), which throws on intrinsic measurement, so "natural
- * content height" must be expressed as a compact design height instead. The
- * compact band ([preferredHeightPx], ~[DYNAMIC_ENTITY_CARD_HEIGHT_DP] dp at
- * the call site) is the same order of size the half-height peek deck proved
- * usable for the full control surface (value bar, glyph, readout all keep
- * working; they are built to fill whatever slot they get). Capped at the deck
- * viewport ([bandHeightPx]) so a short window never produces an item taller
- * than the band; with the cap the item can never overflow, so entity items
- * need no internal scroll (deliberate: an extra vertical scrollable per card
- * face would re-create the cross-axis gesture capture fixed in
- * [DeckCardSurface]).
+ * layout keeps the full-viewport wheel surface. A previous revision expressed
+ * "content height" as a flat 220 dp item cap, which clipped every rich
+ * variant: climate cards lost their HVAC mode buttons, lights their scene and
+ * effect rows. The card must instead wrap to the real sum of its controls,
+ * and the only blocker to that is the meter: querying intrinsics is
+ * impossible (the tape meters are BoxWithConstraints/SubcomposeLayout-backed,
+ * which throws on intrinsic measurement), so rather than ASK the layout for a
+ * natural height, the wrap-mode path gives every fill-height element a
+ * concrete one. This constant is the meter's: tall enough that its five tick
+ * labels (e.g. a climate scale's 35/27/20/12/4) keep comfortable tap spacing
+ * and a touch-drag spans usable resolution, short enough that a meter-only
+ * card stays a compact block in the flowing deck. Everything else in the card
+ * body (header, readout, button rows, panels) already has a natural height,
+ * so the card's total height is the plain sum of its children, capped at the
+ * deck viewport with internal scroll past it (the [DeckCardSurface] contract:
+ * the scroll only grabs gestures when content genuinely overflows).
  */
-fun dynamicEntityItemHeightPx(bandHeightPx: Int, preferredHeightPx: Int): Int =
-    preferredHeightPx.coerceAtMost(bandHeightPx).coerceAtLeast(0)
-
-/** Compact entity-card height for the DYNAMIC deck, see [dynamicEntityItemHeightPx]. */
-const val DYNAMIC_ENTITY_CARD_HEIGHT_DP = 220
+const val DYNAMIC_VALUE_BAR_HEIGHT_DP = 180
 
 /**
  * Bottom content padding (px) that lets the LAST dynamic-deck card reach the

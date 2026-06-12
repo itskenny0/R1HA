@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -53,10 +56,14 @@ import kotlinx.coroutines.launch
  * snapping [LazyColumn] whose items are sized per kind instead of a uniform
  * full-viewport pager.
  *
- *  - ENTITY items render as compact content-height blocks
- *    ([dynamicEntityItemHeightPx]) so the stack flows with several cards
- *    visible; only FULLSCREEN keeps the full-viewport wheel surface. The
- *    wheel still drives whichever card is snapped into focus.
+ *  - ENTITY items wrap to their content height (EntityCard's fillSlot = false
+ *    path: natural heights everywhere, the value bar at the concrete
+ *    [DYNAMIC_VALUE_BAR_HEIGHT_DP] band) so every control is visible: a
+ *    climate card keeps its mode buttons and temperature scale, a light its
+ *    scene/effect rows. Capped at the viewport with internal scroll past
+ *    that, mirroring the Lovelace items. Only FULLSCREEN keeps the
+ *    full-viewport wheel surface; the wheel still drives whichever card is
+ *    snapped into focus.
  *  - LOVELACE items hug their content height, capped at the viewport with
  *    internal scroll past that (the [DeckCardSurface] measure contract), so a
  *    one-line toggle takes one line instead of marooning itself in a screen
@@ -252,15 +259,6 @@ internal fun DynamicPageDeck(
         }
         // Entity cards share the FULLSCREEN slots' rounded-panel treatment.
         val cardShape = remember { RoundedCornerShape(14.dp) }
-        // Compact entity-item height (pure, unit-tested): the preferred
-        // ~220 dp band capped at the viewport. See [dynamicEntityItemHeightPx]
-        // for why the entity interior cannot wrap to a true intrinsic height.
-        val entityItemHeight = with(LocalDensity.current) {
-            dynamicEntityItemHeightPx(
-                bandHeightPx = bandHeightPx,
-                preferredHeightPx = DYNAMIC_ENTITY_CARD_HEIGHT_DP.dp.roundToPx(),
-            ).toDp()
-        }
         val deckMaxCardWidth = rememberResponsiveDimens().maxContentWidth
         val deckScope = rememberCoroutineScope()
         LazyColumn(
@@ -286,19 +284,19 @@ internal fun DynamicPageDeck(
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {
-                    // Per-kind height policy: entity items get the compact
-                    // band height (loose cap, so the card lays out at its
-                    // own height under it; with today's fill-the-slot
-                    // interiors that resolves to the cap itself), Lovelace
-                    // items hug content capped at the viewport. Both flow,
-                    // so several cards share the screen.
+                    // Per-kind height policy collapsed into one rule: every
+                    // item hugs its content, capped at the viewport band.
+                    // Entity interiors wrap for real now (fillSlot = false
+                    // gives every fill-height element a natural or concrete
+                    // height; see EntityCard's fillSlot KDoc), so a switch
+                    // card is switch-height while a climate card is tall
+                    // enough for its mode buttons and temperature scale.
+                    // Both kinds flow, several cards share the screen.
                     Box(
                         modifier = Modifier
                             .widthIn(max = deckMaxCardWidth)
                             .fillMaxWidth()
-                            .heightIn(
-                                max = if (entityCard != null) entityItemHeight else bandHeight,
-                            ),
+                            .heightIn(max = bandHeight),
                     ) {
                         if (entityCard != null) {
                             // Same focused-only on-card "..." gate the pager
@@ -311,29 +309,18 @@ internal fun DynamicPageDeck(
                                         null
                                     },
                             ) {
-                                EntityCard(
-                                    state = entityCard,
-                                    onTapToggle = { vm.tapToggle() },
-                                    // vm.tapToggle / setSwitchOn / fireLongPress all
-                                    // act on the ACTIVE card, so only the focused
-                                    // slot may expose them; non-focused slots are
-                                    // tap-to-navigate via the scrim below.
-                                    tapToToggleEnabled = isFocusedSlot &&
-                                        appSettings.behavior.tapToToggle,
-                                    onSetOn = { on -> vm.setSwitchOn(on) },
-                                    onLongPress = if (!isFocusedSlot) {
-                                        null
-                                    } else {
-                                        longPressTarget?.let { target ->
-                                            { vm.fireLongPress(target) }
-                                        }
-                                    },
-                                    lightWheelMode = itemLightMode,
-                                    // Content-height path: no vertical fill,
-                                    // the card lays out under the compact
-                                    // cap (see fillSlot's KDoc). FULLSCREEN's
-                                    // call site keeps the default fill.
-                                    fillSlot = false,
+                                // Content-height surface with the Lovelace
+                                // items' overflow contract: verticalScroll
+                                // measures the card unbounded so it wraps to
+                                // its real height, the band cap above clamps
+                                // a taller-than-viewport card, and the scroll
+                                // only claims drag gestures while content
+                                // genuinely overflows (enabled gate), so a
+                                // fitting card face stays gesture-inert and
+                                // deck/tab swipes pass through exactly as
+                                // they do over DeckCardSurface.
+                                val entityScroll = rememberScrollState()
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .graphicsLayer {
@@ -346,8 +333,39 @@ internal fun DynamicPageDeck(
                                                 (if (isFocusedSlot) 24.dp else 8.dp).toPx()
                                             shape = cardShape
                                             clip = true
+                                        }
+                                        .verticalScroll(
+                                            entityScroll,
+                                            enabled = entityScroll.maxValue > 0,
+                                        ),
+                                ) {
+                                    EntityCard(
+                                        state = entityCard,
+                                        onTapToggle = { vm.tapToggle() },
+                                        // vm.tapToggle / setSwitchOn / fireLongPress all
+                                        // act on the ACTIVE card, so only the focused
+                                        // slot may expose them; non-focused slots are
+                                        // tap-to-navigate via the scrim below.
+                                        tapToToggleEnabled = isFocusedSlot &&
+                                            appSettings.behavior.tapToToggle,
+                                        onSetOn = { on -> vm.setSwitchOn(on) },
+                                        onLongPress = if (!isFocusedSlot) {
+                                            null
+                                        } else {
+                                            longPressTarget?.let { target ->
+                                                { vm.fireLongPress(target) }
+                                            }
                                         },
-                                )
+                                        lightWheelMode = itemLightMode,
+                                        // Content-height path: no vertical fill,
+                                        // the card wraps to the sum of its
+                                        // controls (see fillSlot's KDoc).
+                                        // FULLSCREEN's call site keeps the
+                                        // default fill.
+                                        fillSlot = false,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
                         } else if (item is DeckItem.Card) {
                             LovelaceDeckCard(

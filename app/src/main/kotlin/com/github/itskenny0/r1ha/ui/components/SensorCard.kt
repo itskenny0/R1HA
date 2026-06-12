@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot
 import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -145,9 +146,13 @@ fun SensorCard(
     // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
     // by the wrapper too, so the card stays theme-agnostic.
     val ink = LocalCardInk.current
+    // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card sizes
+    // to its content so every control stays visible; fill mode keeps the
+    // historical full-slot layout.
+    val fillSlot = LocalCardFillSlot.current
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -437,7 +442,9 @@ fun SensorCard(
             )
         }
 
-        Spacer(Modifier.weight(1f))
+        // Fill mode floats the footer hint to the slot bottom; wrap mode
+        // keeps a fixed gap so the card stays content-sized.
+        if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(14.dp))
 
         // ── Footer hint — clarifies the read-only nature so users don't expect the
         // wheel to do anything here. Stays subtle (labelMicro on InkMuted).
