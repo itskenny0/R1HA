@@ -195,6 +195,49 @@ interface HaRepository {
     ): Result<String>
 
     /**
+     * Fire `remote.learn_command` and block until HA reports the capture
+     * finished (or failed). Distinct from [callRawService] because learning
+     * is interactive: HA holds the HTTP response open while it waits for the
+     * user to press a button on the physical remote (IR: one press; RF: a
+     * hold-to-sweep then a second press), which routinely outlives the
+     * shared client's 30 s read timeout. This path uses a long-read client
+     * sized for the Broadlink integration's own capture timeouts.
+     *
+     * [commandType] is `"ir"` or `"rf"`. [alternative] handles remotes that
+     * alternate between two codes for the same button.
+     */
+    suspend fun learnRemoteCommand(
+        entityId: String,
+        device: String,
+        command: String,
+        commandType: String,
+        alternative: Boolean = false,
+    ): Result<Unit>
+
+    /**
+     * GET `/api/config/automation/config/<id>`: the editable config body
+     * (alias, triggers, conditions, actions, mode) of a UI-managed
+     * automation. [automationId] is the automation's `id` attribute, NOT its
+     * entity_id; YAML-defined automations carry no id and aren't addressable
+     * here. Returns the raw JSON text so callers can filter / inspect
+     * without a typed model. Requires an admin user on HA's side.
+     */
+    suspend fun fetchAutomationConfig(automationId: String): Result<String>
+
+    /**
+     * POST `/api/config/automation/config/<id>`: create or replace a
+     * UI-managed automation's config. HA persists the body into its
+     * automation store and reloads automations, so the new/updated entity
+     * appears without an explicit `automation.reload`. Creating: pass a
+     * fresh unique [automationId] (HA's own editor uses epoch millis).
+     * Requires an admin user.
+     */
+    suspend fun saveAutomationConfig(
+        automationId: String,
+        config: kotlinx.serialization.json.JsonObject,
+    ): Result<Unit>
+
+    /**
      * Fetch a weather entity's forecast via the response-only
      * `weather.get_forecasts` service. Modern HA integrations (2024.x+)
      * dropped the legacy `forecast` state attribute and expose forecasts

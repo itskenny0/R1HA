@@ -1,0 +1,566 @@
+package com.github.itskenny0.r1ha.feature.broadlink
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.github.itskenny0.r1ha.core.ha.EntityId
+import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.ha.ServiceCall
+import com.github.itskenny0.r1ha.core.prefs.BroadlinkCommand
+import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
+import com.github.itskenny0.r1ha.core.util.R1Log
+import com.github.itskenny0.r1ha.core.util.Toaster
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+
+/**
+ * Drives the Broadlink IR/RF console: remote discovery, the app-side
+ * command registry (browse / fire / relabel / delete), the guided learn
+ * flow, registering codes learned outside the app, the Broadlink-scoped
+ * automations pane, and pin-to-deck exports.
+ *
+ * The registry itself lives in AppSettings.broadlink and reaches the UI
+ * through the settings flow; this ViewModel only issues the mutations.
+ */
+class BroadlinkViewModel(
+    private val haRepository: HaRepository,
+    private val settings: SettingsRepository,
+) : ViewModel() {
+
+    data class RemoteOption(
+        val entityId: String,
+        val name: String,
+        val available: Boolean,
+    )
+
+    /** Learn-flow state machine. FORM collects the slots; CAPTURING holds
+     *  while HA waits for the physical button press; CAPTURED offers
+     *  TEST FIRE + SAVE; FAILED offers retry with the error visible. */
+    enum class LearnPhase { FORM, CAPTURING, CAPTURED, FAILED }
+
+    data class LearnState(
+        val phase: LearnPhase = LearnPhase.FORM,
+        val remoteEntityId: String = "",
+        val deviceName: String = "",
+        val commandName: String = "",
+        val type: String = "ir",
+        val alternative: Boolean = false,
+        val error: String? = null,
+        /** Wall-clock start of the capture phase; drives the elapsed
+         *  readout on the capture screen. */
+        val startedAtMillis: Long = 0L,
+        val saved: Boolean = false,
+    )
+
+    data class AutomationRow(
+        val entityId: String,
+        val name: String,
+        val enabled: Boolean,
+        val available: Boolean,
+        /** HA config-store id (`attributes.id`). Null = YAML-managed:
+         *  no config body is fetchable and the Broadlink filter falls
+         *  back to the name heuristic for this row. */
+        val configId: String?,
+        /** Raw config JSON once fetched; null until loaded or when
+         *  unavailable. */
+        val configBody: String? = null,
+    )
+
+    data class UiState(
+        val loadingRemotes: Boolean = true,
+        val remotes: List<RemoteOption> = emptyList(),
+        val remotesError: String? = null,
+        val selectedRemote: String = "",
+        /** "device command" keys with a send in flight; drives the
+         *  per-tile firing indicator and double-tap suppression. */
+        val firing: Set<String> = emptySet(),
+        val learn: LearnState = LearnState(),
+        val automationsLoading: Boolean = false,
+        val automations: List<AutomationRow> = emptyList(),
+        val automationsError: String? = null,
+        /** True once config bodies were fetched, i.e. the BROADLINK filter
+         *  is body-based rather than purely name-heuristic. */
+        val configsFetched: Boolean = false,
+        val creatingAutomation: Boolean = false,
+    )
+
+    private val _ui = MutableStateFlow(UiState())
+    val ui: StateFlow<UiState> = _ui
+
+    private var learnJob: Job? = null
+
+    companion object {
+        fun firingKey(deviceName: String, commandName: String): String =
+            "$deviceName $commandName"
+
+        fun factory(haRepository: HaRepository, settings: SettingsRepository) =
+            viewModelFactory {
+                initializer { BroadlinkViewModel(haRepository, settings) }
+            }
+    }
+
+    // ── Remotes ─────────────────────────────────────────────────────────
+
+    fun refreshRemotes() {
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(loadingRemotes = true, remotesError = null)
+            haRepository.listRawEntitiesByDomain("remote").fold(
+                onSuccess = { rows ->
+                    val remotes = rows.map { row ->
+                        RemoteOption(
+                            entityId = row.entityId,
+                            name = row.friendlyName,
+                            available = row.state.lowercase() !in setOf("unavailable", "unknown"),
+                        )
+                    }.sortedBy { it.name.lowercase() }
+                    val selected = _ui.value.selectedRemote
+                        .takeIf { id -> remotes.any { it.entityId == id } }
+                        ?: remotes.firstOrNull()?.entityId.orEmpty()
+                    _ui.value = _ui.value.copy(
+                        loadingRemotes = false,
+                        remotes = remotes,
+                        selectedRemote = selected,
+                    )
+                },
+                onFailure = { t ->
+                    R1Log.w("Broadlink", "remote list failed: ${t.message}")
+                    _ui.value = _ui.value.copy(loadingRemotes = false, remotesError = t.message)
+                },
+            )
+        }
+    }
+
+    fun selectRemote(entityId: String) {
+        _ui.value = _ui.value.copy(selectedRemote = entityId)
+    }
+
+    // ── Fire / registry mutations ───────────────────────────────────────
+
+    fun fire(remoteEntityId: String, deviceName: String, commandName: String, repeats: Int = 1) {
+        val key = firingKey(deviceName, commandName)
+        if (key in _ui.value.firing) return
+        _ui.value = _ui.value.copy(firing = _ui.value.firing + key)
+        viewModelScope.launch {
+            val call = ServiceCall(
+                target = EntityId(remoteEntityId),
+                service = "send_command",
+                data = buildJsonObject {
+                    put("device", JsonPrimitive(deviceName))
+                    put("command", JsonPrimitive(commandName))
+                    if (repeats > 1) put("num_repeats", JsonPrimitive(repeats))
+                },
+            )
+            haRepository.call(call).fold(
+                onSuccess = {
+                    R1Log.i("Broadlink", "fired $deviceName/$commandName x$repeats")
+                    settings.update { s ->
+                        s.copy(
+                            broadlink = BroadlinkRegistry.markFired(
+                                s.broadlink, remoteEntityId, deviceName, commandName,
+                                firedAt = java.time.Instant.now().toString(),
+                            ),
+                        )
+                    }
+                },
+                onFailure = { t ->
+                    // haRepository.call already toasts the failure detail.
+                    R1Log.w("Broadlink", "fire $deviceName/$commandName failed: ${t.message}")
+                },
+            )
+            _ui.value = _ui.value.copy(firing = _ui.value.firing - key)
+        }
+    }
+
+    /** Delete from HA's stored codes AND the registry. HA's delete can fail
+     *  (already gone server-side, registry-only entry); the registry entry
+     *  is removed regardless so the catalog never shows a ghost row, and
+     *  the toast says which half happened. */
+    fun deleteCommand(remoteEntityId: String, deviceName: String, commandName: String) {
+        viewModelScope.launch {
+            val haResult = haRepository.callRawService(
+                domain = "remote",
+                service = "delete_command",
+                data = buildJsonObject {
+                    put("entity_id", JsonPrimitive(remoteEntityId))
+                    put("device", JsonPrimitive(deviceName))
+                    put("command", JsonPrimitive(commandName))
+                },
+            )
+            settings.update { s ->
+                s.copy(
+                    broadlink = BroadlinkRegistry.removeCommand(
+                        s.broadlink, remoteEntityId, deviceName, commandName,
+                    ),
+                )
+            }
+            haResult.fold(
+                onSuccess = { Toaster.show("Deleted '$commandName' from HA and the catalog") },
+                onFailure = { t ->
+                    R1Log.w("Broadlink", "HA delete $deviceName/$commandName failed: ${t.message}")
+                    Toaster.error(
+                        "Removed from the catalog; HA delete failed: ${t.message ?: "unknown"}",
+                    )
+                },
+            )
+        }
+    }
+
+    /** Registry-only: drop a device entry (HA has no per-device delete;
+     *  its stored codes, if any remain, are untouched). */
+    fun removeDevice(remoteEntityId: String, deviceName: String) {
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(broadlink = BroadlinkRegistry.removeDevice(s.broadlink, remoteEntityId, deviceName))
+            }
+            Toaster.show("Removed '$deviceName' from the catalog")
+        }
+    }
+
+    fun relabelCommand(remoteEntityId: String, deviceName: String, commandName: String, label: String) {
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    broadlink = BroadlinkRegistry.relabelCommand(
+                        s.broadlink, remoteEntityId, deviceName, commandName, label,
+                    ),
+                )
+            }
+        }
+    }
+
+    /** REGISTER EXISTING: catalog a code learned outside the app. Names
+     *  must match what HA has stored; the TEST button on the form fires
+     *  send_command so the user can verify before saving. */
+    fun registerExisting(
+        remoteEntityId: String,
+        deviceName: String,
+        commandName: String,
+        type: String,
+        notes: String,
+    ) {
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    broadlink = BroadlinkRegistry.upsertCommand(
+                        s.broadlink, remoteEntityId, deviceName.trim(),
+                        BroadlinkCommand(name = commandName.trim(), type = type, notes = notes.trim()),
+                    ),
+                )
+            }
+            Toaster.show("Registered '$commandName'")
+        }
+    }
+
+    // ── Learn flow ──────────────────────────────────────────────────────
+
+    fun updateLearnForm(transform: (LearnState) -> LearnState) {
+        _ui.value = _ui.value.copy(learn = transform(_ui.value.learn))
+    }
+
+    fun resetLearn(prefillRemote: String = "", prefillDevice: String = "") {
+        learnJob?.cancel()
+        learnJob = null
+        _ui.value = _ui.value.copy(
+            learn = LearnState(
+                remoteEntityId = prefillRemote.ifBlank { _ui.value.selectedRemote },
+                deviceName = prefillDevice,
+            ),
+        )
+    }
+
+    fun startCapture() {
+        val l = _ui.value.learn
+        if (l.remoteEntityId.isBlank() || l.deviceName.isBlank() || l.commandName.isBlank()) {
+            Toaster.error("Remote, device and command are all required")
+            return
+        }
+        if (learnJob?.isActive == true) return
+        _ui.value = _ui.value.copy(
+            learn = l.copy(
+                phase = LearnPhase.CAPTURING,
+                error = null,
+                saved = false,
+                startedAtMillis = System.currentTimeMillis(),
+            ),
+        )
+        learnJob = viewModelScope.launch {
+            haRepository.learnRemoteCommand(
+                entityId = l.remoteEntityId,
+                device = l.deviceName.trim(),
+                command = l.commandName.trim(),
+                commandType = l.type,
+                alternative = l.alternative,
+            ).fold(
+                onSuccess = {
+                    R1Log.i("Broadlink", "learned ${l.deviceName}/${l.commandName} (${l.type})")
+                    _ui.value = _ui.value.copy(
+                        learn = _ui.value.learn.copy(phase = LearnPhase.CAPTURED, error = null),
+                    )
+                },
+                onFailure = { t ->
+                    if (t is kotlinx.coroutines.CancellationException) throw t
+                    R1Log.w("Broadlink", "learn failed: ${t.message}")
+                    _ui.value = _ui.value.copy(
+                        learn = _ui.value.learn.copy(
+                            phase = LearnPhase.FAILED,
+                            error = t.message ?: "Capture failed",
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    /** Abandon the client-side wait. HA's capture window stays open
+     *  server-side until the integration's own timeout lapses; the UI
+     *  says so rather than pretending the blaster stopped listening. */
+    fun cancelCapture() {
+        learnJob?.cancel()
+        learnJob = null
+        _ui.value = _ui.value.copy(
+            learn = _ui.value.learn.copy(phase = LearnPhase.FORM, error = null),
+        )
+        Toaster.show("Stopped waiting. The blaster may keep listening briefly")
+    }
+
+    fun retryCapture() {
+        _ui.value = _ui.value.copy(
+            learn = _ui.value.learn.copy(phase = LearnPhase.FORM, error = null),
+        )
+    }
+
+    fun testFireLearned() {
+        val l = _ui.value.learn
+        fire(l.remoteEntityId, l.deviceName.trim(), l.commandName.trim())
+    }
+
+    /** SAVE on the captured screen: the code already lives on HA; this
+     *  records it in the app catalog so it is browseable + fireable. */
+    fun saveLearned() {
+        val l = _ui.value.learn
+        if (l.saved) return
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    broadlink = BroadlinkRegistry.upsertCommand(
+                        s.broadlink, l.remoteEntityId, l.deviceName.trim(),
+                        BroadlinkCommand(name = l.commandName.trim(), type = l.type),
+                    ),
+                )
+            }
+            _ui.value = _ui.value.copy(learn = _ui.value.learn.copy(saved = true))
+            Toaster.show("Saved '${l.commandName.trim()}' to the catalog")
+        }
+    }
+
+    /** Keep remote + device, clear the command slot, back to the form. */
+    fun learnAnother() {
+        val l = _ui.value.learn
+        _ui.value = _ui.value.copy(
+            learn = LearnState(
+                remoteEntityId = l.remoteEntityId,
+                deviceName = l.deviceName,
+                type = l.type,
+            ),
+        )
+    }
+
+    // ── Automations ─────────────────────────────────────────────────────
+
+    fun loadAutomations() {
+        viewModelScope.launch {
+            _ui.value = _ui.value.copy(automationsLoading = true, automationsError = null)
+            haRepository.listRawEntitiesByDomain("automation").fold(
+                onSuccess = { rows ->
+                    val base = rows.map { row ->
+                        AutomationRow(
+                            entityId = row.entityId,
+                            name = row.friendlyName,
+                            enabled = row.state.equals("on", ignoreCase = true),
+                            available = row.state.lowercase() in setOf("on", "off"),
+                            configId = (row.attributes["id"] as? JsonPrimitive)?.content
+                                ?.takeIf { it.isNotBlank() },
+                        )
+                    }.sortedBy { it.name.lowercase() }
+                    _ui.value = _ui.value.copy(automationsLoading = false, automations = base)
+                    fetchConfigBodies(base)
+                },
+                onFailure = { t ->
+                    R1Log.w("Broadlink", "automation list failed: ${t.message}")
+                    _ui.value = _ui.value.copy(
+                        automationsLoading = false,
+                        automationsError = t.message,
+                    )
+                },
+            )
+        }
+    }
+
+    /** Pull config bodies for UI-managed rows so the BROADLINK filter can
+     *  inspect actions instead of guessing from names. Sequential on
+     *  purpose: tens of small GETs against a possibly-strict HA beat a
+     *  parallel stampede, and the list is already rendered. */
+    private fun fetchConfigBodies(rows: List<AutomationRow>) {
+        viewModelScope.launch {
+            val bodies = HashMap<String, String>()
+            for (row in rows) {
+                val id = row.configId ?: continue
+                haRepository.fetchAutomationConfig(id).onSuccess { bodies[row.entityId] = it }
+            }
+            _ui.value = _ui.value.copy(
+                automations = _ui.value.automations.map { r ->
+                    bodies[r.entityId]?.let { r.copy(configBody = it) } ?: r
+                },
+                configsFetched = true,
+            )
+        }
+    }
+
+    fun setAutomationEnabled(row: AutomationRow, enabled: Boolean) {
+        if (!row.available) {
+            Toaster.error("'${row.name}' is unavailable")
+            return
+        }
+        _ui.value = _ui.value.copy(
+            automations = _ui.value.automations.map {
+                if (it.entityId == row.entityId) it.copy(enabled = enabled) else it
+            },
+        )
+        viewModelScope.launch {
+            haRepository.call(
+                ServiceCall(
+                    target = EntityId(row.entityId),
+                    service = if (enabled) "turn_on" else "turn_off",
+                    data = JsonObject(emptyMap()),
+                ),
+            ).onFailure { t ->
+                R1Log.w("Broadlink", "toggle ${row.entityId} failed: ${t.message}")
+                _ui.value = _ui.value.copy(
+                    automations = _ui.value.automations.map {
+                        if (it.entityId == row.entityId) it.copy(enabled = !enabled) else it
+                    },
+                )
+            }
+        }
+    }
+
+    fun triggerAutomation(row: AutomationRow) {
+        if (!row.available) {
+            Toaster.error("'${row.name}' is unavailable")
+            return
+        }
+        viewModelScope.launch {
+            haRepository.call(
+                ServiceCall(
+                    target = EntityId(row.entityId),
+                    service = "trigger",
+                    data = buildJsonObject { put("skip_condition", JsonPrimitive(true)) },
+                ),
+            ).fold(
+                onSuccess = { Toaster.show("Triggered '${row.name}'") },
+                onFailure = { t ->
+                    R1Log.w("Broadlink", "trigger ${row.entityId} failed: ${t.message}")
+                },
+            )
+        }
+    }
+
+    fun createAutomation(
+        alias: String,
+        trigger: BroadlinkCards.Trigger,
+        remoteEntityId: String,
+        deviceName: String,
+        commandName: String,
+        repeats: Int,
+        onCreated: () -> Unit,
+    ) {
+        if (_ui.value.creatingAutomation) return
+        _ui.value = _ui.value.copy(creatingAutomation = true)
+        viewModelScope.launch {
+            val config = BroadlinkCards.automationConfig(
+                alias = alias.trim(),
+                trigger = trigger,
+                remoteEntityId = remoteEntityId,
+                deviceName = deviceName,
+                commandName = commandName,
+                repeats = repeats,
+            )
+            haRepository.saveAutomationConfig(
+                automationId = BroadlinkCards.newAutomationId(System.currentTimeMillis()),
+                config = config,
+            ).fold(
+                onSuccess = {
+                    Toaster.show("Automation '${alias.trim()}' created")
+                    // HA reloads automations on config save; small grace so
+                    // the fresh entity is listed when we re-pull.
+                    kotlinx.coroutines.delay(600L)
+                    loadAutomations()
+                    onCreated()
+                },
+                onFailure = { t ->
+                    R1Log.w("Broadlink", "create automation failed: ${t.message}")
+                    Toaster.error("Create failed: ${t.message ?: "unknown"}")
+                },
+            )
+            _ui.value = _ui.value.copy(creatingAutomation = false)
+        }
+    }
+
+    // ── Pin to deck ─────────────────────────────────────────────────────
+
+    fun pinCommandToPage(
+        pageId: String,
+        remoteEntityId: String,
+        deviceName: String,
+        commandName: String,
+        label: String,
+        repeats: Int = 1,
+    ) {
+        appendPinnedCard(
+            pageId,
+            BroadlinkCards.commandButtonCard(
+                remoteEntityId = remoteEntityId,
+                deviceName = deviceName,
+                commandName = commandName,
+                label = label,
+                repeats = repeats,
+            ).toString(),
+            label,
+        )
+    }
+
+    fun pinAutomationToPage(pageId: String, automationEntityId: String, label: String) {
+        appendPinnedCard(
+            pageId,
+            BroadlinkCards.automationButtonCard(automationEntityId, label).toString(),
+            label,
+        )
+    }
+
+    private fun appendPinnedCard(pageId: String, cardJson: String, label: String) {
+        viewModelScope.launch {
+            var pageName: String? = null
+            settings.update { s ->
+                val page = s.pages.firstOrNull { it.id == pageId } ?: return@update s
+                pageName = page.name
+                s.copy(
+                    pages = s.pages.map { p ->
+                        if (p.id == pageId) p.copy(pinnedCards = p.pinnedCards + cardJson) else p
+                    },
+                )
+            }
+            val name = pageName
+            if (name != null) {
+                Toaster.show("Pinned '$label' to $name")
+            } else {
+                Toaster.error("Page no longer exists")
+            }
+        }
+    }
+}

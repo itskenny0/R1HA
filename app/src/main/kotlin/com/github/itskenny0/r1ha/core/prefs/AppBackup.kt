@@ -133,6 +133,12 @@ data class AppBackup(
      *  so it travels with the backup. Older backups without this field decode as
      *  the default (disabled, empty endpoint). */
     val logShipping: LogShippingSettings = LogShippingSettings(),
+    /** Broadlink IR/RF command registry. The codes themselves live in HA's
+     *  server-side storage; this is the app's catalog of device + command
+     *  names, which is exactly what a second device needs to fire them.
+     *  Older backups without this field decode as an empty registry, which
+     *  [applyOnto] treats as "field absent": the local registry survives. */
+    val broadlink: BroadlinkSettings = BroadlinkSettings(),
 
     val pages: List<FavoritePage> = emptyList(),
     val activePageId: String = "",
@@ -216,6 +222,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     integrations = integrations,
     connection = connection,
     logShipping = logShipping,
+    broadlink = broadlink,
     pages = pages,
     activePageId = activePageId,
     favorites = favorites,
@@ -315,6 +322,12 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         integrations = integrations,
         connection = connection,
         logShipping = logShipping,
+        // An empty registry is indistinguishable from a pre-feature backup
+        // (the field decodes to its default either way), so an empty payload
+        // keeps the local registry instead of wiping learned commands on
+        // restore. Cost: restoring an intentionally-cleared registry over a
+        // populated one is a no-op, which is the safer failure mode.
+        broadlink = if (broadlink.devices.isEmpty()) prev.broadlink else broadlink,
         pages = effectivePages,
         activePageId = activeId,
         favorites = effectivePages.flatMap { it.favorites }.distinct(),
