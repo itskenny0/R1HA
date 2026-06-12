@@ -320,7 +320,13 @@ private fun CapturedPhase(
                         contentDescription = "Test fire the captured command",
                     )
                     R1Chip(
-                        text = if (learn.saved) "SAVED ✓" else "SAVE TO CATALOG",
+                        // Saving now creates the tagged automation on HA,
+                        // so it has an in-flight state worth showing.
+                        text = when {
+                            learn.saved -> "SAVED ✓"
+                            ui.savingCommand -> "SAVING…"
+                            else -> "SAVE TO CATALOG"
+                        },
                         variant = R1ChipVariant.Action,
                         selected = !learn.saved,
                         tone = R1.AccentGreen,
