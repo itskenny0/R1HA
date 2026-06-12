@@ -279,21 +279,24 @@ fun CardStackScreen(
     val moreInfoEntityId = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
-    // ── Pinned Lovelace cards ("cards pages") ──────────────────────────────────
-    // A page with no favourites but pinned card configs renders LovelacePageDeck
-    // instead of the entity deck. Parsing + entity-reference collection happen
-    // once at screen scope (not per PageDeck) because observeRaw's entity-set
+    // ── Pinned Lovelace cards ───────────────────────────────────────────────────
+    // Pinned cards render as first-class slots inside every page's mixed deck
+    // (see CardStackUiState.deckByPage). Their entity references are unioned
+    // at screen scope (not per PageDeck) because observeRaw's entity-set
     // registration is last-writer-wins: with beyondViewportPageCount = 1 two
-    // adjacent cards pages would otherwise clobber each other's subscription.
-    val lovelaceCardsByPage = androidx.compose.runtime.remember(state.pages) {
-        state.pages
-            .filter { it.favorites.isEmpty() && it.pinnedCards.isNotEmpty() }
-            .associate { p -> p.id to parsePinnedCards(p.pinnedCards) }
-    }
-    val lovelaceEntityIds = androidx.compose.runtime.remember(lovelaceCardsByPage) {
+    // adjacent pages would otherwise clobber each other's subscription.
+    // Keyed on state.pages (changes only on a settings write) rather than the
+    // deckByPage map identity (rebuilt per state tick): the card set, and so
+    // the entity union, can only change when the stored pages do. The deck
+    // snapshot read inside is emitted atomically with pages by the VM.
+    val lovelaceEntityIds = androidx.compose.runtime.remember(state.pages) {
         val sink = LinkedHashSet<String>()
-        lovelaceCardsByPage.values.flatten().forEach {
-            com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(it, sink)
+        state.deckByPage.values.forEach { items ->
+            items.forEach { item ->
+                if (item is DeckItem.Card) {
+                    com.github.itskenny0.r1ha.feature.dashboards.cards.collectEntityIds(item.card, sink)
+                }
+            }
         }
         sink.toSet()
     }
@@ -319,14 +322,25 @@ fun CardStackScreen(
     val lovelaceStates = androidx.compose.runtime.remember(lovelaceStatesRaw.value) {
         com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(lovelaceStatesRaw.value)
     }
-    // Wheel detents routed to the active cards page's deck (two detents = one
-    // card step). Separate from jumpRequests: those carry absolute indices for
-    // the entity deck; this carries raw signed detents.
-    val lovelaceWheelSteps = remember {
-        kotlinx.coroutines.flow.MutableSharedFlow<Int>(
-            extraBufferCapacity = 8,
-            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
-        )
+    // ── Lovelace deck-card overlays ─────────────────────────────────────────────
+    // Context menu for a pinned card on the active page (long-press / "…" on
+    // the deck slot, or the "…" on its jump-sheet row). Null = closed.
+    val lovelaceMenuFor = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<DeckItem.Card?>(null)
+    }
+    // Structured editor target: (pageId, cardId, raw config). Null = closed.
+    val editingPinned = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<Triple<String, String, String>?>(null)
+    }
+    // Add-cards sheet target page. Null = closed. Opened from the tab manage
+    // dialog, the empty-page affordance and the per-page card manager.
+    val addCardsForPageId = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    // Pending `confirmation:` gate for a Lovelace tap action; the dispatch
+    // coroutine suspends on the deferred until the overlay resolves it.
+    val lovelaceConfirm = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<Pair<String, kotlinx.coroutines.CompletableDeferred<Boolean>>?>(null)
     }
     /** Quick-actions sheet visibility — opened by a long-press on the chrome
      *  hamburger. Holds 'all off on this page' as the only action today;
@@ -400,10 +414,12 @@ fun CardStackScreen(
     // second widget tap re-navigates and re-runs it.
     androidx.compose.runtime.LaunchedEffect(initialFocusEntityId) {
         val target = initialFocusEntityId ?: return@LaunchedEffect
-        val loaded = vm.state.first { it.pages.isNotEmpty() && it.cardsByPage.isNotEmpty() }
-        val pageId = loaded.pages.firstOrNull { p ->
-            loaded.cardsByPage[p.id]?.any { c -> c.id.value == target } == true
-        }?.id
+        val loaded = vm.state.first { it.pages.isNotEmpty() && it.deckByPage.isNotEmpty() }
+        // Search the mixed decks so the jump index matches the pager's index
+        // space (entity cards and Lovelace cards share it).
+        fun deckIndexOf(pid: String): Int = loaded.deckByPage[pid].orEmpty()
+            .indexOfFirst { it is DeckItem.Entity && it.state.id.value == target }
+        val pageId = loaded.pages.firstOrNull { p -> deckIndexOf(p.id) >= 0 }?.id
         if (pageId == null) {
             com.github.itskenny0.r1ha.core.util.R1Log.w(
                 "CardStack.focus",
@@ -411,7 +427,7 @@ fun CardStackScreen(
             )
             return@LaunchedEffect
         }
-        val cardIdx = loaded.cardsByPage[pageId].orEmpty().indexOfFirst { it.id.value == target }
+        val cardIdx = deckIndexOf(pageId)
         if (pageId != loaded.activePageId) {
             kotlinx.coroutines.delay(150)
             tabTapRequests.emit(pageId)
@@ -461,7 +477,11 @@ fun CardStackScreen(
                 effectPickerFor.value != null ||
                 selectPickerFor.value != null ||
                 fanPresetPickerFor.value != null ||
-                moreInfoEntityId.value != null
+                moreInfoEntityId.value != null ||
+                lovelaceMenuFor.value != null ||
+                editingPinned.value != null ||
+                addCardsForPageId.value != null ||
+                lovelaceConfirm.value != null
             ) {
                 return@collect
             }
@@ -497,24 +517,6 @@ fun CardStackScreen(
             if (horizontalPagerAnimating.value || verticalPagerAnimating.value) {
                 return@collect
             }
-            // Cards page (pinned Lovelace cards): the wheel's only useful verb
-            // there is stepping the deck, so route raw detents to the active
-            // LovelacePageDeck and stop. Read through vm.state.value so the
-            // collector never holds a stale captured page list.
-            run {
-                val s = vm.state.value
-                val activePage = s.pages.firstOrNull { it.id == s.activePageId }
-                if (activePage != null &&
-                    activePage.favorites.isEmpty() &&
-                    activePage.pinnedCards.isNotEmpty()
-                ) {
-                    val dirSign = com.github.itskenny0.r1ha.core.input.WheelInput.applyDirection(
-                        event.direction, appSettings.wheel.invertDirection,
-                    )
-                    lovelaceWheelSteps.tryEmit(dirSign)
-                    return@collect
-                }
-            }
             val active = vm.state.value.activeState
             val dir = event.direction
             // Wheel never navigates the deck — that's swipe-and-tap-the-pip only. So
@@ -537,6 +539,16 @@ fun CardStackScreen(
                 // UP and -1 for DOWN after invertDirection, so negating it yields
                 // the right scroll direction for both wheel orientations.
                 pagerScope.launch { jumpListState.animateScrollBy(-sign * 60f) }
+                return@collect
+            }
+            // Focused Lovelace card: there's no entity for the wheel to drive
+            // and "open more-info" is meaningless for an arbitrary card, so
+            // the wheel takes the same inert path read-only entity cards do:
+            // surface the navigation hint and stop. activeState is already
+            // null for card slots, but gating here keeps the hint immediate
+            // instead of falling into the silent `active == null` branch.
+            if (vm.state.value.activeDeckItem is DeckItem.Card) {
+                wheelHintAt.longValue = event.timestampMillis
                 return@collect
             }
             val now = event.timestampMillis
@@ -691,6 +703,36 @@ fun CardStackScreen(
     // share with the developer. Deletes the file after surfacing so we don't
     // re-pop on every recomposition.
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Wiring bundle the Lovelace deck slots use to dispatch their tap actions
+    // and open their context menu. Reference-stable (the states lookup is a
+    // provider reading the holder) so PageDeck recompositions don't churn.
+    val lovelaceHooks = androidx.compose.runtime.remember(haRepository) {
+        LovelaceDeckHooks(
+            haRepository = haRepository,
+            states = {
+                com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates
+                    .ofRaw(lovelaceStatesRaw.value)
+            },
+            onMoreInfo = { id -> moreInfoEntityId.value = id },
+            onNavigatePath = { path ->
+                // HA navigation_path ("/dashboard/view") routes to the native
+                // dashboards renderer via ShortcutBus.
+                com.github.itskenny0.r1ha.core.util.ShortcutBus.request("dashview:$path")
+            },
+            onOpenUrl = { url ->
+                runCatching {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(url),
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                    )
+                }
+            },
+            onOpenCardMenu = { item -> lovelaceMenuFor.value = item },
+            pendingConfirm = lovelaceConfirm,
+        )
+    }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         runCatching {
             val crashFile = java.io.File(context.filesDir, "last_crash.txt")
@@ -822,17 +864,17 @@ fun CardStackScreen(
         // weight-based interior layout, so the cap was more harmful than
         // helpful. Matches the earlier fix that turned ResponsiveColumn
         // into a passthrough for the same reason.
-        // Outer-scope card list for chrome counter, pip overlay, tutorial gate, and the
-        // jump-picker / context-menu overlays. We bind to the raw reference-stable
-        // [state.cards] rather than [state.displayedCards] here: the optimistic overlay
-        // only rewrites percent / select-option on individual cards, never adds, removes
-        // or reorders them, and none of these consumers render an optimistic-affected
+        // Outer-scope deck list for chrome counter, pip overlay, tutorial gate, and the
+        // jump-picker / context-menu overlays. This is the MIXED deck (entity cards +
+        // pinned Lovelace cards) so the counter, pip and jump sheet all run on the same
+        // index space the pager does. We bind to the raw reference-stable [state.deck]
+        // rather than an optimistic projection: the optimistic overlay only rewrites
+        // percent / select-option on individual entities, never adds, removes or
+        // reorders slots, and none of these consumers render an optimistic-affected
         // value (chrome shows the count, the pip shows position, the jump rows show
-        // friendly name + domain). Reading displayedCards at this hot outer scope would
-        // re-run its mapping allocation on every wheel detent (optimisticPercents changes
-        // each detent) for no visible difference. The per-card optimistic view still
-        // flows to each EntityCard via PageDeck's own pageCards derivation.
-        val cards = state.cards
+        // names + kinds). The per-card optimistic view still flows to each EntityCard
+        // via PageDeck's own page-items derivation.
+        val deck = state.deck
         Box(modifier = Modifier.fillMaxSize()) {
         when {
             // Cold-start splash. DataStore is async on first read so for a brief
@@ -1084,79 +1126,48 @@ fun CardStackScreen(
                     key = { pageIdx -> state.pages.getOrNull(pageIdx)?.id ?: pageIdx },
                 ) { pageIdx ->
                     val page = state.pages.getOrNull(pageIdx) ?: return@HorizontalPager
-                    val pageCardsRaw = state.cardsByPage[page.id].orEmpty()
-                    // Apply optimistic overrides to this page's cards so wheel
-                    // changes track instantly even when the page becomes active
-                    // mid-edit. Same path the legacy displayedCards used; just
-                    // scoped per-page.
+                    val pageItemsRaw = state.deckByPage[page.id].orEmpty()
+                    // Apply optimistic overrides to this page's entity slots so
+                    // wheel changes track instantly even when the page becomes
+                    // active mid-edit. Same path the legacy displayedCards
+                    // used; just scoped per-page. Lovelace card slots pass
+                    // through untouched (no entity to override).
                     //
-                    // Memoised — the prior version allocated a fresh
-                    // List<EntityState> via .map { ... } on every recomp,
-                    // including the ones HorizontalPager peek triggered for
-                    // both neighbour pages. With beyondViewportPageCount=1,
-                    // three pages re-derived their list on every wheel
-                    // detent at 50 Hz. remember keyed on the raw list +
-                    // optimistic map identity means we only re-map when
-                    // either actually changes; the no-optimistic case
-                    // returns the existing list reference verbatim.
+                    // Memoised: the prior version allocated a fresh list via
+                    // .map { ... } on every recomp, including the ones
+                    // HorizontalPager peek triggered for both neighbour pages.
+                    // With beyondViewportPageCount=1, three pages re-derived
+                    // their list on every wheel detent at 50 Hz. remember keyed
+                    // on the raw list + optimistic map identity means we only
+                    // re-map when either actually changes; the no-optimistic
+                    // case returns the existing list reference verbatim.
                     val isActive = page.id == state.activePageId
                     // Only the active page shows the wheel-driven optimistic overrides; peek
                     // neighbours never receive wheel events, so paying the per-detent re-map
                     // cost on them just churns recompositions of cards the user isn't even
                     // touching. Gating saves N-cards re-allocation × 2 peek neighbours per
                     // wheel detent during sustained spins (R1's perf-critical path).
-                    val pageCards = androidx.compose.runtime.remember(
-                        pageCardsRaw, if (isActive) state.optimisticPercents else null,
+                    val pageItems = androidx.compose.runtime.remember(
+                        pageItemsRaw, if (isActive) state.optimisticPercents else null,
                     ) {
                         if (!isActive || state.optimisticPercents.isEmpty()) {
-                            pageCardsRaw
+                            pageItemsRaw
                         } else {
-                            pageCardsRaw.map { card ->
+                            pageItemsRaw.map { item ->
+                                val card = (item as? DeckItem.Entity)?.state ?: return@map item
                                 val overridePct = state.optimisticPercents[card.id]
                                 if (overridePct != null) {
-                                    if (card.supportsScalar) card.copy(percent = overridePct)
-                                    else card.copy(percent = overridePct, isOn = overridePct > 0)
+                                    DeckItem.Entity(
+                                        if (card.supportsScalar) card.copy(percent = overridePct)
+                                        else card.copy(percent = overridePct, isOn = overridePct > 0),
+                                    )
                                 } else {
-                                    card
+                                    item
                                 }
                             }
                         }
                     }
-                    val pinnedForPage = lovelaceCardsByPage[page.id]
-                    if (pinnedForPage != null) {
-                        // Cards page: the deck is pinned Lovelace cards painted
-                        // by the native dashboards engine (iframes included).
-                        val pageAccent = page.accentArgb?.let { androidx.compose.ui.graphics.Color(it) }
-                            ?: R1.AccentWarm
-                        LovelacePageDeck(
-                            cards = pinnedForPage,
-                            states = lovelaceStates,
-                            accent = pageAccent,
-                            isActive = isActive,
-                            haRepository = haRepository,
-                            serverUrl = appSettings.server?.url,
-                            wheelSteps = lovelaceWheelSteps,
-                            onMoreInfo = { id -> moreInfoEntityId.value = id },
-                            onNavigatePath = { path ->
-                                // HA navigation_path ("/dashboard/view") routes to
-                                // the native dashboards renderer via ShortcutBus.
-                                com.github.itskenny0.r1ha.core.util.ShortcutBus.request(
-                                    "dashview:$path",
-                                )
-                            },
-                            onOpenUrl = { url ->
-                                runCatching {
-                                    context.startActivity(
-                                        android.content.Intent(
-                                            android.content.Intent.ACTION_VIEW,
-                                            android.net.Uri.parse(url),
-                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
-                                }
-                            },
-                            onManageCards = { pinnedCardsForId.value = page.id },
-                        )
-                    } else if (pageCards.isEmpty()) {
+                    if (pageItems.isEmpty()) {
                         val reconnectAt by haRepository.reconnectNextAttemptAtMillis
                             .collectAsStateWithLifecycle()
                         EmptyState(
@@ -1167,12 +1178,12 @@ fun CardStackScreen(
                             onOpenFavoritesPicker = onOpenFavoritesPicker,
                             onOpenSettings = onOpenSettings,
                             onRetry = { haRepository.reconnectNow() },
-                            onPinCards = { pinnedCardsForId.value = page.id },
+                            onPinCards = { addCardsForPageId.value = page.id },
                         )
                     } else {
                         PageDeck(
                             pageId = page.id,
-                            cards = pageCards,
+                            items = pageItems,
                             initialIndex = state.indexByPage[page.id] ?: 0,
                             isActive = isActive,
                             peekDeck = peekDeck,
@@ -1181,6 +1192,8 @@ fun CardStackScreen(
                             navRequests = pagerNavRequests,
                             jumpRequests = jumpRequests,
                             lightWheelModes = state.lightWheelMode,
+                            lovelaceStates = lovelaceStates,
+                            lovelaceHooks = lovelaceHooks,
                             // Only the active deck's pager state gates the
                             // wheel — neighbour decks (peek-composed via
                             // beyondViewportPageCount = 1) animate
@@ -1217,14 +1230,14 @@ fun CardStackScreen(
             ChromeRow(
                 connection = connection,
                 wsSilent = wsSilent,
-                cardsCount = cards.size,
+                cardsCount = deck.size,
                 currentIndex = state.currentIndex,
                 // Pip only renders in the chrome row when the effective
                 // position is TOP_CENTER (the historical default). All other
                 // positions get a screen-level overlay outside the chrome
                 // column so the pip can sit at corner / mid-edge positions
                 // without affecting the chrome row's right-cluster layout.
-                showCounter = cards.size > 1 &&
+                showCounter = deck.size > 1 &&
                     activePip == com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
                 onOpenFavoritesPicker = onOpenFavoritesPicker,
                 onOpenSettings = onOpenSettings,
@@ -1327,7 +1340,7 @@ fun CardStackScreen(
         // so changing the active card can move the pip mid-flight — that's the
         // point: a card whose layout collides with the global slot can move
         // the pip out of the way without changing the deck-wide default.
-        if (state.settingsLoaded && cards.size > 1) {
+        if (state.settingsLoaded && deck.size > 1) {
             val activeId = state.activeState?.id?.value
             val effectivePip = activeId
                 ?.let { appSettings.entityOverrides[it]?.positionDotLocation }
@@ -1359,7 +1372,7 @@ fun CardStackScreen(
                     contentAlignment = pipAlignment,
                 ) {
                     VerticalPagePip(
-                        count = cards.size,
+                        count = deck.size,
                         current = state.currentIndex,
                         onClick = { jumpPickerOpen.value = true },
                     )
@@ -1387,7 +1400,7 @@ fun CardStackScreen(
         // small bottom-aligned hint dismisses on the first wheel event (handled
         // in the collect block above via the wheelTutorialSeen flag flip) OR
         // on tap. Only shows when there's actually content to interact with.
-        if (!appSettings.behavior.wheelTutorialSeen && cards.isNotEmpty()) {
+        if (!appSettings.behavior.wheelTutorialSeen && deck.isNotEmpty()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1597,9 +1610,9 @@ fun CardStackScreen(
         // moreInfoEntityId is hoisted to screen scope above (so the wheel
         // handler can both gate on and open it). Opened from the card context
         // menu's MORE INFO action and from a wheel-spin on a read-only card.
-        if (jumpPickerOpen.value && cards.size > 1) {
+        if (jumpPickerOpen.value && deck.size > 1) {
             JumpToCardSheet(
-                cards = cards,
+                items = deck,
                 currentIndex = state.currentIndex,
                 listState = jumpListState,
                 onPick = { targetIdx ->
@@ -1610,8 +1623,17 @@ fun CardStackScreen(
                     pagerScope.launch { jumpRequests.emit(targetIdx) }
                     jumpPickerOpen.value = false
                 },
-                onReorder = { from, to -> vm.reorderFavorite(from, to) },
-                onOpenMenu = { idx -> cardContextMenuIdx.value = idx },
+                onReorder = { from, to -> vm.reorderDeckItem(from, to) },
+                onOpenMenu = { idx ->
+                    // Entity rows open the entity context menu; Lovelace rows
+                    // open the card's edit / remove menu. Same '…' affordance,
+                    // item-appropriate actions.
+                    when (val item = deck.getOrNull(idx)) {
+                        is DeckItem.Card -> lovelaceMenuFor.value = item
+                        is DeckItem.Entity -> cardContextMenuIdx.value = idx
+                        null -> Unit
+                    }
+                },
                 onDismiss = { jumpPickerOpen.value = false },
             )
         }
@@ -1623,7 +1645,7 @@ fun CardStackScreen(
         // sheet.
         val ctxIdx = cardContextMenuIdx.value
         if (ctxIdx != null) {
-            val ctxCard = cards.getOrNull(ctxIdx)
+            val ctxCard = (deck.getOrNull(ctxIdx) as? DeckItem.Entity)?.state
             if (ctxCard == null) {
                 cardContextMenuIdx.value = null
             } else {
@@ -1667,6 +1689,34 @@ fun CardStackScreen(
                     onDismiss = { cardContextMenuIdx.value = null },
                 )
             }
+        }
+
+        // ── Lovelace tap-action confirmation gate ───────────────────────────────────
+        // Rendered at screen level so the dialog covers the chrome too; the
+        // dispatch coroutine stays suspended until CONFIRM / CANCEL resolves.
+        LovelaceConfirmOverlay(pendingConfirm = lovelaceConfirm, accent = R1.AccentWarm)
+
+        // ── Lovelace card menu ──────────────────────────────────────────────────────
+        // Edit / remove for a pinned card, opened from the deck slot's
+        // long-press / "…" affordance or its jump-sheet row. Operates on the
+        // ACTIVE page (the only page whose deck slots can be interacted with).
+        val lovelaceMenuItem = lovelaceMenuFor.value
+        if (lovelaceMenuItem != null) {
+            LovelaceCardMenu(
+                title = deckCardTitle(lovelaceMenuItem.card),
+                cardType = lovelaceMenuItem.card.type,
+                onEdit = {
+                    editingPinned.value = Triple(
+                        appSettings.activePageId, lovelaceMenuItem.id, lovelaceMenuItem.raw,
+                    )
+                    lovelaceMenuFor.value = null
+                },
+                onRemove = {
+                    vm.removePinnedCard(appSettings.activePageId, lovelaceMenuItem.id)
+                    lovelaceMenuFor.value = null
+                },
+                onDismiss = { lovelaceMenuFor.value = null },
+            )
         }
 
         // ── Ultra-detail more-info sheet ────────────────────────────────────────────
@@ -1737,10 +1787,9 @@ fun CardStackScreen(
         }
 
         // ── Pinned-cards manager ────────────────────────────────────────────────────
-        // Lists / adds / edits the Lovelace cards pinned to a page. Mutations
-        // persist straight into the page's pinnedCards via the settings store;
-        // the screen-level parse + observeRaw derivations above pick the change
-        // up on the next settings emission.
+        // Per-page list of pinned Lovelace cards: edit (structured editor),
+        // remove, add (the three-path add sheet). Unparseable blobs still list
+        // here for repair since the rows work on the raw stored strings.
         val pinnedPageId = pinnedCardsForId.value
         if (pinnedPageId != null) {
             val targetPage = appSettings.pages.firstOrNull { it.id == pinnedPageId }
@@ -1749,20 +1798,56 @@ fun CardStackScreen(
             } else {
                 PinnedCardsSheet(
                     page = targetPage,
-                    onSave = { newCards ->
-                        scope.launch {
-                            settings.update { s ->
-                                s.copy(
-                                    pages = s.pages.map { p ->
-                                        if (p.id == pinnedPageId) p.copy(pinnedCards = newCards) else p
-                                    },
-                                )
-                            }
-                        }
+                    onEdit = { cardId, raw ->
+                        editingPinned.value = Triple(pinnedPageId, cardId, raw)
                     },
+                    onRemove = { cardId -> vm.removePinnedCard(pinnedPageId, cardId) },
+                    onAdd = { addCardsForPageId.value = pinnedPageId },
                     onDismiss = { pinnedCardsForId.value = null },
                 )
             }
+        }
+
+        // ── Structured card editor ──────────────────────────────────────────────────
+        // The type-aware mini editor (entity picker / url + aspect / markdown
+        // body, with EDIT JSON as the advanced escape hatch). Saves write back
+        // through the VM so the deck re-renders on the settings echo. Composed
+        // AFTER the manager / tab dialog so it draws above the sheets that can
+        // open it (the Box stack paints bottom-up).
+        val editingPinnedTarget = editingPinned.value
+        if (editingPinnedTarget != null) {
+            val (editPageId, editCardId, editRaw) = editingPinnedTarget
+            CardMiniEditor(
+                initialRaw = editRaw,
+                haRepository = haRepository,
+                onSave = { newRaw ->
+                    vm.updatePinnedCard(editPageId, editCardId, newRaw)
+                    editingPinned.value = null
+                },
+                onDismiss = { editingPinned.value = null },
+            )
+        }
+
+        // ── Add-cards sheet ─────────────────────────────────────────────────────────
+        // Three paths: pick cards from a server dashboard (primary), import a
+        // whole dashboard as pages, or author a new card via the type grid +
+        // structured editor. Composed after the manager for the same z-order
+        // reason as the editor above.
+        val addTargetPageId = addCardsForPageId.value
+        if (addTargetPageId != null) {
+            AddLovelaceCardSheet(
+                haRepository = haRepository,
+                pageName = appSettings.pages.firstOrNull { it.id == addTargetPageId }?.name ?: "",
+                onAddCards = { raws ->
+                    vm.addPinnedCards(addTargetPageId, raws)
+                    addCardsForPageId.value = null
+                },
+                onImportPages = { specs ->
+                    vm.importViewsAsPages(specs)
+                    addCardsForPageId.value = null
+                },
+                onDismiss = { addCardsForPageId.value = null },
+            )
         }
 
         // Quick-actions sheet — currently only 'all off' on the active page.
@@ -1895,7 +1980,9 @@ fun CardStackScreen(
 @Composable
 private fun PageDeck(
     pageId: String,
-    cards: List<com.github.itskenny0.r1ha.core.ha.EntityState>,
+    /** The page's mixed deck: entity cards and pinned Lovelace cards sharing
+     *  one index space, in the user's interleaved order. */
+    items: List<DeckItem>,
     initialIndex: Int,
     isActive: Boolean,
     /** When true, render the half-height peek deck: the active card centred with
@@ -1908,6 +1995,11 @@ private fun PageDeck(
     navRequests: kotlinx.coroutines.flow.SharedFlow<Int>,
     jumpRequests: kotlinx.coroutines.flow.SharedFlow<Int>,
     lightWheelModes: Map<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.LightWheelMode>,
+    /** Live states for the Lovelace slots' renderers (the screen-level
+     *  observeRaw union over every page's pinned cards). */
+    lovelaceStates: com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates,
+    /** Action-dispatch + context-menu wiring for the Lovelace slots. */
+    lovelaceHooks: LovelaceDeckHooks,
     /** Reports VerticalPager animation state up to the screen-level
      *  wheel handler. Only the active deck pushes through (the
      *  effect is gated on isActive below) so a neighbour deck's
@@ -1917,10 +2009,10 @@ private fun PageDeck(
      *  target page. */
     onActivePagerAnimatingChange: (Boolean) -> Unit,
 ) {
-    // One pager state per page, keyed on pageId + infinite-scroll mode + the
-    // presence of cards. Re-keying on the card-presence boolean (rather than
-    // cards.size) means adding a fresh card doesn't rebuild the pager state and
-    // bounce the user back to the start of the deck.
+    // Local alias: a deck slot IS a card (entity or Lovelace), and the size /
+    // index plumbing below is kind-agnostic, so the historical name keeps the
+    // comments honest with minimal churn.
+    val cards = items
     val infiniteScroll = appSettings.ui.infiniteScroll
     // Capture cards.size at composition time. Including it in the
     // rememberPagerState key means the pager state rebuilds whenever the
@@ -2194,7 +2286,11 @@ private fun PageDeck(
             key = if (infiniteScroll) {
                 null
             } else {
-                { page -> cards.getOrNull(page)?.id?.value ?: page }
+                // DeckItem.key: entity ids for entities, the pinned card's
+                // stored stable id for Lovelace slots. Unique even for two
+                // identical card configs, which LazyLayout-backed pagers
+                // require (duplicate keys crash the composition).
+                { page -> cards.getOrNull(page)?.key ?: page }
             },
             // Peek: inset the pager below the chrome (top) and above the nav inset
             // (bottom) so its viewport is exactly the band the cards centre within.
@@ -2234,9 +2330,13 @@ private fun PageDeck(
                 if (cards.isEmpty()) return@Box
                 val realSize = cards.size
                 val cardIdx = realIndexOf(page).coerceIn(0, realSize - 1)
-                val card = cards.getOrNull(cardIdx) ?: return@Box
-                val longPressTarget = appSettings.entityOverrides[card.id.value]?.longPressTarget
-                val pageLightMode = lightWheelModes[card.id]
+                val item = cards.getOrNull(cardIdx) ?: return@Box
+                // Entity-only affordances resolve to null on Lovelace slots so
+                // the shared layout below stays branch-light.
+                val entityCard = (item as? DeckItem.Entity)?.state
+                val longPressTarget = entityCard
+                    ?.let { appSettings.entityOverrides[it.id.value]?.longPressTarget }
+                val pageLightMode = entityCard?.let { lightWheelModes[it.id] }
                 // In peek mode a non-centred page is a peeking neighbour: its
                 // controls are inert and a tap navigates to it instead of
                 // actuating it. settledPage is the snapped page (not the live
@@ -2256,6 +2356,43 @@ private fun PageDeck(
                         .fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
+                // Shared slot treatment for BOTH card kinds: full-bleed in the
+                // slot, rounded clip, fading shadow, slight scale on the
+                // incoming card. Lovelace slots wearing the exact same outer
+                // chrome as entity cards is the point; a pinned card reads
+                // as a native member of the deck, not an embedded fragment.
+                val slotModifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // Compute pageOffset INSIDE graphicsLayer so the
+                        // state read (pagerState.currentPage +
+                        // currentPageOffsetFraction) happens at the draw
+                        // phase, not at composition. Previously this was
+                        // captured in the composable scope, which meant
+                        // every fractional change during a fling forced a
+                        // recomposition of every visible card just to
+                        // re-run the graphicsLayer block. Now the layer
+                        // re-invalidates on State change without
+                        // recomposing.
+                        val pageOffset = (
+                            (pagerState.currentPage - page) +
+                                pagerState.currentPageOffsetFraction
+                        )
+                        val abs = kotlin.math.abs(pageOffset)
+                        // The active page (offset ≈ 0) casts a strong shadow that fades
+                        // to nothing as the page slides off screen.
+                        shadowElevation = (24.dp.toPx() * (1f - abs).coerceIn(0f, 1f))
+                        // Slight scale-down on the incoming card so the active one feels
+                        // forward in the stack.
+                        val scale = 1f - (abs * 0.04f).coerceIn(0f, 0.04f)
+                        scaleX = scale
+                        scaleY = scale
+                        // Clip = true with a rounded shape applies the radius AND makes
+                        // the shadow follow the contour.
+                        shape = cardShape
+                        clip = true
+                    }
+                if (entityCard != null) {
                 // Only the focused card surfaces the on-card "..." detail button;
                 // peek neighbours null the opener out (their tap overlay would
                 // swallow the tap anyway, but this also hides the glyph on the
@@ -2269,7 +2406,7 @@ private fun PageDeck(
                         },
                 ) {
                 EntityCard(
-                    state = card,
+                    state = entityCard,
                     onTapToggle = { vm.tapToggle() },
                     // Peek neighbours never actuate on whole-card tap; the
                     // tap-to-navigate overlay below owns their tap instead.
@@ -2280,38 +2417,18 @@ private fun PageDeck(
                     onLongPress = if (isPeekNeighbour) null
                         else longPressTarget?.let { target -> { vm.fireLongPress(target) } },
                     lightWheelMode = pageLightMode,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            // Compute pageOffset INSIDE graphicsLayer so the
-                            // state read (pagerState.currentPage +
-                            // currentPageOffsetFraction) happens at the draw
-                            // phase, not at composition. Previously this was
-                            // captured in the composable scope, which meant
-                            // every fractional change during a fling forced a
-                            // recomposition of every visible card just to
-                            // re-run the graphicsLayer block. Now the layer
-                            // re-invalidates on State change without
-                            // recomposing.
-                            val pageOffset = (
-                                (pagerState.currentPage - page) +
-                                    pagerState.currentPageOffsetFraction
-                            )
-                            val abs = kotlin.math.abs(pageOffset)
-                            // The active page (offset ≈ 0) casts a strong shadow that fades
-                            // to nothing as the page slides off screen.
-                            shadowElevation = (24.dp.toPx() * (1f - abs).coerceIn(0f, 1f))
-                            // Slight scale-down on the incoming card so the active one feels
-                            // forward in the stack.
-                            val scale = 1f - (abs * 0.04f).coerceIn(0f, 0.04f)
-                            scaleX = scale
-                            scaleY = scale
-                            // Clip = true with a rounded shape applies the radius AND makes
-                            // the shadow follow the contour.
-                            shape = cardShape
-                            clip = true
-                        },
+                    modifier = slotModifier,
                 )
+                }
+                } else if (item is DeckItem.Card) {
+                    LovelaceDeckCard(
+                        item = item,
+                        hooks = lovelaceHooks,
+                        states = lovelaceStates,
+                        scope = deckScope,
+                        isFocused = !isPeekNeighbour,
+                        modifier = slotModifier,
+                    )
                 }
                 // Tap-to-navigate overlay for peeking neighbours. Drawn last so it
                 // sits on top of the card and intercepts every pointer event over
@@ -2333,7 +2450,7 @@ private fun PageDeck(
                                         runCatching { pagerState.animateScrollToPage(page) }
                                     }
                                 },
-                                contentDescription = "Show ${card.friendlyName}",
+                                contentDescription = "Show ${item.displayName()}",
                             ),
                     )
                 }
@@ -2511,12 +2628,12 @@ private fun EmptyState(
         if (!loading && onPinCards != null) {
             Spacer(Modifier.height(10.dp))
             R1Button(
-                text = "PIN LOVELACE CARDS",
+                text = "ADD LOVELACE CARDS",
                 onClick = onPinCards,
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "Iframes, gauges, markdown and other HA cards as this page's deck.",
+                text = "Pick cards from your HA dashboards, import a whole dashboard, or build one fresh. They stack with favourites.",
                 style = R1.labelMicro,
                 color = R1.InkMuted,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -3114,9 +3231,9 @@ private fun TabManageDialog(
                 Spacer(Modifier.height(8.dp))
                 R1Button(
                     text = if (page.pinnedCards.isEmpty()) {
-                        "PINNED CARDS · NONE"
+                        "LOVELACE CARDS · NONE"
                     } else {
-                        "PINNED CARDS · ${page.pinnedCards.size}"
+                        "LOVELACE CARDS · ${page.pinnedCards.size}"
                     },
                     onClick = { onManagePinnedCards(page.id) },
                     modifier = Modifier.fillMaxWidth(),
@@ -4065,17 +4182,18 @@ private fun BoxScope.WheelHintOverlay(state: androidx.compose.runtime.MutableLon
  */
 @Composable
 private fun JumpToCardSheet(
-    cards: List<com.github.itskenny0.r1ha.core.ha.EntityState>,
+    /** The page's mixed deck: entity rows show name + domain, Lovelace rows
+     *  show the card's title + type. Same index space as the pager. */
+    items: List<DeckItem>,
     currentIndex: Int,
     /** Hoisted LazyListState so the screen-level wheel handler can scroll the list
      *  while the overlay is open. */
     listState: androidx.compose.foundation.lazy.LazyListState,
     onPick: (Int) -> Unit,
     onReorder: (fromIndex: Int, toIndex: Int) -> Unit,
-    /** Open the per-card context menu (move-to-page, remove). Surfaced by the
-     *  '…' chip on each row — replaces the prior pair of inline '✕' + long-press
-     *  affordances. Callback receives the row's index; the screen resolves that
-     *  to an entity_id and shows [CardContextMenu]. */
+    /** Open the per-item context menu. Surfaced by the '…' chip on each row.
+     *  Callback receives the row's index; the screen resolves that to either
+     *  the entity context menu or the Lovelace card menu. */
     onOpenMenu: (index: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -4101,7 +4219,7 @@ private fun JumpToCardSheet(
                 Text(text = "JUMP TO", style = R1.sectionHeader, color = R1.Ink)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = "${currentIndex + 1} / ${cards.size}",
+                    text = "${currentIndex + 1} / ${items.size}",
                     style = R1.labelMicro,
                     color = R1.InkMuted,
                 )
@@ -4130,17 +4248,17 @@ private fun JumpToCardSheet(
                 listState.scrollToItem(target)
             }
             com.github.itskenny0.r1ha.ui.components.DragReorderColumn(
-                items = cards,
-                keyOf = { it.id.value },
+                items = items,
+                keyOf = { it.key },
                 onReorder = onReorder,
                 modifier = Modifier.fillMaxSize(),
                 listState = listState,
-            ) { card, dragHandle, isDragging ->
-                val idx = cards.indexOf(card)
+            ) { item, dragHandle, isDragging ->
+                val idx = items.indexOf(item)
                 JumpRow(
                     index = idx,
-                    name = card.friendlyName,
-                    domainPrefix = card.id.domain.prefix.uppercase(),
+                    name = item.displayName(),
+                    domainPrefix = item.displayKind(),
                     isActive = idx == currentIndex,
                     isDragging = isDragging,
                     onClick = { onPick(idx) },

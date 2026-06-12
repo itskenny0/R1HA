@@ -14,6 +14,12 @@ import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.WheelSettings
+import com.github.itskenny0.r1ha.core.prefs.newPinnedCardId
+import com.github.itskenny0.r1ha.core.prefs.withDeckMove
+import com.github.itskenny0.r1ha.core.prefs.withFavoriteRemoved
+import com.github.itskenny0.r1ha.core.prefs.withPinnedCardRemoved
+import com.github.itskenny0.r1ha.core.prefs.withPinnedCardReplaced
+import com.github.itskenny0.r1ha.core.prefs.withPinnedCardsAppended
 import com.github.itskenny0.r1ha.core.util.R1Log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -41,12 +47,25 @@ import kotlin.math.roundToInt
  */
 @androidx.compose.runtime.Stable
 data class CardStackUiState(
-    /** Ordered by the user's favorites list (NOT by entity_id). The HA cache snapshot —
+    /** The ENTITY cards of the active page in deck order. The HA cache snapshot,
      *  what the server has confirmed. The UI should bind to [displayedCards] instead so
      *  optimistic wheel/tap updates are visible *immediately* rather than after the round-
      *  trip; this raw view is kept so the activeState getter and the optimistic-filter in
-     *  `observeFavorites` can still see "what HA actually thinks" separately. */
+     *  `observeFavorites` can still see "what HA actually thinks" separately. The mixed
+     *  deck (entities + pinned Lovelace cards) lives in [deck]; this list is the
+     *  entity-only projection for service-dispatch and overlay-lookup paths. */
     val cards: List<EntityState> = emptyList(),
+    /**
+     * The active page's full deck in display order: entity cards and pinned
+     * Lovelace cards interleaved per the page's deckOrder. [currentIndex]
+     * indexes into THIS list; pager position, the jump sheet, the chrome
+     * counter and the position pip all run on the mixed deck so Lovelace
+     * cards share the entity cards' index space.
+     */
+    val deck: List<DeckItem> = emptyList(),
+    /** Per-page mixed decks, same derivation as [cardsByPage] but carrying
+     *  Lovelace card slots too. The active page's slice equals [deck]. */
+    val deckByPage: Map<String, List<DeckItem>> = emptyMap(),
     /**
      * Parallel index from EntityId to its slot in [cards] for O(1) lookups on the
      * hot service-dispatch path (the wheel can fire 30 times/sec, and the debouncer
@@ -140,13 +159,17 @@ data class CardStackUiState(
             }
         }
 
+    /** The focused deck slot, whatever its kind. */
+    val activeDeckItem: DeckItem?
+        get() = deck.getOrNull(currentIndex)
+
     val activeState: EntityState?
         get() {
-            // One getOrNull instead of two (the old shape called it once for
-            // the card lookup and again inside the optimisticPercents key).
-            // Short-circuit the optimistic application when nothing is in
-            // flight for the active card.
-            val card = cards.getOrNull(currentIndex) ?: return null
+            // Lovelace card slots have no entity: every activeState-driven
+            // feature (wheel, tap-toggle, haptics, chrome edit) sees null and
+            // takes its inert path, so input can never actuate through a
+            // visible Lovelace card onto a hidden entity card.
+            val card = (deck.getOrNull(currentIndex) as? DeckItem.Entity)?.state ?: return null
             val pctOverride = optimisticPercents[card.id]
             val selOverride = optimisticSelectOptions[card.id]
             if (pctOverride == null && selOverride == null) return card
@@ -154,11 +177,11 @@ data class CardStackUiState(
         }
 
     /**
-     * Convenience for the UI: the currently-displayed (post-optimistic) card. Same as
-     * [activeState] but expressed as a `displayedCards[currentIndex]` lookup for symmetry.
+     * Convenience for the UI: the currently-displayed (post-optimistic) card.
+     * Same as [activeState]; kept as a named alias for call-site readability.
      */
     val displayedActiveState: EntityState?
-        get() = displayedCards.getOrNull(currentIndex)
+        get() = activeState
 }
 
 /** Layer the optimistic override(s) onto a cached state. */
@@ -462,53 +485,70 @@ class CardStackViewModel(
                     val renamed = snap.overrides[state.id.value]
                     return if (renamed != null) state.copy(friendlyName = renamed) else state
                 }
-                // PERF: preserve List<EntityState> reference identity across
-                // emissions whenever a page's cards are referentially
-                // equivalent to the previous build. Without this, every
-                // entityMap emit produced a fresh List for every page even
-                // when nothing on that page had changed — and Compose,
-                // seeing a new List reference, recomposed every PageDeck
-                // (including inactive neighbours peeked via the
-                // beyondViewportPageCount=1 horizontal pager). With ref
-                // preservation, only pages whose contents actually changed
-                // get a new list, so the inactive PageDecks skip
-                // recomposition entirely.
-                val prevCardsByPage = _state.value.cardsByPage
-                val cardsByPage = LinkedHashMap<String, List<EntityState>>()
+                // PERF: preserve List<DeckItem> reference identity across
+                // emissions whenever a page's deck is equivalent to the
+                // previous build. Without this, every entityMap emit produced
+                // a fresh List for every page even when nothing on that page
+                // had changed, and Compose, seeing a new List reference,
+                // recomposed every PageDeck (including inactive neighbours
+                // peeked via the beyondViewportPageCount=1 horizontal pager).
+                // With ref preservation, only pages whose contents actually
+                // changed get a new list, so the inactive PageDecks skip
+                // recomposition entirely. Entity slots compare by EntityState
+                // reference (HaRepository preserves references when the
+                // server's state hasn't changed); card slots compare by
+                // stored id + raw blob, which only change on an edit.
+                val prevDeckByPage = _state.value.deckByPage
+                val deckByPage = LinkedHashMap<String, List<DeckItem>>()
                 for (page in snap.pages) {
-                    val newList = page.favorites.mapNotNull { materializeRow(it) }
-                    val prev = prevCardsByPage[page.id]
-                    cardsByPage[page.id] = if (
+                    val newList = buildDeckItems(
+                        page = page,
+                        materializeEntity = { id -> materializeRow(id) },
+                        parseCard = { raw -> parsePinnedCardCached(raw) },
+                    )
+                    val prev = prevDeckByPage[page.id]
+                    deckByPage[page.id] = if (
                         prev != null &&
                         prev.size == newList.size &&
-                        // === checks REFERENCE equality on each EntityState.
-                        // HaRepository preserves entity references when the
-                        // server's reported state hasn't changed, so this
-                        // catches the common case where the entityMap emit
-                        // was for an entity NOT on this page.
-                        prev.indices.all { prev[it] === newList[it] }
+                        prev.indices.all { i -> sameDeckItem(prev[i], newList[i]) }
                     ) {
                         prev
                     } else {
                         newList
                     }
                 }
+                trimParseCache(snap.pages)
+                // Entity-only projections for service-dispatch / quick-action
+                // consumers. When a page's deck list was reference-preserved
+                // above, its entity projection can't have changed either, so
+                // the previous list is reused and Compose readers skip.
+                val prevCardsByPage = _state.value.cardsByPage
+                val cardsByPage = LinkedHashMap<String, List<EntityState>>()
+                deckByPage.forEach { (pid, items) ->
+                    val prevProjection = prevCardsByPage[pid]
+                    cardsByPage[pid] = if (items === prevDeckByPage[pid] && prevProjection != null) {
+                        prevProjection
+                    } else {
+                        items.mapNotNull { (it as? DeckItem.Entity)?.state }
+                    }
+                }
                 val activeId = snap.pages.firstOrNull { it.id == snap.activeId }?.id
                     ?: snap.pages.firstOrNull()?.id
                     ?: ""
+                val activeDeck = deckByPage[activeId].orEmpty()
                 val ordered = cardsByPage[activeId].orEmpty()
                 val favouriteIds = snap.pages.firstOrNull { it.id == activeId }?.favorites.orEmpty()
-                R1Log.d("CardStack.observe", "pages=${snap.pages.size} activeCards=${ordered.size}")
+                R1Log.d("CardStack.observe", "pages=${snap.pages.size} activeDeck=${activeDeck.size}")
                 val cur = _state.value
                 // Carry forward each page's currentIndex; if the active page's
-                // saved index is stale (cards shrank), clamp.
+                // saved index is stale (the deck shrank), clamp.
                 val nextIndexByPage = cur.indexByPage.toMutableMap()
-                cardsByPage.forEach { (pid, list) ->
+                deckByPage.forEach { (pid, list) ->
                     val saved = nextIndexByPage[pid] ?: 0
                     nextIndexByPage[pid] = if (list.isEmpty()) 0 else saved.coerceIn(0, list.size - 1)
                 }
                 // Drop entries for pages that no longer exist (delete).
-                nextIndexByPage.keys.retainAll(cardsByPage.keys)
+                nextIndexByPage.keys.retainAll(deckByPage.keys)
                 val clampedIndex = nextIndexByPage[activeId] ?: 0
                 // Trim optimistic entries in three cases:
                 //   1) The server caught up — for SCALAR entities, that means cached percent
@@ -544,6 +584,8 @@ class CardStackViewModel(
                 }
                 _state.value = cur.copy(
                     cards = ordered,
+                    deck = activeDeck,
+                    deckByPage = deckByPage,
                     cardsById = ordered.associateBy { it.id },
                     currentIndex = clampedIndex,
                     optimisticPercents = newOptimistic,
@@ -557,6 +599,38 @@ class CardStackViewModel(
                 )
             }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Per-blob parse cache for pinned Lovelace cards. observeFavorites rebuilds
+     * every page's deck on each settings/state emission; the card configs only
+     * change on an explicit edit, so caching by raw string makes the rebuild a
+     * map lookup instead of a JSON parse per card per emission. Unparseable
+     * blobs cache their null so a broken card doesn't re-log every tick.
+     * Trimmed to the currently stored blobs after each rebuild so edited-away
+     * configs don't accumulate. Only touched from the observeFavorites
+     * collector (single coroutine), so a plain HashMap is safe.
+     */
+    private val pinnedParseCache = HashMap<String, com.github.itskenny0.r1ha.core.lovelace.LovelaceCard?>()
+
+    private fun parsePinnedCardCached(raw: String): com.github.itskenny0.r1ha.core.lovelace.LovelaceCard? {
+        if (pinnedParseCache.containsKey(raw)) return pinnedParseCache[raw]
+        val parsed = parsePinnedCard(raw)
+        pinnedParseCache[raw] = parsed
+        return parsed
+    }
+
+    private fun trimParseCache(pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage>) {
+        if (pinnedParseCache.isEmpty()) return
+        val live = pages.flatMapTo(HashSet()) { it.pinnedCards }
+        pinnedParseCache.keys.retainAll(live)
+    }
+
+    /** Deck-slot equivalence for the reference-preservation pass above. */
+    private fun sameDeckItem(a: DeckItem, b: DeckItem): Boolean = when {
+        a is DeckItem.Entity && b is DeckItem.Entity -> a.state === b.state
+        a is DeckItem.Card && b is DeckItem.Card -> a.id == b.id && a.raw == b.raw
+        else -> false
     }
 
     /** Called from CardStackScreen when a wheel event arrives. Synchronous on the hot path —
@@ -663,25 +737,27 @@ class CardStackViewModel(
     }
 
     /**
-     * Move a favourite from one index to another. Backs the jump-to-card overlay's
-     * drag-reorder gesture so the user can rearrange the deck without leaving the
-     * card stack. No-op when the indices are equal or out of range; the underlying
-     * settings flow emits the new order and observeFavorites rebuilds the cards
-     * list, so the visible deck reorders within a frame.
+     * Move a deck item (entity card OR pinned Lovelace card) from one rendered
+     * slot to another. Backs the jump-to-card overlay's drag-reorder gesture so
+     * the user can rearrange the mixed deck without leaving the card stack.
+     *
+     * Indices address the RENDERED deck, which can be a strict subset of
+     * storage (entities hidden while unavailable, blobs that failed to parse),
+     * so the move is translated into ref space here and applied ref-addressed
+     * by [com.github.itskenny0.r1ha.core.prefs.withDeckMove]. Favourites-only
+     * pages persist exactly as the legacy favourites reorder did (favorites
+     * list reordered, deckOrder stays empty), so users who never pin a card
+     * see zero settings-shape churn.
      */
-    fun reorderFavorite(fromIndex: Int, toIndex: Int) {
+    fun reorderDeckItem(fromIndex: Int, toIndex: Int) {
         if (fromIndex == toIndex) return
+        val deck = _state.value.deck
+        val fromItem = deck.getOrNull(fromIndex) ?: return
+        val toItem = deck.getOrNull(toIndex.coerceIn(0, deck.size - 1)) ?: return
+        val fromRef = fromItem.toDeckRef()
+        val toRef = toItem.toDeckRef()
         viewModelScope.launch {
-            // Tabs: reorder only the active page's favourites; other pages' lists
-            // are untouched.
-            settings.updateActivePage { page ->
-                val l = page.favorites.toMutableList()
-                if (fromIndex !in l.indices) return@updateActivePage page
-                val clamped = toIndex.coerceIn(0, l.size - 1)
-                val item = l.removeAt(fromIndex)
-                l.add(clamped, item)
-                page.copy(favorites = l)
-            }
+            settings.updateActivePage { page -> page.withDeckMove(fromRef, toRef) }
         }
     }
 
@@ -770,7 +846,7 @@ class CardStackViewModel(
 
     fun setCurrentIndex(index: Int) {
         val cur = _state.value
-        val size = cur.cards.size
+        val size = cur.deck.size
         if (size == 0) return
         val clamped = index.coerceIn(0, size - 1)
         // Mirror the active page's index into indexByPage so a horizontal swipe
@@ -785,11 +861,11 @@ class CardStackViewModel(
      * Variant for the horizontal-pager: a card index reported for a *non-active*
      * page (e.g. the user wheels through a peek-visible neighbour). Updates that
      * page's saved index without disturbing the active page's [currentIndex].
-     * No-op when [pageId] doesn't exist in the current state's cardsByPage.
+     * No-op when [pageId] doesn't exist in the current state's deckByPage.
      */
     fun setIndexForPage(pageId: String, index: Int) {
         val cur = _state.value
-        val list = cur.cardsByPage[pageId] ?: return
+        val list = cur.deckByPage[pageId] ?: return
         if (list.isEmpty()) return
         val clamped = index.coerceIn(0, list.size - 1)
         if (cur.indexByPage[pageId] == clamped) return
@@ -804,13 +880,87 @@ class CardStackViewModel(
     /**
      * Remove [entityId] from the active page's favourites — surfaced through the
      * jump-to-card sheet's '✕' affordance so the user can unfavourite without
-     * digging back into the picker.
+     * digging back into the picker. Heals the page's deckOrder so the dead ref
+     * doesn't linger in storage.
      */
     fun removeFavorite(entityId: String) {
         viewModelScope.launch {
-            settings.updateActivePage { page ->
-                page.copy(favorites = page.favorites.filter { it != entityId })
+            settings.updateActivePage { page -> page.withFavoriteRemoved(entityId) }
+        }
+    }
+
+    /**
+     * Pin one or more Lovelace cards (raw config JSON strings) onto [pageId]'s
+     * deck. Cards land at the end of the deck with fresh stable ids; the
+     * settings emission flows back through observeFavorites and the new slots
+     * render within a frame. Used by every add path (from-dashboard picker,
+     * dashboard import of a single view, the new-card editor).
+     */
+    fun addPinnedCards(pageId: String, raws: List<String>) {
+        if (raws.isEmpty()) return
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    pages = s.pages.map { p ->
+                        if (p.id == pageId) p.withPinnedCardsAppended(raws) else p
+                    },
+                )
             }
+        }
+    }
+
+    /** Remove the pinned card with [cardId] from [pageId]'s deck. */
+    fun removePinnedCard(pageId: String, cardId: String) {
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    pages = s.pages.map { p ->
+                        if (p.id == pageId) p.withPinnedCardRemoved(cardId) else p
+                    },
+                )
+            }
+        }
+    }
+
+    /** Replace the stored config of pinned card [cardId] on [pageId]; the card
+     *  keeps its id and deck slot. */
+    fun updatePinnedCard(pageId: String, cardId: String, newRaw: String) {
+        viewModelScope.launch {
+            settings.update { s ->
+                s.copy(
+                    pages = s.pages.map { p ->
+                        if (p.id == pageId) p.withPinnedCardReplaced(cardId, newRaw) else p
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * Import dashboard views as cardstack pages: one new page per entry, named
+     * after the view, holding the view's cards in order as pinned Lovelace
+     * cards. Pages append after the existing tabs and the first imported page
+     * becomes active so the user lands on what they just imported.
+     */
+    fun importViewsAsPages(views: List<ImportablePage>) {
+        if (views.isEmpty()) return
+        viewModelScope.launch {
+            settings.update { s ->
+                val newPages = views.map { spec ->
+                    com.github.itskenny0.r1ha.core.prefs.FavoritePage(
+                        id = "p" + java.util.UUID.randomUUID().toString().replace("-", "").take(8),
+                        name = spec.name,
+                    ).withPinnedCardsAppended(spec.cardBlobs, ::newPinnedCardId)
+                }
+                s.copy(
+                    pages = s.pages + newPages,
+                    activePageId = newPages.firstOrNull()?.id ?: s.activePageId,
+                )
+            }
+            val cardCount = views.sumOf { it.cardBlobs.size }
+            com.github.itskenny0.r1ha.core.util.Toaster.show(
+                "Imported ${views.size} page${if (views.size == 1) "" else "s"} ($cardCount cards)",
+            )
         }
     }
 
@@ -838,7 +988,9 @@ class CardStackViewModel(
                             else page.copy(favorites = page.favorites + entityId)
                         }
                         entityId in page.favorites ->
-                            page.copy(favorites = page.favorites.filter { it != entityId })
+                            // Drops the deckOrder ref alongside the favourite
+                            // so the source page's interleave stays clean.
+                            page.withFavoriteRemoved(entityId)
                         else -> page
                     }
                 }

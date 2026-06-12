@@ -49,9 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Pin Lovelace cards to the deck: an empty page now offers PIN LOVELACE CARDS right on its face.",
-    "Pinned panels: shimmed the HA frontend crash that wedged ESPHome, HACS and Terminal blank.",
-    "Energy no longer ranks lifetime counters as live consumers, and recovers itself after a reconnect.",
-    "Add-favourites works again when the app was opened from a widget tap.",
-    "Widgets repaint the moment their entity changes while the app runs.",
+    "Lovelace cards are now real deck cards: they mix with favourites on any page and look native.",
+    "Add cards straight from your HA dashboards: browse, multi-select, done.",
+    "Import a whole dashboard as pages, one tab per view, cards in order.",
+    "New-card editor speaks forms now: entity picker, iframe url + aspect, markdown body. JSON stays one tap away.",
+    "Reorder the mixed deck from the jump list; long-press a Lovelace card to edit or remove it.",
 )
