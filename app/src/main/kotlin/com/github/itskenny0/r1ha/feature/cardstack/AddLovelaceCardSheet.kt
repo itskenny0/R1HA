@@ -617,8 +617,11 @@ private fun ImportConfirmStep(
         return
     }
     // All views selected by default; deselect to import a subset (down to a
-    // single view).
-    val deselected = remember(config) { androidx.compose.runtime.mutableStateListOf<String>() }
+    // single view). Tracked by INDEX, not view.path: the parser defaults a
+    // missing path to the view's index, so two views can legally share a path
+    // (one explicit "1", one defaulted) and path-keyed selection would toggle
+    // both together and crash the LazyColumn on duplicate keys.
+    val deselected = remember(config) { androidx.compose.runtime.mutableStateListOf<Int>() }
     Text(
         text = "ONE PAGE PER VIEW · NAMED AFTER THE VIEW",
         style = R1.labelMicro,
@@ -629,8 +632,8 @@ private fun ImportConfirmStep(
         modifier = Modifier.heightIn(max = 260.dp).fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        itemsIndexed(views, key = { _, v -> v.path }) { index, view ->
-            val isSelected = view.path !in deselected
+        itemsIndexed(views, key = { index, _ -> index }) { index, view ->
+            val isSelected = index !in deselected
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -642,7 +645,7 @@ private fun ImportConfirmStep(
                         R1.ShapeM,
                     )
                     .r1Pressable(onClick = {
-                        if (isSelected) deselected.add(view.path) else deselected.remove(view.path)
+                        if (isSelected) deselected.add(index) else deselected.remove(index)
                     })
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -669,7 +672,7 @@ private fun ImportConfirmStep(
             }
         }
     }
-    val selectedViews = views.filter { it.path !in deselected }
+    val selectedViews = views.filterIndexed { index, _ -> index !in deselected }
     Spacer(Modifier.height(12.dp))
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
         SheetButton(

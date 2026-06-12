@@ -238,4 +238,34 @@ class DeckOrderTest {
             DeckRef.Entity("a.a"),
         ).inOrder()
     }
+
+    // ── rendered-index moves (fast-drag composition) ────────────────────────
+
+    @Test fun `sequential rendered-index swaps compose like one continuous drag`() {
+        // A fast drag fires adjacent swaps per frame, each against the page
+        // state the PREVIOUS swap produced. Regression: translating indices at
+        // the call site read the pre-drag snapshot for every swap and
+        // scrambled the order (A dragged down two slots yielded [A,C,B,D]).
+        val visible = setOf("e:a.a", "e:b.b", "e:c.c", "e:d.d")
+        var p = page(favorites = listOf("a.a", "b.b", "c.c", "d.d"))
+        p = p.withDeckMoveByRenderedIndex(0, 1, visible)
+        p = p.withDeckMoveByRenderedIndex(1, 2, visible)
+        assertThat(p.favorites).containsExactly("b.b", "c.c", "a.a", "d.d").inOrder()
+    }
+
+    @Test fun `rendered indices skip hidden items when translating to refs`() {
+        // b.b is stored but not rendered (hidden while unavailable): rendered
+        // slot 1 is c.c, and the move must land relative to it while b.b keeps
+        // its storage position.
+        val visible = setOf("e:a.a", "e:c.c")
+        val p = page(favorites = listOf("a.a", "b.b", "c.c"))
+            .withDeckMoveByRenderedIndex(0, 1, visible)
+        assertThat(p.favorites).containsExactly("b.b", "c.c", "a.a").inOrder()
+    }
+
+    @Test fun `out-of-range rendered indices are a no-op`() {
+        val p = page(favorites = listOf("a.a", "b.b"))
+        assertThat(p.withDeckMoveByRenderedIndex(5, 0, setOf("e:a.a", "e:b.b"))).isEqualTo(p)
+        assertThat(p.withDeckMoveByRenderedIndex(0, 0, setOf("e:a.a", "e:b.b"))).isEqualTo(p)
+    }
 }

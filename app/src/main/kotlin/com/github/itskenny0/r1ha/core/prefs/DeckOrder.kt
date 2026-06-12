@@ -137,6 +137,31 @@ fun FavoritePage.withDeckMove(fromRef: DeckRef, toRef: DeckRef): FavoritePage {
     return healed.reorderedToRefs(refs)
 }
 
+/**
+ * Move by RENDERED indices, resolving refs against the freshly-read page
+ * INSIDE the settings transform. The rendered deck is the page's effective
+ * refs filtered to [visibleRefs] (encoded; captured once at gesture time; a
+ * SET, so it stays valid while the order changes underneath). Translating here
+ * rather than at the call site is what makes fast drags compose: the
+ * drag-reorder gesture fires several adjacent swaps per frame, each assuming
+ * the previous one landed, but the ViewModel's state snapshot only updates
+ * after the async settings round-trip, so call-site translation read stale
+ * positions and scrambled the deck. Inside the mutex-serialized transform each
+ * swap sees the order its predecessor actually produced.
+ */
+fun FavoritePage.withDeckMoveByRenderedIndex(
+    fromIndex: Int,
+    toIndex: Int,
+    visibleRefs: Set<String>,
+): FavoritePage {
+    if (fromIndex == toIndex) return this
+    val healed = healPinnedCardIds(this)
+    val rendered = healed.effectiveDeckRefs().filter { it.encode() in visibleRefs }
+    val fromRef = rendered.getOrNull(fromIndex) ?: return this
+    val toRef = rendered.getOrNull(toIndex.coerceIn(0, rendered.size - 1)) ?: return this
+    return healed.withDeckMove(fromRef, toRef)
+}
+
 /** Rebuild the page's stored lists to match [refs]' relative orders and stamp
  *  the (possibly canonical-empty) deckOrder. */
 private fun FavoritePage.reorderedToRefs(refs: List<DeckRef>): FavoritePage {

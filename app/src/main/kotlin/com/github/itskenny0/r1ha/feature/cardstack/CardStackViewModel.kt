@@ -14,8 +14,9 @@ import com.github.itskenny0.r1ha.core.input.WheelEvent
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.WheelSettings
+import com.github.itskenny0.r1ha.core.prefs.encode
 import com.github.itskenny0.r1ha.core.prefs.newPinnedCardId
-import com.github.itskenny0.r1ha.core.prefs.withDeckMove
+import com.github.itskenny0.r1ha.core.prefs.withDeckMoveByRenderedIndex
 import com.github.itskenny0.r1ha.core.prefs.withFavoriteRemoved
 import com.github.itskenny0.r1ha.core.prefs.withPinnedCardRemoved
 import com.github.itskenny0.r1ha.core.prefs.withPinnedCardReplaced
@@ -751,13 +752,20 @@ class CardStackViewModel(
      */
     fun reorderDeckItem(fromIndex: Int, toIndex: Int) {
         if (fromIndex == toIndex) return
-        val deck = _state.value.deck
-        val fromItem = deck.getOrNull(fromIndex) ?: return
-        val toItem = deck.getOrNull(toIndex.coerceIn(0, deck.size - 1)) ?: return
-        val fromRef = fromItem.toDeckRef()
-        val toRef = toItem.toDeckRef()
+        // Capture only the visibility SET here; the index-to-ref translation
+        // happens inside the serialized transform against the freshly-read
+        // page. A fast drag fires several adjacent swaps before the first
+        // settings round-trip lands, so translating against _state.value.deck
+        // (still the pre-drag snapshot for all of them) resolved the wrong
+        // items and scrambled the order. The set form stays valid while the
+        // order changes underneath; visibility itself doesn't change
+        // mid-gesture.
+        val visible = _state.value.deck.mapTo(HashSet()) { it.toDeckRef().encode() }
+        if (visible.isEmpty()) return
         viewModelScope.launch {
-            settings.updateActivePage { page -> page.withDeckMove(fromRef, toRef) }
+            settings.updateActivePage { page ->
+                page.withDeckMoveByRenderedIndex(fromIndex, toIndex, visible)
+            }
         }
     }
 

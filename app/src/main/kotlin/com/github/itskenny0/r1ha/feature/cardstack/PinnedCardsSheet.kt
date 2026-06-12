@@ -102,9 +102,12 @@ internal fun PinnedCardsSheet(
                 ) {
                     itemsIndexed(
                         page.pinnedCards,
-                        key = { idx, _ -> cardIds.getOrElse(idx) { "pin-$idx" } },
+                        // resolvedPinnedCardIds guarantees a same-length unique
+                        // list, so direct indexing cannot miss; a fallback here
+                        // could collide with a real stored id.
+                        key = { idx, _ -> cardIds[idx] },
                     ) { idx, blob ->
-                        val cardId = cardIds.getOrElse(idx) { "pin-$idx" }
+                        val cardId = cardIds[idx]
                         PinnedCardRow(
                             blob = blob,
                             onEdit = { onEdit(cardId, blob) },
