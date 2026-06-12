@@ -337,6 +337,14 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
         currentDisplay = { cardPeekModeLabel(it.ui.cardPeekMode) },
     ),
     SettingEntry(
+        id = "ui.deckLayoutMode",
+        category = SettingCategory.CARD_UI,
+        label = "Deck layout",
+        description = "Full-screen cards everywhere, or content-height card blocks; auto picks by screen size",
+        isDefault = { it.ui.deckLayoutMode == defaults.ui.deckLayoutMode },
+        currentDisplay = { deckLayoutModeLabel(it.ui.deckLayoutMode) },
+    ),
+    SettingEntry(
         id = "ui.cardScrollSensitivity",
         category = SettingCategory.CARD_UI,
         label = "Card stack scroll sensitivity",
@@ -946,6 +954,17 @@ fun cardPeekModeLabel(mode: CardPeekMode): String = when (mode) {
     CardPeekMode.AUTO -> "AUTO"
     CardPeekMode.ALWAYS -> "ALWAYS"
     CardPeekMode.NEVER -> "NEVER"
+}
+
+/**
+ * Compact human label for a [DeckLayoutMode] value. Shared by the Settings
+ * deck-layout selector and the registry `currentDisplay` so the diff screen
+ * shows the same word the user picked.
+ */
+fun deckLayoutModeLabel(mode: DeckLayoutMode): String = when (mode) {
+    DeckLayoutMode.AUTO -> "AUTO"
+    DeckLayoutMode.FULLSCREEN -> "FULL"
+    DeckLayoutMode.DYNAMIC -> "DYNAMIC"
 }
 
 /**
