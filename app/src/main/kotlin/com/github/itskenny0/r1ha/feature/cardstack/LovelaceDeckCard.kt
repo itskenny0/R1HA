@@ -211,7 +211,7 @@ internal fun LovelaceDeckCard(
 /**
  * The content-hugging surface of a Lovelace deck slot.
  *
- * Measure contract (verified by LovelaceDeckSurfaceSizingTest): the
+ * Measure contract: the
  * [androidx.compose.foundation.verticalScroll] layout node measures its child
  * with an unbounded max height and reports min(content height, incoming max),
  * so under the centering Box's loose constraints the surface
