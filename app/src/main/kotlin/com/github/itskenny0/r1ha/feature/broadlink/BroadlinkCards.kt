@@ -100,6 +100,43 @@ object BroadlinkCards {
         put("mode", "single")
     }
 
+    /**
+     * Config body for a CATALOG automation: the HA-resident record of one
+     * learned command. Tagged via the description marker
+     * ([BroadlinkMarker.encode]); the alias is the user-facing label.
+     *
+     * Triggers are deliberately the empty list: HA's config API accepts
+     * an automation with no triggers and the entity simply never
+     * self-fires, which is exactly what a catalog record wants. (If a
+     * future HA build rejects empty triggers, swap in a structurally
+     * valid never-firing placeholder here; empty list is preferred while
+     * it works because it reads as "manual only" in HA's own editor.)
+     * mode stays "single" so rapid double-taps collapse instead of
+     * queueing IR bursts.
+     */
+    fun commandAutomationConfig(
+        alias: String,
+        meta: BroadlinkMarker.CommandMeta,
+    ): JsonObject = buildJsonObject {
+        put("alias", alias)
+        put("description", BroadlinkMarker.encode(meta))
+        put("trigger", JsonArray(emptyList()))
+        put("condition", JsonArray(emptyList()))
+        putJsonArray("action") {
+            add(
+                buildJsonObject {
+                    put("service", "remote.send_command")
+                    putJsonObject("target") { put("entity_id", meta.remote) }
+                    putJsonObject("data") {
+                        put("device", meta.device)
+                        put("command", meta.command)
+                    }
+                },
+            )
+        }
+        put("mode", "single")
+    }
+
     private fun triggerJson(trigger: Trigger): JsonObject = when (trigger) {
         is Trigger.AtTime -> buildJsonObject {
             put("platform", "time")
@@ -114,12 +151,14 @@ object BroadlinkCards {
 
     /**
      * Decide whether an automation belongs on the BROADLINK filter tab.
-     * With a config body available (UI-managed automations), this is a
-     * substring scan for `remote.send_command` or any known remote entity
-     * id; the scan is shape-agnostic on purpose so trigger/action key
-     * renames across HA versions can't break it. Without a body (YAML
-     * automations expose no config over the API) it falls back to a name
-     * heuristic, which the UI flags as such.
+     * R1HA's own catalog automations match exactly: their config body
+     * carries the [BroadlinkMarker.PREFIX] description marker. For
+     * foreign rules with a config body, fall back to a substring scan
+     * for `remote.send_command` or any known remote entity id; the scan
+     * is shape-agnostic on purpose so trigger/action key renames across
+     * HA versions can't break it. Without a body (YAML automations
+     * expose no config over the API) it falls back to a name heuristic,
+     * which the UI flags as such.
      */
     fun isBroadlinkRelated(
         configJson: String?,
@@ -127,6 +166,7 @@ object BroadlinkCards {
         knownRemoteEntityIds: Set<String>,
     ): Boolean {
         if (configJson != null) {
+            if (configJson.contains(BroadlinkMarker.PREFIX)) return true
             if (configJson.contains("remote.send_command")) return true
             return knownRemoteEntityIds.any { configJson.contains(it) }
         }

@@ -2588,6 +2588,50 @@ class DefaultHaRepository(
         }
     }
 
+    override suspend fun deleteAutomationConfig(automationId: String): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                require(automationId.isNotBlank()) { "automation id is blank" }
+                val s = settings.settings.first()
+                if (s.guestModeEnabled) {
+                    error("Guest mode is on. Toggle it off in Settings to delete automations.")
+                }
+                val server = s.server ?: error("Server URL not configured.")
+                refresher?.ensureFresh()
+                val encodedId = java.net.URLEncoder.encode(automationId, Charsets.UTF_8.name())
+                val url = "${server.url.trimEnd('/')}/api/config/automation/config/$encodedId"
+                simpleAuthedDelete(url) ?: run {
+                    if (refresher?.forceRefresh() == true) {
+                        R1Log.i("HaRepo.autoCfg", "401 → refreshed; retrying once")
+                        simpleAuthedDelete(url)
+                            ?: error("Home Assistant returned HTTP 401 deleting the automation after refresh.")
+                    } else {
+                        error("Home Assistant returned HTTP 401 deleting the automation.")
+                    }
+                }
+                Unit
+            }.onFailure { t ->
+                R1Log.w("HaRepo.autoCfg", "delete $automationId failed: ${t.message}")
+            }
+        }
+
+    /** Bearer-authed DELETE twin of [simpleAuthedGet]: null on HTTP 401 so
+     *  the caller can refresh + retry, exception on other failures. */
+    private suspend fun simpleAuthedDelete(url: String): String? = withContext(Dispatchers.IO) {
+        val t = tokens.load()
+            ?: error("Authentication tokens missing. Sign out & reconnect from Settings.")
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer ${t.accessToken}")
+            .delete()
+            .build()
+        http.newCall(req).execute().use { resp ->
+            if (resp.code == 401) return@withContext null
+            require(resp.isSuccessful) { "HTTP ${resp.code} for $url" }
+            resp.body?.string().orEmpty()
+        }
+    }
+
     /** POST to /api/services/<domain>/<service>. Returns null on HTTP 401
      *  for the refresh + retry pattern; HTTP 400 surfaces HA's error body
      *  as an exception so the Service Caller screen can show it. */

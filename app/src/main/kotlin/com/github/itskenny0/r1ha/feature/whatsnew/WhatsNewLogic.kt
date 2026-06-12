@@ -55,6 +55,6 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "New-card editor speaks forms now: entity picker, iframe url + aspect, markdown body. JSON stays one tap away.",
     "Reorder the mixed deck from the jump list; long-press a Lovelace card to edit or remove it.",
     "Broadlink IR/RF console under Settings: guided learn flow with live capture, test-fire, then save.",
-    "Fire, rename, delete or pin learned IR commands to the deck; register codes learned outside the app.",
-    "Build simple automations that fire IR commands, and browse all or Broadlink-only rules.",
+    "Your IR catalog lives in HA as R1HA-tagged automations: it survives reinstalls and follows you between devices.",
+    "Fire, rename, delete or pin commands to the deck; register existing codes and build simple IR automations.",
 )

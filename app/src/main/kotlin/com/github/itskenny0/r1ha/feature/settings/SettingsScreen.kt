@@ -1900,12 +1900,9 @@ private fun LazyListScope.integrationsRoot(
         R1Row(
             label = "Broadlink remote",
             description = "Learn, fire + automate IR/RF commands",
-            value = run {
-                val commands = s.broadlink.devices.sumOf { it.commands.size }
-                if (commands > 0) {
-                    "${s.broadlink.devices.size} devices · $commands commands"
-                } else "Empty catalog"
-            },
+            // The catalog lives in HA (R1HA-tagged automations), so there
+            // is no local count to summarize here.
+            value = "Catalog stored in HA",
             onClick = onOpenBroadlink,
             showChevron = true,
             contentDescription = "Open the Broadlink console",
