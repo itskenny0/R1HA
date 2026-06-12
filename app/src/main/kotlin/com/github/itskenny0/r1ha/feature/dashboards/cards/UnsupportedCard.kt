@@ -33,6 +33,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.github.itskenny0.r1ha.core.lovelace.LOVELACE_EDIT_JSON
+import com.github.itskenny0.r1ha.core.util.loadWhenSized
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
@@ -260,14 +261,31 @@ private fun EmbeddedWebView(url: String, ratio: Float, contentDescription: Strin
                         settings.allowFileAccessFromFileURLs = false
                         settings.allowUniversalAccessFromFileURLs = false
                     }
-                    loadUrl(url)
+                    // Track the REQUESTED target in the view tag (web.url stays
+                    // null until the deferred load below commits, so it can't be
+                    // the change detector for the update block).
+                    tag = url
+                    // The AndroidView factory runs before the view is attached or
+                    // measured, so a plain loadUrl here boots the page in a 0x0
+                    // WebView. Many pages lay themselves out from that zero-sized
+                    // viewport and never recover when the real size arrives,
+                    // which rendered iframe cards as blank. Deferring to the
+                    // first non-zero layout (same fix as the HA panel WebViews)
+                    // lets the page boot at its real size.
+                    loadWhenSized(url)
                 }
             },
             update = { web ->
-                // Only (re)load when the target actually changed. web.url is null
-                // before the first load and tracks redirects after, so a target
-                // change reloads while normal navigation does not.
-                if (web.url != url && !failed) web.loadUrl(url)
+                // Only (re)load when the requested target changed. Compared via
+                // the tag set above, NOT web.url: update runs immediately after
+                // the factory while the deferred first load is still waiting for
+                // layout, and a web.url comparison there would re-issue the load
+                // into the still-unmeasured view, double-loading the page and
+                // reintroducing the 0x0 boot this fix removes.
+                if (web.tag != url) {
+                    web.tag = url
+                    web.loadWhenSized(url)
+                }
             },
         )
         when {
