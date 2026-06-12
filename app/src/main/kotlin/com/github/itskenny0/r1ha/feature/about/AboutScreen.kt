@@ -38,10 +38,13 @@ import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.prefs.CardPeekMode
+import com.github.itskenny0.r1ha.core.prefs.DeckLayoutMode
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.responsiveType
+import com.github.itskenny0.r1ha.feature.cardstack.DeckLayout
 import com.github.itskenny0.r1ha.feature.cardstack.PEEK_MIN_SHORTEST_SIDE_PX
+import com.github.itskenny0.r1ha.feature.cardstack.effectiveDeckLayout
 import com.github.itskenny0.r1ha.feature.cardstack.effectivePeek
 import com.github.itskenny0.r1ha.ui.components.R1TopBar
 import com.github.itskenny0.r1ha.ui.components.WheelScrollFor
@@ -832,6 +835,31 @@ private fun DisplayDetectionRows(appSettings: AppSettings) {
     InfoRow("Window", "${px.width}×${px.height} px (min $shortestPx)", mono = true)
     InfoRow("Orientation", if (isPortrait) "Portrait" else "Landscape")
     InfoRow("Peek deck", peekDeckExplanation(mode, window.tier, isPortrait, shortestPx, peeks))
+    val layoutMode = appSettings.ui.deckLayoutMode
+    InfoRow(
+        "Deck layout",
+        deckLayoutExplanation(layoutMode, window.tier, effectiveDeckLayout(layoutMode, window.tier)),
+    )
+}
+
+/**
+ * Human-readable "Full / Dynamic (why)" for the deck-layout decision, mirroring
+ * [effectiveDeckLayout]'s branches like [peekDeckExplanation] does for peek.
+ */
+private fun deckLayoutExplanation(
+    mode: DeckLayoutMode,
+    tier: WindowTier,
+    layout: DeckLayout,
+): String {
+    val state = if (layout == DeckLayout.DYNAMIC) "Dynamic" else "Full"
+    val reason = when (mode) {
+        DeckLayoutMode.FULLSCREEN -> "mode FULL"
+        DeckLayoutMode.DYNAMIC -> "mode DYNAMIC"
+        DeckLayoutMode.AUTO ->
+            if (tier.isAtLeast(WindowTier.MEDIUM)) "AUTO, $tier is medium or wider"
+            else "AUTO, $tier is a small width"
+    }
+    return "$state ($reason)"
 }
 
 /**

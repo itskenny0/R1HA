@@ -961,6 +961,14 @@ fun CardStackScreen(
                     isPortrait = isPortrait,
                     shortestSidePx = minOf(windowPx.width, windowPx.height),
                 )
+                // Deck layout, resolved once per composition from the user's
+                // setting + the window tier (AUTO = full-viewport on R1 /
+                // compact, content-height DYNAMIC on medium+). A settings
+                // change flows through appSettings and re-renders the decks
+                // live. When DYNAMIC wins it supersedes the peek deck: the
+                // dynamic list already shows neighbours at their real heights,
+                // so [peekDeck] is only consulted on the FULLSCREEN branch.
+                val deckLayout = effectiveDeckLayout(appSettings.ui.deckLayoutMode, windowTier)
                 val pageIds = androidx.compose.runtime.remember(state.pages) {
                     state.pages.map { it.id }
                 }
@@ -1208,6 +1216,26 @@ fun CardStackScreen(
                             onOpenSettings = onOpenSettings,
                             onRetry = { haRepository.reconnectNow() },
                             onPinCards = { addCardsForPageId.value = page.id },
+                        )
+                    } else if (deckLayout == DeckLayout.DYNAMIC) {
+                        // Content-height snap list. Same deck, same flows
+                        // (nav / jump / index reporting), different geometry:
+                        // entity items full-viewport, Lovelace items hugged.
+                        DynamicPageDeck(
+                            pageId = page.id,
+                            items = pageItems,
+                            initialIndex = state.indexByPage[page.id] ?: 0,
+                            isActive = isActive,
+                            vm = vm,
+                            appSettings = appSettings,
+                            navRequests = pagerNavRequests,
+                            jumpRequests = jumpRequests,
+                            lightWheelModes = state.lightWheelMode,
+                            lovelaceStates = lovelaceStates,
+                            lovelaceHooks = lovelaceHooks,
+                            onActivePagerAnimatingChange = { animating ->
+                                verticalPagerAnimating.value = animating
+                            },
                         )
                     } else {
                         PageDeck(
