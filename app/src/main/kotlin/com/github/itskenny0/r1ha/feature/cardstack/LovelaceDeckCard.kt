@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,16 +86,22 @@ internal fun LovelaceDeckHooks.dispatch(scope: CoroutineScope, action: LovelaceA
 }
 
 /**
- * A pinned Lovelace card as a first-class deck slot. Wears the SAME outer
- * treatment as the entity cards: the caller's [modifier] carries the shared
- * rounded-clip + shadow graphicsLayer from PageDeck, and the surface here is
- * the plain near-black [R1.Bg] every non-themed card variant paints. No
- * border, no corner ticks, no type chip; the card content itself is the face.
+ * A pinned Lovelace card as a first-class deck slot. The SLOT (the caller's
+ * [modifier], carrying the pager's scale animation) stays full-page so swipe
+ * mechanics and the "…" anchor are unchanged, but the VISIBLE SURFACE wraps
+ * its content height, vertically centred in the slot: a short tile or
+ * markdown card reads as a floating panel rather than a full-height page of
+ * empty surface. Tall content clamps at the slot height and scrolls
+ * internally. [surfaceModifier] carries the entity cards' rounded clip +
+ * fading shadow from PageDeck, applied at the wrapped size, and the surface
+ * itself is the plain near-black [R1.Bg] every non-themed card variant
+ * paints. No border, no corner ticks, no type chip; the card content itself
+ * is the face.
  *
  * Interaction map:
  *  - card content owns its taps (the dashboards engine dispatches actions);
- *  - long-press on the card body opens the edit / remove menu, mirroring the
- *    entity cards' long-press convention (skipped over iframes, where the
+ *  - long-press anywhere in the slot opens the edit / remove menu, mirroring
+ *    the entity cards' long-press convention (skipped over iframes, where the
  *    WebView consumes the gesture);
  *  - a small "…" dot cluster bottom-right mirrors the entity cards' on-card
  *    detail affordance and opens the same menu, guaranteeing a menu entry
@@ -110,25 +117,35 @@ internal fun LovelaceDeckCard(
      *  null out their on-card detail button when half-visible. */
     isFocused: Boolean,
     modifier: Modifier = Modifier,
+    /** Clip + shadow treatment for the content-hugging surface, supplied by
+     *  PageDeck so it matches the entity cards' corner / shadow language. */
+    surfaceModifier: Modifier = Modifier,
 ) {
+    // The ViewModel already gated the top-level conditional layers at deck
+    // build time (a hidden card never reaches a slot), so render the wrapped
+    // card directly. Re-running the wrapper here would re-evaluate `screen` /
+    // `view_columns` against the real window, contradicting the deck's
+    // always-visible policy for those kinds and blanking the slot.
+    val content = remember(item.card) { unwrapDeckConditional(item.card) }
     // Iframe slots skip the scroll wrapper: the WebView already owns vertical
     // drags inside its bounds, and stacking a second scroll consumer around a
     // fixed-aspect box only fights the pager. Other card types can outgrow
     // the slot, so they scroll.
-    val isIframe = item.card is LovelaceCard.Unsupported && item.card.url != null
+    val isIframe = content is LovelaceCard.Unsupported && content.url != null
     Box(
-        modifier = modifier
-            .background(R1.Bg)
-            .then(
-                if (isIframe) {
-                    Modifier
-                } else {
-                    Modifier.pointerInput(item.id) {
-                        detectTapGestures(onLongPress = { hooks.onOpenCardMenu(item) })
-                    }
-                },
-            ),
+        modifier = modifier.then(
+            if (isIframe) {
+                Modifier
+            } else {
+                Modifier.pointerInput(item.id) {
+                    detectTapGestures(onLongPress = { hooks.onOpenCardMenu(item) })
+                }
+            },
+        ),
+        contentAlignment = Alignment.Center,
     ) {
+        // A scrollable column measures to its content height up to the slot's
+        // max, so short cards hug their content and tall ones clamp + scroll.
         val bodyModifier = if (isIframe) {
             Modifier.fillMaxWidth()
         } else {
@@ -136,20 +153,19 @@ internal fun LovelaceDeckCard(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
         }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            contentAlignment = Alignment.Center,
+        Column(
+            modifier = surfaceModifier
+                .fillMaxWidth()
+                .background(R1.Bg)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
+                .then(bodyModifier),
         ) {
-            Column(modifier = bodyModifier) {
-                LovelaceCardRenderer(
-                    card = item.card,
-                    stateMap = states.sliceFor(item.card),
-                    onAction = { action -> hooks.dispatch(scope, action) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            LovelaceCardRenderer(
+                card = content,
+                stateMap = states.sliceFor(content),
+                onAction = { action -> hooks.dispatch(scope, action) },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         // "…" menu affordance: same dot-cluster mark as the entity cards'
         // detail button, anchored bottom-right where that button lives.

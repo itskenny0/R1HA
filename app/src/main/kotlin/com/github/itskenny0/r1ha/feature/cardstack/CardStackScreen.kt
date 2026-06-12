@@ -322,6 +322,25 @@ fun CardStackScreen(
     val lovelaceStates = androidx.compose.runtime.remember(lovelaceStatesRaw.value) {
         com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates.ofRaw(lovelaceStatesRaw.value)
     }
+    // Condition-context inputs for conditional cards rendered inside deck
+    // slots: the same `user` / `location` wiring DashboardViewScreen provides
+    // around its card tree. Without these, a nested conditional inside a
+    // pinned card evaluated against the defaults (unknown user, no person),
+    // so user-gated content vanished from the deck while showing fine on the
+    // dashboard. The person lookup reads the pinned-card state union, so a
+    // person entity is only resolvable when some pinned card references it;
+    // otherwise `location` fails closed, matching the deck-build policy in
+    // [deckConditionContext].
+    val lovelaceCurrentUserId by haRepository.currentUserId.collectAsStateWithLifecycle()
+    val lovelacePersonStateForUser: () -> String? =
+        androidx.compose.runtime.remember(lovelaceCurrentUserId, lovelaceStatesRaw.value) {
+            {
+                com.github.itskenny0.r1ha.feature.dashboards.cards.resolveUserPersonState(
+                    lovelaceCurrentUserId,
+                    lovelaceStatesRaw.value,
+                )
+            }
+        }
     // ── Lovelace deck-card overlays ─────────────────────────────────────────────
     // Context menu for a pinned card on the active page (long-press / "…" on
     // the deck slot, or the "…" on its jump-sheet row). Null = closed.
@@ -854,6 +873,16 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
         com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,
         com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo provides onCardMoreInfo,
+        // Lovelace condition context for the deck slots (see the wiring above).
+        com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceCurrentUserId
+            provides lovelaceCurrentUserId,
+        com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelacePersonStateForUser
+            provides lovelacePersonStateForUser,
+        // Null column count = `view_columns` conditions pass unconditionally,
+        // matching the deck-build policy (a full-page slot has no column space
+        // for the breakpoint to describe). The local's default is 1, which
+        // would instead hide `view_columns: {min: 2}` content.
+        com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceMaxColumns provides null,
     ) {
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
         // No max-width cap on the card column. An earlier 600 dp clamp here
@@ -2421,13 +2450,46 @@ private fun PageDeck(
                 )
                 }
                 } else if (item is DeckItem.Card) {
+                    // Lovelace slots split the entity cards' single-layer
+                    // treatment in two: the SLOT keeps the pager's scale
+                    // animation at full size (swipe mechanics, long-press area
+                    // and the "…" anchor stay full-page) but carries no shadow
+                    // or clip, while the content-hugging SURFACE inside the
+                    // card wears the rounded clip + fading shadow at its
+                    // wrapped size. Keeping the shadow on the full-size slot
+                    // would draw a full-page shadow rectangle around a short
+                    // card's small panel.
                     LovelaceDeckCard(
                         item = item,
                         hooks = lovelaceHooks,
                         states = lovelaceStates,
                         scope = deckScope,
                         isFocused = !isPeekNeighbour,
-                        modifier = slotModifier,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                // Same draw-phase offset read as slotModifier so
+                                // a fling never forces recomposition (see the
+                                // note on slotModifier above).
+                                val pageOffset = (
+                                    (pagerState.currentPage - page) +
+                                        pagerState.currentPageOffsetFraction
+                                )
+                                val abs = kotlin.math.abs(pageOffset)
+                                val scale = 1f - (abs * 0.04f).coerceIn(0f, 0.04f)
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                        surfaceModifier = Modifier.graphicsLayer {
+                            val pageOffset = (
+                                (pagerState.currentPage - page) +
+                                    pagerState.currentPageOffsetFraction
+                            )
+                            val abs = kotlin.math.abs(pageOffset)
+                            shadowElevation = (24.dp.toPx() * (1f - abs).coerceIn(0f, 1f))
+                            shape = cardShape
+                            clip = true
+                        },
                     )
                 }
                 // Tap-to-navigate overlay for peeking neighbours. Drawn last so it
