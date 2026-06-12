@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -54,9 +53,10 @@ import kotlinx.coroutines.launch
  * snapping [LazyColumn] whose items are sized per kind instead of a uniform
  * full-viewport pager.
  *
- *  - ENTITY items keep the full viewport height ([deckItemFillsViewport]):
- *    an entity card still snaps in full-screen and the wheel / value-bar
- *    surface is byte-for-byte the FULLSCREEN one.
+ *  - ENTITY items render as compact content-height blocks
+ *    ([dynamicEntityItemHeightPx]) so the stack flows with several cards
+ *    visible; only FULLSCREEN keeps the full-viewport wheel surface. The
+ *    wheel still drives whichever card is snapped into focus.
  *  - LOVELACE items hug their content height, capped at the viewport with
  *    internal scroll past that (the [DeckCardSurface] measure contract), so a
  *    one-line toggle takes one line instead of marooning itself in a screen
@@ -196,11 +196,23 @@ internal fun DynamicPageDeck(
         // hits the viewport bottom), so that card could never become the
         // focused one. Padding the list's end by (band - last item height)
         // raises the max scroll exactly enough for the last card's start to
-        // reach the line; the height is read from the live layout info, so
-        // until the last card has been composed once the padding is 0
-        // (conservative; it appears as the user approaches the end).
-        val lastItemHeightPx = remember(pageId) { mutableIntStateOf(Int.MAX_VALUE) }
-        LaunchedEffect(listState, cards.size) {
+        // reach the line (the tight amount, see [dynamicEndReachPaddingPx]);
+        // the height is read from the live layout info, so until the last
+        // card has been composed once the padding is 0 (conservative; it
+        // appears as the user approaches the end).
+        //
+        // The measurement cache is keyed on the LAST item's identity, not just
+        // the page: a deck mutation (conditional card hidden / shown, card
+        // removed) swaps which card is last, and carrying the height measured
+        // for the PREVIOUS last card left a stale over-sized padding behind,
+        // which the user saw as a long blank tail after the deck's real end.
+        val lastItemKey = cards.lastOrNull()?.key
+        val lastItemHeightPx = remember(pageId, lastItemKey, cards.size) {
+            // -1 = not measured yet; the padding helper treats it as "no
+            // padding" until the real last card reports a size.
+            mutableIntStateOf(-1)
+        }
+        LaunchedEffect(listState, lastItemKey, cards.size) {
             snapshotFlow {
                 listState.layoutInfo.visibleItemsInfo
                     .lastOrNull()
@@ -212,7 +224,10 @@ internal fun DynamicPageDeck(
                 .collect { lastItemHeightPx.intValue = it }
         }
         val reachPadBottom = with(LocalDensity.current) {
-            (bandHeightPx - lastItemHeightPx.intValue).coerceAtLeast(0).toDp()
+            dynamicEndReachPaddingPx(
+                bandHeightPx = bandHeightPx,
+                lastItemHeightPx = lastItemHeightPx.intValue.takeIf { it >= 0 },
+            ).toDp()
         }
         // Snapping fling: decay the gesture's velocity (so a hard flick still
         // carries through several cards, same physics family as the pager),
@@ -237,6 +252,15 @@ internal fun DynamicPageDeck(
         }
         // Entity cards share the FULLSCREEN slots' rounded-panel treatment.
         val cardShape = remember { RoundedCornerShape(14.dp) }
+        // Compact entity-item height (pure, unit-tested): the preferred
+        // ~220 dp band capped at the viewport. See [dynamicEntityItemHeightPx]
+        // for why the entity interior cannot wrap to a true intrinsic height.
+        val entityItemHeight = with(LocalDensity.current) {
+            dynamicEntityItemHeightPx(
+                bandHeightPx = bandHeightPx,
+                preferredHeightPx = DYNAMIC_ENTITY_CARD_HEIGHT_DP.dp.roundToPx(),
+            ).toDp()
+        }
         val deckMaxCardWidth = rememberResponsiveDimens().maxContentWidth
         val deckScope = rememberCoroutineScope()
         LazyColumn(
@@ -256,25 +280,24 @@ internal fun DynamicPageDeck(
                 val longPressTarget = entityCard
                     ?.let { appSettings.entityOverrides[it.id.value]?.longPressTarget }
                 val itemLightMode = entityCard?.let { lightWheelModes[it.id] }
-                // Per-kind height policy (pure, unit-tested): entity items
-                // fill the band, Lovelace items hug content capped at it.
-                val fillsViewport = deckItemFillsViewport(item)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {
+                    // Per-kind height policy: entity items get the compact
+                    // band height (loose cap, so the card lays out at its
+                    // own height under it; with today's fill-the-slot
+                    // interiors that resolves to the cap itself), Lovelace
+                    // items hug content capped at the viewport. Both flow,
+                    // so several cards share the screen.
                     Box(
                         modifier = Modifier
                             .widthIn(max = deckMaxCardWidth)
                             .fillMaxWidth()
-                            .then(
-                                if (fillsViewport) {
-                                    Modifier.height(bandHeight)
-                                } else {
-                                    Modifier.heightIn(max = bandHeight)
-                                },
+                            .heightIn(
+                                max = if (entityCard != null) entityItemHeight else bandHeight,
                             ),
                     ) {
                         if (entityCard != null) {
@@ -306,8 +329,13 @@ internal fun DynamicPageDeck(
                                         }
                                     },
                                     lightWheelMode = itemLightMode,
+                                    // Content-height path: no vertical fill,
+                                    // the card lays out under the compact
+                                    // cap (see fillSlot's KDoc). FULLSCREEN's
+                                    // call site keeps the default fill.
+                                    fillSlot = false,
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
                                         .graphicsLayer {
                                             // Static panel treatment (no pager
                                             // offset to animate against): the

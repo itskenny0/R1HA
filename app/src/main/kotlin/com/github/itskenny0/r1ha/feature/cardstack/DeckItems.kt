@@ -79,6 +79,33 @@ fun deckCardTitle(card: LovelaceCard): String {
 }
 
 /**
+ * The identity header a DECK SLOT paints above a Lovelace card's face, or null
+ * when the face already names itself. The string is always [deckCardTitle],
+ * the exact title the jump sheet derives for the slot, so the stack and the
+ * pip's jump list agree on what a card is called. Null cases are the configs
+ * whose renderers already surface the same heading on the card body:
+ *
+ *  - explicit `title` / `name` / `heading` (CardSurface titles, the entities
+ *    card's header rows, button/light/tile name lines all render these);
+ *  - markdown-style `content`, where the derived title is the content's first
+ *    line and the face IS the content.
+ *
+ * The fallback-derived titles (bound entity id, iframe url, bare card type)
+ * DO show: those faces carry no heading of their own, which is exactly the
+ * "which card is this?" gap the user hit.
+ */
+fun deckCardHeaderTitle(card: LovelaceCard): String? {
+    for (key in listOf("title", "name", "heading")) {
+        val v = (card.raw[key] as? JsonPrimitive)?.content
+        if (!v.isNullOrBlank()) return null
+    }
+    (card.raw["content"] as? JsonPrimitive)?.content
+        ?.lineSequence()?.firstOrNull { it.isNotBlank() }
+        ?.let { return null }
+    return deckCardTitle(card)
+}
+
+/**
  * Parse stored pinned-card JSON blobs into renderable cards. Unparseable
  * entries (hand-edited JSON gone wrong) are dropped with a log rather than
  * sinking the page; the management sheet still lists them for repair since it

@@ -37,18 +37,55 @@ fun effectiveDeckLayout(mode: DeckLayoutMode, tier: WindowTier): DeckLayout = wh
 }
 
 /**
- * Per-item height policy in the DYNAMIC layout: whether this deck item's snap
- * block fills the deck viewport or hugs its content.
+ * Height of an ENTITY deck item in the DYNAMIC layout, in px.
  *
- * Entity cards fill: their interior (value bar, percent readout, wheel
- * affordances, peek chrome) is designed as a full-screen control surface and
- * the wheel drives the FOCUSED card, so an entity card must still snap in
- * full-screen exactly as it does in the FULLSCREEN layout. Lovelace cards hug
- * their content: that is the whole point of the dynamic layout (a one-line
- * toggle stops marooning itself in a viewport of black). Tall Lovelace content
- * still caps at the viewport and scrolls internally (see [DeckCardSurface]).
+ * Entity cards no longer fill the deck viewport here (user-confirmed: the
+ * whole stack should FLOW, several cards visible at once); only the FULLSCREEN
+ * layout keeps the full-viewport wheel surface. True wrap-content is not an
+ * option for these cards: every variant's interior is a weight-based
+ * full-slot layout and the value-bar tape meters are SubcomposeLayout-backed
+ * (BoxWithConstraints), which throws on intrinsic measurement, so "natural
+ * content height" must be expressed as a compact design height instead. The
+ * compact band ([preferredHeightPx], ~[DYNAMIC_ENTITY_CARD_HEIGHT_DP] dp at
+ * the call site) is the same order of size the half-height peek deck proved
+ * usable for the full control surface (value bar, glyph, readout all keep
+ * working; they are built to fill whatever slot they get). Capped at the deck
+ * viewport ([bandHeightPx]) so a short window never produces an item taller
+ * than the band; with the cap the item can never overflow, so entity items
+ * need no internal scroll (deliberate: an extra vertical scrollable per card
+ * face would re-create the cross-axis gesture capture fixed in
+ * [DeckCardSurface]).
  */
-fun deckItemFillsViewport(item: DeckItem): Boolean = item is DeckItem.Entity
+fun dynamicEntityItemHeightPx(bandHeightPx: Int, preferredHeightPx: Int): Int =
+    preferredHeightPx.coerceAtMost(bandHeightPx).coerceAtLeast(0)
+
+/** Compact entity-card height for the DYNAMIC deck, see [dynamicEntityItemHeightPx]. */
+const val DYNAMIC_ENTITY_CARD_HEIGHT_DP = 220
+
+/**
+ * Bottom content padding (px) that lets the LAST dynamic-deck card reach the
+ * start-snap line at the viewport top.
+ *
+ * With start snapping the list stops scrolling when its content end meets the
+ * viewport bottom, so a last card shorter than the band could never put its
+ * start on the snap line and could never become the focused (wheel) target.
+ * Padding the end by exactly (band - last item height) raises the max scroll
+ * by exactly the missing amount: enough to snap the last card, never more, so
+ * no dead space beyond "last card at the line".
+ *
+ *  - [lastItemHeightPx] null = the last card has not been measured yet (it has
+ *    never been composed, or the deck's tail just changed). Zero padding: the
+ *    padding appears as the user approaches the end, never speculatively.
+ *  - A last card at least as tall as the band needs no help (returns 0).
+ *
+ * The caller must drop its cached measurement whenever the deck's last item
+ * changes identity; carrying a height measured for a DIFFERENT card was how
+ * a hidden/removed conditional card left a stale over-sized blank tail.
+ */
+fun dynamicEndReachPaddingPx(bandHeightPx: Int, lastItemHeightPx: Int?): Int {
+    if (lastItemHeightPx == null) return 0
+    return (bandHeightPx - lastItemHeightPx).coerceIn(0, bandHeightPx.coerceAtLeast(0))
+}
 
 /**
  * One visible item of the dynamic deck list, as (index, main-axis offset in px
