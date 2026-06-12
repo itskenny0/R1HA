@@ -36,6 +36,11 @@ internal fun cardEntityIcon(
  * The round accent-tinted icon disc shared by the tile / button / entity / glance
  * renderers. Centres a fixed-size [Icon] in a circle filled + outlined with the
  * card's [accent]. [showBorder] is dropped for the lighter glance/entity discs.
+ *
+ * [fillAlpha] / [iconTint] exist for press feedback: the button card animates
+ * the fill to a solid accent and flips the glyph dark while held, so the disc
+ * reads like a physical actuator lighting up. Defaults reproduce the resting
+ * look every other caller already has (18% wash, accent glyph).
  */
 @Composable
 internal fun CardIconDisc(
@@ -44,13 +49,15 @@ internal fun CardIconDisc(
     discSize: Dp,
     iconSize: Dp = 22.dp,
     showBorder: Boolean = true,
+    fillAlpha: Float = 0.18f,
+    iconTint: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .size(discSize)
             .clip(CircleShape)
-            .background(accent.copy(alpha = 0.18f))
+            .background(accent.copy(alpha = fillAlpha))
             .then(
                 if (showBorder) {
                     Modifier.border(1.dp, accent.copy(alpha = 0.4f), CircleShape)
@@ -63,7 +70,7 @@ internal fun CardIconDisc(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = accent,
+            tint = iconTint ?: accent,
             modifier = Modifier.size(iconSize),
         )
     }

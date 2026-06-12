@@ -2,6 +2,7 @@ package com.github.itskenny0.r1ha.feature.dashboards.cards
 
 import androidx.compose.ui.graphics.Color
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -13,8 +14,12 @@ import com.github.itskenny0.r1ha.core.theme.R1
  *     state-derived accent; an inactive / off entity stays neutral.
  *  3. With `state_color` off the button is neutral regardless of state.
  *
- * Pure (no Compose) so the precedence is unit-tested without a UI harness. The
- * neutral default matches HA's un-tinted button surface.
+ * One deliberate R1HA divergence: a bare ACTION button (no entity bound, e.g. a
+ * pinned IR-command button) takes the warm accent rather than HA's neutral. It
+ * has no state to be "off", so the neutral grey read as a disabled control on
+ * the near-black deck; the accent says "this fires something" at a glance.
+ *
+ * Pure (no Compose) so the precedence is unit-tested without a UI harness.
  */
 fun buttonAccent(
     color: String?,
@@ -23,7 +28,8 @@ fun buttonAccent(
     state: EntityState?,
 ): Color {
     haColorAccent(color)?.let { return it }
-    if (!stateColor || entityId == null || state == null) return R1.InkSoft
+    if (entityId == null) return R1.AccentWarm
+    if (!stateColor || state == null) return R1.InkSoft
     // An unavailable entity always reads red (a fault the user should see),
     // regardless of the neutral default, so defer to the state accent for it.
     if (!state.isAvailable) return stateAccentFor(entityId, state)
@@ -54,4 +60,36 @@ internal fun iconHeightDp(raw: String?): Float? {
     } ?: return null
     if (px <= 0f) return null
     return px.coerceIn(16f, 96f)
+}
+
+/**
+ * The all-caps micro affordance verb a button card prints under its label
+ * ("TAP TO SEND" etc.), derived from the RESOLVED primary tap action. This is
+ * what makes the face read as a pressable control rather than a passive
+ * readout; the verb stays generic per action shape (no card-type or
+ * integration sniffing) so one rule covers IR buttons, scripts, scenes and
+ * navigation alike. `remote.send_command` is the one service called out by
+ * name: "send" is the fire-and-forget semantic every remote/IR button shares.
+ *
+ * Null (no hint line) when the surface is inert: no tap action, an explicit
+ * `none`, or an action we already know we cannot fire.
+ *
+ * Pure (no Compose) so the verb table is unit-tested directly.
+ */
+fun buttonTapHint(action: LovelaceAction?): String? = when (action) {
+    null -> null
+    is LovelaceAction.CallService -> when {
+        action.service == "remote.send_command" -> "TAP TO SEND"
+        action.service.endsWith(".press") -> "TAP TO PRESS"
+        action.service.endsWith(".toggle") -> "TAP TO TOGGLE"
+        else -> "TAP TO RUN"
+    }
+    is LovelaceAction.Navigate, is LovelaceAction.Url -> "TAP TO OPEN"
+    is LovelaceAction.Builtin -> when (action.name) {
+        "toggle" -> "TAP TO TOGGLE"
+        "more-info" -> "TAP FOR INFO"
+        "assist" -> "TAP TO ASK"
+        else -> null
+    }
+    is LovelaceAction.Invalid -> null
 }

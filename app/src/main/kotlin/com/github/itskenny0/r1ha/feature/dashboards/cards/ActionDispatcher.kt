@@ -119,18 +119,24 @@ fun isConfirmationExempt(confirmation: ActionConfirmation, currentUserId: String
  *
  * No-op (returns the receiver unchanged) when [actions] has nothing bound, so a
  * non-interactive card surface stays a plain box with no spurious click target.
+ *
+ * [interactionSource] lets a card share the press stream this modifier drives
+ * its dip from, so face chrome (the button card's accent flash) can animate in
+ * lockstep with the dip instead of duplicating gesture wiring. Null (every
+ * pre-existing caller) keeps a private source, exactly as before.
  */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.r1CardActions(
     actions: CardActions,
     onAction: (LovelaceAction) -> Unit,
     contentDescription: String? = null,
+    interactionSource: MutableInteractionSource? = null,
 ): Modifier = composed {
     if (actions.tap == null && actions.hold == null && actions.doubleTap == null) {
         return@composed this
     }
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.97f else 1f,
         animationSpec = spring(
@@ -156,7 +162,7 @@ fun Modifier.r1CardActions(
             this.alpha = alpha
         }
         .combinedClickable(
-            interactionSource = interactionSource,
+            interactionSource = source,
             indication = null,
             onClick = {
                 // A surface with only hold / double-tap (no tap) still needs a
