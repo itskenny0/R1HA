@@ -103,12 +103,17 @@ object PragmaticHybridTheme : R1Theme {
         // always-portrait R1 render byte-for-byte unchanged.
         val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
         val compact = window.isLandscape && window.heightDp in 1..479
+        // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card
+        // sizes to its content instead of filling the slot, so every
+        // fill-height element here switches to a natural height. Fill mode is
+        // the unchanged historical layout.
+        val fillSlot = LocalCardFillSlot.current
 
         CardValueBarScaffold(
             model = model,
             accent = accent,
             outer = modifier
-                .fillMaxSize()
+                .then(if (fillSlot) Modifier.fillMaxSize() else Modifier)
                 .background(R1.Bg)
                 .padding(
                     start = 22.dp,
@@ -118,7 +123,9 @@ object PragmaticHybridTheme : R1Theme {
                 ),
         ) {
             // ── Main content column ─────────────────────────────────────────────────
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+            ) {
                 DomainHeader(
                     domainLabel = domainLabel(model.domainGlyph),
                     area = model.area,
@@ -352,7 +359,10 @@ object PragmaticHybridTheme : R1Theme {
                         accent = accent,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                // Fill mode floats the pill to the slot bottom; wrap mode uses
+                // a fixed gap (a weighted spacer in a wrap-height column would
+                // re-inflate the card to the cap, defeating content sizing).
+                if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(12.dp))
                 if (ui.showOnOffPill) OnOffPill(isOn = model.isOn, accent = accent)
             }
         }
@@ -434,20 +444,48 @@ internal fun CardValueBarScaffold(
 ) {
     val entityId = com.github.itskenny0.r1ha.core.ha.EntityId(model.entityIdText)
     val rainbow = model.lightWheelMode == com.github.itskenny0.r1ha.core.ha.LightWheelMode.HUE
+    // Fill mode (true, every full-slot surface) keeps the historical layout:
+    // the vertical meter and the content box fill the slot height. Wrap mode
+    // (false, the DYNAMIC deck's content-height cards) must never rely on a
+    // bounded slot: the content box drops its fill-height so it wraps to the
+    // body column's natural height, and the vertical meter, which cannot wrap
+    // (BoxWithConstraints-backed, throws on intrinsic measurement), takes the
+    // concrete DYNAMIC_VALUE_BAR_HEIGHT_DP band instead. The card's height
+    // then resolves to max(meter band, body) with no intrinsic query anywhere.
+    val fillSlot = LocalCardFillSlot.current
+    val verticalMeter: @Composable () -> Unit = {
+        VerticalTapeMeter(
+            entityId = entityId,
+            percent = model.percent,
+            accent = accent,
+            tickLabels = model.meterLabels,
+            rainbow = rainbow,
+            tickLabelColor = tickLabelColor,
+            trackColor = trackColor,
+        )
+    }
+    val boundedVerticalMeter: @Composable () -> Unit = {
+        if (fillSlot) {
+            verticalMeter()
+        } else {
+            Box(
+                modifier = Modifier.height(
+                    com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP.dp,
+                ),
+            ) {
+                verticalMeter()
+            }
+        }
+    }
     when (model.valueBarLocation) {
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT -> {
             Row(modifier = outer) {
-                VerticalTapeMeter(
-                    entityId = entityId,
-                    percent = model.percent,
-                    accent = accent,
-                    tickLabels = model.meterLabels,
-                    rainbow = rainbow,
-                    tickLabelColor = tickLabelColor,
-                    trackColor = trackColor,
-                )
+                boundedVerticalMeter()
                 Spacer(Modifier.width(20.dp))
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(
+                    modifier = Modifier.weight(1f)
+                        .then(if (fillSlot) Modifier.fillMaxHeight() else Modifier),
+                ) {
                     content()
                     CardMoreInfoButton(entityId)
                 }
@@ -455,20 +493,15 @@ internal fun CardValueBarScaffold(
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT -> {
             Row(modifier = outer) {
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(
+                    modifier = Modifier.weight(1f)
+                        .then(if (fillSlot) Modifier.fillMaxHeight() else Modifier),
+                ) {
                     content()
                     CardMoreInfoButton(entityId)
                 }
                 Spacer(Modifier.width(20.dp))
-                VerticalTapeMeter(
-                    entityId = entityId,
-                    percent = model.percent,
-                    accent = accent,
-                    tickLabels = model.meterLabels,
-                    rainbow = rainbow,
-                    tickLabelColor = tickLabelColor,
-                    trackColor = trackColor,
-                )
+                boundedVerticalMeter()
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP -> {
@@ -483,7 +516,13 @@ internal fun CardValueBarScaffold(
                     trackColor = trackColor,
                 )
                 Spacer(Modifier.height(14.dp))
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                // Wrap mode drops the height weight: a weighted child of a
+                // wrap-height column would claim the whole bounded cap (or
+                // measure degenerate under an unbounded one).
+                Box(
+                    modifier = (if (fillSlot) Modifier.weight(1f) else Modifier)
+                        .fillMaxWidth(),
+                ) {
                     content()
                     CardMoreInfoButton(entityId)
                 }
@@ -491,7 +530,10 @@ internal fun CardValueBarScaffold(
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.BOTTOM -> {
             Column(modifier = outer) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    modifier = (if (fillSlot) Modifier.weight(1f) else Modifier)
+                        .fillMaxWidth(),
+                ) {
                     content()
                     CardMoreInfoButton(entityId)
                 }
@@ -509,7 +551,9 @@ internal fun CardValueBarScaffold(
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.HIDDEN -> {
             Box(modifier = outer) {
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+                ) {
                     content()
                     CardMoreInfoButton(entityId)
                 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -74,11 +75,15 @@ object MinimalDarkTheme : R1Theme {
         // compact mode in PragmaticHybridTheme.
         val window = com.github.itskenny0.r1ha.ui.components.LocalWindowTier.current
         val compact = window.isLandscape && window.heightDp in 1..479
+        // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card
+        // sizes to its content, so every fill-height element switches to a
+        // natural height. Fill mode is the unchanged historical layout.
+        val fillSlot = LocalCardFillSlot.current
         CardValueBarScaffold(
             model = model,
             accent = accent,
             outer = modifier
-                .fillMaxSize()
+                .then(if (fillSlot) Modifier.fillMaxSize() else Modifier)
                 .background(Color.Black)
                 .padding(
                     start = 22.dp,
@@ -87,7 +92,9 @@ object MinimalDarkTheme : R1Theme {
                     end = 18.dp,
                 ),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+            ) {
                 // Header — monochrome tag instead of the accent dash.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (model.showIcon) {
@@ -285,7 +292,10 @@ object MinimalDarkTheme : R1Theme {
                         accent = accent,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                // Fill mode floats the status line to the slot bottom; wrap
+                // mode uses a fixed gap (a weighted spacer in a wrap-height
+                // column would re-inflate the card to the cap).
+                if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(12.dp))
                 if (ui.showOnOffPill) {
                     // Minimal pill — text-only, no background fill. Reads like a status
                     // line rather than a control.

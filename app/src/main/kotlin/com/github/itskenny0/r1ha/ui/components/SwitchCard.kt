@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
+import com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot
 import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
 
@@ -57,9 +58,13 @@ fun SwitchCard(
     // backdrop, the classic R1 greys everywhere else). The backdrop itself is painted
     // by the wrapper too, so the card stays theme-agnostic.
     val ink = LocalCardInk.current
+    // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card sizes
+    // to its content so every control stays visible; fill mode keeps the
+    // historical full-slot layout.
+    val fillSlot = LocalCardFillSlot.current
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .padding(horizontal = 22.dp, vertical = 18.dp),
     ) {
         // ── Header ─────────────────────────────────────────────────────────────────
@@ -267,7 +272,10 @@ fun SwitchCard(
             MediaExtrasPanel(state = state, accent = accent, modifier = Modifier.padding(top = 8.dp))
         }
 
-        Spacer(Modifier.weight(1f))
+        // Fill mode only: absorb the leftover slot height. A weighted spacer
+        // in a wrap-height column would re-inflate the card to the cap,
+        // defeating content sizing.
+        if (fillSlot) Spacer(Modifier.weight(1f))
     }
 }
 

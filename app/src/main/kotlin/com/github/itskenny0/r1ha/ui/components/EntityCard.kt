@@ -49,11 +49,15 @@ fun EntityCard(
      * When true (every pre-existing caller, including the FULLSCREEN deck) the card
      * claims the full height of its slot, the historical full-screen-control-surface
      * layout. False is the DYNAMIC deck's content-height path: the internal
-     * fillMaxSize chain is relaxed to fillMaxWidth so the card lays out at whatever
-     * height its interior resolves to under the caller's height cap. (True intrinsic
-     * wrapping is not possible here: the card variants are weight-based full-slot
-     * layouts and the value-bar tape meters are SubcomposeLayout-backed, which throws
-     * on intrinsic measurement, so the dynamic deck supplies a compact cap instead.)
+     * fillMaxSize chain relaxes to fillMaxWidth and the value is forwarded through
+     * [com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot] so the theme card
+     * bodies, the value-bar scaffold and the aux variants switch their fill-height
+     * elements to natural heights, with the tape meter taking the concrete
+     * [com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP] band.
+     * (True intrinsic wrapping is not possible here: the value-bar tape meters are
+     * SubcomposeLayout-backed, which throws on intrinsic measurement; concrete
+     * heights sidestep the query entirely, so the card wraps to the sum of its
+     * children and every control stays visible.)
      */
     fillSlot: Boolean = true,
 ) {
@@ -274,6 +278,9 @@ fun EntityCard(
         com.github.itskenny0.r1ha.core.theme.LocalUiOptions provides mergedUi,
         com.github.itskenny0.r1ha.core.theme.LocalCardInk provides
             (auxStyle?.ink ?: com.github.itskenny0.r1ha.core.theme.DefaultCardInk),
+        // Wrap-vs-fill mode for everything below (theme card bodies, the
+        // value-bar scaffold, the aux variants); see the fillSlot KDoc.
+        com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot provides fillSlot,
     ) {
     Box(modifier = modifier.then(tapModifier)) {
         // Dim slightly when unavailable, but keep the friendly name legible — the previous

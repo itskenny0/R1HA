@@ -158,19 +158,23 @@ class DeckItemsTest {
 
     // ── deckCardHeaderTitle: the deck slot's identity header ────────────────
 
-    private fun header(blob: String): String? =
+    private fun header(blob: String): String =
         deckCardHeaderTitle(parsePinnedCards(listOf(blob)).single())
 
-    @Test fun `self-titled cards get no header`() {
-        // The renderers surface explicit title / name / heading on the card
-        // face themselves; a deck header would double-label them.
-        assertThat(header("""{"type":"entities","title":"Office","entities":[]}""")).isNull()
-        assertThat(header("""{"type":"button","name":"All off","entity":"switch.a"}""")).isNull()
-        assertThat(header("""{"type":"heading","heading":"Upstairs"}""")).isNull()
+    @Test fun `self-titled cards keep their explicit title as the header`() {
+        // The header is always on: button cards (IR remotes) always carry
+        // `name`, and suppressing self-naming configs left them with no
+        // identity line at all in the deck.
+        assertThat(header("""{"type":"entities","title":"Office","entities":[]}"""))
+            .isEqualTo("Office")
+        assertThat(header("""{"type":"button","name":"All off","entity":"switch.a"}"""))
+            .isEqualTo("All off")
+        assertThat(header("""{"type":"heading","heading":"Upstairs"}"""))
+            .isEqualTo("Upstairs")
     }
 
-    @Test fun `markdown faces are their own title`() {
-        assertThat(header("""{"type":"markdown","content":"# Hello\nbody"}""")).isNull()
+    @Test fun `markdown faces head with their first content line`() {
+        assertThat(header("""{"type":"markdown","content":"# Hello\nbody"}""")).isEqualTo("Hello")
     }
 
     @Test fun `untitled faces get the jump sheet's derived title`() {
@@ -181,9 +185,14 @@ class DeckItemsTest {
         assertThat(header("""{"type":"entities","entities":[]}""")).isEqualTo("ENTITIES")
     }
 
-    @Test fun `header equals the jump sheet title whenever it shows`() {
-        val blob = """{"type":"gauge","entity":"sensor.cpu"}"""
-        val card = parsePinnedCards(listOf(blob)).single()
-        assertThat(deckCardHeaderTitle(card)).isEqualTo(deckCardTitle(card))
+    @Test fun `header always equals the jump sheet title`() {
+        for (blob in listOf(
+            """{"type":"gauge","entity":"sensor.cpu"}""",
+            """{"type":"button","name":"AC power","entity":"switch.ir_ac"}""",
+            """{"type":"entities","title":"Office","entities":[]}""",
+        )) {
+            val card = parsePinnedCards(listOf(blob)).single()
+            assertThat(deckCardHeaderTitle(card)).isEqualTo(deckCardTitle(card))
+        }
     }
 }

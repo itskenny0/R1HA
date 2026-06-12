@@ -68,6 +68,25 @@ val LocalUiOptions = compositionLocalOf { UiOptions() }
 val LocalCardInk = staticCompositionLocalOf { DefaultCardInk }
 
 /**
+ * Whether the entity card fills its slot's full height (true, the historical
+ * full-screen control surface every pre-existing caller gets) or wraps to its
+ * content height (false, the DYNAMIC deck's flowing layout). Provided by the
+ * EntityCard wrapper from its fillSlot parameter so the theme card bodies, the
+ * value-bar scaffold and the aux variants (sensor / select / action / switch)
+ * all agree on the mode without threading a parameter through every layer.
+ *
+ * In wrap mode every previously fill-height element must resolve to a natural
+ * or concrete height: intrinsic measurement is NOT an option (the tape meters
+ * are BoxWithConstraints/SubcomposeLayout-backed, which throws on intrinsics),
+ * so the vertical meter takes the fixed
+ * [com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP]
+ * band and the card's total height becomes the plain sum of its children.
+ * Static is fine — the value is constant per deck layout and only changes when
+ * the providing call site itself recomposes with a different deck.
+ */
+val LocalCardFillSlot = staticCompositionLocalOf { true }
+
+/**
  * Repository handle injected near the top of each screen that needs it (CardStackScreen,
  * FavoritesPickerScreen) so deep composables — [com.github.itskenny0.r1ha.ui.components.SensorCard]
  * especially — can fetch history without every wrapper threading the repository through

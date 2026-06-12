@@ -180,11 +180,15 @@ object ColorfulCardsTheme : R1Theme {
             ValueBarLocation.LEFT -> leftEdgeScrim
             else -> null
         }
+        // Wrap mode (the DYNAMIC deck, LocalCardFillSlot = false): the card
+        // sizes to its content, so every fill-height element switches to a
+        // natural height. Fill mode is the unchanged historical layout.
+        val fillSlot = LocalCardFillSlot.current
         CardValueBarScaffold(
             model = model,
             accent = accent,
             outer = modifier
-                .fillMaxSize()
+                .then(if (fillSlot) Modifier.fillMaxSize() else Modifier)
                 .background(bgBrush)
                 .background(topScrim)
                 .let { m -> if (edgeScrim != null) m.background(edgeScrim) else m }
@@ -205,7 +209,9 @@ object ColorfulCardsTheme : R1Theme {
             // competing with the solid white fill.
             trackColor = Color.White.copy(alpha = 0.25f),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (model.showIcon) {
                         // The gradient background needs a high-contrast tint, so
@@ -440,7 +446,10 @@ object ColorfulCardsTheme : R1Theme {
                         accent = accent,
                     )
                 }
-                Spacer(Modifier.weight(1f))
+                // Fill mode floats the pill to the slot bottom; wrap mode uses
+                // a fixed gap (a weighted spacer in a wrap-height column would
+                // re-inflate the card to the cap).
+                if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(12.dp))
                 if (ui.showOnOffPill) {
                     // Stateful pill — parity with PragmaticHybridTheme's OnOffPill,
                     // which fills with the accent when on. The previous version drew
