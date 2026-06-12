@@ -238,6 +238,15 @@ interface HaRepository {
     ): Result<Unit>
 
     /**
+     * DELETE `/api/config/automation/config/<id>`: remove a UI-managed
+     * automation from HA's automation store. HA reloads automations on
+     * delete, so the entity disappears without an explicit reload.
+     * Backs the Broadlink catalog's delete path (each learned command is
+     * an R1HA-tagged automation). Requires an admin user.
+     */
+    suspend fun deleteAutomationConfig(automationId: String): Result<Unit>
+
+    /**
      * Fetch a weather entity's forecast via the response-only
      * `weather.get_forecasts` service. Modern HA integrations (2024.x+)
      * dropped the legacy `forecast` state attribute and expose forecasts
