@@ -2986,7 +2986,10 @@ private fun TabStrip(
                         style = R1.labelMicro,
                         color = if (active) R1.Bg else R1.InkSoft,
                     )
-                    if (page.favorites.isNotEmpty()) {
+                    // Count the whole deck, favourites AND pinned Lovelace cards,
+                    // so a Lovelace-only page reads "· 10" instead of "· 0".
+                    val deckCount = page.favorites.size + page.pinnedCards.size
+                    if (deckCount > 0) {
                         Spacer(Modifier.width(5.dp))
                         Text(
                             text = "·",
@@ -2996,7 +2999,7 @@ private fun TabStrip(
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            text = page.favorites.size.toString(),
+                            text = deckCount.toString(),
                             style = R1.labelMicro,
                             color = if (active) R1.Bg.copy(alpha = 0.85f)
                                 else R1.InkMuted,

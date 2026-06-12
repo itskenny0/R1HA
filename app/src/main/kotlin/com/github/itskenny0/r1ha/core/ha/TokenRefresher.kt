@@ -33,6 +33,33 @@ import okhttp3.Request
  */
 const val HA_OAUTH_CLIENT_ID = "https://itskenny0.github.io/R1HA/"
 
+/** How a refresh attempt failed, which decides whether the user hears about it. */
+internal enum class RefreshFailureKind {
+    /** Network unreachable / DNS down / server 5xx / timeout: self-healing, the
+     *  connection chrome already shows offline, so it stays silent and triggers
+     *  a short network-backoff. */
+    TRANSIENT,
+
+    /** HA rejected the grant (4xx from /auth/token): the refresh token is dead
+     *  and will NOT recover by waiting, so the user must re-authenticate. */
+    AUTH,
+}
+
+/** Thrown for a 4xx from the token endpoint so the catch can tell a dead refresh
+ *  token apart from a network blip. */
+internal class AuthRejectedException(val code: Int, message: String) : Exception(message)
+
+/** A 4xx from /auth/token means the grant itself was refused (bad / revoked
+ *  refresh token, wrong client_id). 5xx is a server hiccup, retry-worthy, so it
+ *  is NOT an auth rejection. */
+internal fun isAuthRejectionCode(code: Int): Boolean = code in 400..499
+
+/** Classify a refresh throwable. Only an explicit [AuthRejectedException] is a
+ *  real auth failure; everything else (UnknownHostException, connect/timeout,
+ *  empty body, parse error, server 5xx) is transient and self-healing. */
+internal fun classifyRefreshFailure(t: Throwable): RefreshFailureKind =
+    if (t is AuthRejectedException) RefreshFailureKind.AUTH else RefreshFailureKind.TRANSIENT
+
 class TokenRefresher(
     private val http: OkHttpClient,
     private val settings: SettingsRepository,
@@ -59,11 +86,23 @@ class TokenRefresher(
     // circuits without making a redundant network round-trip.
     private val refreshMutex = Mutex()
 
+    // Network-failure backoff. After a TRANSIENT failure, hold off re-POSTing to
+    // /auth/token until this monotone deadline, so a sustained outage (DNS down,
+    // server unreachable for tens of minutes) doesn't fire one refresh request
+    // per caller per heartbeat. The mutex already coalesces CONCURRENT callers;
+    // this coalesces SEQUENTIAL ones across the outage. A success or an AUTH
+    // failure clears it (waiting won't revive a dead refresh token). Volatile:
+    // read on the hot ensureFresh path without taking the lock first.
+    @Volatile private var transientCooldownUntilMs: Long = 0L
+    // Rate-limit the user-facing auth toast so even a fast reconnect loop hitting
+    // a genuinely dead token shows the sign-out prompt occasionally, not per try.
+    @Volatile private var lastAuthToastAtMs: Long = 0L
+
     /**
      * If the stored access token is within [skewMillis] of expiry, exchange the refresh token
      * for a new access token and persist it. Returns true if the token is now valid (either
-     * already-valid or freshly refreshed); false if there is no token, no server URL, or the
-     * refresh attempt failed.
+     * already-valid or freshly refreshed); false if there is no token, no server URL, the
+     * refresh attempt failed, or we are inside the post-failure network backoff.
      */
     suspend fun ensureFresh(skewMillis: Long = 60_000L): Boolean {
         val current = tokens.load() ?: return false
@@ -80,16 +119,20 @@ class TokenRefresher(
             val latest = tokens.load() ?: return@withLock false
             if (latest.refreshToken.isBlank()) return@withLock true
             if (latest.expiresAtMillis > System.currentTimeMillis() + skewMillis) return@withLock true
+            if (System.currentTimeMillis() < transientCooldownUntilMs) return@withLock false
             refresh(latest)
         }
     }
 
-    /** Force a refresh regardless of remaining lifetime. Used after [ConnectionState.AuthLost]. */
+    /** Force a refresh regardless of remaining lifetime. Used after [ConnectionState.AuthLost].
+     *  Still respects the transient network backoff: an AuthLost during a DNS outage shouldn't
+     *  hammer /auth/token any harder than the heartbeat path does. */
     suspend fun forceRefresh(): Boolean = refreshMutex.withLock {
         val current = tokens.load() ?: return@withLock false
         // LLAT path: there's nothing to refresh. Return false so callers
         // surface "sign out & reconnect" toasts rather than silently looping.
         if (current.refreshToken.isBlank()) return@withLock false
+        if (System.currentTimeMillis() < transientCooldownUntilMs) return@withLock false
         refresh(current)
     }
 
@@ -107,7 +150,13 @@ class TokenRefresher(
                 .build()
             val resp = http.newCall(req).execute().use { r ->
                 val bodyStr = r.body?.string() ?: error("Empty refresh response")
-                if (!r.isSuccessful) error("HTTP ${r.code}: $bodyStr")
+                if (!r.isSuccessful) {
+                    // 4xx = the grant was refused (dead/revoked refresh token);
+                    // 5xx falls through to the generic error() and is treated as
+                    // transient (server hiccup, retry-worthy).
+                    if (isAuthRejectionCode(r.code)) throw AuthRejectedException(r.code, bodyStr)
+                    error("HTTP ${r.code}: $bodyStr")
+                }
                 json.decodeFromString<RefreshResponse>(bodyStr)
             }
             val expiresAt = System.currentTimeMillis() + resp.expires_in * 1_000L
@@ -119,6 +168,8 @@ class TokenRefresher(
                     expiresAtMillis = expiresAt,
                 )
             )
+            // A success clears any standing network backoff.
+            transientCooldownUntilMs = 0L
             R1Log.i("TokenRefresher", "refreshed; new expiry in ${resp.expires_in}s")
             // Success route — routed through the level-gated R1Toast.push at INFO
             // so it only surfaces when the user has set the diagnostic toast
@@ -133,12 +184,38 @@ class TokenRefresher(
             )
             true
         } catch (t: Throwable) {
-            R1Log.e("TokenRefresher", "refresh failed", t)
-            // Failure path still goes through Toaster.show (which is now the
-            // force-show user-facing route) — a failed refresh is something the
-            // user needs to know about because the next HA call may 401.
-            Toaster.error("Couldn't refresh session: ${t.message ?: "error"}. Sign out & reconnect")
+            when (classifyRefreshFailure(t)) {
+                RefreshFailureKind.AUTH -> {
+                    // The refresh token is genuinely dead; waiting won't fix it,
+                    // so DON'T set the backoff (callers should be free to retry
+                    // the moment the user re-auths). Surface the sign-out prompt,
+                    // rate-limited so a reconnect loop doesn't stack toasts.
+                    R1Log.e("TokenRefresher", "refresh rejected by HA (auth)", t)
+                    val now = System.currentTimeMillis()
+                    if (now - lastAuthToastAtMs >= AUTH_TOAST_MIN_INTERVAL_MS) {
+                        lastAuthToastAtMs = now
+                        Toaster.error("Session expired. Sign out and reconnect.")
+                    }
+                }
+                RefreshFailureKind.TRANSIENT -> {
+                    // Network unreachable / DNS down / server 5xx: self-healing.
+                    // Stay SILENT (the connection chrome already shows offline; a
+                    // per-failure toast spammed the user 30+ times during one DNS
+                    // outage) and arm the backoff so we stop re-POSTing per caller
+                    // until the cooldown elapses.
+                    R1Log.w("TokenRefresher", "refresh failed (transient): ${t.message}")
+                    transientCooldownUntilMs = System.currentTimeMillis() + TRANSIENT_COOLDOWN_MS
+                }
+            }
             false
         }
+    }
+
+    companion object {
+        /** Hold off re-POSTing /auth/token for this long after a transient failure. */
+        internal const val TRANSIENT_COOLDOWN_MS = 30_000L
+
+        /** Minimum spacing between user-facing "session expired" toasts. */
+        internal const val AUTH_TOAST_MIN_INTERVAL_MS = 5 * 60_000L
     }
 }
