@@ -242,11 +242,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.androidx.test.core)
-    // Robolectric-hosted Compose layout tests (deck card surface sizing): the
-    // same ui-test-junit4 artifact the androidTest suite uses, but on the local
-    // JVM so the measure-pass assertions run in the normal unit-test gate.
-    testImplementation(platform(libs.compose.bom))
-    testImplementation(libs.compose.ui.test.junit4)
     testRuntimeOnly(libs.junit.vintage)
 
     androidTestImplementation(platform(libs.compose.bom))
