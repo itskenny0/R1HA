@@ -201,10 +201,11 @@ internal fun LovelaceDeckCard(
  *    beyond what nested scroll hands to the pager).
  *
  * The surface paints the plain near-black [R1.Bg]: invisible against the
- * page background, but it keeps the layer opaque so [surfaceModifier]'s
- * shadow doesn't bleed through the gaps a stack card leaves between its
- * children. No padding: the card's own chrome is the visible panel and any
- * deck-side inset would re-introduce the full-width frame this fixes.
+ * page background, but it keeps the layer opaque so the shadow [modifier]
+ * the caller supplies doesn't bleed through the gaps a stack card leaves
+ * between its children. No padding: the card's own chrome is the visible
+ * panel and any deck-side inset would re-introduce the full-width frame
+ * this fixes.
  *
  * Iframe slots pass [scrollable] = false: the WebView owns vertical drags
  * inside its bounds and a second scroll consumer around a fixed-aspect box
