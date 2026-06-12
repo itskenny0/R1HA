@@ -2458,7 +2458,11 @@ private fun PageDeck(
                     // card wears the rounded clip + fading shadow at its
                     // wrapped size. Keeping the shadow on the full-size slot
                     // would draw a full-page shadow rectangle around a short
-                    // card's small panel.
+                    // card's small panel. The surface clips at R1.ShapeM (the
+                    // radius the card renderers' own chrome uses), not the
+                    // entity cards' 14dp cardShape: the surface hugs the card
+                    // chrome exactly, and a larger radius would shave the
+                    // corners off the card's own border.
                     LovelaceDeckCard(
                         item = item,
                         hooks = lovelaceHooks,
@@ -2487,7 +2491,7 @@ private fun PageDeck(
                             )
                             val abs = kotlin.math.abs(pageOffset)
                             shadowElevation = (24.dp.toPx() * (1f - abs).coerceIn(0f, 1f))
-                            shape = cardShape
+                            shape = R1.ShapeM
                             clip = true
                         },
                     )

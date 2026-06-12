@@ -62,11 +62,17 @@ fun ButtonCard(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // HA's button card is icon-forward: a large glyph disc tops the surface.
-        // We honour `show_icon` and only show a glyph when we can derive one
-        // (an entity-bound button); a bare action button without an entity skips
-        // the disc rather than drawing a meaningless placeholder.
-        if (card.showIcon && card.entityId != null) {
-            val icon = cardEntityIcon(card.entityId, state, card.icon)
+        // We honour `show_icon` and show a glyph when we can derive one: from
+        // the bound entity (with the config icon as override), or for a bare
+        // action button (no entity, e.g. a pinned IR-command button) from the
+        // config `icon:` alone. Only an unresolvable / absent icon skips the
+        // disc, rather than drawing a meaningless placeholder.
+        val icon = when {
+            !card.showIcon -> null
+            card.entityId != null -> cardEntityIcon(card.entityId, state, card.icon)
+            else -> com.github.itskenny0.r1ha.ui.icons.R1Icons.forMdi(card.icon)
+        }
+        if (icon != null) {
             // HA's `icon_height` sizes the glyph; the disc and inner glyph scale
             // together so a taller icon reads proportionally on the small screen.
             CardIconDisc(icon = icon, accent = accent, discSize = discSize, iconSize = discSize * 0.5f)
