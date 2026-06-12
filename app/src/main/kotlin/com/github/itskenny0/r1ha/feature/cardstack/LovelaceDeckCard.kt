@@ -149,27 +149,25 @@ internal fun LovelaceDeckCard(
             scrollable = !isIframe,
             modifier = surfaceModifier,
         ) {
-            // Identity header for faces that don't name themselves: the SAME
-            // derived title the jump sheet shows for this slot (displayName ->
-            // deckCardTitle on the stored card), so the stack and the pip's
-            // jump list agree on what each card is called. Suppressed whenever
-            // the card's own rendering already surfaces a heading (explicit
-            // title / name / heading config, or markdown content), so titled
-            // cards are never double-labelled; see [deckCardHeaderTitle].
-            // Deliberately a bare micro text line, not a chip or framed band:
-            // the heavier per-card type chip was tried and rejected.
-            deckCardHeaderTitle(item.card)?.let { headerTitle ->
-                Text(
-                    text = headerTitle,
-                    style = R1.labelMicro,
-                    color = R1.InkMuted,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp),
-                )
-            }
+            // Identity header above EVERY face: the SAME derived title the
+            // jump sheet shows for this slot (displayName -> deckCardTitle on
+            // the stored card), so the stack and the pip's jump list agree on
+            // what each card is called. Always on; suppressing it for
+            // self-naming configs left button cards (IR remotes always carry
+            // `name`) and titled Lovelace cards with no visible identity line
+            // in the deck; see [deckCardHeaderTitle]. Deliberately a bare
+            // micro text line, not a chip or framed band: the heavier
+            // per-card type chip was tried and rejected.
+            Text(
+                text = deckCardHeaderTitle(item.card),
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp),
+            )
             LovelaceCardRenderer(
                 card = content,
                 stateMap = states.sliceFor(content),

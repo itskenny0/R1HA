@@ -79,31 +79,22 @@ fun deckCardTitle(card: LovelaceCard): String {
 }
 
 /**
- * The identity header a DECK SLOT paints above a Lovelace card's face, or null
- * when the face already names itself. The string is always [deckCardTitle],
- * the exact title the jump sheet derives for the slot, so the stack and the
- * pip's jump list agree on what a card is called. Null cases are the configs
- * whose renderers already surface the same heading on the card body:
+ * The identity header a DECK SLOT paints above a Lovelace card's face. Always
+ * [deckCardTitle], the exact title the jump sheet derives for the slot, so the
+ * stack and the pip's jump list agree on what a card is called.
  *
- *  - explicit `title` / `name` / `heading` (CardSurface titles, the entities
- *    card's header rows, button/light/tile name lines all render these);
- *  - markdown-style `content`, where the derived title is the content's first
- *    line and the face IS the content.
- *
- * The fallback-derived titles (bound entity id, iframe url, bare card type)
- * DO show: those faces carry no heading of their own, which is exactly the
- * "which card is this?" gap the user hit.
+ * Deliberately NOT suppressed for self-naming configs: an earlier revision
+ * returned null when the card carried an explicit `title` / `name` / `heading`
+ * (or markdown `content`) on the theory that the face's own heading made a
+ * deck header redundant, but that hid the header on exactly the cards users
+ * most wanted one on. Button cards (the IR-remote staple) ALWAYS carry `name`,
+ * so they never got an identity line, and titled cards whose renderer draws
+ * the title small or low read as untitled in the flowing deck. A consistent
+ * always-on header wins; the worst case (a card repeating its own title in
+ * micro type above its face) matches how entity cards pair a small header
+ * label with the big face content.
  */
-fun deckCardHeaderTitle(card: LovelaceCard): String? {
-    for (key in listOf("title", "name", "heading")) {
-        val v = (card.raw[key] as? JsonPrimitive)?.content
-        if (!v.isNullOrBlank()) return null
-    }
-    (card.raw["content"] as? JsonPrimitive)?.content
-        ?.lineSequence()?.firstOrNull { it.isNotBlank() }
-        ?.let { return null }
-    return deckCardTitle(card)
-}
+fun deckCardHeaderTitle(card: LovelaceCard): String = deckCardTitle(card)
 
 /**
  * Parse stored pinned-card JSON blobs into renderable cards. Unparseable
