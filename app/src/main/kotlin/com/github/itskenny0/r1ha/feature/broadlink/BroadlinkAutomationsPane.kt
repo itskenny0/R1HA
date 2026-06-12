@@ -109,6 +109,11 @@ private fun AutomationList(
     var broadlinkOnly by remember { mutableStateOf(true) }
     var query by remember { mutableStateOf("") }
     var pinTarget by remember { mutableStateOf<BroadlinkViewModel.AutomationRow?>(null) }
+    // Pin flow step 2: the row + page picked, structured editor open on the
+    // generated trigger-button card before it lands on the deck.
+    var pinEditor by remember {
+        mutableStateOf<Pair<BroadlinkViewModel.AutomationRow, PendingPin>?>(null)
+    }
     val knownRemotes = remember(ui.remotes) { ui.remotes.map { it.entityId }.toSet() }
     val rows = remember(ui.automations, broadlinkOnly, query, knownRemotes) {
         ui.automations
@@ -130,7 +135,9 @@ private fun AutomationList(
         wheelInput = wheelInput,
         listState = listState,
         settings = settings,
-        enabled = pinTarget == null,
+        // The page picker and the pin editor both float above the list; the
+        // wheel should drive them (or nothing), not the list behind.
+        enabled = pinTarget == null && pinEditor == null,
     )
     R1TopBar(
         title = "IR AUTOMATIONS",
@@ -230,10 +237,28 @@ private fun AutomationList(
         PagePickerDialog(
             pages = appSettings.pages,
             onPick = { pageId ->
-                vm.pinAutomationToPage(pageId, target.entityId, target.name)
+                // Page picked: open the structured editor on the generated
+                // trigger-button card instead of pinning it sight unseen.
+                pinEditor = target to PendingPin(
+                    pageId = pageId,
+                    seedRaw = vm.automationCardJson(target.entityId, target.name),
+                )
                 pinTarget = null
             },
             onDismiss = { pinTarget = null },
+        )
+    }
+    val pinning = pinEditor
+    if (pinning != null) {
+        val (row, pin) = pinning
+        PinCardEditorDialog(
+            haRepository = vm.repositoryForEditor,
+            pin = pin,
+            onSave = { raw ->
+                vm.pinCardToPage(pin.pageId, raw, row.name)
+                pinEditor = null
+            },
+            onDismiss = { pinEditor = null },
         )
     }
 }
