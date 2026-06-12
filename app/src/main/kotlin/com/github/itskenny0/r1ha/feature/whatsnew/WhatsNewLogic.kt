@@ -60,4 +60,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Deck card fixes: iframes load reliably, hidden conditional cards skip their slot, short cards hug their content.",
     "Pinned cards drop the bulky frame, and pinning a Broadlink button opens the full editor: name, icon, show toggles.",
     "Deck layout setting: Dynamic sizes Lovelace cards to their content and snaps card-to-card; Auto picks by screen.",
+    "Dynamic deck polish: tab swipes work everywhere, entity cards flow compact, no blank tail, untitled cards get names.",
 )

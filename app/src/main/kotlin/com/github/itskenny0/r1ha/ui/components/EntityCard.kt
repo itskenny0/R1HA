@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
@@ -44,6 +45,17 @@ fun EntityCard(
     lightWheelMode: com.github.itskenny0.r1ha.core.ha.LightWheelMode? = null,
     /** Tap-to-cycle handler. Null disables the cycle gesture (used by previews). */
     onCycleLightMode: (() -> Unit)? = null,
+    /**
+     * When true (every pre-existing caller, including the FULLSCREEN deck) the card
+     * claims the full height of its slot, the historical full-screen-control-surface
+     * layout. False is the DYNAMIC deck's content-height path: the internal
+     * fillMaxSize chain is relaxed to fillMaxWidth so the card lays out at whatever
+     * height its interior resolves to under the caller's height cap. (True intrinsic
+     * wrapping is not possible here: the card variants are weight-based full-slot
+     * layouts and the value-bar tape meters are SubcomposeLayout-backed, which throws
+     * on intrinsic measurement, so the dynamic deck supplies a compact cap instead.)
+     */
+    fillSlot: Boolean = true,
 ) {
     val theme = LocalR1Theme.current
     val glyph = when (state.id.domain) {
@@ -279,7 +291,7 @@ fun EntityCard(
         // theme has no aux style — exactly what the cards used to paint themselves —
         // or the theme's backdrop + scrim when it does.
         val auxCardModifier = Modifier
-            .fillMaxSize()
+            .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
             .alpha(themeAlpha)
             .then(
                 if (auxStyle == null) {
@@ -452,14 +464,16 @@ fun EntityCard(
                     showIcon = mergedUi.cardStackIcons,
                 ),
                 modifier = Modifier
-                    .fillMaxSize()
+                    .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
                     .alpha(themeAlpha),
                 onTapToggle = onTapToggle,
             )
         }
         if (!state.isAvailable) {
             Box(
-                modifier = Modifier.fillMaxSize(),
+                // matchParentSize (not fillMaxSize) on the content-height path so the
+                // overlay covers the card without forcing the wrapper to full height.
+                modifier = if (fillSlot) Modifier.fillMaxSize() else Modifier.matchParentSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 // R1.sectionHeader + StatusRed reads consistent with the rest of the chrome

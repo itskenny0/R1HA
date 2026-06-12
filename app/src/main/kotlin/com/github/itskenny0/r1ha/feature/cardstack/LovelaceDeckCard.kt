@@ -149,6 +149,27 @@ internal fun LovelaceDeckCard(
             scrollable = !isIframe,
             modifier = surfaceModifier,
         ) {
+            // Identity header for faces that don't name themselves: the SAME
+            // derived title the jump sheet shows for this slot (displayName ->
+            // deckCardTitle on the stored card), so the stack and the pip's
+            // jump list agree on what each card is called. Suppressed whenever
+            // the card's own rendering already surfaces a heading (explicit
+            // title / name / heading config, or markdown content), so titled
+            // cards are never double-labelled; see [deckCardHeaderTitle].
+            // Deliberately a bare micro text line, not a chip or framed band:
+            // the heavier per-card type chip was tried and rejected.
+            deckCardHeaderTitle(item.card)?.let { headerTitle ->
+                Text(
+                    text = headerTitle,
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp),
+                )
+            }
             LovelaceCardRenderer(
                 card = content,
                 stateMap = states.sliceFor(content),
@@ -190,7 +211,7 @@ internal fun LovelaceDeckCard(
 /**
  * The content-hugging surface of a Lovelace deck slot.
  *
- * Measure contract (verified by LovelaceDeckSurfaceSizingTest): the
+ * Measure contract: the
  * [androidx.compose.foundation.verticalScroll] layout node measures its child
  * with an unbounded max height and reports min(content height, incoming max),
  * so under the centering Box's loose constraints the surface
@@ -210,6 +231,17 @@ internal fun LovelaceDeckCard(
  * Iframe slots pass [scrollable] = false: the WebView owns vertical drags
  * inside its bounds and a second scroll consumer around a fixed-aspect box
  * only fights the pager.
+ *
+ * Touch handling on the scroll is enabled ONLY while the content actually
+ * overflows (maxValue > 0). A Compose scrollable claims drag gestures
+ * regardless of its scroll range, and once a drag with enough vertical drift
+ * crosses ITS slop the gesture-conflict arbitration consults only the NEAREST
+ * ancestor scroll container (the vertical deck), never the horizontal tab
+ * pager two levels up, so this inner scroll consumed the swipe outright and
+ * left/right tab swipes died on every card face. With the gate, a fitting
+ * card face is gesture-inert and cross-axis swipes hand off to the tab pager
+ * exactly as they do over the FULLSCREEN deck; only genuinely overflowing
+ * content keeps the (needed) inner scroll.
  */
 @Composable
 internal fun DeckCardSurface(
@@ -217,8 +249,9 @@ internal fun DeckCardSurface(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
+    val scrollState = rememberScrollState()
     val bodyModifier = if (scrollable) {
-        Modifier.verticalScroll(rememberScrollState())
+        Modifier.verticalScroll(scrollState, enabled = scrollState.maxValue > 0)
     } else {
         Modifier
     }

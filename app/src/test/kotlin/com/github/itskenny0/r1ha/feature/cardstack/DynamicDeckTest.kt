@@ -1,27 +1,12 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
-import com.github.itskenny0.r1ha.core.ha.EntityId
-import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.prefs.DeckLayoutMode
 import com.github.itskenny0.r1ha.core.prefs.UiOptions
 import com.github.itskenny0.r1ha.ui.components.WindowTier
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
-import java.time.Instant
 
 class DynamicDeckTest {
-
-    private fun entityItem(id: String = "light.desk") = DeckItem.Entity(
-        EntityState(
-            id = EntityId(id), friendlyName = "n", area = null, isOn = true,
-            percent = null, raw = null, lastChanged = Instant.EPOCH, isAvailable = true,
-        ),
-    )
-
-    private fun cardItem(): DeckItem.Card {
-        val raw = """{"type":"markdown","content":"hi"}"""
-        return DeckItem.Card(card = parsePinnedCard(raw)!!, raw = raw, id = "c1")
-    }
 
     // ── effectiveDeckLayout: the AUTO -> mode resolution ────────────────────
 
@@ -50,14 +35,52 @@ class DynamicDeckTest {
             .isEqualTo(DeckLayout.DYNAMIC)
     }
 
-    // ── deckItemFillsViewport: the per-item height policy ───────────────────
+    // ── dynamicEntityItemHeightPx: compact entity-item height ───────────────
 
-    @Test fun `entity items fill the viewport so the wheel surface is unchanged`() {
-        assertThat(deckItemFillsViewport(entityItem())).isTrue()
+    @Test fun `entity items take the compact height so the stack flows`() {
+        // Band comfortably taller than the preferred compact height: the
+        // compact height wins, leaving room for the next card to peek in.
+        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 900, preferredHeightPx = 440))
+            .isEqualTo(440)
     }
 
-    @Test fun `lovelace items hug their content`() {
-        assertThat(deckItemFillsViewport(cardItem())).isFalse()
+    @Test fun `entity items never exceed the viewport band`() {
+        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 300, preferredHeightPx = 440))
+            .isEqualTo(300)
+    }
+
+    @Test fun `degenerate bands clamp to zero instead of going negative`() {
+        assertThat(dynamicEntityItemHeightPx(bandHeightPx = -10, preferredHeightPx = 440))
+            .isEqualTo(0)
+        assertThat(dynamicEntityItemHeightPx(bandHeightPx = 300, preferredHeightPx = -1))
+            .isEqualTo(0)
+    }
+
+    // ── dynamicEndReachPaddingPx: tight end-of-deck reach padding ───────────
+
+    @Test fun `unmeasured last card pads nothing`() {
+        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = null))
+            .isEqualTo(0)
+    }
+
+    @Test fun `short last card gets exactly the missing scroll range`() {
+        // 800 px band, 120 px last card: the start-snap line is reachable
+        // with exactly 680 px of extra scroll, no more.
+        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 120))
+            .isEqualTo(680)
+    }
+
+    @Test fun `last card filling the band needs no padding`() {
+        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 800))
+            .isEqualTo(0)
+        // Taller than the band (cap rounding, oversized content): still 0.
+        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 900))
+            .isEqualTo(0)
+    }
+
+    @Test fun `padding never exceeds one band even for a zero-height item`() {
+        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 0))
+            .isEqualTo(800)
     }
 
     // ── dynamicFocusedIndex: nearest item start to the snap line ────────────

@@ -155,4 +155,35 @@ class DeckItemsTest {
         val md = parsePinnedCards(listOf("""{"type":"weather-forecast","entity":"weather.h"}""")).single()
         assertThat(DeckItem.Card(md, "{}", "c1").displayKind()).isEqualTo("WEATHER FORECAST")
     }
+
+    // ── deckCardHeaderTitle: the deck slot's identity header ────────────────
+
+    private fun header(blob: String): String? =
+        deckCardHeaderTitle(parsePinnedCards(listOf(blob)).single())
+
+    @Test fun `self-titled cards get no header`() {
+        // The renderers surface explicit title / name / heading on the card
+        // face themselves; a deck header would double-label them.
+        assertThat(header("""{"type":"entities","title":"Office","entities":[]}""")).isNull()
+        assertThat(header("""{"type":"button","name":"All off","entity":"switch.a"}""")).isNull()
+        assertThat(header("""{"type":"heading","heading":"Upstairs"}""")).isNull()
+    }
+
+    @Test fun `markdown faces are their own title`() {
+        assertThat(header("""{"type":"markdown","content":"# Hello\nbody"}""")).isNull()
+    }
+
+    @Test fun `untitled faces get the jump sheet's derived title`() {
+        // Same fallback chain as deckCardTitle, so the stack header always
+        // matches the jump-sheet row for the slot.
+        assertThat(header("""{"type":"gauge","entity":"sensor.cpu"}""")).isEqualTo("sensor.cpu")
+        assertThat(header("""{"type":"iframe","url":"https://x.y"}""")).isEqualTo("https://x.y")
+        assertThat(header("""{"type":"entities","entities":[]}""")).isEqualTo("ENTITIES")
+    }
+
+    @Test fun `header equals the jump sheet title whenever it shows`() {
+        val blob = """{"type":"gauge","entity":"sensor.cpu"}"""
+        val card = parsePinnedCards(listOf(blob)).single()
+        assertThat(deckCardHeaderTitle(card)).isEqualTo(deckCardTitle(card))
+    }
 }
