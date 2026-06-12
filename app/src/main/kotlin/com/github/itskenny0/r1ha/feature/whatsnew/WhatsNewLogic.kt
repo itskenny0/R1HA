@@ -57,4 +57,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Broadlink IR/RF console under Settings: guided learn flow with live capture, test-fire, then save.",
     "Your IR catalog lives in HA as R1HA-tagged automations: it survives reinstalls and follows you between devices.",
     "Fire, rename, delete or pin commands to the deck; register existing codes and build simple IR automations.",
+    "Deck card fixes: iframes load reliably, hidden conditional cards skip their slot, short cards hug their content.",
 )
