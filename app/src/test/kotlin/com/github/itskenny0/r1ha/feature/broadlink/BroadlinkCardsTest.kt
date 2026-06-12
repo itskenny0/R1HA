@@ -62,6 +62,23 @@ class BroadlinkCardsTest {
         assertThat(tap.obj("data").str("skip_condition")).isEqualTo("true")
     }
 
+    @Test fun `both generated button cards wear the remote icon`() {
+        // mdi:remote resolves to a real remote glyph in the app icon set;
+        // mdi:robot used to fall back to a cog, which read as a settings tile.
+        val command = BroadlinkCards.commandButtonCard(
+            remoteEntityId = "remote.rm4",
+            deviceName = "tv",
+            commandName = "power",
+            label = "TV POWER",
+        )
+        val automation = BroadlinkCards.automationButtonCard("automation.evening_tv", "EVENING TV")
+        assertThat(command.str("icon")).isEqualTo("mdi:remote")
+        assertThat(automation.str("icon")).isEqualTo("mdi:remote")
+        // Fire-and-forget buttons must not advertise a live state line.
+        assertThat(command.str("show_state")).isEqualTo("false")
+        assertThat(automation.str("show_state")).isEqualTo("false")
+    }
+
     @Test fun `time-trigger automation config has the classic shape`() {
         val cfg = BroadlinkCards.automationConfig(
             alias = "AC on at seven",

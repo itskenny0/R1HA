@@ -42,14 +42,18 @@ object BroadlinkCards {
         }
     }
 
-    /** Button card whose tap manually triggers an automation. */
+    /** Button card whose tap manually triggers an automation. The icon is
+     *  `mdi:remote` (not `mdi:robot`): these buttons exist to fire an IR/RF
+     *  command via the wrapped automation, and the app's icon set renders
+     *  `robot` as a cog, which read as a settings tile rather than a remote
+     *  key. The card editor still lets users swap the icon afterward. */
     fun automationButtonCard(
         automationEntityId: String,
         label: String,
     ): JsonObject = buildJsonObject {
         put("type", "button")
         put("name", label)
-        put("icon", "mdi:robot")
+        put("icon", "mdi:remote")
         put("show_state", false)
         putJsonObject("tap_action") {
             put("action", "call-service")
