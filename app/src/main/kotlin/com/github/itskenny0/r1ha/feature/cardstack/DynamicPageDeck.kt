@@ -243,40 +243,27 @@ internal fun DynamicPageDeck(
         // the cap a tall Lovelace card scrolls internally past.
         val bandHeight = maxHeight
         val bandHeightPx = constraints.maxHeight
-        // Centring padding for BOTH ends. With centre-snapping the list would
-        // otherwise clamp the FIRST card flush to the band top and the LAST
-        // card flush to the band bottom, so neither end card could reach the
-        // band CENTRE (nor become the focused wheel target). Symmetric end
-        // padding of (band - end item height)/2 on each side raises the scroll
-        // range exactly enough for each end card to centre (see
-        // [dynamicCenterPaddingPx]); the heights are read from the live layout
-        // info, so until an end card has been composed once its padding is 0
-        // (conservative; it appears as the user approaches that end).
+        // Centring padding for the BOTTOM end only. The FIRST card deliberately
+        // sits FLUSH at the band top (no top padding): the user wants the deck
+        // to open with card 1 anchored at the top, not floated to centre with a
+        // gap above it. With centre-snapping the list would otherwise clamp the
+        // LAST card flush to the band bottom, so it could never reach the band
+        // centre (nor become the focused wheel target); bottom padding of
+        // (band - last item height)/2 raises the scroll range exactly enough
+        // for the last card to centre (see [dynamicCenterPaddingPx]). The
+        // height is read from the live layout info, so until the last card has
+        // been composed once its padding is 0 (conservative; it appears as the
+        // user approaches the end).
         //
-        // Each measurement is keyed on its end item's identity, not just the
+        // The measurement is keyed on the last item's identity, not just the
         // page: a deck mutation (conditional card hidden / shown, card
-        // removed) swaps which card is first/last, and carrying the height
-        // measured for the PREVIOUS end card left a stale gap behind.
-        val firstItemKey = cards.firstOrNull()?.key
+        // removed) swaps which card is last, and carrying the height measured
+        // for the PREVIOUS last card left a stale gap behind.
         val lastItemKey = cards.lastOrNull()?.key
         // -1 = not measured yet; the padding helper treats it as "no padding"
-        // until the real end card reports a size.
-        val firstItemHeightPx = remember(pageId, firstItemKey, cards.size) {
-            mutableIntStateOf(-1)
-        }
+        // until the real last card reports a size.
         val lastItemHeightPx = remember(pageId, lastItemKey, cards.size) {
             mutableIntStateOf(-1)
-        }
-        LaunchedEffect(listState, firstItemKey, cards.size) {
-            snapshotFlow {
-                listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull()
-                    ?.takeIf { it.index == 0 }
-                    ?.size
-            }
-                .filterNotNull()
-                .distinctUntilChanged()
-                .collect { firstItemHeightPx.intValue = it }
         }
         LaunchedEffect(listState, lastItemKey, cards.size) {
             snapshotFlow {
@@ -289,12 +276,7 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { lastItemHeightPx.intValue = it }
         }
-        val centerPadTop = with(LocalDensity.current) {
-            dynamicCenterPaddingPx(
-                bandHeightPx = bandHeightPx,
-                endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
-            ).toDp()
-        }
+        val centerPadTop = 0.dp
         val centerPadBottom = with(LocalDensity.current) {
             dynamicCenterPaddingPx(
                 bandHeightPx = bandHeightPx,
