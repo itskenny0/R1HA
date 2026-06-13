@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -447,11 +448,15 @@ internal fun CardValueBarScaffold(
     // Fill mode (true, every full-slot surface) keeps the historical layout:
     // the vertical meter and the content box fill the slot height. Wrap mode
     // (false, the DYNAMIC deck's content-height cards) must never rely on a
-    // bounded slot: the content box drops its fill-height so it wraps to the
-    // body column's natural height, and the vertical meter, which cannot wrap
-    // (BoxWithConstraints-backed, throws on intrinsic measurement), takes the
-    // concrete DYNAMIC_VALUE_BAR_HEIGHT_DP band instead. The card's height
-    // then resolves to max(meter band, body) with no intrinsic query anywhere.
+    // bounded slot: the content box drops its fill-height so it WRAPS to the
+    // body column's natural height (the body is the height driver). The
+    // vertical meter then fillMaxHeight()s to that same height so the slider
+    // spans the WHOLE card, not a stub band that stops partway down a tall
+    // card. The Row carries heightIn(min = DYNAMIC_VALUE_BAR_HEIGHT_DP) so a
+    // short body still gives the meter a usable length, and because
+    // fillMaxHeight imposes a concrete (bounded) height on the
+    // BoxWithConstraints meter, no intrinsic measurement is ever queried (the
+    // meter cannot wrap; it throws on intrinsic measurement).
     val fillSlot = LocalCardFillSlot.current
     val verticalMeter: @Composable () -> Unit = {
         VerticalTapeMeter(
@@ -468,18 +473,25 @@ internal fun CardValueBarScaffold(
         if (fillSlot) {
             verticalMeter()
         } else {
-            Box(
-                modifier = Modifier.height(
-                    com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP.dp,
-                ),
-            ) {
+            Box(modifier = Modifier.fillMaxHeight()) {
                 verticalMeter()
             }
         }
     }
+    // Wrap mode floor: keeps the Row (and thus the fill-height meter) at least
+    // a usable meter length even when the body wraps shorter than that.
+    val rowModifier = if (fillSlot) {
+        outer
+    } else {
+        outer.then(
+            Modifier.heightIn(
+                min = com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP.dp,
+            ),
+        )
+    }
     when (model.valueBarLocation) {
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT -> {
-            Row(modifier = outer) {
+            Row(modifier = rowModifier) {
                 boundedVerticalMeter()
                 Spacer(Modifier.width(20.dp))
                 Box(
@@ -492,7 +504,7 @@ internal fun CardValueBarScaffold(
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT -> {
-            Row(modifier = outer) {
+            Row(modifier = rowModifier) {
                 Box(
                     modifier = Modifier.weight(1f)
                         .then(if (fillSlot) Modifier.fillMaxHeight() else Modifier),
