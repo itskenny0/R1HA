@@ -65,4 +65,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Button cards look pressable now: remote glyph on IR buttons, bold label, accent flash on tap, a tap-verb footer.",
     "Dynamic deck: the focused card sits centered, and one tap fires any visible card without selecting it first.",
     "IR and action buttons fire with style: a radiating signal pulse, an accent flare, a SENT flash and a haptic buzz.",
+    "Dynamic deck: every card snaps cleanly now (the second one too), with a stronger magnet and a crisp lock tick.",
 )

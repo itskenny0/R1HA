@@ -37,7 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
@@ -66,11 +68,13 @@ import kotlinx.coroutines.flow.filterNotNull
  *    of black.
  *
  * Cards remain discrete snap targets: a snapping fling
- * ([SnapLayoutInfoProvider] over the list state, [SnapPosition.Center]) settles
- * every gesture with some card centred in the viewport band (the neighbour
- * above and below peeking), matching the fullscreen peek deck's centred
- * presentation. The focused card (centre nearest the band centre, see
- * [dynamicFocusedIndex]) is the one the WHEEL and hardware keys drive.
+ * ([SnapLayoutInfoProvider] over the list state, the PER-ITEM
+ * [dynamicSnapPosition]) settles every gesture on a card's snap line. Item 0
+ * rests FLUSH at the band top (the deck opens with the first card pinned under
+ * the chrome); cards 1..n rest CENTRED in the band with their neighbours
+ * peeking, matching the fullscreen peek deck. The focused card (nearest its own
+ * snap line, see [dynamicFocusedIndex]) is the one the WHEEL and hardware keys
+ * drive.
  *
  * Unlike the fullscreen peek deck, every dynamic card is fully laid out and
  * directly hittable: a tap goes straight to the tapped card's own content and
@@ -88,21 +92,59 @@ import kotlinx.coroutines.flow.filterNotNull
  *    neighbouring cards at their real heights.
  */
 /**
- * Animate the [index] item to the CENTRE of the snap viewport, the resting
- * position of a centre-snap fling. [LazyListState.animateScrollToItem] aligns
- * an item's START with the viewport start, so this first scrolls there, then
- * (once the target is measured and visible) recentres by the half-difference
- * between the snap viewport span and the item's real height. Splitting it in
- * two is what lets a FAR jump work: the destination item's height is unknown
- * until it is brought on-screen, so the centre offset can only be computed
- * after the first scroll. A band-filling (or taller) card is already its own
- * centre, so the recentre offset clamps to <= 0 (never pushes it back down).
+ * The dynamic deck's PER-ITEM snap rule, as a [SnapPosition]. The snap
+ * machinery calls [position] for each candidate item with the viewport span and
+ * the item's measured size; we delegate to the pure [dynamicSnapStartPx] so the
+ * snap line and the focused-index math are computed by one shared function.
+ *
+ * [position]'s contract: return the desired offset of the item's START from the
+ * viewport start (after content padding). The band span the snap maths reason
+ * in is the layout size minus the symmetric content padding, exactly what
+ * [dynamicSnapStartPx] treats as the band height. Item 0 returns 0 (flush at the
+ * top, matching SnapPosition.Start); items 1..n return the Center arithmetic.
+ *
+ * Object (not a lambda) so it is a stable singleton across recompositions; it
+ * holds no state, only the index-keyed rule.
+ */
+private val dynamicSnapPosition = object : SnapPosition {
+    override fun position(
+        layoutSize: Int,
+        itemSize: Int,
+        beforeContentPadding: Int,
+        afterContentPadding: Int,
+        itemIndex: Int,
+        itemCount: Int,
+    ): Int {
+        val bandSpan = layoutSize - beforeContentPadding - afterContentPadding
+        return dynamicSnapStartPx(
+            itemIndex = itemIndex,
+            itemSizePx = itemSize,
+            bandHeightPx = bandSpan,
+        )
+    }
+}
+
+/**
+ * Animate the [index] item to its SNAP line: item 0 to the band TOP, every
+ * other item to the band CENTRE, matching where a fling would have settled
+ * under [dynamicSnapPosition]. [LazyListState.animateScrollToItem] aligns an
+ * item's START with the viewport start, so this first scrolls there (already
+ * the correct rest for item 0), then (once the target is measured and visible)
+ * recentres a non-first item by the half-difference between the snap viewport
+ * span and the item's real height. Splitting it in two is what lets a FAR jump
+ * work: the destination item's height is unknown until it is brought on-screen,
+ * so the centre offset can only be computed after the first scroll. A
+ * band-filling (or taller) card is already its own centre, so the recentre
+ * offset clamps to <= 0 (never pushes it back down).
  */
 private suspend fun androidx.compose.foundation.lazy.LazyListState.animateScrollToItemCentered(
     index: Int,
 ) {
     // Bring the item on-screen with its start at the viewport top.
     animateScrollToItem(index)
+    // Item 0 snaps top-aligned: the start-aligned scroll above already lands it
+    // exactly, so leave it flush at the band top (no recentre).
+    if (index <= 0) return
     val info = layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
     val bandSpan = info.viewportEndOffset - info.viewportStartOffset
@@ -201,6 +243,33 @@ internal fun DynamicPageDeck(
             .distinctUntilChanged()
             .collect { onActivePagerAnimatingChange(it) }
     }
+    // Snap-LOCK haptic: one crisp tick when a card SETTLES onto its snap line,
+    // fired on the scroll's rest transition (scrolling -> stopped), never per
+    // frame. distinctUntilChanged collapses the stream to true/false edges, so
+    // a whole fling-then-snap settle is exactly one false edge = one tick; the
+    // first emission (the deck's initial at-rest state on open) is skipped so
+    // opening a page doesn't fire a phantom lock. Routed through R1Haptic.lock
+    // (a notch stronger than the wheel-detent tick) so the magnet reads as a
+    // decisive click, and through the Vibrator path so vendor ROMs that mute
+    // performHapticFeedback still feel it. Honours the user's haptics toggle.
+    val lockView = LocalView.current
+    val lockHaptic = rememberR1Haptic()
+    val hapticsEnabled = appSettings.behavior.haptics
+    LaunchedEffect(listState, isActive, hapticsEnabled) {
+        if (!isActive || !hapticsEnabled) return@LaunchedEffect
+        var firstSettle = true
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling ->
+                if (!scrolling) {
+                    if (!firstSettle) {
+                        // A card just locked onto its snap line.
+                        runCatching { lockHaptic.lock(lockView) }
+                    }
+                    firstSettle = false
+                }
+            }
+    }
     // Hardware-key card steps (CARD_UP / CARD_DOWN push signed deltas into the
     // shared navRequests flow). Clamped to the finite deck; runCatching keeps
     // a scroll cancelled by a user touch from killing the collector for the
@@ -285,26 +354,40 @@ internal fun DynamicPageDeck(
         }
         // Snapping fling: decay the gesture's velocity (so a hard flick still
         // carries through several cards, same physics family as the pager),
-        // then snap the nearest card's start onto the line with the same
-        // crisp, critically-damped spring PageDeck tunes its pager with: no
-        // bounce, never rests between cards. The decay honours the user's
-        // scroll-sensitivity dial through the identical friction mapping.
+        // then snap the nearest card's start onto its line with a CRISP,
+        // critically-damped spring: no bounce, never rests between cards. The
+        // decay honours the user's scroll-sensitivity dial through the identical
+        // friction mapping.
         val sensitivity = appSettings.ui.cardScrollSensitivity.coerceIn(1, 100)
         val flingFriction = (0.8f / (sensitivity / 100f)).coerceIn(0.5f, 4f)
         val deckFling = remember(listState, flingFriction) {
             snapFlingBehavior(
                 snapLayoutInfoProvider = SnapLayoutInfoProvider(
                     lazyListState = listState,
-                    // Centre-snap: the focused card rests in the middle of the
-                    // band with its neighbours peeking, matching the fullscreen
-                    // peek deck (was Start, which left the focused card at the
-                    // top with a near-full-viewport void below it).
-                    snapPosition = SnapPosition.Center,
+                    // PER-ITEM snap (not the uniform SnapPosition.Center it
+                    // replaced): item 0 snaps TOP-aligned so the first card
+                    // sits flush under the chrome on open, items 1..n snap
+                    // CENTRE-aligned so the focused card rests in the middle of
+                    // the band with its neighbours peeking. The single source of
+                    // truth is [dynamicSnapStartPx] (shared with the focused
+                    // index math). REGRESSION FIX: a uniform Center with zero
+                    // top padding collapsed item 0 and item 1 onto overlapping
+                    // rest offsets, so the fling skipped item 1 and it could
+                    // never be focused; giving item 0 its own top line frees the
+                    // rest to centre as distinct, reachable snap targets.
+                    snapPosition = dynamicSnapPosition,
                 ),
                 decayAnimationSpec = exponentialDecay(frictionMultiplier = flingFriction),
+                // Terminal snap stiffened from StiffnessMedium to StiffnessHigh:
+                // the lock clicks decisively into place (a stronger magnet)
+                // instead of easing in floatily. Kept NoBouncy so the crisper
+                // pull never overshoots the snap line. Only the terminal spring
+                // is stiffened; the decay-then-snap fling reach above is
+                // untouched so the user's sensitivity dial still governs how far
+                // a flick carries.
                 snapAnimationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMedium,
+                    stiffness = Spring.StiffnessHigh,
                 ),
             )
         }

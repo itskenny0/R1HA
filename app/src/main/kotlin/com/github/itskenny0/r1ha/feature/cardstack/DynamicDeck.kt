@@ -100,26 +100,60 @@ fun dynamicCenterPaddingPx(bandHeightPx: Int, endItemHeightPx: Int?): Int {
  * in px relative to the band top, item height in px). A thin pure projection of
  * LazyListLayoutInfo.visibleItemsInfo so the focused-index math is testable
  * without a composition. The height is carried so the focused item can be
- * picked by its CENTRE, matching the centre-snap presentation.
+ * picked by the distance from its own SNAP LINE, matching the per-item snap.
  */
 data class DynamicVisibleItem(val index: Int, val offsetPx: Int, val sizePx: Int)
 
 /**
- * Which item of the dynamic deck is the FOCUSED one: the item whose CENTRE sits
- * nearest the band centre ([bandHeightPx] / 2). The deck centre-snaps, so after
- * a snap settles this is exactly the snapped (centred) item; mid-list it is the
- * dominant visible card. Ties (two card centres equidistant from the band
- * centre) break toward the EARLIER index so focus never jumps ahead of the
- * snap. Empty list (deck cleared mid-frame) falls back to 0, matching the
- * pager's realIndexOf guard.
+ * Where item [itemIndex] of the dynamic deck WANTS its start to sit, measured
+ * from the band top, given the band span ([bandHeightPx]) and the item's
+ * measured height ([itemSizePx]). This is the per-item snap rule, the single
+ * source of truth shared by the custom snap provider (which feeds it through a
+ * [androidx.compose.foundation.gestures.snapping.SnapPosition]) and the
+ * focused-index math, so the two never disagree about a card's rest line.
+ *
+ *  - Item 0 anchors FLUSH at the band TOP (offset 0). The user wants the deck
+ *    to open with the first card pinned under the chrome, not floated to the
+ *    centre with a gap above it. With top content-padding of 0 this is also the
+ *    list's natural clamp for item 0, so it is a clean, achievable rest.
+ *  - Items 1..n CENTRE in the band: start at (band - itemHeight) / 2, the same
+ *    arithmetic as [SnapPosition.Center]. Earlier cards scrolling off the top
+ *    is fine (a LazyColumn allows it), so these never need top padding to
+ *    centre.
+ *
+ * REGRESSION FIX: a uniform [SnapPosition.Center] with zero top padding left
+ * item 1 an unreachable rest. Centre-snapping item 0 needs free space ABOVE it,
+ * but the zero top pad clamps item 0's start to 0; near that clamp item 0 and
+ * item 1 collapse onto overlapping snap offsets, so the fling skips past item 1
+ * and never settles on it. Giving item 0 its own TOP-aligned snap line (the
+ * offset it is already clamped to) frees items 1..n to centre as DISTINCT rest
+ * positions, so every card, the second one especially, is a stable target.
+ *
+ * A band-filling (or taller) card centres at <= 0, which the caller may clamp;
+ * here we return the raw centre so the provider/focus maths see one consistent
+ * value. Item indices below 0 are treated as item 0 (defensive).
+ */
+fun dynamicSnapStartPx(itemIndex: Int, itemSizePx: Int, bandHeightPx: Int): Int =
+    if (itemIndex <= 0) 0 else (bandHeightPx - itemSizePx) / 2
+
+/**
+ * Which item of the dynamic deck is the FOCUSED one: the item whose CURRENT
+ * start sits nearest its OWN snap line ([dynamicSnapStartPx]). The deck snaps
+ * per item (item 0 to the top, the rest to the centre), so after a snap settles
+ * this is exactly the snapped card; mid-list it is the card closest to settling.
+ * Picking by distance-to-own-snap (rather than nearest-centre) is what keeps
+ * focus agreeing with the new snap: when item 0 rests flush at the top it is
+ * focused even though its CENTRE is far above the band centre, and when item 1
+ * is centred IT is focused. Ties break toward the EARLIER index so focus never
+ * jumps ahead of the snap. Empty list (deck cleared mid-frame) falls back to 0,
+ * matching the pager's realIndexOf guard.
  */
 fun dynamicFocusedIndex(visible: List<DynamicVisibleItem>, bandHeightPx: Int): Int {
-    val bandCenter = bandHeightPx / 2
     var bestIndex = 0
     var bestDistance = Int.MAX_VALUE
     for (item in visible) {
-        val itemCenter = item.offsetPx + item.sizePx / 2
-        val distance = kotlin.math.abs(itemCenter - bandCenter)
+        val snapStart = dynamicSnapStartPx(item.index, item.sizePx, bandHeightPx)
+        val distance = kotlin.math.abs(item.offsetPx - snapStart)
         // Strict less-than: on a tie the earlier item (lists are in index
         // order) keeps the focus.
         if (distance < bestDistance) {

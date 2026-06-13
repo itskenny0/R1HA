@@ -48,13 +48,23 @@ class R1Haptic internal constructor(
 ) {
 
     /** Short "click" feedback — wheel detents, button taps, scroll pips. */
-    fun tick(view: View) = fire(view, tick = true)
+    fun tick(view: View) = fire(view, kind = Kind.TICK)
+
+    /** Crisp "locked into place" feedback: a card settling onto its snap
+     *  line in the dynamic deck. A notch stronger than [tick] (a heavier
+     *  predefined click / a slightly longer one-shot) so a snap reads as a
+     *  decisive magnet, but well short of the [longPress] buzz: one clean tick
+     *  per lock, fired on the rest transition (not per frame). */
+    fun lock(view: View) = fire(view, kind = Kind.LOCK)
 
     /** Heavier "you held that down" feedback — long-press menus and
      *  destructive-action confirmations. */
-    fun longPress(view: View) = fire(view, tick = false)
+    fun longPress(view: View) = fire(view, kind = Kind.LONG_PRESS)
 
-    private fun fire(view: View, tick: Boolean) {
+    /** The three feedback weights this helper produces, lightest first. */
+    private enum class Kind { TICK, LOCK, LONG_PRESS }
+
+    private fun fire(view: View, kind: Kind) {
         // 1) Vibrator path.
         runCatching {
             val v = vibrator ?: return@runCatching
@@ -64,18 +74,36 @@ class R1Haptic internal constructor(
             // fall back to the legacy time-based vibrate, which has no amplitude
             // control but still produces the short buzz the UI expects.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Predefined effects (EFFECT_TICK / EFFECT_CLICK) plus the
-                // areEffectsSupported() query that backs them land in API 29/30.
-                // On 26-29 we skip straight to the createOneShot fallback, which
-                // produces a comparable short buzz. Gated at 30 so the single guard
-                // covers both the API-29 createPredefined and the API-30
-                // areEffectsSupported call.
-                val effect = if (Build.VERSION.SDK_INT >= 30 && predefinedSupported(v, tick)) {
-                    createPredefinedEffect(tick)
-                } else if (tick) {
-                    VibrationEffect.createOneShot(20L, VibrationEffect.DEFAULT_AMPLITUDE)
+                // Predefined effects (EFFECT_TICK / EFFECT_CLICK / the heavier
+                // LOCK click) plus the areEffectsSupported() query that backs
+                // them land in API 29/30. On 26-29 we skip straight to the
+                // createOneShot fallback, which produces a comparable short buzz.
+                // Gated at 30 so the single guard covers both the API-29
+                // createPredefined and the API-30 areEffectsSupported call.
+                // Map the weight to a predefined VibrationEffect id (resolved
+                // here so the @RequiresApi helpers stay free of the class-private
+                // Kind enum): TICK -> EFFECT_TICK, LOCK -> EFFECT_HEAVY_CLICK
+                // (the firmest predefined click, the strongest magnet),
+                // LONG_PRESS -> EFFECT_CLICK.
+                val predefinedId = when (kind) {
+                    Kind.TICK -> VibrationEffect.EFFECT_TICK
+                    Kind.LOCK -> VibrationEffect.EFFECT_HEAVY_CLICK
+                    Kind.LONG_PRESS -> VibrationEffect.EFFECT_CLICK
+                }
+                val effect = if (
+                    Build.VERSION.SDK_INT >= 30 && predefinedSupported(v, predefinedId)
+                ) {
+                    createPredefinedEffect(predefinedId)
                 } else {
-                    VibrationEffect.createOneShot(35L, VibrationEffect.DEFAULT_AMPLITUDE)
+                    // One-shot fallback duration scales with the weight: a TICK
+                    // is the lightest, a LOCK a notch heavier (a crisper magnet),
+                    // a LONG_PRESS the heaviest hold.
+                    val durationMs = when (kind) {
+                        Kind.TICK -> 20L
+                        Kind.LOCK -> 28L
+                        Kind.LONG_PRESS -> 35L
+                    }
+                    VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
                 }
                 // VibrationAttributes is API 33; VibrationAttributes-less vibrate is
                 // deprecated from 26 but works on 30-32. Both branches reference classes
@@ -88,7 +116,13 @@ class R1Haptic internal constructor(
                 }
             } else {
                 @Suppress("DEPRECATION")
-                v.vibrate(if (tick) 20L else 35L)
+                v.vibrate(
+                    when (kind) {
+                        Kind.TICK -> 20L
+                        Kind.LOCK -> 28L
+                        Kind.LONG_PRESS -> 35L
+                    },
+                )
             }
         }.onFailure {
             R1Log.w("R1Haptic", "vibrator path failed: ${it.message}")
@@ -99,8 +133,13 @@ class R1Haptic internal constructor(
         //    On a ROM that silently drops Vibrator calls this is the backup.
         runCatching {
             @Suppress("DEPRECATION")
-            val constant = if (tick) HapticFeedbackConstants.CLOCK_TICK
-            else HapticFeedbackConstants.LONG_PRESS
+            val constant = when (kind) {
+                // CLOCK_TICK is the light detent; CONTEXT_CLICK is the firmer
+                // "confirmed" tap used for the lock; LONG_PRESS the heavy hold.
+                Kind.TICK -> HapticFeedbackConstants.CLOCK_TICK
+                Kind.LOCK -> HapticFeedbackConstants.CONTEXT_CLICK
+                Kind.LONG_PRESS -> HapticFeedbackConstants.LONG_PRESS
+            }
             view.performHapticFeedback(constant)
         }.onFailure {
             R1Log.d("R1Haptic", "performHapticFeedback failed: ${it.message}")
@@ -135,21 +174,19 @@ private fun vibratorFromManager(context: Context): Vibrator? {
 
 // Vibrator.areEffectsSupported is API 30. Isolated in a @RequiresApi helper
 // (called only behind the SDK_INT >= 30 guard in fire()) so the verifier
-// doesn't touch it on 26-29.
+// doesn't touch it on 26-29. Takes the resolved predefined-effect id (one of
+// EFFECT_TICK / EFFECT_CLICK / EFFECT_HEAVY_CLICK, all API 29) rather than the
+// class-private Kind enum, which a top-level helper cannot see.
 @RequiresApi(30)
-private fun predefinedSupported(v: Vibrator, tick: Boolean): Boolean {
-    val predefined = if (tick) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
-    return v.areEffectsSupported(predefined).firstOrNull() ==
+private fun predefinedSupported(v: Vibrator, predefinedId: Int): Boolean =
+    v.areEffectsSupported(predefinedId).firstOrNull() ==
         Vibrator.VIBRATION_EFFECT_SUPPORT_YES
-}
 
 // VibrationEffect.createPredefined is API 29; reachable only behind the
 // SDK_INT >= 30 guard, so an API-29 minimum here is comfortably satisfied.
 @RequiresApi(29)
-private fun createPredefinedEffect(tick: Boolean): VibrationEffect {
-    val predefined = if (tick) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_CLICK
-    return VibrationEffect.createPredefined(predefined)
-}
+private fun createPredefinedEffect(predefinedId: Int): VibrationEffect =
+    VibrationEffect.createPredefined(predefinedId)
 
 @RequiresApi(33)
 private fun vibrateWithAttrs(v: Vibrator, effect: VibrationEffect) {
@@ -182,6 +219,15 @@ fun rememberTickHaptic(): () -> Unit {
     val haptic = rememberR1Haptic()
     val view = LocalView.current
     return remember(haptic, view) { { haptic.tick(view) } }
+}
+
+/** Crisp snap-lock equivalent of [rememberTickHaptic] (a notch stronger than a
+ *  detent tick) for a card settling onto its snap line. */
+@Composable
+fun rememberLockHaptic(): () -> Unit {
+    val haptic = rememberR1Haptic()
+    val view = LocalView.current
+    return remember(haptic, view) { { haptic.lock(view) } }
 }
 
 /** Heavier long-press equivalent of [rememberTickHaptic]. */
