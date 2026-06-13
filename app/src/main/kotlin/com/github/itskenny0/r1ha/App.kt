@@ -6,6 +6,7 @@ import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -430,6 +431,23 @@ class App : Application() {
                     }
                 }
         }
+    }
+
+    /**
+     * Cancel every long-lived collector started on [appScope] when the
+     * Application terminates. On a real device this is largely academic (the
+     * process is torn down whole), but it matters under test: Robolectric boots
+     * a fresh App per test class and calls onTerminate() during sandbox
+     * teardown. Without this cancel, the appScope collectors (the favorite-card
+     * widget refresher in particular, which collects a SharedPreferences-backed
+     * callbackFlow) keep running on the shared Dispatchers.Default pool after the
+     * test's Context is torn down; the next prefs read NPEs on the dispatcher
+     * thread and the uncaught exception lands on the NEXT runTest in the same
+     * worker, making the suite order-dependent.
+     */
+    override fun onTerminate() {
+        appScope.cancel()
+        super.onTerminate()
     }
 
     /** Local 4-tuple. Kotlin's stdlib only has Pair / Triple; this carries
