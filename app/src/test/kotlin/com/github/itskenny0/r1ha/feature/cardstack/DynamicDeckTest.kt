@@ -54,64 +54,70 @@ class DynamicDeckTest {
         assertThat(DYNAMIC_VALUE_BAR_HEIGHT_DP).isLessThan(220)
     }
 
-    // ── dynamicEndReachPaddingPx: tight end-of-deck reach padding ───────────
+    // ── dynamicCenterPaddingPx: symmetric centre-reach padding ──────────────
 
-    @Test fun `unmeasured last card pads nothing`() {
-        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = null))
+    @Test fun `unmeasured end card pads nothing`() {
+        assertThat(dynamicCenterPaddingPx(bandHeightPx = 800, endItemHeightPx = null))
             .isEqualTo(0)
     }
 
-    @Test fun `short last card gets exactly the missing scroll range`() {
-        // 800 px band, 120 px last card: the start-snap line is reachable
-        // with exactly 680 px of extra scroll, no more.
-        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 120))
-            .isEqualTo(680)
+    @Test fun `short end card gets half the missing band as centre padding`() {
+        // 800 px band, 120 px end card: centring it needs (800 - 120) / 2 = 340
+        // px of free space on its outer side, no more (half the old start-snap
+        // tail, the rest read as the neighbour peeking).
+        assertThat(dynamicCenterPaddingPx(bandHeightPx = 800, endItemHeightPx = 120))
+            .isEqualTo(340)
     }
 
-    @Test fun `last card filling the band needs no padding`() {
-        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 800))
+    @Test fun `end card filling the band needs no padding`() {
+        assertThat(dynamicCenterPaddingPx(bandHeightPx = 800, endItemHeightPx = 800))
             .isEqualTo(0)
         // Taller than the band (cap rounding, oversized content): still 0.
-        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 900))
+        assertThat(dynamicCenterPaddingPx(bandHeightPx = 800, endItemHeightPx = 900))
             .isEqualTo(0)
     }
 
-    @Test fun `padding never exceeds one band even for a zero-height item`() {
-        assertThat(dynamicEndReachPaddingPx(bandHeightPx = 800, lastItemHeightPx = 0))
-            .isEqualTo(800)
+    @Test fun `centre padding never exceeds one band even for a zero-height item`() {
+        // Half of an 800 px band; far below the one-band clamp.
+        assertThat(dynamicCenterPaddingPx(bandHeightPx = 800, endItemHeightPx = 0))
+            .isEqualTo(400)
     }
 
-    // ── dynamicFocusedIndex: nearest item start to the snap line ────────────
+    // ── dynamicFocusedIndex: nearest item CENTRE to the band centre ─────────
 
-    @Test fun `settled item on the line is focused`() {
+    @Test fun `settled item centred in the band is focused`() {
+        // 800 px band (centre 400). Item 3 spans 300..500 (centre 400): dead
+        // on the band centre.
         val visible = listOf(
-            DynamicVisibleItem(index = 3, offsetPx = 0),
-            DynamicVisibleItem(index = 4, offsetPx = 220),
+            DynamicVisibleItem(index = 3, offsetPx = 300, sizePx = 200),
+            DynamicVisibleItem(index = 4, offsetPx = 520, sizePx = 200),
         )
-        assertThat(dynamicFocusedIndex(visible)).isEqualTo(3)
+        assertThat(dynamicFocusedIndex(visible, bandHeightPx = 800)).isEqualTo(3)
     }
 
-    @Test fun `nearest start wins over an earlier mostly-scrolled-out card`() {
-        // Item 1 is two-thirds off the top, item 2's start is 40 px below the
-        // line: item 2 is what the user perceives as the card.
+    @Test fun `nearest centre wins over an earlier mostly-scrolled-out card`() {
+        // 800 px band (centre 400). Item 1's centre is well above the band
+        // centre, item 2's centre (440) is nearest it: item 2 is the card.
         val visible = listOf(
-            DynamicVisibleItem(index = 1, offsetPx = -300),
-            DynamicVisibleItem(index = 2, offsetPx = 40),
-            DynamicVisibleItem(index = 3, offsetPx = 480),
+            DynamicVisibleItem(index = 1, offsetPx = -300, sizePx = 200),
+            DynamicVisibleItem(index = 2, offsetPx = 340, sizePx = 200),
+            DynamicVisibleItem(index = 3, offsetPx = 560, sizePx = 200),
         )
-        assertThat(dynamicFocusedIndex(visible)).isEqualTo(2)
+        assertThat(dynamicFocusedIndex(visible, bandHeightPx = 800)).isEqualTo(2)
     }
 
     @Test fun `ties break toward the earlier index`() {
+        // 800 px band (centre 400). Item 5 centre 340 and item 6 centre 460 are
+        // both 60 px from the centre: the earlier index keeps focus.
         val visible = listOf(
-            DynamicVisibleItem(index = 5, offsetPx = -60),
-            DynamicVisibleItem(index = 6, offsetPx = 60),
+            DynamicVisibleItem(index = 5, offsetPx = 240, sizePx = 200),
+            DynamicVisibleItem(index = 6, offsetPx = 360, sizePx = 200),
         )
-        assertThat(dynamicFocusedIndex(visible)).isEqualTo(5)
+        assertThat(dynamicFocusedIndex(visible, bandHeightPx = 800)).isEqualTo(5)
     }
 
     @Test fun `empty visible list falls back to zero`() {
-        assertThat(dynamicFocusedIndex(emptyList())).isEqualTo(0)
+        assertThat(dynamicFocusedIndex(emptyList(), bandHeightPx = 800)).isEqualTo(0)
     }
 
     // ── dynamicSnapTarget: programmatic snap-index math ─────────────────────

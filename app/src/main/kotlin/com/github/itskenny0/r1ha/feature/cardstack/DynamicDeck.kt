@@ -62,52 +62,64 @@ fun effectiveDeckLayout(mode: DeckLayoutMode, tier: WindowTier): DeckLayout = wh
 const val DYNAMIC_VALUE_BAR_HEIGHT_DP = 180
 
 /**
- * Bottom content padding (px) that lets the LAST dynamic-deck card reach the
- * start-snap line at the viewport top.
+ * End content padding (px) that lets a FIRST or LAST dynamic-deck card reach
+ * the CENTER snap line of the viewport band.
  *
- * With start snapping the list stops scrolling when its content end meets the
- * viewport bottom, so a last card shorter than the band could never put its
- * start on the snap line and could never become the focused (wheel) target.
- * Padding the end by exactly (band - last item height) raises the max scroll
- * by exactly the missing amount: enough to snap the last card, never more, so
- * no dead space beyond "last card at the line".
+ * The deck centre-snaps (the focused card sits in the middle of the band, the
+ * neighbour above and below peeking, matching the fullscreen peek deck). A
+ * card whose centre is to align with the band centre needs (band - itemHeight)
+ * / 2 of free space on its outer side: the top card needs that much top
+ * padding so it can scroll down into the centre, the bottom card needs the
+ * same as bottom padding so it can scroll up into the centre. Without it the
+ * list clamps the first card flush to the band top and the last card flush to
+ * the band bottom, so neither end card could ever be centred (nor become the
+ * focused wheel target).
  *
- *  - [lastItemHeightPx] null = the last card has not been measured yet (it has
- *    never been composed, or the deck's tail just changed). Zero padding: the
- *    padding appears as the user approaches the end, never speculatively.
- *  - A last card at least as tall as the band needs no help (returns 0).
+ * Half of the old start-snap tail: a centred last card balances its
+ * (band - height)/2 bottom pad against the previous card peeking above, so it
+ * reads as a centred card rather than the near-full-viewport void the
+ * top-snap (band - height) pad used to leave.
  *
- * The caller must drop its cached measurement whenever the deck's last item
- * changes identity; carrying a height measured for a DIFFERENT card was how
- * a hidden/removed conditional card left a stale over-sized blank tail.
+ *  - [endItemHeightPx] null = the end card has not been measured yet (never
+ *    composed, or the deck's head/tail just changed). Zero padding: it appears
+ *    as the user approaches that end, never speculatively.
+ *  - An end card at least as tall as the band needs no help (returns 0): a
+ *    band-filling card is already its own centre.
+ *
+ * The caller must drop its cached measurement whenever the relevant end item
+ * changes identity; carrying a height measured for a DIFFERENT card was how a
+ * hidden/removed conditional card left a stale blank gap.
  */
-fun dynamicEndReachPaddingPx(bandHeightPx: Int, lastItemHeightPx: Int?): Int {
-    if (lastItemHeightPx == null) return 0
-    return (bandHeightPx - lastItemHeightPx).coerceIn(0, bandHeightPx.coerceAtLeast(0))
+fun dynamicCenterPaddingPx(bandHeightPx: Int, endItemHeightPx: Int?): Int {
+    if (endItemHeightPx == null) return 0
+    return ((bandHeightPx - endItemHeightPx) / 2).coerceIn(0, bandHeightPx.coerceAtLeast(0))
 }
 
 /**
- * One visible item of the dynamic deck list, as (index, main-axis offset in px
- * relative to the snap line at the viewport top). A thin pure projection of
+ * One visible item of the dynamic deck list, as (index, main-axis start offset
+ * in px relative to the band top, item height in px). A thin pure projection of
  * LazyListLayoutInfo.visibleItemsInfo so the focused-index math is testable
- * without a composition.
+ * without a composition. The height is carried so the focused item can be
+ * picked by its CENTRE, matching the centre-snap presentation.
  */
-data class DynamicVisibleItem(val index: Int, val offsetPx: Int)
+data class DynamicVisibleItem(val index: Int, val offsetPx: Int, val sizePx: Int)
 
 /**
- * Which item of the dynamic deck is the FOCUSED one: the item whose start sits
- * nearest the snap line (offset 0 at the viewport top). After a snap settles
- * this is exactly the snapped item; mid-list it is the dominant visible card.
- * Ties (a card's end and the next card's start equidistant around the line)
- * break toward the EARLIER index so focus never jumps ahead of the snap.
- * Empty list (deck cleared mid-frame) falls back to 0, matching the pager's
- * realIndexOf guard.
+ * Which item of the dynamic deck is the FOCUSED one: the item whose CENTRE sits
+ * nearest the band centre ([bandHeightPx] / 2). The deck centre-snaps, so after
+ * a snap settles this is exactly the snapped (centred) item; mid-list it is the
+ * dominant visible card. Ties (two card centres equidistant from the band
+ * centre) break toward the EARLIER index so focus never jumps ahead of the
+ * snap. Empty list (deck cleared mid-frame) falls back to 0, matching the
+ * pager's realIndexOf guard.
  */
-fun dynamicFocusedIndex(visible: List<DynamicVisibleItem>): Int {
+fun dynamicFocusedIndex(visible: List<DynamicVisibleItem>, bandHeightPx: Int): Int {
+    val bandCenter = bandHeightPx / 2
     var bestIndex = 0
     var bestDistance = Int.MAX_VALUE
     for (item in visible) {
-        val distance = kotlin.math.abs(item.offsetPx)
+        val itemCenter = item.offsetPx + item.sizePx / 2
+        val distance = kotlin.math.abs(itemCenter - bandCenter)
         // Strict less-than: on a tie the earlier item (lists are in index
         // order) keeps the focus.
         if (distance < bestDistance) {
