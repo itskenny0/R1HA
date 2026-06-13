@@ -3,7 +3,6 @@ package com.github.itskenny0.r1ha.feature.cardstack
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
@@ -36,7 +35,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -46,10 +44,8 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.components.EntityCard
-import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.launch
 
 /**
  * The DYNAMIC deck layout: the same mixed deck PageDeck renders, but as a
@@ -70,12 +66,19 @@ import kotlinx.coroutines.launch
  *    of black.
  *
  * Cards remain discrete snap targets: a snapping fling
- * ([SnapLayoutInfoProvider] over the list state, [SnapPosition.Start]) settles
- * every gesture with some card's start on the snap line at the viewport top,
- * and the focused card (nearest the line, see [dynamicFocusedIndex]) is the
- * one the wheel, tap-to-toggle and long-press act on. Non-focused visible
- * cards wear the same tap-to-navigate scrim peek neighbours do, so a tap on a
- * peeking card snaps it in rather than actuating it.
+ * ([SnapLayoutInfoProvider] over the list state, [SnapPosition.Center]) settles
+ * every gesture with some card centred in the viewport band (the neighbour
+ * above and below peeking), matching the fullscreen peek deck's centred
+ * presentation. The focused card (centre nearest the band centre, see
+ * [dynamicFocusedIndex]) is the one the WHEEL and hardware keys drive.
+ *
+ * Unlike the fullscreen peek deck, every dynamic card is fully laid out and
+ * directly hittable: a tap goes straight to the tapped card's own content and
+ * fires it (button activate, script run, switch toggle, light tap), regardless
+ * of which card the wheel is centred on. There is no tap-to-snap scrim or
+ * dimming over non-focused cards; focus is a WHEEL-routing concept only and
+ * never gates tap actuation. (The fullscreen peek deck keeps tap-to-navigate,
+ * correct there since its neighbours are off-screen peeks, not laid-out cards.)
  *
  * Deliberately NOT supported here (FULLSCREEN keeps both):
  *  - Infinite scroll: see [dynamicSnapTarget] for why a per-item-height lazy
@@ -84,6 +87,31 @@ import kotlinx.coroutines.launch
  *  - The peek-deck presentation: superseded, the dynamic list already shows
  *    neighbouring cards at their real heights.
  */
+/**
+ * Animate the [index] item to the CENTRE of the snap viewport, the resting
+ * position of a centre-snap fling. [LazyListState.animateScrollToItem] aligns
+ * an item's START with the viewport start, so this first scrolls there, then
+ * (once the target is measured and visible) recentres by the half-difference
+ * between the snap viewport span and the item's real height. Splitting it in
+ * two is what lets a FAR jump work: the destination item's height is unknown
+ * until it is brought on-screen, so the centre offset can only be computed
+ * after the first scroll. A band-filling (or taller) card is already its own
+ * centre, so the recentre offset clamps to <= 0 (never pushes it back down).
+ */
+private suspend fun androidx.compose.foundation.lazy.LazyListState.animateScrollToItemCentered(
+    index: Int,
+) {
+    // Bring the item on-screen with its start at the viewport top.
+    animateScrollToItem(index)
+    val info = layoutInfo
+    val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val bandSpan = info.viewportEndOffset - info.viewportStartOffset
+    // Negative scroll-offset shifts the item DOWN into the centre; clamp so a
+    // band-filling card is not pushed past centre.
+    val centerOffset = -((bandSpan - item.size) / 2).coerceAtLeast(0)
+    if (centerOffset != 0) animateScrollToItem(index, centerOffset)
+}
+
 @Composable
 internal fun DynamicPageDeck(
     pageId: String,
@@ -128,10 +156,25 @@ internal fun DynamicPageDeck(
             if (listState.isScrollInProgress) {
                 null
             } else {
+                val info = listState.layoutInfo
+                // Centre-snap: the band centre is the midpoint of the snap
+                // viewport (viewportStart/End already net out the symmetric
+                // content padding). Item offsets share that coordinate space,
+                // so feeding the span as the band height lets the helper pick
+                // the card whose centre is nearest the band centre.
+                val bandSpan = info.viewportEndOffset - info.viewportStartOffset
                 dynamicFocusedIndex(
-                    listState.layoutInfo.visibleItemsInfo.map {
-                        DynamicVisibleItem(index = it.index, offsetPx = it.offset)
+                    info.visibleItemsInfo.map {
+                        DynamicVisibleItem(
+                            index = it.index,
+                            // Offset is absolute in viewport coords; subtract
+                            // the viewport start so item centre and band centre
+                            // share a 0-based origin.
+                            offsetPx = it.offset - info.viewportStartOffset,
+                            sizePx = it.size,
+                        )
                     },
+                    bandHeightPx = bandSpan,
                 )
             }
         }
@@ -160,26 +203,28 @@ internal fun DynamicPageDeck(
     }
     // Hardware-key card steps (CARD_UP / CARD_DOWN push signed deltas into the
     // shared navRequests flow). Clamped to the finite deck; runCatching keeps
-    // an animateScrollToItem cancelled by a user touch from killing the
-    // collector for the rest of the session.
+    // a scroll cancelled by a user touch from killing the collector for the
+    // rest of the session.
     LaunchedEffect(listState, navRequests, isActive, cards.size) {
         if (!isActive) return@LaunchedEffect
         navRequests.collect { delta ->
             if (cards.isEmpty() || delta == 0) return@collect
             val target = dynamicSnapTarget(settledFocus.intValue + delta, cards.size)
             if (target != settledFocus.intValue) {
-                runCatching { listState.animateScrollToItem(target) }
+                runCatching { listState.animateScrollToItemCentered(target) }
             }
         }
     }
-    // Jump-to-card / widget deep-link targets. animateScrollToItem aligns the
-    // item's start with the viewport top, which IS the snap position, so a
-    // programmatic jump lands exactly where a fling would have snapped.
+    // Jump-to-card / widget deep-link targets. Centre the target so a
+    // programmatic jump lands exactly where a centre-snap fling would have
+    // settled (focused card in the middle of the band).
     LaunchedEffect(listState, jumpRequests, isActive, cards.size) {
         if (!isActive) return@LaunchedEffect
         jumpRequests.collect { targetIdx ->
             if (cards.isEmpty()) return@collect
-            runCatching { listState.animateScrollToItem(dynamicSnapTarget(targetIdx, cards.size)) }
+            runCatching {
+                listState.animateScrollToItemCentered(dynamicSnapTarget(targetIdx, cards.size))
+            }
         }
     }
 
@@ -198,26 +243,40 @@ internal fun DynamicPageDeck(
         // the cap a tall Lovelace card scrolls internally past.
         val bandHeight = maxHeight
         val bandHeightPx = constraints.maxHeight
-        // Reachability padding. With start-snapping, a SHORT last card could
-        // never reach the snap line (the list stops scrolling when its end
-        // hits the viewport bottom), so that card could never become the
-        // focused one. Padding the list's end by (band - last item height)
-        // raises the max scroll exactly enough for the last card's start to
-        // reach the line (the tight amount, see [dynamicEndReachPaddingPx]);
-        // the height is read from the live layout info, so until the last
-        // card has been composed once the padding is 0 (conservative; it
-        // appears as the user approaches the end).
+        // Centring padding for BOTH ends. With centre-snapping the list would
+        // otherwise clamp the FIRST card flush to the band top and the LAST
+        // card flush to the band bottom, so neither end card could reach the
+        // band CENTRE (nor become the focused wheel target). Symmetric end
+        // padding of (band - end item height)/2 on each side raises the scroll
+        // range exactly enough for each end card to centre (see
+        // [dynamicCenterPaddingPx]); the heights are read from the live layout
+        // info, so until an end card has been composed once its padding is 0
+        // (conservative; it appears as the user approaches that end).
         //
-        // The measurement cache is keyed on the LAST item's identity, not just
-        // the page: a deck mutation (conditional card hidden / shown, card
-        // removed) swaps which card is last, and carrying the height measured
-        // for the PREVIOUS last card left a stale over-sized padding behind,
-        // which the user saw as a long blank tail after the deck's real end.
+        // Each measurement is keyed on its end item's identity, not just the
+        // page: a deck mutation (conditional card hidden / shown, card
+        // removed) swaps which card is first/last, and carrying the height
+        // measured for the PREVIOUS end card left a stale gap behind.
+        val firstItemKey = cards.firstOrNull()?.key
         val lastItemKey = cards.lastOrNull()?.key
-        val lastItemHeightPx = remember(pageId, lastItemKey, cards.size) {
-            // -1 = not measured yet; the padding helper treats it as "no
-            // padding" until the real last card reports a size.
+        // -1 = not measured yet; the padding helper treats it as "no padding"
+        // until the real end card reports a size.
+        val firstItemHeightPx = remember(pageId, firstItemKey, cards.size) {
             mutableIntStateOf(-1)
+        }
+        val lastItemHeightPx = remember(pageId, lastItemKey, cards.size) {
+            mutableIntStateOf(-1)
+        }
+        LaunchedEffect(listState, firstItemKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull()
+                    ?.takeIf { it.index == 0 }
+                    ?.size
+            }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect { firstItemHeightPx.intValue = it }
         }
         LaunchedEffect(listState, lastItemKey, cards.size) {
             snapshotFlow {
@@ -230,10 +289,16 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { lastItemHeightPx.intValue = it }
         }
-        val reachPadBottom = with(LocalDensity.current) {
-            dynamicEndReachPaddingPx(
+        val centerPadTop = with(LocalDensity.current) {
+            dynamicCenterPaddingPx(
                 bandHeightPx = bandHeightPx,
-                lastItemHeightPx = lastItemHeightPx.intValue.takeIf { it >= 0 },
+                endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+            ).toDp()
+        }
+        val centerPadBottom = with(LocalDensity.current) {
+            dynamicCenterPaddingPx(
+                bandHeightPx = bandHeightPx,
+                endItemHeightPx = lastItemHeightPx.intValue.takeIf { it >= 0 },
             ).toDp()
         }
         // Snapping fling: decay the gesture's velocity (so a hard flick still
@@ -248,7 +313,11 @@ internal fun DynamicPageDeck(
             snapFlingBehavior(
                 snapLayoutInfoProvider = SnapLayoutInfoProvider(
                     lazyListState = listState,
-                    snapPosition = SnapPosition.Start,
+                    // Centre-snap: the focused card rests in the middle of the
+                    // band with its neighbours peeking, matching the fullscreen
+                    // peek deck (was Start, which left the focused card at the
+                    // top with a near-full-viewport void below it).
+                    snapPosition = SnapPosition.Center,
                 ),
                 decayAnimationSpec = exponentialDecay(frictionMultiplier = flingFriction),
                 snapAnimationSpec = spring(
@@ -269,7 +338,7 @@ internal fun DynamicPageDeck(
             // of one-line toggles still feels like one deck.
             verticalArrangement = androidx.compose.foundation.layout.Arrangement
                 .spacedBy(R1.space.m),
-            contentPadding = PaddingValues(bottom = reachPadBottom),
+            contentPadding = PaddingValues(top = centerPadTop, bottom = centerPadBottom),
             modifier = Modifier.fillMaxSize(),
         ) {
             itemsIndexed(cards, key = { _, item -> item.key }) { idx, item ->
@@ -299,16 +368,13 @@ internal fun DynamicPageDeck(
                             .heightIn(max = bandHeight),
                     ) {
                         if (entityCard != null) {
-                            // Same focused-only on-card "..." gate the pager
-                            // applies to peek neighbours.
-                            CompositionLocalProvider(
-                                com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo provides
-                                    if (isFocusedSlot) {
-                                        com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo.current
-                                    } else {
-                                        null
-                                    },
-                            ) {
+                            // Every dynamic card is fully laid out and directly
+                            // interactive, so the on-card "..." more-info
+                            // affordance is live on all of them (not gated to
+                            // the focused slot the way the pager gates its
+                            // off-screen peek neighbours). Focus here is a
+                            // WHEEL-routing concept only.
+                            run {
                                 // Content-height surface with the Lovelace
                                 // items' overflow contract: verticalScroll
                                 // measures the card unbounded so it wraps to
@@ -326,9 +392,11 @@ internal fun DynamicPageDeck(
                                         .graphicsLayer {
                                             // Static panel treatment (no pager
                                             // offset to animate against): the
-                                            // focused card casts the pager's
+                                            // centred card casts the pager's
                                             // full shadow, neighbours a softer
-                                            // one so depth still marks focus.
+                                            // one so depth still marks focus
+                                            // (a subtle, non-blocking cue: it
+                                            // never gates taps).
                                             shadowElevation =
                                                 (if (isFocusedSlot) 24.dp else 8.dp).toPx()
                                             shape = cardShape
@@ -341,19 +409,26 @@ internal fun DynamicPageDeck(
                                 ) {
                                     EntityCard(
                                         state = entityCard,
-                                        onTapToggle = { vm.tapToggle() },
-                                        // vm.tapToggle / setSwitchOn / fireLongPress all
-                                        // act on the ACTIVE card, so only the focused
-                                        // slot may expose them; non-focused slots are
-                                        // tap-to-navigate via the scrim below.
-                                        tapToToggleEnabled = isFocusedSlot &&
-                                            appSettings.behavior.tapToToggle,
-                                        onSetOn = { on -> vm.setSwitchOn(on) },
-                                        onLongPress = if (!isFocusedSlot) {
-                                            null
-                                        } else {
-                                            longPressTarget?.let { target ->
-                                                { vm.fireLongPress(target) }
+                                        // Every visible card actuates on its
+                                        // OWN tap, regardless of wheel focus:
+                                        // vm.tapToggle / setSwitchOn /
+                                        // fireLongPress act on the active card,
+                                        // so a tapped card first claims focus
+                                        // (setCurrentIndex) and then fires, in
+                                        // the same gesture, via these callbacks.
+                                        onTapToggle = {
+                                            if (isActive) vm.setCurrentIndex(idx)
+                                            vm.tapToggle()
+                                        },
+                                        tapToToggleEnabled = appSettings.behavior.tapToToggle,
+                                        onSetOn = { on ->
+                                            if (isActive) vm.setCurrentIndex(idx)
+                                            vm.setSwitchOn(on)
+                                        },
+                                        onLongPress = longPressTarget?.let { target ->
+                                            {
+                                                if (isActive) vm.setCurrentIndex(idx)
+                                                vm.fireLongPress(target)
                                             }
                                         },
                                         lightWheelMode = itemLightMode,
@@ -373,7 +448,11 @@ internal fun DynamicPageDeck(
                                 hooks = lovelaceHooks,
                                 states = lovelaceStates,
                                 scope = deckScope,
-                                isFocused = isFocusedSlot,
+                                // Every dynamic card is directly interactive, so
+                                // the on-card "..." menu affordance is live on
+                                // all of them (the pager gates it to focus only
+                                // because its peek neighbours are half-visible).
+                                isFocused = true,
                                 // Wrap height (the slot IS the content block
                                 // here, unlike the pager's full-page slot).
                                 modifier = Modifier.fillMaxWidth(),
@@ -385,28 +464,12 @@ internal fun DynamicPageDeck(
                                 },
                             )
                         }
-                        // Tap-to-navigate scrim on every non-focused card: the
-                        // same affordance peek neighbours wear. A tap snaps the
-                        // card onto the line (making it the focused target for
-                        // wheel / buttons) instead of actuating its controls.
-                        if (!isFocusedSlot) {
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .clip(if (entityCard != null) cardShape else R1.ShapeM)
-                                    .background(R1.Bg.copy(alpha = 0.28f))
-                                    .r1Pressable(
-                                        onClick = {
-                                            deckScope.launch {
-                                                runCatching {
-                                                    listState.animateScrollToItem(idx)
-                                                }
-                                            }
-                                        },
-                                        contentDescription = "Show ${item.displayName()}",
-                                    ),
-                            )
-                        }
+                        // No tap-to-navigate scrim here (unlike the fullscreen
+                        // peek deck): every dynamic card is fully laid out, so
+                        // its own content receives taps directly and actuates on
+                        // the FIRST tap regardless of wheel focus. An overlay
+                        // would swallow that first tap. Wheel focus is tracked
+                        // separately via the settled-focus collector.
                     }
                 }
             }

@@ -63,4 +63,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Dynamic deck polish: tab swipes work everywhere, entity cards flow compact, no blank tail, untitled cards get names.",
     "Dynamic deck fixes: entity cards size to show all their controls, and every Lovelace/IR card wears its title.",
     "Button cards look pressable now: remote glyph on IR buttons, bold label, accent flash on tap, a tap-verb footer.",
+    "Dynamic deck: the focused card sits centered, and one tap fires any visible card without selecting it first.",
 )
