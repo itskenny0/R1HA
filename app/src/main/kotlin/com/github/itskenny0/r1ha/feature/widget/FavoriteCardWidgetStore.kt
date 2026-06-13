@@ -69,10 +69,24 @@ object FavoriteCardWidgetStore {
             // SharedPreferences holds listeners weakly and a lambda-only
             // registration gets GC'd silently.
             val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-                trySend(allBindings(context))
+                trySend(snapshot(context))
             }
             p.registerOnSharedPreferenceChangeListener(listener)
-            trySend(allBindings(context))
+            trySend(snapshot(context))
             awaitClose { p.unregisterOnSharedPreferenceChangeListener(listener) }
         }
+
+    /**
+     * [allBindings] wrapped so a SharedPreferences read can't escape the
+     * collector as an uncaught coroutine exception. The flow is collected on a
+     * long-lived app scope; if the underlying Context is swapped out from under
+     * a still-scheduled collector (the Robolectric per-test sandbox rotates
+     * ContextImpl between tests, nulling its shared-prefs cache), a raw read
+     * throws an NPE on the dispatcher thread with no try/catch in the call
+     * chain. That surfaces as an uncaught exception captured by the NEXT runTest
+     * in the same JVM worker, making the suite order-dependent. Treat an
+     * unreadable store as "no bindings" rather than letting it propagate.
+     */
+    private fun snapshot(context: Context): Map<Int, String> =
+        runCatching { allBindings(context) }.getOrDefault(emptyMap())
 }
