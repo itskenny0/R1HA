@@ -133,4 +133,137 @@ class ButtonLogicTest {
         assertEquals(null, iconHeightDp("tall"))
         assertEquals(null, iconHeightDp("0px"))
     }
+
+    // ── buttonSentLabel ──────────────────────────────────────────────────────
+
+    @Test fun `sent label is tense-matched to the action`() {
+        assertEquals(
+            "SENT",
+            buttonSentLabel(LovelaceAction.CallService("remote.send_command", "remote.rm4", null)),
+        )
+        assertEquals(
+            "FIRED",
+            buttonSentLabel(LovelaceAction.CallService("button.press", "button.bell", null)),
+        )
+        assertEquals(
+            "TOGGLED",
+            buttonSentLabel(LovelaceAction.CallService("light.toggle", "light.a", null)),
+        )
+        assertEquals(
+            "DONE",
+            buttonSentLabel(LovelaceAction.CallService("scene.turn_on", "scene.movie", null)),
+        )
+        assertEquals("TOGGLED", buttonSentLabel(LovelaceAction.Builtin("toggle", "light.a")))
+    }
+
+    @Test fun `sent label is null exactly when the tap hint is null`() {
+        // Both gate the confirmation footer; they must agree on inert surfaces.
+        assertEquals(null, buttonSentLabel(null))
+        assertEquals(null, buttonSentLabel(LovelaceAction.Builtin("none")))
+        assertEquals(null, buttonSentLabel(LovelaceAction.Invalid("nope")))
+    }
+
+    // ── buttonFiresSignal ────────────────────────────────────────────────────
+
+    @Test fun `fire-and-forget services signal-pulse`() {
+        assertEquals(
+            true,
+            buttonFiresSignal(LovelaceAction.CallService("remote.send_command", "remote.rm4", null)),
+        )
+        assertEquals(
+            true,
+            buttonFiresSignal(LovelaceAction.CallService("automation.trigger", "automation.a", null)),
+        )
+        assertEquals(
+            true,
+            buttonFiresSignal(LovelaceAction.CallService("scene.turn_on", "scene.movie", null)),
+        )
+        assertEquals(
+            true,
+            buttonFiresSignal(LovelaceAction.CallService("button.press", "button.bell", null)),
+        )
+    }
+
+    @Test fun `toggle and turn_off services do not signal-pulse`() {
+        assertEquals(
+            false,
+            buttonFiresSignal(LovelaceAction.CallService("light.toggle", "light.a", null)),
+        )
+        assertEquals(
+            false,
+            buttonFiresSignal(LovelaceAction.CallService("switch.turn_off", "switch.a", null)),
+        )
+    }
+
+    @Test fun `navigations and builtins never signal-pulse`() {
+        assertEquals(false, buttonFiresSignal(LovelaceAction.Navigate("/lovelace/0")))
+        assertEquals(false, buttonFiresSignal(LovelaceAction.Url("https://example.org")))
+        assertEquals(false, buttonFiresSignal(LovelaceAction.Builtin("toggle", "light.a")))
+        assertEquals(false, buttonFiresSignal(LovelaceAction.Builtin("more-info")))
+        assertEquals(false, buttonFiresSignal(null))
+        assertEquals(false, buttonFiresSignal(LovelaceAction.Invalid("nope")))
+    }
+
+    // ── buttonIconSlug ───────────────────────────────────────────────────────
+
+    @Test fun `send_command forces the remote glyph over a stale stored icon`() {
+        // A pre-existing pinned IR card carrying a cog slug still draws remote.
+        val tap = LovelaceAction.CallService("remote.send_command", "remote.rm4", null)
+        assertEquals("remote", buttonIconSlug(tap, "mdi:robot"))
+        assertEquals("remote", buttonIconSlug(tap, null))
+    }
+
+    @Test fun `non send_command keeps the configured icon untouched`() {
+        val scene = LovelaceAction.CallService("scene.turn_on", "scene.movie", null)
+        assertEquals("mdi:palette", buttonIconSlug(scene, "mdi:palette"))
+        assertEquals(null, buttonIconSlug(scene, null))
+        // An automation.trigger button keeps whatever icon it carries.
+        val auto = LovelaceAction.CallService("automation.trigger", "automation.a", null)
+        assertEquals("mdi:robot", buttonIconSlug(auto, "mdi:robot"))
+    }
+
+    // ── buttonNameBadge ──────────────────────────────────────────────────────
+
+    @Test fun `leading bracket tag splits into an upper-cased badge plus label`() {
+        assertEquals("IR" to "Living Room", buttonNameBadge("[IR] Living Room"))
+        assertEquals("RF" to "Garage", buttonNameBadge("[rf]   Garage"))
+    }
+
+    @Test fun `names without a clean tag keep the original string`() {
+        assertEquals(null to "Bedroom Lamp", buttonNameBadge("Bedroom Lamp"))
+        // A tag with no following label would leave the face nameless.
+        assertEquals(null to "[scene]", buttonNameBadge("[scene]"))
+    }
+
+    @Test fun `odd bracket names never crash or drop text`() {
+        assertEquals(null to "[", buttonNameBadge("["))
+        assertEquals(null to "[]", buttonNameBadge("[]"))
+        assertEquals(null to "[] x", buttonNameBadge("[] x"))
+    }
+
+    // ── pulseRing ────────────────────────────────────────────────────────────
+
+    @Test fun `pulse ring is silent before the clock starts and after it ends`() {
+        assertEquals(0f, pulseRing(0f, 0, 3).alpha)
+        assertEquals(0f, pulseRing(1f, 0, 3).alpha)
+    }
+
+    @Test fun `leading ring expands and fades over the clock`() {
+        val early = pulseRing(0.2f, 0, 3)
+        val late = pulseRing(0.8f, 0, 3)
+        // Radius grows monotonically while alpha decays.
+        assertEquals(true, late.radiusFraction > early.radiusFraction)
+        assertEquals(true, late.alpha < early.alpha)
+        // Eased-out radius stays within 0..1.
+        assertEquals(true, early.radiusFraction in 0f..1f)
+        assertEquals(true, late.radiusFraction in 0f..1f)
+    }
+
+    @Test fun `trailing rings start later than the leading ring`() {
+        // At a small progress only the leading ring (index 0) has launched.
+        val lead = pulseRing(0.05f, 0, 3)
+        val trail = pulseRing(0.05f, 2, 3)
+        assertEquals(true, lead.alpha > 0f)
+        assertEquals(0f, trail.alpha)
+    }
 }

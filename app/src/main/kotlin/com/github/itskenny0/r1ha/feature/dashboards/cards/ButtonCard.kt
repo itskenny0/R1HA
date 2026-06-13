@@ -1,9 +1,10 @@
 package com.github.itskenny0.r1ha.feature.dashboards.cards
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,37 +16,75 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
+import com.github.itskenny0.r1ha.ui.icons.R1Icons
+import kotlinx.coroutines.launch
 
 /**
- * Renderer for HA's `button` card: a tactile fire-control face. Anatomy, top
- * to bottom: a large accent disc holding the glyph (the actuator), the name in
- * full-contrast title type (the label plate), and a hairline-flanked all-caps
- * verb derived from the resolved tap action ("TAP TO SEND" for IR commands,
- * "TAP TO TOGGLE" for a light, see [buttonTapHint]). Pressing lights the face:
- * the disc fills solid accent and flips its glyph dark, the frame brightens to
- * full accent, and the verb tints warm, all springing in lockstep with the
- * shared press dip because the card hands its interaction source to
- * [r1CardActions]. Hold / double-tap stay wired through the same modifier.
+ * Renderer for HA's `button` card: a tactile FIRE-CONTROL face built in R1HA's
+ * industrial-kiosk idiom (near-black surface, a single warm accent, all-caps
+ * micro labels, hairline rules). It reads as a physical actuator you arm and
+ * launch, not a passive readout.
  *
- * Deck composition: the deck slot always paints its own micro identity header
- * above every card face. The split here is hierarchy, not suppression: that
- * header is muted slot chrome, while the face's name is the button's hero
- * label, the same small-header / big-face pairing entity cards use. The verb
- * footer is the line the old face lacked, which is what made it read as a
- * disabled box instead of a control.
+ * Anatomy, top to bottom:
+ *  - the ACTUATOR: a glyph held in a layered accent ring (the hero). At rest the
+ *    ring is a hairline; pressed and freshly-fired it lights solid and the glyph
+ *    flips dark, like a key pressing home. A soft radial inner glow sits behind
+ *    the whole face so the actuator looks lit from within rather than stamped on.
+ *  - the NAME: small and quiet. The deck slot already paints a `deckCardHeader
+ *    Title` identity line above every face, so duplicating it big would read as
+ *    three copies of the same word; the face name is a de-emphasised echo (or an
+ *    inline `[IR]`-style badge), the same small-label / big-face split entity
+ *    cards use. Honours `show_name`.
+ *  - the VERB FOOTER: hairline rules flanking the affordance verb ("TAP TO SEND"
+ *    for an IR blast, "TAP TO TOGGLE" for a light; see [buttonTapHint]).
+ *
+ * THE FIRED CONFIRMATION (the point of the card). These are one-shot launches
+ * (`remote.send_command` / `automation.trigger` / scene / script / `*.press`),
+ * so firing should FEEL like launching a signal. On the ACTUAL action dispatch
+ * (not press-down) the card plays, all keyed off a per-fire trigger counter so
+ * repeated taps each get a fresh burst:
+ *  1. a RADIATING SIGNAL PULSE: concentric rings fling outward from the actuator
+ *     and dissipate (Canvas, accent, expanding radius + decaying alpha, ~520ms;
+ *     geometry in [pulseRing]). IR-evocative and the unmistakable "it fired" cue.
+ *  2. an accent FLARE: the actuator disc washes solid accent, the glyph flips
+ *     dark, then springs back; the verb footer crossfades the affordance verb
+ *     out and the past-tense [buttonSentLabel] ("SENT" / "FIRED") in for the
+ *     window, then back.
+ *  3. a crisp HAPTIC confirm tick (the device buzzes), a real physical "sent".
+ * A toggle-type action ([buttonFiresSignal] = false) skips the radiating pulse
+ * (its on/off state the disc already shows is the feedback) but keeps the flare,
+ * label crossfade and haptic so every tap still confirms.
+ *
+ * SHARED renderer: the dashboards grid renders this too, so a plain entity-bound
+ * button (light / script / scene) must still look on-brand; it does, taking the
+ * state accent and the gentle (toggle) or full (run) confirmation as its action
+ * dictates. Hold / double-tap stay wired through [r1CardActions].
  */
 @Composable
 fun ButtonCard(
@@ -65,9 +104,13 @@ fun ButtonCard(
     // state-derived tint; else neutral. R1HA divergence: a bare action button
     // is always warm-accented (see buttonAccent), never disabled-grey.
     val accent = buttonAccent(card.color, card.stateColor, card.entityId, state)
-    val label = card.name?.takeUnless { it.isBlank() }
+    val rawLabel = card.name?.takeUnless { it.isBlank() }
         ?: card.entityId?.let { resolveStructuredName(null, card.nameItems, null, state, it) }
         ?: "Action"
+    // De-emphasise a leading bracket tag ("[IR] Living Room") into an inline
+    // badge + a clean label. Safe on odd names (returns null badge + the
+    // original string), so we never crash or drop text.
+    val (nameBadge, faceLabel) = buttonNameBadge(rawLabel)
     // HA's `icon_height` sizes the glyph; default one notch above the tile
     // discs (56 vs 48) because the disc is this card's hero, not a row marker.
     val discSize = iconHeightDp(card.iconHeight)?.dp ?: 56.dp
@@ -79,76 +122,164 @@ fun ButtonCard(
         doubleTapAction = card.doubleTapAction,
         cardEntityId = card.entityId,
     )
-    // Share the press stream with r1CardActions so the accent flash below
-    // animates in lockstep with the modifier's own scale/alpha dip.
+    // Share the press stream with r1CardActions so the resting press dip and the
+    // face chrome animate in lockstep with the modifier's own scale/alpha dip.
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+
+    // ── The FIRED confirmation engine ───────────────────────────────────────
+    // A per-fire trigger counter bumped on each ACTUAL dispatch (not press-down)
+    // so repeated taps each relaunch a fresh burst. The signal pulse (radiating
+    // rings) only runs for fire-and-forget actions; the flare + label crossfade
+    // + haptic run for every actionable tap.
+    val firesSignal = buttonFiresSignal(actions.tap)
+    val sentLabel = buttonSentLabel(actions.tap)
+    var fireTrigger by remember { mutableIntStateOf(0) }
+    // 0 at rest, snaps to 1 on a fire then springs back — drives the flare wash
+    // and the verb->SENT crossfade. Separate from the pulse clock so the flare
+    // can settle on its own spring while the rings ease out linearly.
+    val flare = remember { Animatable(0f) }
+    // 0..1 pulse clock per fire, re-run from 0 each trigger. Linear so the ring
+    // geometry in pulseRing owns the easing.
+    val pulse = remember { Animatable(0f) }
+    val view = LocalView.current
+    val haptic = rememberR1Haptic()
+
+    LaunchedEffect(fireTrigger) {
+        if (fireTrigger == 0) return@LaunchedEffect
+        // Crisp physical confirm the instant the command leaves.
+        haptic.tick(view)
+        // Run the radiating pulse and the flare concurrently: the pulse tween
+        // expands the rings while the flare snaps the disc solid and springs it
+        // home, so the disc punches and the signal flies out together.
+        if (firesSignal) {
+            launch {
+                pulse.snapTo(0f)
+                pulse.animateTo(1f, animationSpec = tween(durationMillis = 520))
+                pulse.snapTo(0f)
+            }
+        }
+        // Flare: snap up (disc fills solid, glyph flips dark) then spring back
+        // with a touch of bounce so the key reads as released, not just faded.
+        flare.snapTo(1f)
+        flare.animateTo(
+            0f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioLowBouncy,
+                stiffness = Spring.StiffnessMedium,
+            ),
+        )
+    }
+
+    // Wrap the dispatch so EVERY fired action bumps the trigger. We bump for any
+    // resolved tap (the user did tap something); hold / double-tap also count as
+    // a fire so the face confirms whatever gesture dispatched.
+    val firingOnAction: (LovelaceAction) -> Unit = remember(onAction) {
+        { action ->
+            fireTrigger++
+            onAction(action)
+        }
+    }
+
+    // Resting frame is a hairline that warms a touch while pressed; the heavy
+    // full-accent box is gone. The flare briefly brightens it to confirm a fire.
     val pressSpring = spring<Float>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow,
     )
-    // Press flash: disc wash 18% (the shared CardIconDisc resting fill) ->
-    // solid, glyph accent -> dark, frame 45% -> full. Springs (not snaps) so
-    // even a quick IR tap shows a visible pulse decaying out, the "command
-    // fired" cue.
-    val discFill by animateFloatAsState(
-        targetValue = if (pressed) 1f else 0.18f,
+    val pressLift by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
         animationSpec = pressSpring,
-        label = "button-card-disc-fill",
+        label = "button-card-press-lift",
     )
-    val glyphTint by animateColorAsState(
-        targetValue = if (pressed) R1.Bg else accent,
-        label = "button-card-glyph-tint",
-    )
-    val frame by animateColorAsState(
-        targetValue = if (pressed) accent else accent.copy(alpha = 0.45f),
-        label = "button-card-frame",
-    )
+    // Combined "face is hot" amount: max of the held-press lift and the fire
+    // flare, so a held press and a fresh fire both light the face.
+    val hot = maxOf(pressLift, flare.value)
+    // Frame stays a hairline at rest and warms toward accent as the face heats.
+    // Cheap manual lerp keeps it out of animateColorAsState (one less node).
+    val frameColor = lerpColor(R1.Hairline, accent, 0.15f + 0.85f * hot)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
-            .border(1.dp, frame, R1.ShapeM)
+            // Soft radial inner glow: brightest at the actuator, fading out. It
+            // gives the near-black face depth (lit from within) and intensifies
+            // with the fire flare so the whole plate washes warm on a send.
+            .drawBehind {
+                val glow = 0.05f + 0.16f * hot
+                if (glow > 0.001f) {
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                accent.copy(alpha = glow),
+                                accent.copy(alpha = 0f),
+                            ),
+                            center = Offset(size.width / 2f, size.height * 0.34f),
+                            radius = size.maxDimension * 0.62f,
+                        ),
+                    )
+                }
+            }
+            .border(1.dp, frameColor, R1.ShapeM)
             .r1CardActions(
                 actions = actions,
-                onAction = onAction,
-                contentDescription = label,
+                onAction = firingOnAction,
+                contentDescription = faceLabel,
                 interactionSource = interaction,
             )
             .padding(horizontal = R1.space.l, vertical = R1.space.l),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // We honour `show_icon` and show a glyph when we can derive one: from
-        // the bound entity (with the config icon as override), or for a bare
-        // action button (no entity, e.g. a pinned IR-command button) from the
-        // config `icon:` alone. Only an unresolvable / absent icon skips the
-        // disc, rather than drawing a meaningless placeholder.
+        // We honour `show_icon` and draw a glyph when we can derive one. The
+        // slug is buttonIconSlug-overridden so a `remote.send_command` button
+        // always shows the remote glyph even if its stored `icon:` is a stale
+        // cog (the user's pre-existing pinned IR cards), while every other
+        // button keeps its configured icon.
+        val iconSlug = buttonIconSlug(actions.tap, card.icon)
         val icon = when {
             !card.showIcon -> null
-            card.entityId != null -> cardEntityIcon(card.entityId, state, card.icon)
-            else -> com.github.itskenny0.r1ha.ui.icons.R1Icons.forMdi(card.icon)
+            card.entityId != null -> cardEntityIcon(card.entityId, state, iconSlug)
+            else -> R1Icons.forMdi(iconSlug)
         }
         if (icon != null) {
-            CardIconDisc(
+            FireActuator(
                 icon = icon,
                 accent = accent,
                 discSize = discSize,
-                iconSize = discSize * 0.5f,
-                fillAlpha = discFill,
-                iconTint = glyphTint,
+                hot = hot,
+                pulse = if (firesSignal) pulse.value else 0f,
             )
             Spacer(Modifier.height(R1.space.m))
         }
         if (card.showName) {
-            Text(
-                text = label,
-                style = R1.titleCard,
-                color = R1.Ink,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Small, quiet name (the deck header is the identity line). If the
+            // original name carried an "[IR]"-style tag we render it as an
+            // inline badge ahead of the cleaned label.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (nameBadge != null) {
+                    Text(
+                        text = nameBadge,
+                        style = R1.labelMicro,
+                        color = accent,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(R1.ShapeS)
+                            .background(accent.copy(alpha = 0.14f))
+                            .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
+                    )
+                    Spacer(Modifier.size(R1.space.s))
+                }
+                Text(
+                    text = faceLabel,
+                    style = R1.bodyEmph,
+                    color = R1.Ink,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (card.showState && state != null) {
             Spacer(Modifier.height(R1.space.xs))
@@ -160,10 +291,9 @@ fun ButtonCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        // Affordance footer: hairline rules flanking the action verb. The
-        // rules give the wide face horizontal structure (no more cavernous
-        // empty plate) and the verb says what a tap does. Skipped entirely on
-        // an inert face (no resolvable tap) so a dead surface never promises.
+        // Affordance footer: hairline rules flanking the verb. While a fire is
+        // hot the affordance verb crossfades out and the past-tense confirmation
+        // ("SENT" / "FIRED") crossfades in over the same slot, then back.
         val hint = buttonTapHint(actions.tap)
         if (hint != null) {
             Spacer(Modifier.height(R1.space.m))
@@ -177,13 +307,35 @@ fun ButtonCard(
                         .height(1.dp)
                         .background(R1.Hairline),
                 )
-                Text(
-                    text = hint,
-                    style = R1.labelMicro,
-                    color = if (pressed) accent else R1.InkSoft,
-                    maxLines = 1,
+                // Two texts stacked in a Box, crossfaded by `hot`: the affordance
+                // verb fades out as the confirmation fades in. Box (not a swap)
+                // keeps the footer width stable so the rules don't twitch.
+                Box(
                     modifier = Modifier.padding(horizontal = R1.space.s),
-                )
+                    contentAlignment = Alignment.Center,
+                ) {
+                    // Two texts crossfaded by `hot` via per-text layer alpha: the
+                    // affordance verb fades out as the past-tense confirmation
+                    // fades in over the same slot. Box keeps the footer width
+                    // stable (the wider of the two reserves the room) so the
+                    // hairline rules don't twitch as the words swap.
+                    Text(
+                        text = hint,
+                        style = R1.labelMicro,
+                        color = R1.InkSoft,
+                        maxLines = 1,
+                        modifier = Modifier.graphicsLayer { this.alpha = 1f - hot },
+                    )
+                    if (sentLabel != null) {
+                        Text(
+                            text = sentLabel,
+                            style = R1.labelMicro,
+                            color = accent,
+                            maxLines = 1,
+                            modifier = Modifier.graphicsLayer { this.alpha = hot },
+                        )
+                    }
+                }
                 Box(
                     Modifier
                         .weight(1f)
@@ -193,4 +345,94 @@ fun ButtonCard(
             }
         }
     }
+}
+
+/**
+ * The hero ACTUATOR: the glyph held in a layered accent ring, with the radiating
+ * signal pulse drawn behind it. [hot] (0..1) is the combined press/flare heat:
+ * the inner disc fills from a faint wash to solid accent and the glyph flips from
+ * accent to dark as it climbs, so a held press or a fresh fire lights the key.
+ * [pulse] (0..1) is the per-fire clock that flings the concentric rings outward
+ * (geometry in [pulseRing]); 0 for toggle actions, which skip the launch.
+ *
+ * Drawn rather than reusing [CardIconDisc] because the actuator carries the pulse
+ * canvas and a two-layer ring (an outer hairline halo + the inner solid disc)
+ * the row discs don't need.
+ */
+@Composable
+private fun FireActuator(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accent: androidx.compose.ui.graphics.Color,
+    discSize: androidx.compose.ui.unit.Dp,
+    hot: Float,
+    pulse: Float,
+) {
+    val ringCount = 3
+    // The pulse needs room to expand past the disc; the Box is sized larger than
+    // the disc and the rings draw out to its bounds.
+    val fieldSize = discSize * 1.9f
+    Box(
+        modifier = Modifier
+            .size(fieldSize)
+            .drawBehind {
+                if (pulse > 0f && pulse < 1f) {
+                    val maxR = size.minDimension / 2f
+                    // Rings start at the disc rim, not the centre, so they read
+                    // as leaving the actuator face.
+                    val minR = (discSize.toPx() / 2f).coerceAtMost(maxR)
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    for (i in 0 until ringCount) {
+                        val ring = pulseRing(pulse, i, ringCount)
+                        if (ring.alpha <= 0f) continue
+                        val r = minR + (maxR - minR) * ring.radiusFraction
+                        drawCircle(
+                            color = accent.copy(alpha = ring.alpha * 0.75f),
+                            radius = r,
+                            center = center,
+                            style = Stroke(width = 2f),
+                        )
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(discSize)
+                .clip(CircleShape)
+                // Inner disc fills from an 18% wash to solid as the face heats.
+                .background(accent.copy(alpha = 0.18f + 0.82f * hot))
+                // Outer hairline halo ring (always present, brightens with heat).
+                .border(1.dp, accent.copy(alpha = 0.4f + 0.6f * hot), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                // Glyph flips accent -> dark as the disc fills, so it stays
+                // legible against the solid fill at the peak of a fire.
+                tint = lerpColor(accent, R1.Bg, hot),
+                modifier = Modifier.size(discSize * 0.5f),
+            )
+        }
+    }
+}
+
+/**
+ * Cheap manual colour lerp for the few face transitions that don't warrant an
+ * `animateColorAsState` node (the frame tint and the glyph flip read off the
+ * shared `hot`/`pulse` clocks already). [t] is clamped 0..1.
+ */
+private fun lerpColor(
+    from: androidx.compose.ui.graphics.Color,
+    to: androidx.compose.ui.graphics.Color,
+    t: Float,
+): androidx.compose.ui.graphics.Color {
+    val c = t.coerceIn(0f, 1f)
+    return androidx.compose.ui.graphics.Color(
+        red = from.red + (to.red - from.red) * c,
+        green = from.green + (to.green - from.green) * c,
+        blue = from.blue + (to.blue - from.blue) * c,
+        alpha = from.alpha + (to.alpha - from.alpha) * c,
+    )
 }
