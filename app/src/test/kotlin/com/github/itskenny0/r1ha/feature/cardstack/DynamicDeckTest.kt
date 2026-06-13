@@ -120,6 +120,70 @@ class DynamicDeckTest {
         assertThat(dynamicFocusedIndex(emptyList(), bandHeightPx = 800)).isEqualTo(0)
     }
 
+    @Test fun `item zero flush at the band top is focused`() {
+        // Item 0 snaps TOP-aligned (start at 0), so at rest its start is 0 and
+        // its CENTRE is far above the band centre. The snap-line-aware focus
+        // must still pick it (the old nearest-centre rule would have wrongly
+        // jumped to item 1). 800 px band: item 0 start 0 (snap 0, distance 0),
+        // item 1 start 220 with snap line (800-200)/2 = 300 (distance 80).
+        val visible = listOf(
+            DynamicVisibleItem(index = 0, offsetPx = 0, sizePx = 200),
+            DynamicVisibleItem(index = 1, offsetPx = 220, sizePx = 200),
+        )
+        assertThat(dynamicFocusedIndex(visible, bandHeightPx = 800)).isEqualTo(0)
+    }
+
+    @Test fun `second card centred is reachable as the focused card`() {
+        // The regression: with item 0 pinned to the top, the SECOND card must
+        // be a focusable rest. Here item 1 sits on its centre snap line
+        // (start (800-200)/2 = 300) while item 0 has scrolled partly off the
+        // top (start -80, away from its own 0 line): item 1 wins.
+        val visible = listOf(
+            DynamicVisibleItem(index = 0, offsetPx = -80, sizePx = 200),
+            DynamicVisibleItem(index = 1, offsetPx = 300, sizePx = 200),
+            DynamicVisibleItem(index = 2, offsetPx = 520, sizePx = 200),
+        )
+        assertThat(dynamicFocusedIndex(visible, bandHeightPx = 800)).isEqualTo(1)
+    }
+
+    // ── dynamicSnapStartPx: the per-item snap line (the shared rule) ─────────
+
+    @Test fun `item zero snaps flush to the band top`() {
+        // Item 0 always rests at offset 0 regardless of its height: the user
+        // wants the deck to open with the first card pinned under the chrome.
+        assertThat(dynamicSnapStartPx(itemIndex = 0, itemSizePx = 200, bandHeightPx = 800))
+            .isEqualTo(0)
+        assertThat(dynamicSnapStartPx(itemIndex = 0, itemSizePx = 600, bandHeightPx = 800))
+            .isEqualTo(0)
+    }
+
+    @Test fun `non-first items snap to the band centre`() {
+        // (band - itemHeight) / 2: a 200 px card in an 800 px band centres at
+        // start 300; the same arithmetic SnapPosition.Center uses.
+        assertThat(dynamicSnapStartPx(itemIndex = 1, itemSizePx = 200, bandHeightPx = 800))
+            .isEqualTo(300)
+        assertThat(dynamicSnapStartPx(itemIndex = 5, itemSizePx = 400, bandHeightPx = 800))
+            .isEqualTo(200)
+    }
+
+    @Test fun `every item past the first has a DISTINCT centre snap line`() {
+        // The fix's core property: with item 0 top-anchored (line 0) and items
+        // 1..n centred (line 300 for equal-height cards), no two adjacent cards
+        // share a rest, so the fling can settle on each one (especially item 1,
+        // which the uniform-centre regression could not reach).
+        val band = 800
+        val size = 200
+        val item0 = dynamicSnapStartPx(itemIndex = 0, itemSizePx = size, bandHeightPx = band)
+        val item1 = dynamicSnapStartPx(itemIndex = 1, itemSizePx = size, bandHeightPx = band)
+        assertThat(item0).isNotEqualTo(item1)
+    }
+
+    @Test fun `a negative index is treated as the first item`() {
+        // Defensive: a stray negative index still resolves to the top line.
+        assertThat(dynamicSnapStartPx(itemIndex = -3, itemSizePx = 200, bandHeightPx = 800))
+            .isEqualTo(0)
+    }
+
     // ── dynamicSnapTarget: programmatic snap-index math ─────────────────────
 
     @Test fun `targets clamp to the finite deck`() {
