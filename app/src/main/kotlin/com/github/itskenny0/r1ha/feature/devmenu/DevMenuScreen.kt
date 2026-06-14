@@ -928,6 +928,12 @@ private fun LogShippingPanel(
             checked = logShipping.enabled,
             onChange = { v -> vm.updateLogShipping { it.copy(enabled = v) } },
         )
+        DevSwitchRow(
+            label = "Deck snap diagnostics",
+            subtitle = "Log the dynamic card deck's snap geometry (band span, content paddings, each visible card's offset against its snap line, the focused card) on every settle. For chasing deck snapping issues from the log; off by default.",
+            checked = logShipping.deckSnapDiagnostics,
+            onChange = { v -> vm.updateLogShipping { it.copy(deckSnapDiagnostics = v) } },
+        )
         Spacer(Modifier.height(8.dp))
         Text(text = "ENDPOINT URL", style = R1.labelMicro, color = R1.InkSoft)
         Spacer(Modifier.height(2.dp))

@@ -1155,6 +1155,14 @@ data class LogShippingSettings(
      *  the settings TEST button. Empty disables shipping regardless of
      *  [enabled] (there is nowhere to send). */
     val endpoint: String = "",
+    /** Diagnostic-only: when on, the DYNAMIC card deck ships a DeckSnap snapshot
+     *  of its snap geometry (band span, content paddings, every visible card's
+     *  normalised offset against its snap line, the chosen focus) on each settle.
+     *  Off by default: it is a per-settle log line meant for chasing snap bugs
+     *  from the log receiver, noise for everyone else. Independent of [enabled]
+     *  in intent (a developer flips it on while diagnosing), but it still only
+     *  reaches a destination when shipping is configured. */
+    val deckSnapDiagnostics: Boolean = false,
 )
 
 @Immutable
