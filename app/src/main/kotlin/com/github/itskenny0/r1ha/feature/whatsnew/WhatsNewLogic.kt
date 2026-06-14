@@ -60,4 +60,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "IR and action buttons fire with style: a radiating signal pulse, an accent flare, a SENT flash and a haptic buzz.",
     "About: install any GitHub release from a version list; thanks to Home Assistant, Nabu Casa and Open Home Foundation.",
     "Energy view: long-press a top consumer to exclude a mis-reporting sensor from every total; restore it from EXCLUDED.",
+    "Scene, script and button cards fire with a tactile actuator: radiating pulse, accent flare, RAN flash and a buzz.",
 )
