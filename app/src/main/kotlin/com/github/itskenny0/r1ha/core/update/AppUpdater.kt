@@ -66,6 +66,75 @@ class AppUpdater(
         data class Failed(val message: String, val cause: Throwable? = null) : CheckResult
     }
 
+    /**
+     * Result of [listReleases]. Mirrors [CheckResult] so the About-screen picker
+     * can tell "couldn't reach GitHub" / "rate-limited" apart from "no installable
+     * releases for this flavour" and render the right message.
+     */
+    sealed interface ReleasesResult {
+        /** One or more installable releases (matching-flavour APK, parseable tag),
+         *  newest first. May still be empty if GitHub returned releases but none
+         *  carried an asset for this flavour. */
+        data class Ok(val releases: List<ReleaseOption>) : ReleasesResult
+        /** HTTP non-2xx (incl. 403 rate-limit), network IOException, or JSON
+         *  parse failure. [message] is user-visible; [cause] is for logging. */
+        data class Failed(val message: String, val cause: Throwable? = null) : ReleasesResult
+    }
+
+    /**
+     * GET the (first page of the) releases list and map each entry to a
+     * [ReleaseOption] for the current [flavor]. Unauthenticated, like
+     * [checkForUpdate]; the first page (~30 releases) is plenty for a picker.
+     *
+     * Releases without a matching-flavour APK asset, or with an unparseable tag,
+     * are dropped. The result is sorted newest-first (by derived versionCode).
+     * [installedVersionCode] flags the currently-running build so the UI can mark
+     * and disable it.
+     *
+     * The default [listUrl] derives from [releasesUrl] by stripping the trailing
+     * `/latest`; tests can inject either directly.
+     */
+    suspend fun listReleases(
+        flavor: String = BuildConfig.FLAVOR,
+        installedVersionCode: Long = BuildConfig.VERSION_CODE.toLong(),
+        listUrl: String = releasesUrl.removeSuffix("/latest"),
+    ): ReleasesResult = withContext(Dispatchers.IO) {
+        val req = Request.Builder()
+            .url(listUrl)
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "R1HA-self-update/${BuildConfig.VERSION_NAME}")
+            // Same cold-fetch rationale as checkForUpdate: an intermediate cache
+            // holding the prior /releases response would hide a fresh tag.
+            .cacheControl(okhttp3.CacheControl.FORCE_NETWORK)
+            .build()
+        val body = runCatching {
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    // 403 here is almost always GitHub's unauthenticated rate
+                    // limit (60 req/hr/IP). Name it so the UI can say so.
+                    val msg = if (resp.code == 403) {
+                        "GitHub rate limit reached (HTTP 403); try again later"
+                    } else {
+                        "GitHub returned HTTP ${resp.code}"
+                    }
+                    R1Log.w("Updater.list", msg)
+                    return@withContext ReleasesResult.Failed(msg)
+                }
+                resp.body?.string() ?: return@withContext ReleasesResult.Failed("empty response body")
+            }
+        }.getOrElse { t ->
+            val msg = t.message ?: t::class.java.simpleName
+            R1Log.w("Updater.list", "network failure: $msg")
+            return@withContext ReleasesResult.Failed("Network: $msg", t)
+        }
+        val releases = runCatching { json.decodeFromString<List<GhRelease>>(body) }
+            .getOrElse { t ->
+                R1Log.w("Updater.list", "JSON parse failure: ${t.message}")
+                return@withContext ReleasesResult.Failed("Bad releases JSON", t)
+            }
+        ReleasesResult.Ok(mapReleases(releases, flavor, installedVersionCode))
+    }
+
     suspend fun checkForUpdate(): CheckResult = withContext(Dispatchers.IO) {
         val req = Request.Builder()
             .url(releasesUrl)
@@ -147,6 +216,10 @@ class AppUpdater(
         // typically zero files, occasionally one.
         outDir.listFiles()?.forEach { it.delete() }
         val outFile = File(outDir, info.apkName)
+        // Refuse any asset URL that isn't HTTPS on a github host. The URLs come
+        // from the GitHub API so this should always pass; it's a cheap guard so a
+        // tampered response can't redirect the installer to an arbitrary host.
+        require(isTrustedAssetUrl(info.apkUrl)) { "Refusing untrusted asset URL host" }
         val req = Request.Builder().url(info.apkUrl).build()
         http.newCall(req).execute().use { resp ->
             require(resp.isSuccessful) { "GitHub asset download returned HTTP ${resp.code}" }
@@ -186,21 +259,88 @@ class AppUpdater(
     }
 
     @Serializable
-    private data class GhRelease(
+    internal data class GhRelease(
         val tag_name: String,
         val name: String? = null,
         val body: String? = null,
+        val published_at: String? = null,
         val assets: List<GhAsset> = emptyList(),
     )
 
     @Serializable
-    private data class GhAsset(
+    internal data class GhAsset(
         val name: String,
         val browser_download_url: String,
         val size: Long,
     )
 
     companion object {
+        /**
+         * Pick the APK asset matching [flavor] from a release's asset list.
+         *
+         * Asset naming is flavour-encoded by the release workflow:
+         *  - github flavour: `r1ha-YYYY.MM.DD.HHmm.apk` (no `-fdroid-` infix)
+         *  - fdroid flavour: `r1ha-fdroid-YYYY.MM.DD.HHmm.apk`
+         *
+         * So an fdroid build only ever installs an fdroid APK and a github build
+         * only a github APK; cross-flavour installs would either re-introduce the
+         * REQUEST_INSTALL_PACKAGES permission on an fdroid device or strip the
+         * self-updater on a github one. Returns null when no asset matches.
+         */
+        internal fun flavorAssetFor(assets: List<GhAsset>, flavor: String): GhAsset? {
+            val wantFdroid = flavor == "fdroid"
+            return assets.firstOrNull { a ->
+                a.name.endsWith(".apk") && a.name.contains("-fdroid-") == wantFdroid
+            }
+        }
+
+        /**
+         * Whether the download host is GitHub's. Release assets live on
+         * `github.com` (browser_download_url) or `*.githubusercontent.com`
+         * (the redirect target / objects.githubusercontent.com). We refuse to
+         * download from anything else, so a tampered or unexpected API response
+         * can't point the installer at an arbitrary host. HTTPS is required too.
+         */
+        internal fun isTrustedAssetUrl(url: String): Boolean {
+            val host = runCatching { java.net.URI(url) }.getOrNull()
+                ?.takeIf { it.scheme.equals("https", ignoreCase = true) }
+                ?.host
+                ?.lowercase()
+                ?: return false
+            return host == "github.com" ||
+                host == "githubusercontent.com" ||
+                host.endsWith(".github.com") ||
+                host.endsWith(".githubusercontent.com")
+        }
+
+        /**
+         * Map a raw releases list to installable [ReleaseOption]s for [flavor],
+         * newest first. Drops releases with an unparseable tag or no
+         * matching-flavour APK; flags the one whose versionCode equals
+         * [installedVersionCode] as current. Pure (no I/O) so it's unit-tested.
+         */
+        internal fun mapReleases(
+            releases: List<GhRelease>,
+            flavor: String,
+            installedVersionCode: Long,
+        ): List<ReleaseOption> = releases.mapNotNull { rel ->
+            val versionCode = versionCodeFromTag(rel.tag_name) ?: return@mapNotNull null
+            val asset = flavorAssetFor(rel.assets, flavor) ?: return@mapNotNull null
+            // Belt-and-braces: never surface an asset we wouldn't download.
+            if (!isTrustedAssetUrl(asset.browser_download_url)) return@mapNotNull null
+            ReleaseOption(
+                versionName = rel.name ?: rel.tag_name,
+                tagName = rel.tag_name,
+                versionCode = versionCode,
+                apkAssetUrl = asset.browser_download_url,
+                apkName = asset.name,
+                apkSizeBytes = asset.size,
+                notes = rel.body.orEmpty(),
+                publishedAt = rel.published_at,
+                isCurrent = versionCode == installedVersionCode,
+            )
+        }.sortedByDescending { it.versionCode }
+
         /**
          * Convert a release tag to its derived versionCode. Tag forms accepted:
          *  - `r1ha-YYYYMMDD` (legacy date-only) → minutes-since-2020-01-01 at 00:00 UTC
@@ -242,3 +382,37 @@ data class UpdateInfo(
     val apkSizeBytes: Long,
     val apkName: String,
 )
+
+/**
+ * One installable release for the About-screen version picker. Built by
+ * [AppUpdater.mapReleases] from the GitHub releases list, already filtered to
+ * the running build flavour and sorted newest-first by the caller.
+ *
+ * [isCurrent] marks the build the user is on (the picker disables INSTALL for
+ * it). Compare [versionCode] against the installed code to decide whether a
+ * chosen release is a downgrade: installing a strictly-older versionCode in
+ * place is blocked by Android (INSTALL_FAILED_VERSION_DOWNGRADE), so the UI
+ * warns that an uninstall (losing app data) may be required first.
+ */
+data class ReleaseOption(
+    val versionName: String,
+    val tagName: String,
+    val versionCode: Long,
+    val apkAssetUrl: String,
+    val apkName: String,
+    val apkSizeBytes: Long,
+    val notes: String,
+    val publishedAt: String?,
+    val isCurrent: Boolean,
+) {
+    /** Adapt to the [UpdateInfo] the download path consumes. */
+    fun toUpdateInfo(): UpdateInfo = UpdateInfo(
+        versionCode = versionCode,
+        versionName = versionName,
+        tagName = tagName,
+        notes = notes,
+        apkUrl = apkAssetUrl,
+        apkSizeBytes = apkSizeBytes,
+        apkName = apkName,
+    )
+}
