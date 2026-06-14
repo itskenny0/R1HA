@@ -1,8 +1,10 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -31,6 +33,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -48,7 +51,10 @@ import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.components.EntityCard
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The DYNAMIC deck layout: the same mixed deck PageDeck renders, but as a
@@ -139,33 +145,44 @@ private val dynamicSnapPosition = object : SnapPosition {
 }
 
 /**
- * Animate the [index] item to its SNAP line: item 0 to the band TOP, every
- * other item to the band CENTRE, matching where a fling would have settled
- * under [dynamicSnapPosition]. [LazyListState.animateScrollToItem] aligns an
- * item's START with the viewport start, so this first scrolls there (already
- * the correct rest for item 0), then (once the target is measured and visible)
- * recentres a non-first item by the half-difference between the snap viewport
- * span and the item's real height. Splitting it in two is what lets a FAR jump
- * work: the destination item's height is unknown until it is brought on-screen,
- * so the centre offset can only be computed after the first scroll. A
- * band-filling (or taller) card is already its own centre, so the recentre
- * offset clamps to <= 0 (never pushes it back down).
+ * Put the [index] item on its SNAP line: item 0 FLUSH at the chrome, every
+ * other item at the band CENTRE, matching where a fling would have settled under
+ * [dynamicSnapPosition]. [animated] picks the smooth scroll (nav / jump targets)
+ * or an instant one (initial placement, so a tab switch lands already-positioned
+ * instead of sliding).
+ *
+ * [LazyListState.scrollToItem] aligns an item's START with the start of the
+ * CONTENT area (after the top padding), so:
+ *  - item 0: the start-aligned scroll leaves it floated a top-pad below the
+ *    chrome, so we scroll on by [LazyListLayoutInfo.beforeContentPadding] to pull
+ *    it flush. (The old version skipped this and left item 0 floated on a
+ *    jump-to-first.)
+ *  - items 1..n: recentre by the half-difference between the FULL viewport span
+ *    and the item's real height. The height is only known once the item is
+ *    on-screen, which is why this is a two-step scroll; that is what lets a FAR
+ *    jump work. A band-filling card is already its own centre (clamp <= 0).
  */
-private suspend fun androidx.compose.foundation.lazy.LazyListState.animateScrollToItemCentered(
+private suspend fun androidx.compose.foundation.lazy.LazyListState.scrollToItemCentered(
     index: Int,
+    animated: Boolean = true,
 ) {
-    // Bring the item on-screen with its start at the viewport top.
-    animateScrollToItem(index)
-    // Item 0 snaps top-aligned: the start-aligned scroll above already lands it
-    // exactly, so leave it flush at the band top (no recentre).
-    if (index <= 0) return
+    suspend fun go(i: Int, offset: Int = 0) =
+        if (animated) animateScrollToItem(i, offset) else scrollToItem(i, offset)
+    // Bring the item on-screen with its start at the content-area top.
+    go(index)
+    if (index <= 0) {
+        // Consume the top centring pad so item 0 rests flush under the chrome.
+        val before = layoutInfo.beforeContentPadding
+        if (before > 0) go(0, before)
+        return
+    }
     val info = layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
     val bandSpan = info.viewportEndOffset - info.viewportStartOffset
     // Negative scroll-offset shifts the item DOWN into the centre; clamp so a
     // band-filling card is not pushed past centre.
     val centerOffset = -((bandSpan - item.size) / 2).coerceAtLeast(0)
-    if (centerOffset != 0) animateScrollToItem(index, centerOffset)
+    if (centerOffset != 0) go(index, centerOffset)
 }
 
 @Composable
@@ -294,7 +311,7 @@ internal fun DynamicPageDeck(
             if (cards.isEmpty() || delta == 0) return@collect
             val target = dynamicSnapTarget(settledFocus.intValue + delta, cards.size)
             if (target != settledFocus.intValue) {
-                runCatching { listState.animateScrollToItemCentered(target) }
+                runCatching { listState.scrollToItemCentered(target) }
             }
         }
     }
@@ -306,7 +323,7 @@ internal fun DynamicPageDeck(
         jumpRequests.collect { targetIdx ->
             if (cards.isEmpty()) return@collect
             runCatching {
-                listState.animateScrollToItemCentered(dynamicSnapTarget(targetIdx, cards.size))
+                listState.scrollToItemCentered(dynamicSnapTarget(targetIdx, cards.size))
             }
         }
     }
@@ -430,6 +447,37 @@ internal fun DynamicPageDeck(
                     runCatching { listState.scrollBy(pad.toFloat()) }
                 }
         }
+        // Pre-paint placement: keep the deck HIDDEN until the focused card has
+        // been put on its snap line, so a tab switch (which rebuilds this list at
+        // the floated raw-top) never paints that floated state and then corrects
+        // -- the correction is what read as "cards weirdly moving about". The list
+        // still lays out while hidden (alpha only), so the card measures; we then
+        // land the focused card instantly and reveal with a short fade. A timeout
+        // guards the reveal so the deck can never stay stuck invisible if a
+        // measurement never reports.
+        val placed = remember(pageId) { mutableStateOf(false) }
+        val deckAlpha = animateFloatAsState(
+            targetValue = if (placed.value) 1f else 0f,
+            animationSpec = tween(durationMillis = 110),
+            label = "deckPlace",
+        ).value
+        // Keyed on cards becoming non-empty (not on every size change) so it runs
+        // once per page load and does not re-hide / re-jump on a deck mutation.
+        LaunchedEffect(listState, pageId, cards.isNotEmpty()) {
+            if (cards.isEmpty()) return@LaunchedEffect // stay hidden; nothing to place
+            val focus = initialIndex.coerceIn(0, cards.size - 1)
+            // Wait briefly for the focused card to be on-screen (so its height,
+            // and thus its centre line, is known), then land it without animation.
+            withTimeoutOrNull(400) {
+                snapshotFlow {
+                    listState.layoutInfo.visibleItemsInfo.any { it.index == focus }
+                }
+                    .filter { it }
+                    .first()
+            }
+            runCatching { listState.scrollToItemCentered(focus, animated = false) }
+            placed.value = true
+        }
         val centerPadBottom = with(LocalDensity.current) {
             dynamicCenterPaddingPx(
                 bandHeightPx = bandHeightPx,
@@ -525,7 +573,12 @@ internal fun DynamicPageDeck(
             verticalArrangement = androidx.compose.foundation.layout.Arrangement
                 .spacedBy(R1.space.m),
             contentPadding = PaddingValues(top = centerPadTop, bottom = centerPadBottom),
-            modifier = Modifier.fillMaxSize(),
+            // Hidden until the focused card is placed on its snap line (see the
+            // pre-paint placement effect); alpha only, so layout/measure still run
+            // underneath and the placement scroll has real heights to work with.
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { alpha = deckAlpha },
         ) {
             itemsIndexed(cards, key = { _, item -> item.key }) { idx, item ->
                 val entityCard = (item as? DeckItem.Entity)?.state
