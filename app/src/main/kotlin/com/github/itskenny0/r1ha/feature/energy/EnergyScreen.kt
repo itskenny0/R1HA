@@ -92,8 +92,13 @@ fun EnergyScreen(
      *  need to thread it through. */
     onOpenHistory: (entityId: String) -> Unit = {},
 ) {
-    val vm: EnergyViewModel = viewModel(factory = EnergyViewModel.factory(haRepository))
+    val vm: EnergyViewModel = viewModel(factory = EnergyViewModel.factory(haRepository, settings))
     val ui by vm.ui.collectAsState()
+    // Long-press on a consumer arms this; a confirm dialog then excludes it, so a
+    // stray hold can't silently drop a sensor from the totals.
+    var pendingExclude by remember { mutableStateOf<EnergyViewModel.Consumer?>(null) }
+    // Opens the manage-exclusions section so the user can review and re-include.
+    var showExclusions by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     WheelScrollForScrollState(wheelInput = wheelInput, scrollState = scrollState, settings = settings)
     // 30 s auto-refresh, energy figures change slowly relative to
@@ -309,7 +314,11 @@ fun EnergyScreen(
                     ) {
                         val visible = if (consumersExpanded) ui.topConsumers else ui.topConsumers.take(5)
                         for (c in visible) {
-                            ConsumerRow(c, onClick = { onOpenHistory(c.entityId) })
+                            ConsumerRow(
+                                c,
+                                onClick = { onOpenHistory(c.entityId) },
+                                onExclude = { pendingExclude = c },
+                            )
                         }
                     }
                 } else if (!ui.loading && ui.error == null && ui.currentDrawW == null) {
@@ -333,6 +342,17 @@ fun EnergyScreen(
                         )
                     }
                 }
+                // ── EXCLUDED SENSORS (manage / restore) ────────────────
+                // Only when at least one sensor is excluded. A count badge in the
+                // section header opens the list; each row re-includes on tap.
+                if (ui.excludedSensors.isNotEmpty()) {
+                    ExcludedSensorsSection(
+                        excluded = ui.excludedSensors,
+                        expanded = showExclusions,
+                        onToggleExpanded = { showExclusions = !showExclusions },
+                        onInclude = { vm.includeSensor(it) },
+                    )
+                }
                 val error = ui.error
                 if (error != null && ui.currentDrawW == null && ui.todayKwh == null) {
                     Box(
@@ -355,6 +375,120 @@ fun EnergyScreen(
             }
             } // PullToRefreshBox
         } // R1CenteredContent
+    }
+
+    // Confirm-exclude dialog: naming the sensor so a long-press is a deliberate
+    // act, not a surprise. Confirming threads through the VM, which persists the
+    // exclusion and re-renders every aggregate without it.
+    val pending = pendingExclude
+    if (pending != null) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { pendingExclude = null },
+            confirmButton = {
+                R1Chip(
+                    text = "EXCLUDE",
+                    variant = R1ChipVariant.Action,
+                    selected = true,
+                    tone = R1.StatusRed,
+                    contentDescription = "Exclude ${pending.name} from energy totals",
+                    onClick = {
+                        vm.excludeSensor(pending.entityId)
+                        pendingExclude = null
+                        // Reveal the manage list so the user sees where the sensor
+                        // went and can undo immediately.
+                        showExclusions = true
+                    },
+                )
+            },
+            dismissButton = {
+                R1Chip(
+                    text = "CANCEL",
+                    variant = R1ChipVariant.Action,
+                    contentDescription = "Cancel",
+                    onClick = { pendingExclude = null },
+                )
+            },
+            title = {
+                Text(
+                    text = "Exclude from totals?",
+                    style = responsiveType(R1.bodyEmph),
+                    color = R1.Ink,
+                )
+            },
+            text = {
+                Text(
+                    text = "${pending.name} (${pending.entityId}) will be left out of " +
+                        "DRAW, PRODUCTION, the breakdown, and TOP CONSUMERS. You can " +
+                        "re-include it any time from the EXCLUDED list.",
+                    style = responsiveType(R1.labelMicro),
+                    color = R1.InkSoft,
+                )
+            },
+            containerColor = R1.Surface,
+        )
+    }
+}
+
+/**
+ * Manage-and-restore surface for the user's manually-excluded power sensors.
+ * A count badge in the header opens the list; each row re-includes its sensor
+ * on tap. Collapsed by default so the section is a quiet "N excluded" line
+ * until the user wants to act on it.
+ */
+@Composable
+private fun ExcludedSensorsSection(
+    excluded: List<EnergyViewModel.ExcludedSensor>,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onInclude: (entityId: String) -> Unit,
+) {
+    R1Section(
+        title = "EXCLUDED",
+        count = excluded.size,
+        topSpace = R1.space.s,
+        trailing = {
+            R1Chip(
+                text = if (expanded) "HIDE" else "MANAGE",
+                variant = R1ChipVariant.Action,
+                onClick = onToggleExpanded,
+                contentDescription = if (expanded) {
+                    "Hide excluded sensors"
+                } else {
+                    "Manage ${excluded.size} excluded sensors"
+                },
+            )
+        },
+    ) {
+        if (!expanded) {
+            // Collapsed: one muted summary line so the section stays compact.
+            Text(
+                text = "${excluded.size} power " +
+                    (if (excluded.size == 1) "sensor is" else "sensors are") +
+                    " excluded from every total. Tap MANAGE to review or restore.",
+                style = responsiveType(R1.labelMicro),
+                color = R1.InkSoft,
+            )
+        } else {
+            for (s in excluded) {
+                // Tap re-includes; the trailing label states the action so the
+                // row reads as restorable rather than navigable.
+                R1Row(
+                    label = s.name,
+                    description = s.entityId,
+                    boxed = true,
+                    onClick = { onInclude(s.entityId) },
+                    contentDescription = "Re-include ${s.name} in energy totals",
+                    trailing = {
+                        Text(
+                            text = "RE-INCLUDE",
+                            style = responsiveType(R1.labelMicro),
+                            color = R1.AccentGreen,
+                            maxLines = 1,
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -412,16 +546,23 @@ private fun BigStatTile(
 }
 
 @Composable
-private fun ConsumerRow(c: EnergyViewModel.Consumer, onClick: () -> Unit) {
+private fun ConsumerRow(
+    c: EnergyViewModel.Consumer,
+    onClick: () -> Unit,
+    onExclude: () -> Unit,
+) {
     // Canonical boxed row: friendly name primary, entity_id secondary, current
     // draw as the trailing accent value. Tap opens its history so the user can
     // investigate 'what's drawing 1.2 kW right now?' without leaving the app.
+    // Long-press excludes it from every aggregate: the discoverable escape hatch
+    // for a mis-categorised sensor that's dominating the breakdown.
     R1Row(
         label = c.name,
         description = c.entityId,
         boxed = true,
         onClick = onClick,
-        contentDescription = "Open history for ${c.name}",
+        onLongClick = onExclude,
+        contentDescription = "Open history for ${c.name}. Long press to exclude from energy totals.",
         trailing = {
             Text(
                 text = formatWatts(c.watts),

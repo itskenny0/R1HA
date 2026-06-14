@@ -115,6 +115,10 @@ enum class SyncCategory(val displayLabel: String, val description: String) {
             applied.copy(
                 nameOverrides = source.nameOverrides,
                 entityOverrides = source.entityOverrides,
+                // The Energy-view excluded power sensors ride this category too:
+                // they are per-entity, install-specific choices, so opting out of
+                // "Card customization" should keep them local like the renames.
+                energyExcludedSensors = source.energyExcludedSensors,
             )
     },
     ADVANCED(

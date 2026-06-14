@@ -68,6 +68,43 @@ class SettingsRepositoryTest {
         }
     }
 
+    @Test fun energyExcludedSensorsDefaultEmpty() = runTest {
+        val repo = newRepo()
+        repo.settings.test {
+            assertThat(awaitItem().energyExcludedSensors).isEmpty()
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test fun excludeThenIncludeEnergySensorMutatesTheSet() = runTest {
+        val repo = newRepo()
+        // Exclude two; the second exclude of the same id is a no-op (set semantics).
+        repo.excludeEnergySensor("sensor.total_power")
+        repo.excludeEnergySensor("sensor.plug_power")
+        repo.excludeEnergySensor("sensor.total_power")
+        repo.settings.test {
+            assertThat(awaitItem().energyExcludedSensors)
+                .containsExactly("sensor.total_power", "sensor.plug_power")
+            cancelAndConsumeRemainingEvents()
+        }
+        // Re-include one; the other survives.
+        repo.includeEnergySensor("sensor.total_power")
+        repo.settings.test {
+            assertThat(awaitItem().energyExcludedSensors)
+                .containsExactly("sensor.plug_power")
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test fun excludeBlankEnergySensorIsNoOp() = runTest {
+        val repo = newRepo()
+        repo.excludeEnergySensor("   ")
+        repo.settings.test {
+            assertThat(awaitItem().energyExcludedSensors).isEmpty()
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     @Test fun setThenReadWheelStep() = runTest {
         val repo = newRepo()
         repo.update { it.copy(wheel = it.wheel.copy(stepPercent = 10, acceleration = false)) }

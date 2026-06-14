@@ -8,12 +8,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.StatisticId
 import com.github.itskenny0.r1ha.core.ha.StatisticsBucket
+import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.core.util.Toaster
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -50,6 +52,7 @@ import java.time.ZoneId
  */
 class EnergyViewModel(
     private val haRepository: HaRepository,
+    private val settings: SettingsRepository,
 ) : ViewModel() {
 
     @Stable
@@ -58,6 +61,16 @@ class EnergyViewModel(
         val name: String,
         /** Instantaneous power in watts. */
         val watts: Double,
+    )
+
+    /** One manually-excluded power sensor, surfaced in the management sheet so
+     *  the user can review and re-include it. [name] is the friendliest label
+     *  available: the entity's last-seen friendly name when we have one (from a
+     *  prior TOP CONSUMERS render), otherwise the entity id itself. */
+    @Stable
+    data class ExcludedSensor(
+        val entityId: String,
+        val name: String,
     )
 
     /** History window selector. Each chip picks both a span and the
@@ -103,6 +116,10 @@ class EnergyViewModel(
         val statsTodayKwh: Double? = null,
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
+        /** Power sensors the user has manually excluded from every aggregate.
+         *  Friendly names attached where known (from a prior consumer render),
+         *  otherwise the entity id. Sorted by name for a stable management list. */
+        val excludedSensors: List<ExcludedSensor> = emptyList(),
         /** True when the install exposes a battery power source (a
          *  `device_class=power` sensor whose entity_id carries a `battery`
          *  hint). Lets the UI mark the PRODUCTION tile with the battery glyph
@@ -171,6 +188,12 @@ class EnergyViewModel(
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
+    /** Last-seen friendly name per entity id, accumulated from every TOP
+     *  CONSUMERS render. Lets the exclusion management sheet show "Living room
+     *  plug" rather than the bare entity id even after that sensor has been
+     *  excluded (and so no longer appears in the live consumer list). */
+    private val knownNames = mutableMapOf<String, String>()
+
     init {
         // Re-fetch the live tiles whenever the WS (re)connects. A resume can
         // race the reconnect: the screen's initial refresh fires while the
@@ -196,14 +219,20 @@ class EnergyViewModel(
     fun refresh(indicate: Boolean = false) {
         viewModelScope.launch {
             _ui.value = _ui.value.copy(loading = true, refreshing = indicate, error = null)
+            // The user's manual exclusion list, read fresh each refresh so a
+            // mid-session exclude/include re-renders every aggregate without it.
+            // Spliced into each power-sensor template as a safe rejectattr clause
+            // (see [EnergyTemplates]); an empty set is a no-op so unexcluded
+            // installs render exactly as before.
+            val excluded = settings.settings.first().energyExcludedSensors
             // Core electricity templates in parallel; each one is cheap server-side
             // (a single Jinja pass over states.sensor), but firing them
             // serially would gate every refresh on the slowest. await
             // them all so the UI flips loading → ready in one render.
-            val drawJob = async { haRepository.renderTemplate(SUM_POWER_DRAW) }
-            val prodJob = async { haRepository.renderTemplate(SUM_PRODUCTION) }
+            val drawJob = async { haRepository.renderTemplate(EnergyTemplates.sumPowerDraw(excluded)) }
+            val prodJob = async { haRepository.renderTemplate(EnergyTemplates.sumProduction(excluded)) }
             val kwhJob = async { haRepository.renderTemplate(SUM_TODAY_KWH) }
-            val topJob = async { haRepository.renderTemplate(TOP_CONSUMERS_JSON) }
+            val topJob = async { haRepository.renderTemplate(EnergyTemplates.topConsumersJson(excluded)) }
             val batJob = async { haRepository.renderTemplate(HAS_BATTERY_SOURCE) }
             // Water + gas are additive/optional: fetched in parallel with the
             // electricity templates but their failure is always silent:
@@ -252,6 +281,11 @@ class EnergyViewModel(
                     val override = customNames[c.entityId]
                     if (override != null) c.copy(name = override) else c
                 }
+            // Remember each consumer's friendly name so the exclusion sheet can
+            // label a sensor that's since been excluded (and thus dropped from
+            // the live list). Custom name overrides win here too.
+            top.forEach { c -> knownNames[c.entityId] = c.name }
+            val excludedSensors = buildExcludedSensors(excluded)
             val (waterValue, waterUnitStr) = parseValueUnit(waterRaw)
             val (gasValue, gasUnitStr) = parseValueUnit(gasRaw)
             R1Log.i(
@@ -269,6 +303,7 @@ class EnergyViewModel(
                 productionW = prodRaw?.toDoubleOrNull(),
                 todayKwh = kwhRaw?.toDoubleOrNull(),
                 topConsumers = top,
+                excludedSensors = excludedSensors,
                 // Best-effort enrichment: leave the flag unchanged if the
                 // probe failed (null) so a transient template error doesn't
                 // flip the icon off mid-session.
@@ -286,6 +321,42 @@ class EnergyViewModel(
                 todayGas = gasValue,
                 gasUnit = gasUnitStr,
             )
+        }
+    }
+
+    /** Map the persisted excluded entity-id set to [ExcludedSensor] rows for
+     *  the management sheet, attaching a friendly name from [knownNames] when
+     *  one was seen, falling back to the entity id. Sorted by display name (case
+     *  insensitive) so the list reads stably regardless of set iteration order. */
+    private fun buildExcludedSensors(excluded: Set<String>): List<ExcludedSensor> =
+        excluded
+            .map { id -> ExcludedSensor(entityId = id, name = knownNames[id] ?: id) }
+            .sortedBy { it.name.lowercase() }
+
+    /**
+     * Exclude [entityId] from every Energy aggregate. Persists the choice, then
+     * refreshes so DRAW, PRODUCTION, the breakdown, and TOP CONSUMERS all
+     * recompute without it. Reflecting the new excluded row immediately (before
+     * the async render lands) keeps the management badge honest the instant the
+     * user long-presses.
+     */
+    fun excludeSensor(entityId: String) {
+        viewModelScope.launch {
+            settings.excludeEnergySensor(entityId)
+            val next = (_ui.value.excludedSensors.map { it.entityId } + entityId).toSet()
+            _ui.value = _ui.value.copy(excludedSensors = buildExcludedSensors(next))
+            refresh()
+        }
+    }
+
+    /** Re-include a previously-excluded sensor: persist the removal, optimistically
+     *  drop its row, then refresh so the aggregates fold it back in. */
+    fun includeSensor(entityId: String) {
+        viewModelScope.launch {
+            settings.includeEnergySensor(entityId)
+            val next = _ui.value.excludedSensors.map { it.entityId }.filterNot { it == entityId }.toSet()
+            _ui.value = _ui.value.copy(excludedSensors = buildExcludedSensors(next))
+            refresh()
         }
     }
 
@@ -450,67 +521,12 @@ class EnergyViewModel(
         runCatching { content }.getOrNull()?.takeIf { it != "null" }
 
     companion object {
-        /** Word-boundary-anchored production regex shared by DRAW (reject),
-         *  PRODUCTION (select), and TOP_CONSUMERS (reject). Anchoring `pv` and
-         *  `solar` to `\b` stops the old bare `pv` substring from matching
-         *  unrelated ids like `sensor.hp_valve_power` ("...pv..." within
-         *  another word). `photovoltaic`, `grid_export`, and `production` stay
-         *  as plain (already-bounded enough) substrings. The doubled
-         *  backslashes are Kotlin escapes: the template receives a single
-         *  `\b` per anchor, which is the regex word-boundary the HA-side
-         *  `search` (Python `re.search`) test consumes. */
-        private const val PRODUCTION_RE = "\\bsolar\\b|photovoltaic|grid_export|production|\\bpv\\b"
-
-        /** Rejects accumulative counters from instantaneous-power slices.
-         *  Some integrations declare lifetime counters with
-         *  device_class=power (a Zigbee plug's 'Total power' on a live
-         *  install ranked at 79.4 kW among the consumers); their
-         *  state_class is total / total_increasing, which a live W reading
-         *  never carries. rejectattr keeps sensors with NO state_class
-         *  (older integrations) since an undefined attribute fails the
-         *  'in' test and is therefore not rejected. */
-        private const val REJECT_ACCUMULATIVE =
-            "| rejectattr('attributes.state_class','in',['total','total_increasing']) "
-
-        /** Sum positive-state device_class=power sensors. Excludes
-         *  unavailable / unknown / non-numeric, accumulative counters
-         *  (see REJECT_ACCUMULATIVE), and the production-heuristic
-         *  entities (solar / pv / grid_export / production): inverters
-         *  that report production as a positive power value would
-         *  otherwise be counted as consumption here AND as production in
-         *  SUM_PRODUCTION, double-counting them. The reject mirrors
-         *  SUM_PRODUCTION's select so the two slices stay disjoint. */
-        private const val SUM_POWER_DRAW = "{{ states.sensor " +
-            "| selectattr('attributes.device_class','eq','power') " +
-            "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            REJECT_ACCUMULATIVE +
-            "| rejectattr('entity_id','search','$PRODUCTION_RE') " +
-            "| map(attribute='state') | map('float',0) " +
-            "| select('>',0) | sum | round(0) }}"
-
-        /** Production heuristic. Solar / PV / photovoltaic / production
-         *  inverters report generation as a positive power value, so only
-         *  positive states count (a 0 W night-time inverter, or a sign-flipped
-         *  reading, must not subtract from the total). A `grid_export` sensor
-         *  is really signed grid power: positive = importing, negative =
-         *  exporting, so its contribution to PRODUCTION is max(-state, 0).
-         *  The old `map('abs')` inflated the figure by folding imported grid
-         *  power in as if it were generation. Two passes summed together. */
-        private const val SUM_PRODUCTION = "{% set gen = states.sensor " +
-            "| selectattr('attributes.device_class','eq','power') " +
-            "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            REJECT_ACCUMULATIVE +
-            "| selectattr('entity_id','search','\\bsolar\\b|photovoltaic|production|\\bpv\\b') " +
-            "| map(attribute='state') | map('float',0) " +
-            "| select('>',0) | sum %}" +
-            "{% set grid = states.sensor " +
-            "| selectattr('attributes.device_class','eq','power') " +
-            "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            REJECT_ACCUMULATIVE +
-            "| selectattr('entity_id','search','grid_export') " +
-            "| map(attribute='state') | map('float',0) | sum %}" +
-            "{% set exp = [(grid * -1), 0] | max %}" +
-            "{{ (gen + exp) | round(0) }}"
+        // The power-sensor aggregate templates (DRAW, PRODUCTION, TOP CONSUMERS)
+        // moved to [EnergyTemplates] so each can be built with the user's manual
+        // exclusion list spliced in as a safe rejectattr clause. The two templates
+        // below stay here because they don't slice device_class=power and so carry
+        // no exclusion (HAS_BATTERY_SOURCE is a presence probe; SUM_TODAY_KWH sums
+        // device_class=energy meters, a separate domain the exclusion never touches).
 
         /** True when at least one `device_class=power` sensor carries a
          *  `battery` word-boundary hint in its entity_id. Drives the
@@ -529,27 +545,6 @@ class EnergyViewModel(
             "| selectattr('attributes.state_class','eq','total_increasing') " +
             "| rejectattr('state','in',['unavailable','unknown','none']) " +
             "| map(attribute='state') | map('float',0) | sum | round(2) }}"
-
-        /** JSON array of [entity_id, friendly_name, watts] triples for
-         *  the top 5 current consumers. We pass a list comprehension
-         *  through to_json so the parsing on the client side is one
-         *  Json.parseToJsonElement call. */
-        private const val TOP_CONSUMERS_JSON = "{%- set out = namespace(items=[]) -%}" +
-            "{%- for s in (states.sensor " +
-            "| selectattr('attributes.device_class','eq','power') " +
-            "| rejectattr('state','in',['unavailable','unknown','none']) " +
-            REJECT_ACCUMULATIVE +
-            "| rejectattr('entity_id','search','$PRODUCTION_RE')) -%}" +
-            "{%- set w = s.state | float(0) -%}" +
-            "{%- if w > 0 -%}" +
-            "{%- set out.items = out.items + [[s.entity_id, s.name, w]] -%}" +
-            "{%- endif -%}" +
-            "{%- endfor -%}" +
-            // Sort AFTER float conversion (index 2 of each triple): the old
-            // sort(attribute='state') compared raw state STRINGS, so "999"
-            // outranked "1000" and the pre-cut [:8] could drop true top
-            // consumers entirely on installs with many power sensors.
-            "{{ (out.items | sort(attribute='2', reverse=true))[:8] | tojson }}"
 
         // ---- water / gas templates -------------------------------------------
         // UNVERIFIED OFFLINE: both templates mirror SUM_TODAY_KWH exactly, with
@@ -663,8 +658,8 @@ class EnergyViewModel(
             return u == "wh" || u == "kwh" || u == "mwh" || u == "gwh"
         }
 
-        fun factory(haRepository: HaRepository) = viewModelFactory {
-            initializer { EnergyViewModel(haRepository) }
+        fun factory(haRepository: HaRepository, settings: SettingsRepository) = viewModelFactory {
+            initializer { EnergyViewModel(haRepository, settings) }
         }
     }
 }

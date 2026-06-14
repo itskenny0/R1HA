@@ -146,6 +146,9 @@ data class AppBackup(
 
     val nameOverrides: Map<String, String> = emptyMap(),
     val entityOverrides: Map<String, EntityOverride> = emptyMap(),
+    /** Energy-view excluded power sensors (entity ids). Older backup files without
+     *  this field decode as the default empty set, i.e. no exclusions. */
+    val energyExcludedSensors: Set<String> = emptySet(),
 ) {
     companion object {
         /** Current schema version. Bump when the on-disk shape changes in a
@@ -225,6 +228,7 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     favorites = favorites,
     nameOverrides = nameOverrides,
     entityOverrides = entityOverrides,
+    energyExcludedSensors = energyExcludedSensors,
 )
 
 /**
@@ -325,6 +329,7 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         favorites = effectivePages.flatMap { it.favorites }.distinct(),
         nameOverrides = nameOverrides,
         entityOverrides = entityOverrides,
+        energyExcludedSensors = energyExcludedSensors,
     )
 }
 
