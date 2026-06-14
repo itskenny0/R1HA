@@ -1434,6 +1434,21 @@ data class AppSettings(
      *  Independent of [nameOverrides] so the rename feature (shipped earlier) keeps its
      *  storage format untouched. */
     val entityOverrides: Map<String, EntityOverride> = emptyMap(),
+    /**
+     * Entity ids of `device_class=power` sensors the user has manually excluded
+     * from every Energy-view aggregate (DRAW, PRODUCTION, the consumer breakdown,
+     * and TOP CONSUMERS). The Energy templates already drop accumulative counters
+     * (state_class total / total_increasing), but a mis-categorised sensor with NO
+     * state_class slips through and can dominate the breakdown (a Zigbee plug's
+     * lifetime "...Total power" counter reporting 79.4 kW). This is the manual
+     * escape hatch: each excluded id is injected into the Jinja pipeline as a
+     * `rejectattr('entity_id','in',[...])` clause so it never reaches any aggregate.
+     *
+     * Additive + back-compat: absent / empty = no exclusions (every power sensor
+     * counts, the historical behaviour). Persisted locally and carried in the
+     * portable backup + HA settings sync, like the other additive prefs.
+     */
+    val energyExcludedSensors: Set<String> = emptySet(),
     /** Power-user knobs surfaced via About → Dev menu. */
     val advanced: AdvancedSettings = AdvancedSettings(),
     /** Per-section dashboard visibility + thresholds. */

@@ -44,6 +44,12 @@ fun R1Row(
     description: String? = null,
     value: String? = null,
     onClick: (() -> Unit)? = null,
+    /** Optional long-press (secondary) action. When set alongside [onClick] the
+     *  row uses [r1RowPressable] so a short tap fires [onClick] and a hold fires
+     *  this with a heavier haptic, mirroring the list-row long-press idiom used
+     *  elsewhere (Scenes, the favourites picker). Ignored unless [onClick] is
+     *  also set and the row is [enabled]. */
+    onLongClick: (() -> Unit)? = null,
     showChevron: Boolean = false,
     boxed: Boolean = false,
     enabled: Boolean = true,
@@ -59,10 +65,16 @@ fun R1Row(
     } else {
         Modifier
     }
-    val pressable = if (onClick != null && enabled) {
-        Modifier.r1Pressable(onClick = onClick, contentDescription = contentDescription)
-    } else {
-        Modifier
+    val pressable = when {
+        onClick != null && onLongClick != null && enabled ->
+            Modifier.r1RowPressable(
+                onTap = onClick,
+                onLongPress = onLongClick,
+                contentDescription = contentDescription,
+            )
+        onClick != null && enabled ->
+            Modifier.r1Pressable(onClick = onClick, contentDescription = contentDescription)
+        else -> Modifier
     }
     val labelColor = if (enabled) R1.Ink else R1.InkMuted
     // List density (Settings → Appearance): COMPACT trades some finger room

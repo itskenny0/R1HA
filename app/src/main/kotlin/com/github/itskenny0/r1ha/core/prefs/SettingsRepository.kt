@@ -275,6 +275,13 @@ class SettingsRepository private constructor(
          * small even with hundreds of customized cards.
          */
         val entityOverrides = stringPreferencesKey("entity_overrides")
+        /**
+         * Energy-view excluded power sensors — newline-separated entity ids. Each id
+         * is URL-encoded on write (defensive; entity ids never contain newlines, but
+         * the encode keeps the separator scheme uniform with [nameOverrides]). Absent
+         * / empty = no exclusions, so existing installs see every power sensor counted.
+         */
+        val energyExcludedSensors = stringPreferencesKey("energy.excluded_sensors")
     }
 
     val settings: Flow<AppSettings> = combine(
@@ -423,6 +430,7 @@ class SettingsRepository private constructor(
                 guestModeEnabled = p[K.guestModeEnabled] ?: false,
                 nameOverrides = decodeNameOverrides(p[K.nameOverrides]),
                 entityOverrides = decodeEntityOverrides(p[K.entityOverrides]),
+                energyExcludedSensors = decodeEnergyExcluded(p[K.energyExcludedSensors]),
                 advanced = p[K.advancedJson]
                     ?.let {
                         runCatching {
@@ -632,6 +640,7 @@ class SettingsRepository private constructor(
                 p[K.guestModeEnabled] = next.guestModeEnabled
                 p[K.nameOverrides] = encodeNameOverrides(next.nameOverrides)
                 p[K.entityOverrides] = encodeEntityOverrides(next.entityOverrides)
+                p[K.energyExcludedSensors] = encodeEnergyExcluded(next.energyExcludedSensors)
                 p[K.advancedJson] = advancedJson.encodeToString(
                     AdvancedSettings.serializer(),
                     next.advanced,
@@ -900,6 +909,33 @@ class SettingsRepository private constructor(
     }
 
     /**
+     * Exclude a `device_class=power` sensor from every Energy-view aggregate. No-op
+     * when the id is blank or already excluded. The id is NOT validated here against
+     * the safe-id pattern — the Jinja list builder
+     * ([com.github.itskenny0.r1ha.feature.energy.EnergyTemplates.jinjaIdList]) drops
+     * any id that doesn't match `^[a-z0-9_.]+$` at render time, so a stored junk id can
+     * never reach the template; storing it lets the management UI still surface and
+     * re-include it.
+     */
+    suspend fun excludeEnergySensor(entityId: String) {
+        val id = entityId.trim()
+        if (id.isEmpty()) return
+        update { s ->
+            if (s.energyExcludedSensors.contains(id)) s
+            else s.copy(energyExcludedSensors = s.energyExcludedSensors + id)
+        }
+    }
+
+    /** Re-include a previously-excluded Energy power sensor. No-op when not excluded. */
+    suspend fun includeEnergySensor(entityId: String) {
+        val id = entityId.trim()
+        update { s ->
+            if (!s.energyExcludedSensors.contains(id)) s
+            else s.copy(energyExcludedSensors = s.energyExcludedSensors - id)
+        }
+    }
+
+    /**
      * Pin an HA sidebar panel (identified by [urlPath]) to the side navigation
      * rail / drawer. Appends to the end of [NavPanelSettings.pinnedPanels] so
      * newly-pinned panels land at the bottom. When [urlPath] is already pinned,
@@ -1104,6 +1140,25 @@ private fun decodeNameOverrides(raw: String?): Map<String, String> {
             if (id.isBlank() || name.isBlank()) null else id to name
         }.getOrNull()
     }.toMap()
+}
+
+/**
+ * Energy-view excluded power sensors. Stored as a newline-separated list of
+ * URL-encoded entity ids; the set is deduplicated and blank ids dropped so a
+ * stray empty line can't smuggle "" into the exclusion set. The URL-encode is
+ * defensive (entity ids never carry a newline) but keeps the on-disk format
+ * uniform with the other newline-separated keys. Empty set -> empty string.
+ */
+internal fun encodeEnergyExcluded(ids: Set<String>): String =
+    ids.filter { it.isNotBlank() }
+        .joinToString("\n") { java.net.URLEncoder.encode(it, "UTF-8") }
+
+internal fun decodeEnergyExcluded(raw: String?): Set<String> {
+    if (raw.isNullOrBlank()) return emptySet()
+    return raw.split('\n').mapNotNull { line ->
+        runCatching { java.net.URLDecoder.decode(line, "UTF-8") }
+            .getOrNull()?.takeIf { it.isNotBlank() }
+    }.toSet()
 }
 
 /**

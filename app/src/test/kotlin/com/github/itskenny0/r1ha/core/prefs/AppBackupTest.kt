@@ -74,6 +74,34 @@ class AppBackupTest {
         assertThat(applied.logShipping.endpoint).isEmpty()
     }
 
+    /** The Energy-view excluded power sensors are an explicit, install-specific
+     *  choice, so they travel with the backup + HA sync (same codec). */
+    @Test fun `energyExcludedSensors round-trip through encode and apply`() {
+        val source = AppSettings(
+            energyExcludedSensors = setOf("sensor.total_power", "sensor.plug_lifetime_power"),
+        )
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(AppSettings())
+
+        assertThat(applied.energyExcludedSensors)
+            .containsExactly("sensor.total_power", "sensor.plug_lifetime_power")
+    }
+
+    /** Older backups predate the field; they must decode as the empty default
+     *  (no exclusions, every power sensor counted). */
+    @Test fun `backups without energyExcludedSensors decode as empty`() {
+        val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))
+        // energyExcludedSensors is the last field in the encoded object, so strip the
+        // PRECEDING comma along with the field to avoid leaving a trailing comma the
+        // strict JSON decoder rejects.
+        val stripped = raw.replace(Regex(",\\s*\"energyExcludedSensors\"\\s*:\\s*\\[[^]]*]"), "")
+
+        val applied = decodeBackup(stripped).applyOnto(AppSettings())
+
+        assertThat(applied.energyExcludedSensors).isEmpty()
+    }
+
     /** The font family is an explicit preference, so it travels with the backup. */
     @Test fun `fontFamilyName round-trips through encode and apply`() {
         val source = AppSettings(ui = UiOptions(fontFamilyName = "serif"))
