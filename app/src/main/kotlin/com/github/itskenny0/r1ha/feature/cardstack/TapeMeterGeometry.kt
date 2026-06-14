@@ -42,4 +42,20 @@ internal object TapeMeterGeometry {
     fun horizontalTickPercent(idx: Int, count: Int): Int =
         if (count <= 1) 100
         else (100f * idx / (count - 1)).roundToInt()
+
+    /**
+     * Height (px) a wrap-mode vertical value-bar meter should be measured at, given the
+     * card body's already-measured [bodyHeightPx] and the [floorPx] minimum band (the
+     * [DYNAMIC_VALUE_BAR_HEIGHT_DP] floor in pixels). The meter spans the full body height
+     * so a tall card (light with scene/effect rows, climate with mode buttons) gets a
+     * full-length slider, but never drops below the floor so a short body (a bare meter
+     * card) still has a usable drag length and legible tick spacing.
+     *
+     * Floored at [floorPx] AND at 1 so a degenerate zero/negative measurement can never
+     * collapse the meter to zero height (the regression this whole layout exists to avoid:
+     * a zero-height meter is an invisible seekbar). Pure so the floor rule is unit tested
+     * without standing up a Compose layout pass.
+     */
+    fun verticalMeterHeightPx(bodyHeightPx: Int, floorPx: Int): Int =
+        maxOf(bodyHeightPx, floorPx, 1)
 }

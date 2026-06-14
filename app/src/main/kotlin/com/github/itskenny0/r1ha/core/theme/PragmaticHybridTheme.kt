@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
@@ -432,6 +434,111 @@ private fun BoxScope.CardMoreInfoButton(entityId: com.github.itskenny0.r1ha.core
     }
 }
 
+/**
+ * Slot keys for [WrapVerticalMeterScaffold]'s subcompositions: the body, the placed
+ * meter, and a width-only probe of the meter (a measurable may be measured only once per
+ * pass, so learning the meter width up front needs its own throwaway slot). Stable
+ * constants so the SubcomposeLayout reuses the same compositions across measure passes.
+ */
+private enum class WrapMeterSlot { BODY, METER, METER_PROBE }
+
+/**
+ * Wrap-mode LEFT/RIGHT value-bar layout: lays the card BODY beside a vertical tape meter
+ * that spans the FULL body height, using a measure-body-first [SubcomposeLayout].
+ *
+ * Why a SubcomposeLayout and not [Modifier.fillMaxHeight]: the DYNAMIC deck measures each
+ * card with an UNBOUNDED max height (the card wraps its content and sits inside an outer
+ * verticalScroll). Against an infinite height constraint, fillMaxHeight resolves to zero,
+ * which collapsed the meter to nothing and made the seekbar vanish on device. The meter is
+ * also [VerticalTapeMeter] (BoxWithConstraints-backed) which THROWS on intrinsic
+ * measurement, so we cannot query the body's or the meter's natural height either. The only
+ * safe path is to measure the body first against a CONCRETE bounded-width / wrap-height
+ * constraint, take its height, then measure the meter at that FIXED height. Every
+ * measurement passes concrete constraints, so nothing queries intrinsics and nothing
+ * collapses to zero.
+ *
+ * Measure order:
+ *  1. BODY slot ([body], the content column + the more-info button, which used to be the
+ *     weight(1f) box) at width = incoming maxWidth - meterWidth - spacer, height = wrap.
+ *  2. meterHeight = [TapeMeterGeometry.verticalMeterHeightPx] of (bodyHeight, floor) so a
+ *     short body still gets at least the [DYNAMIC_VALUE_BAR_HEIGHT_DP] floor and the height
+ *     can never be zero.
+ *  3. METER slot at a FIXED height = meterHeight and a bounded width (its natural 0..maxWidth,
+ *     bounded so the BoxWithConstraints never sees an intrinsic query).
+ *
+ * The layout height is meterHeight; the body is placed top-aligned (as it sits today) and
+ * the meter spans the full height, on the left when [meterOnLeft] else on the right.
+ *
+ * Only used in wrap mode. Fill mode keeps its historical fill-the-slot Row (see
+ * [CardValueBarScaffold]); this layout deliberately does not touch it.
+ */
+@Composable
+private fun WrapVerticalMeterScaffold(
+    outer: Modifier,
+    meterOnLeft: Boolean,
+    spacerWidthDp: Int,
+    floorDp: Int,
+    meter: @Composable () -> Unit,
+    body: @Composable () -> Unit,
+) {
+    SubcomposeLayout(modifier = outer) { constraints ->
+        val spacerPx = spacerWidthDp.dp.roundToPx()
+        val floorPx = floorDp.dp.roundToPx()
+        // The width the meter and spacer claim. The meter is a fixed-width control
+        // (24 dp track + its tick-label column); give it a bounded share of the row and
+        // measure it for real below, but reserve a generous slice up front so the body
+        // width is stable. We reserve the spacer plus a meter budget = the larger of the
+        // floor-derived width guess and a hard cap, but since the meter's width is data
+        // (tick label widths) we instead measure the meter FIRST at a throwaway height to
+        // learn its width, then measure the body, then re-measure the meter at the final
+        // height. Two meter passes are cheap (a thin column) and keep the body width exact.
+        val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth else 0
+        // Pass A: measure the meter at the floor height purely to learn its WIDTH (the
+        // tick-label column + 24 dp track), which is independent of height. A measurable
+        // may only be measured ONCE per layout pass, so this probe uses its own slot id
+        // and is never placed; the final meter (Pass C) is a separate slot. The probe
+        // composition is never laid out, so its pointerInput never hit-tests.
+        val meterWidth = subcompose(WrapMeterSlot.METER_PROBE) { meter() }.first().measure(
+            Constraints(maxWidth = maxW.coerceAtLeast(0), maxHeight = floorPx),
+        ).width
+        val bodyMaxWidth = (maxW - meterWidth - spacerPx).coerceAtLeast(0)
+        // Pass B: measure the body at the remaining width, wrap height (unbounded max so a
+        // tall body reports its true content height instead of clamping to a cap).
+        val bodyPlaceable = subcompose(WrapMeterSlot.BODY) { body() }.first().measure(
+            Constraints(
+                minWidth = bodyMaxWidth,
+                maxWidth = bodyMaxWidth,
+                minHeight = 0,
+                maxHeight = Constraints.Infinity,
+            ),
+        )
+        // Pass C: the meter spans the full body height, floored so it is never zero and a
+        // short body still has a usable slider. Subcompose the placed meter at the FIXED
+        // final height (concrete constraint, no intrinsic query, no unbounded collapse).
+        val meterHeight = com.github.itskenny0.r1ha.feature.cardstack.TapeMeterGeometry
+            .verticalMeterHeightPx(bodyPlaceable.height, floorPx)
+        val meterPlaceable = subcompose(WrapMeterSlot.METER) { meter() }.first().measure(
+            Constraints(
+                minWidth = meterWidth,
+                maxWidth = meterWidth.coerceAtLeast(0),
+                minHeight = meterHeight,
+                maxHeight = meterHeight,
+            ),
+        )
+        val totalWidth = (meterPlaceable.width + spacerPx + bodyPlaceable.width)
+            .coerceAtMost(if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE)
+        layout(totalWidth, meterHeight) {
+            if (meterOnLeft) {
+                meterPlaceable.placeRelative(0, 0)
+                bodyPlaceable.placeRelative(meterPlaceable.width + spacerPx, 0)
+            } else {
+                bodyPlaceable.placeRelative(0, 0)
+                meterPlaceable.placeRelative(bodyPlaceable.width + spacerPx, 0)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun CardValueBarScaffold(
     model: CardRenderModel,
@@ -447,12 +554,13 @@ internal fun CardValueBarScaffold(
     // Fill mode (true, every full-slot surface) keeps the historical layout:
     // the vertical meter and the content box fill the slot height. Wrap mode
     // (false, the DYNAMIC deck's content-height cards) wraps the content box to
-    // the body column's natural height and gives the vertical meter a concrete
-    // band (see [boundedVerticalMeter]): the meter cannot wrap (throws on
-    // intrinsic measurement) and fillMaxHeight collapses to zero under the
-    // deck's unbounded height, so a fixed band is what keeps the seekbar
-    // visible. Spanning the meter to the full card height needs a
-    // measure-body-first SubcomposeLayout, tracked separately.
+    // the body column's natural height and spans the vertical meter to that
+    // full body height via [WrapVerticalMeterScaffold]'s measure-body-first
+    // SubcomposeLayout: the meter cannot wrap (throws on intrinsic measurement)
+    // and fillMaxHeight collapses to zero under the deck's unbounded height, so
+    // the body is measured first and the meter is then given that as a CONCRETE
+    // fixed height (floored, so it is never zero and a short card still has a
+    // usable seekbar).
     val fillSlot = LocalCardFillSlot.current
     val verticalMeter: @Composable () -> Unit = {
         VerticalTapeMeter(
@@ -465,52 +573,61 @@ internal fun CardValueBarScaffold(
             trackColor = trackColor,
         )
     }
-    val boundedVerticalMeter: @Composable () -> Unit = {
-        if (fillSlot) {
-            verticalMeter()
-        } else {
-            // Wrap mode (DYNAMIC deck): the card is measured with an UNBOUNDED
-            // height (it wraps content + verticalScroll), so fillMaxHeight here
-            // resolves against an infinite constraint and collapses the meter
-            // to zero, making the seekbar vanish. The meter cannot wrap either
-            // (BoxWithConstraints, throws on intrinsic measurement), so it gets
-            // a concrete band. Making the band span the whole card needs a
-            // measure-body-first layout (SubcomposeLayout); until that lands the
-            // fixed band keeps the control visible.
-            Box(
-                modifier = Modifier.height(
-                    com.github.itskenny0.r1ha.feature.cardstack.DYNAMIC_VALUE_BAR_HEIGHT_DP.dp,
-                ),
-            ) {
-                verticalMeter()
-            }
+    // The card body (content + the more-info affordance), reused by the fill-mode Row's
+    // weight(1f) box and the wrap-mode SubcomposeLayout's body slot.
+    val bodyContent: @Composable () -> Unit = {
+        Box {
+            content()
+            CardMoreInfoButton(entityId)
         }
     }
     when (model.valueBarLocation) {
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.LEFT -> {
-            Row(modifier = outer) {
-                boundedVerticalMeter()
-                Spacer(Modifier.width(20.dp))
-                Box(
-                    modifier = Modifier.weight(1f)
-                        .then(if (fillSlot) Modifier.fillMaxHeight() else Modifier),
-                ) {
-                    content()
-                    CardMoreInfoButton(entityId)
+            if (fillSlot) {
+                // Fill mode (full-slot surfaces): historical layout, the meter and the
+                // body both fill the slot height. Untouched.
+                Row(modifier = outer) {
+                    verticalMeter()
+                    Spacer(Modifier.width(20.dp))
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        content()
+                        CardMoreInfoButton(entityId)
+                    }
                 }
+            } else {
+                // Wrap mode (DYNAMIC deck): measure-body-first so the meter spans the
+                // full card height even under the deck's unbounded height constraint.
+                WrapVerticalMeterScaffold(
+                    outer = outer,
+                    meterOnLeft = true,
+                    spacerWidthDp = 20,
+                    floorDp = com.github.itskenny0.r1ha.feature.cardstack
+                        .DYNAMIC_VALUE_BAR_HEIGHT_DP,
+                    meter = verticalMeter,
+                    body = bodyContent,
+                )
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.RIGHT -> {
-            Row(modifier = outer) {
-                Box(
-                    modifier = Modifier.weight(1f)
-                        .then(if (fillSlot) Modifier.fillMaxHeight() else Modifier),
-                ) {
-                    content()
-                    CardMoreInfoButton(entityId)
+            if (fillSlot) {
+                Row(modifier = outer) {
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        content()
+                        CardMoreInfoButton(entityId)
+                    }
+                    Spacer(Modifier.width(20.dp))
+                    verticalMeter()
                 }
-                Spacer(Modifier.width(20.dp))
-                boundedVerticalMeter()
+            } else {
+                WrapVerticalMeterScaffold(
+                    outer = outer,
+                    meterOnLeft = false,
+                    spacerWidthDp = 20,
+                    floorDp = com.github.itskenny0.r1ha.feature.cardstack
+                        .DYNAMIC_VALUE_BAR_HEIGHT_DP,
+                    meter = verticalMeter,
+                    body = bodyContent,
+                )
             }
         }
         com.github.itskenny0.r1ha.core.prefs.ValueBarLocation.TOP -> {

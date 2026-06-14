@@ -79,4 +79,37 @@ class TapeMeterGeometryTest {
         assertThat(TapeMeterGeometry.horizontalTickPercent(idx = 0, count = 1)).isEqualTo(100)
         assertThat(TapeMeterGeometry.verticalTickPercent(idx = 0, count = 0)).isEqualTo(100)
     }
+
+    // ── verticalMeterHeightPx: the wrap-mode "span the body, floor at the band" rule ──
+
+    @Test fun `tall body wins so the meter spans the full card`() {
+        // A light with brightness + scene/effect rows measures ~tall; the meter takes the
+        // body height so the slider reaches the bottom of the card.
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = 900, floorPx = 480))
+            .isEqualTo(900)
+    }
+
+    @Test fun `short body floors at the band so the seekbar stays usable`() {
+        // A bare meter card measures short; the meter keeps the floor band rather than
+        // shrinking to an unusable nub.
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = 300, floorPx = 480))
+            .isEqualTo(480)
+    }
+
+    @Test fun `equal body and floor resolve to that height`() {
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = 480, floorPx = 480))
+            .isEqualTo(480)
+    }
+
+    @Test fun `zero or negative measurement never collapses the meter to zero`() {
+        // The whole point of the floor: a degenerate measurement must not yield a
+        // zero-height (invisible) seekbar. Floored at floorPx, and at 1 even if the floor
+        // were somehow zero.
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = 0, floorPx = 480))
+            .isEqualTo(480)
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = -10, floorPx = 0))
+            .isEqualTo(1)
+        assertThat(TapeMeterGeometry.verticalMeterHeightPx(bodyHeightPx = 0, floorPx = 0))
+            .isEqualTo(1)
+    }
 }
