@@ -375,19 +375,22 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { lastItemHeightPx.intValue = it }
         }
-        // TOP padding: the MINIMAL slack above card 0 that lets the SECOND card
-        // reach its centre snap line. Without it item 1's highest reachable start
-        // sits above its centre line (item 0 is pinned flush at the top with zero
-        // slack above it), so a short second card can never be focused: the "I can
-        // never focus the second card unless it's huge" bug. We size the pad to
-        // exactly P_min = (band - secondHeight)/2 - firstHeight - gap (see
-        // dynamicMinTopPaddingPx), NOT the old (band - firstHeight)/2 mirror of
-        // the bottom pad: the mirror left far more scrollable empty space above
-        // card 0 than needed, so the user could drag card 0 down into the middle
-        // and it sprang back (the awkward overscroll). At P_min the ceiling lands
-        // exactly on the second card's centre line, so it still centres, with the
-        // least possible slack. Item 0 still SNAPS to the top line (0), so once
-        // settled it rests flush under the chrome.
+        // TOP padding: the larger of the MINIMAL slack the SECOND card needs to
+        // reach its centre snap line (dynamicMinTopPaddingPx) and a CONSISTENCY
+        // floor (dynamicTopPaddingFloorPx), via dynamicTopPaddingPx. Without any
+        // pad item 1's highest reachable start sits above its centre line (item 0
+        // is pinned flush at the top with zero slack above it), so a short second
+        // card can never be focused: the "I can never focus the second card unless
+        // it's huge" bug. P_min = (band - secondHeight)/2 - firstHeight - gap is
+        // the LEAST slack that fixes that, NOT the old (band - firstHeight)/2
+        // mirror of the bottom pad (the mirror left far more empty space above
+        // card 0 than needed, the awkward overscroll). But P_min is content
+        // dependent: 0 for a tall first card, positive for short ones, which read
+        // as arbitrary on device (some stacks had top give, some none). The floor
+        // gives every multi-card stack the same baseline give so the deck feels
+        // uniform; the MAX means a short-card stack that needs more than the floor
+        // still gets its full need and still centres exactly. Item 0 still SNAPS
+        // to the top line (0), so once settled it rests flush under the chrome.
         //
         // P_min needs BOTH the first and the second card's measured heights, so we
         // track the second card's height too. Each measurement is keyed on its
@@ -436,7 +439,7 @@ internal fun DynamicPageDeck(
         // one-card page stays flush at the top, and the pad is 0 until BOTH the
         // first and second cards have reported a height.
         val centerPadTopPx = if (cards.size >= 2) {
-            dynamicMinTopPaddingPx(
+            dynamicTopPaddingPx(
                 bandHeightPx = bandHeightPx,
                 firstCardHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
                 secondCardHeightPx = secondItemHeightPx.intValue.takeIf { it >= 0 },
@@ -497,7 +500,7 @@ internal fun DynamicPageDeck(
                     val measured = cards.size < 2 || (firstH >= 0 && secondH >= 0)
                     val intendedPad =
                         if (cards.size >= 2) {
-                            dynamicMinTopPaddingPx(
+                            dynamicTopPaddingPx(
                                 bandHeightPx = bandHeightPx,
                                 firstCardHeightPx = firstH.takeIf { it >= 0 },
                                 secondCardHeightPx = secondH.takeIf { it >= 0 },

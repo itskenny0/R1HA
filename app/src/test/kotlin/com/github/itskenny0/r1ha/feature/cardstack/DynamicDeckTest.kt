@@ -397,6 +397,83 @@ class DynamicDeckTest {
         ).isEqualTo(-pad)
     }
 
+    // ── dynamicTopPaddingPx: the consistency floor on the top pad ────────────
+    // The content-driven minimum is 0 for tall-first-card stacks and positive for
+    // short ones, which read as arbitrary overscroll on device. The floor gives
+    // every multi-card stack the same baseline give.
+
+    @Test fun `top pad floor is a tenth of the band`() {
+        assertThat(dynamicTopPaddingFloorPx(2043)).isEqualTo(204)
+        assertThat(dynamicTopPaddingFloorPx(800)).isEqualTo(80)
+        assertThat(dynamicTopPaddingFloorPx(0)).isEqualTo(0)
+    }
+
+    @Test fun `a stack that needs no slack still gets the floor`() {
+        // Tall first card: dynamicMinTopPaddingPx is 0 (no slack needed), but the
+        // applied pad is the floor so the stack is not rock-solid at the top while
+        // its short-card neighbours have give. This is the consistency fix.
+        val band = 2043
+        assertThat(dynamicMinTopPaddingPx(band, firstCardHeightPx = 1200, secondCardHeightPx = 400, gapPx = 30))
+            .isEqualTo(0)
+        assertThat(dynamicTopPaddingPx(band, firstCardHeightPx = 1200, secondCardHeightPx = 400, gapPx = 30))
+            .isEqualTo(dynamicTopPaddingFloorPx(band))
+    }
+
+    @Test fun `a stack that needs more than the floor keeps its full need`() {
+        // Two very short cards need more slack than the floor; the MAX keeps the
+        // full need so the second card still centres exactly (the floor never
+        // starves it).
+        val band = 2043
+        val need = dynamicMinTopPaddingPx(band, firstCardHeightPx = 60, secondCardHeightPx = 60, gapPx = 30)
+        assertThat(need).isGreaterThan(dynamicTopPaddingFloorPx(band))
+        assertThat(dynamicTopPaddingPx(band, firstCardHeightPx = 60, secondCardHeightPx = 60, gapPx = 30))
+            .isEqualTo(need)
+    }
+
+    @Test fun `top pad is the floor before the head heights are measured`() {
+        // Null heights (not measured): the need term is 0, so the floor shows
+        // through immediately, giving the baseline give from the first frame.
+        val band = 2043
+        assertThat(dynamicTopPaddingPx(band, firstCardHeightPx = null, secondCardHeightPx = null, gapPx = 30))
+            .isEqualTo(dynamicTopPaddingFloorPx(band))
+        assertThat(dynamicTopPaddingPx(band, firstCardHeightPx = 542, secondCardHeightPx = null, gapPx = 30))
+            .isEqualTo(dynamicTopPaddingFloorPx(band))
+    }
+
+    @Test fun `top pad never drops below the floor for any measured stack`() {
+        // Sweep: whatever the card sizes, a multi-card stack's pad is at least the
+        // floor, so no stack sits at the top with zero give.
+        val band = 1000
+        val gap = 24
+        val floor = dynamicTopPaddingFloorPx(band)
+        for (first in listOf(0, 60, 200, 500, 900, 1200)) {
+            for (second in listOf(0, 60, 200, 500, 900, 1200)) {
+                assertThat(dynamicTopPaddingPx(band, first, second, gap)).isAtLeast(floor)
+            }
+        }
+    }
+
+    @Test fun `the floored pad still reaches the second card`() {
+        // The floor only ever ADDS slack, so the second card is reachable under
+        // the floored pad for every stack (the pad is >= the minimum need).
+        val band = 1000
+        val gap = 24
+        for (first in listOf(0, 120, 300, 700)) {
+            for (second in listOf(0, 120, 300, 700, 1000)) {
+                val pad = dynamicTopPaddingPx(band, first, second, gap)
+                assertThat(
+                    dynamicSecondItemCentreReachable(
+                        bandHeightPx = band,
+                        firstItemHeightPx = first,
+                        secondItemHeightPx = second,
+                        interCardGapPx = gap,
+                        topPaddingPx = pad,
+                    ),
+                ).isTrue()
+            }
+        }
+    }
+
     // ── dynamicFocusedIndex: nearest item CENTRE to the band centre ─────────
 
     @Test fun `settled item centred in the band is focused`() {

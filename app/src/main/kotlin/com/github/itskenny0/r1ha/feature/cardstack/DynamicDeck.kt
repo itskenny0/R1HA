@@ -238,6 +238,53 @@ fun dynamicMinTopPaddingPx(
 }
 
 /**
+ * The CONSISTENCY FLOOR for the top pad: a fixed fraction of the band that every
+ * multi-card stack gets as top slack regardless of its content.
+ *
+ * [dynamicMinTopPaddingPx] alone is content-dependent: it is positive only when
+ * the first two cards are short enough that the second card needs room to reach
+ * centre, and 0 otherwise (a tall first card needs no slack). On device that
+ * read as arbitrary, some stacks had a little top give and some were rock-solid
+ * at the top with no obvious reason (it was the first two cards' heights). User
+ * call: give the stacks that do NOT need slack the same give as the ones that
+ * do, so the deck feels uniform. This floor is that baseline.
+ *
+ * Sized as `band / 10` (~10% of the visible band): close to the ~9% the worked
+ * short-card example needed, so most stacks land exactly on the floor and feel
+ * identical, and well under the ~37% the old `(band - firstHeight)/2` mirror
+ * left (the overscroll that felt awkward). A fraction (not a fixed dp) so the
+ * give scales with the screen.
+ */
+fun dynamicTopPaddingFloorPx(bandHeightPx: Int): Int =
+    (bandHeightPx / 10).coerceAtLeast(0)
+
+/**
+ * The top content padding the deck actually applies: the larger of the
+ * content-driven minimum ([dynamicMinTopPaddingPx], what the second card needs
+ * to centre) and the consistency [dynamicTopPaddingFloorPx] (so every multi-card
+ * stack has at least the same baseline give).
+ *
+ * Taking the MAX means the floor never starves the second card: a short-card
+ * stack whose need exceeds the floor still gets its full need (and still centres
+ * exactly), while a stack that needs nothing still gets the floor so it does not
+ * sit at the top with zero give while its neighbours have some. Returns the floor
+ * even before the head heights are measured (the need term is then 0), so the
+ * baseline give is present from the first frame; the caller's reveal gate still
+ * waits for both heights so a short-card stack whose final pad exceeds the floor
+ * does not flash. Clamped into `[0, band]`.
+ */
+fun dynamicTopPaddingPx(
+    bandHeightPx: Int,
+    firstCardHeightPx: Int?,
+    secondCardHeightPx: Int?,
+    gapPx: Int,
+): Int {
+    val needed = dynamicMinTopPaddingPx(bandHeightPx, firstCardHeightPx, secondCardHeightPx, gapPx)
+    val floor = dynamicTopPaddingFloorPx(bandHeightPx)
+    return maxOf(needed, floor).coerceIn(0, bandHeightPx.coerceAtLeast(0))
+}
+
+/**
  * Whether the SECOND card's CENTRE snap line is physically reachable: its centre
  * target ([dynamicSnapStartPx] for index 1) must sit at or below item 1's
  * ceiling ([dynamicSecondItemMaxStartPx]). When false the deck cannot focus the
