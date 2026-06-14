@@ -424,6 +424,43 @@ internal fun DynamicPageDeck(
                 endItemHeightPx = lastItemHeightPx.intValue.takeIf { it >= 0 },
             ).toDp()
         }
+        // DIAGNOSTIC (temporary, removed once the snap is fixed): on every settle,
+        // ship a full snapshot of the snap geometry so the on-device snapping can
+        // be read from the log receiver instead of guessed at. Captures the ACTUAL
+        // content paddings Compose applied (before/after) versus what we intended,
+        // the band span and viewport frame, and every visible card's normalised
+        // offset against its computed snap line (d = how far it rested OFF its
+        // line: a large d on the focused card is a between-cards rest), plus the
+        // focus the deck chose. R1Log.i survives release builds and ships.
+        LaunchedEffect(listState, pageId, isActive) {
+            if (!isActive) return@LaunchedEffect
+            snapshotFlow { listState.isScrollInProgress }
+                .distinctUntilChanged()
+                .collect { scrolling ->
+                    if (scrolling) return@collect
+                    val info = listState.layoutInfo
+                    val span = info.viewportEndOffset - info.viewportStartOffset
+                    val vis = info.visibleItemsInfo.joinToString(" | ") { it ->
+                        val norm = it.offset - info.viewportStartOffset
+                        val snap = dynamicSnapStartPx(it.index, it.size, span)
+                        "#${it.index} off=${it.offset} norm=$norm sz=${it.size} snap=$snap d=${norm - snap}"
+                    }
+                    val focus = dynamicFocusedIndex(
+                        info.visibleItemsInfo.map {
+                            DynamicVisibleItem(it.index, it.offset - info.viewportStartOffset, it.size)
+                        },
+                        span,
+                    )
+                    com.github.itskenny0.r1ha.core.util.R1Log.i(
+                        "DeckSnap",
+                        "settle page=$pageId layoutH=$bandHeightPx span=$span " +
+                            "before=${info.beforeContentPadding} after=${info.afterContentPadding} " +
+                            "padTopWant=$centerPadTopPx vpStart=${info.viewportStartOffset} " +
+                            "vpEnd=${info.viewportEndOffset} spacing=${info.mainAxisItemSpacing} " +
+                            "focus=$focus settledFocus=${settledFocus.intValue} items=[$vis]",
+                    )
+                }
+        }
         // Snapping fling: decay the gesture's velocity (so a hard flick still
         // carries through several cards, same physics family as the pager),
         // then snap the nearest card's start onto its line with a CRISP,
