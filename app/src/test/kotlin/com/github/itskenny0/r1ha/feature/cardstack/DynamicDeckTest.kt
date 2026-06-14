@@ -83,6 +83,74 @@ class DynamicDeckTest {
             .isEqualTo(400)
     }
 
+    // ── second-card reachability: the focus bug, as geometry ────────────────
+    // "I can never focus the second card unless it's huge": item 1's centre
+    // snap line was above the highest offset it could ever occupy, so a fling
+    // could not settle there. These pin the ceiling math and the cure.
+
+    @Test fun `second card is unreachable with no top padding`() {
+        // 800 px band, two short 120 px cards, 24 px gap, ZERO top padding (the
+        // shipped state). Item 1's centre line is (800 - 120) / 2 = 340, but its
+        // ceiling is 0 + 120 + 24 = 144: the centre sits 196 px below anything
+        // item 1 can reach, so it can never be focused.
+        assertThat(
+            dynamicSecondItemCentreReachable(
+                bandHeightPx = 800,
+                firstItemHeightPx = 120,
+                secondItemHeightPx = 120,
+                interCardGapPx = 24,
+                topPaddingPx = 0,
+            ),
+        ).isFalse()
+    }
+
+    @Test fun `a tall first or second card was the only thing that reached`() {
+        // Why "unless it's huge" was the exception: a band-filling second card
+        // centres at (800 - 800) / 2 = 0, already at or below its ceiling, so it
+        // reached even with no top padding. This is the lucky case, not the fix.
+        assertThat(
+            dynamicSecondItemCentreReachable(
+                bandHeightPx = 800,
+                firstItemHeightPx = 120,
+                secondItemHeightPx = 800,
+                interCardGapPx = 24,
+                topPaddingPx = 0,
+            ),
+        ).isTrue()
+    }
+
+    @Test fun `mirroring the bottom padding on top always reaches the second card`() {
+        // The fix: a top pad of dynamicCenterPaddingPx(band, firstHeight) raises
+        // item 1's ceiling past its centre line for ANY card sizes. Sweep a
+        // range of short/tall first and second cards: every combination reaches.
+        val band = 800
+        val gap = 24
+        for (first in listOf(0, 60, 120, 300, 500)) {
+            for (second in listOf(0, 60, 120, 300, 500, 800)) {
+                val topPad = dynamicCenterPaddingPx(bandHeightPx = band, endItemHeightPx = first)
+                assertThat(
+                    dynamicSecondItemCentreReachable(
+                        bandHeightPx = band,
+                        firstItemHeightPx = first,
+                        secondItemHeightPx = second,
+                        interCardGapPx = gap,
+                        topPaddingPx = topPad,
+                    ),
+                ).isTrue()
+            }
+        }
+    }
+
+    @Test fun `item one ceiling rises by exactly the top padding`() {
+        // The ceiling is topPad + firstHeight + gap: the top padding is the
+        // load-bearing term, the slack above the first card that lets the second
+        // scroll down to its centre.
+        assertThat(dynamicSecondItemMaxStartPx(topPaddingPx = 0, firstItemHeightPx = 120, interCardGapPx = 24))
+            .isEqualTo(144)
+        assertThat(dynamicSecondItemMaxStartPx(topPaddingPx = 340, firstItemHeightPx = 120, interCardGapPx = 24))
+            .isEqualTo(484)
+    }
+
     // ── dynamicFocusedIndex: nearest item CENTRE to the band centre ─────────
 
     @Test fun `settled item centred in the band is focused`() {

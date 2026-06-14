@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.cardstack
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
@@ -30,6 +31,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -345,7 +347,77 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { lastItemHeightPx.intValue = it }
         }
-        val centerPadTop = 0.dp
+        // TOP centring padding, the symmetric twin of the bottom pad. Without it
+        // item 1's centre snap line sits above the highest offset it can ever
+        // occupy (item 0 is pinned flush at the top with zero slack above it), so
+        // a short second card can never be focused: the "I can never focus the
+        // second card unless it's huge" bug. A top pad of (band - firstHeight)/2
+        // raises item 1's reach past its centre line for ANY card sizes (proven
+        // in dynamicSecondItemCentreReachable). Item 0 still SNAPS to the top
+        // line (0), so once settled it rests flush under the chrome; the padding
+        // is the slack the stack scrolls DOWN into when card 2 takes focus.
+        // Keyed on the FIRST item's identity so a head mutation drops a height
+        // measured for a different card, exactly as the tail pad does.
+        val firstItemKey = cards.firstOrNull()?.key
+        val firstItemHeightPx = remember(pageId, firstItemKey, cards.size) {
+            mutableIntStateOf(-1)
+        }
+        LaunchedEffect(listState, firstItemKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull()
+                    ?.takeIf { it.index == 0 }
+                    ?.size
+            }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect { firstItemHeightPx.intValue = it }
+        }
+        // Only a multi-card deck needs the top slack: a lone card has no second
+        // card to reach, so padding would just float it down for nothing. The
+        // bottom pad already no-ops a single short card the same way (it is its
+        // own end), so a one-card page stays flush at the top exactly as before.
+        val centerPadTopPx = if (cards.size >= 2) {
+            dynamicCenterPaddingPx(
+                bandHeightPx = bandHeightPx,
+                endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+            )
+        } else {
+            0
+        }
+        val centerPadTop = with(LocalDensity.current) { centerPadTopPx.toDp() }
+        // One-shot: pin card 0 flush under the chrome on OPEN. The initial list
+        // position floats the first card down by the top centring pad; once that
+        // pad is known (first card measured) and while the user is still resting
+        // at the raw top, consume it so card 0 sits flush, the very rest its top
+        // snap line would reach on the first fling anyway. The raw-top guard
+        // (index 0, scroll offset 0) plus the once flag keep it from ever
+        // fighting a user who has scrolled away.
+        val openFlushed = remember(pageId) { mutableStateOf(false) }
+        LaunchedEffect(listState, pageId, isActive, cards.size) {
+            if (!isActive || cards.size < 2) return@LaunchedEffect
+            snapshotFlow {
+                // Recompute the pad from the live first-card height inside the
+                // flow (a captured local would stay at its pre-measurement 0).
+                val pad = dynamicCenterPaddingPx(
+                    bandHeightPx = bandHeightPx,
+                    endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+                )
+                pad.takeIf {
+                    it > 0 &&
+                        !listState.isScrollInProgress &&
+                        listState.firstVisibleItemIndex == 0 &&
+                        listState.firstVisibleItemScrollOffset == 0
+                }
+            }
+                .filterNotNull()
+                .collect { pad ->
+                    if (!openFlushed.value) {
+                        openFlushed.value = true
+                        runCatching { listState.scrollBy(pad.toFloat()) }
+                    }
+                }
+        }
         val centerPadBottom = with(LocalDensity.current) {
             dynamicCenterPaddingPx(
                 bandHeightPx = bandHeightPx,

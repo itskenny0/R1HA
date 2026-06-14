@@ -838,6 +838,15 @@ internal fun VerticalTapeMeter(
     // a useless pointerInput.
     val onSetPercent = com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent.current
     val interactive = onSetPercent != null
+    // Detent haptic for the TOUCH-drag scrub. The wheel-driven value change (on
+    // the focused card) already clicks per detent, so without this an INACTIVE
+    // card's bar, which can only be scrubbed by touch, felt dead under the
+    // finger. Fire one light tick each time the quantized percent crosses to a
+    // new value, exactly as a wheel detent would: the same R1Haptic.tick the
+    // clickable tick labels above already use, so the bar feels consistent
+    // however it is driven.
+    val hapticView = androidx.compose.ui.platform.LocalView.current
+    val dragHaptic = com.github.itskenny0.r1ha.ui.components.rememberR1Haptic()
     // Tick row labels — at fixed Y positions, monospace tiny text on the inside edge.
     Row(
         modifier = Modifier.fillMaxHeight(),
@@ -901,7 +910,11 @@ internal fun VerticalTapeMeter(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val initial = (1f - down.position.y / trackHeightPx.floatValue)
                             .coerceIn(0f, 1f)
-                        onSetPercent?.invoke(entityId, dragFractionToPercent(initial))
+                        var lastPct = dragFractionToPercent(initial)
+                        onSetPercent?.invoke(entityId, lastPct)
+                        // First contact is itself a detent: tick so a tap-to-set
+                        // lands with the same feedback as a wheel step.
+                        dragHaptic.tick(hapticView)
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
@@ -910,7 +923,14 @@ internal fun VerticalTapeMeter(
                             if (change.position != change.previousPosition) {
                                 val frac = (1f - change.position.y / trackHeightPx.floatValue)
                                     .coerceIn(0f, 1f)
-                                onSetPercent?.invoke(entityId, dragFractionToPercent(frac))
+                                val pct = dragFractionToPercent(frac)
+                                onSetPercent?.invoke(entityId, pct)
+                                // One tick per crossed detent (quantized percent
+                                // change), never per raw pixel move.
+                                if (pct != lastPct) {
+                                    lastPct = pct
+                                    dragHaptic.tick(hapticView)
+                                }
                             }
                             change.consume()
                         }
@@ -1009,6 +1029,11 @@ internal fun HorizontalTapeMeter(
     val labels = (tickLabels ?: listOf("100", "75", "50", "25", "0")).reversed()
     val onSetPercent = com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent.current
     val interactive = onSetPercent != null
+    // Detent haptic for touch scrub, same rationale as VerticalTapeMeter: the
+    // bar must click under the finger on an inactive card, not just when the
+    // wheel drives the focused one.
+    val hapticView = androidx.compose.ui.platform.LocalView.current
+    val dragHaptic = com.github.itskenny0.r1ha.ui.components.rememberR1Haptic()
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -1025,7 +1050,9 @@ internal fun HorizontalTapeMeter(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val initial = (down.position.x / trackWidthPx.floatValue)
                             .coerceIn(0f, 1f)
-                        onSetPercent?.invoke(entityId, dragFractionToPercent(initial))
+                        var lastPct = dragFractionToPercent(initial)
+                        onSetPercent?.invoke(entityId, lastPct)
+                        dragHaptic.tick(hapticView)
                         down.consume()
                         while (true) {
                             val event = awaitPointerEvent()
@@ -1034,7 +1061,12 @@ internal fun HorizontalTapeMeter(
                             if (change.position != change.previousPosition) {
                                 val frac = (change.position.x / trackWidthPx.floatValue)
                                     .coerceIn(0f, 1f)
-                                onSetPercent?.invoke(entityId, dragFractionToPercent(frac))
+                                val pct = dragFractionToPercent(frac)
+                                onSetPercent?.invoke(entityId, pct)
+                                if (pct != lastPct) {
+                                    lastPct = pct
+                                    dragHaptic.tick(hapticView)
+                                }
                             }
                             change.consume()
                         }

@@ -49,13 +49,12 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Short cards focus too: the second card in a stack now centres and takes focus, not just tall ones.",
+    "The value bar clicks under your finger on every card, not only the one the wheel is driving.",
     "Lovelace cards are first-class deck cards now: they mix with favourites on any page and look native.",
     "Add cards from your HA dashboards (browse, multi-select) or import a whole dashboard as pages.",
-    "New-card editor with forms: entity picker, iframe url, markdown body; raw JSON stays one tap away.",
     "Broadlink IR/RF console under Settings: guided learn, test-fire, manage; commands live in HA as tagged automations.",
-    "Pin IR commands or automations to the deck and fire them with one tap.",
     "Deck layout setting (Auto, Dynamic, Fullscreen): Dynamic flows cards at their content height and snaps card-to-card.",
-    "Dynamic deck: focused card centres, one tap fires any card, cards snap with a stronger magnet and lock tick.",
     "Entity cards show all their controls with a full-height value-bar slider; Lovelace and IR cards wear their titles.",
     "IR and action buttons fire with style: a radiating signal pulse, an accent flare, a SENT flash and a haptic buzz.",
     "About: install any GitHub release from a version list; thanks to Home Assistant, Nabu Casa and Open Home Foundation.",

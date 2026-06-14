@@ -137,6 +137,54 @@ fun dynamicSnapStartPx(itemIndex: Int, itemSizePx: Int, bandHeightPx: Int): Int 
     if (itemIndex <= 0) 0 else (bandHeightPx - itemSizePx) / 2
 
 /**
+ * The largest main-axis START offset (px, in the band frame) the SECOND deck
+ * item (index 1) can ever occupy. Item 1 sits directly under item 0, so its
+ * lowest-on-screen position is reached at the list's top scroll clamp: item 0
+ * resting at the bottom of the top content padding ([topPaddingPx] below the
+ * band top) with item 1 one card-plus-gap below it. Scrolling only moves the
+ * stack UP from there, shrinking item 1's offset; it can never sit lower. So
+ * this is item 1's ceiling, and its CENTRE snap line is physically reachable
+ * only when that line is at or above this ceiling (see
+ * [dynamicSecondItemCentreReachable]).
+ *
+ * The top padding is the load-bearing term: without it ([topPaddingPx] == 0)
+ * item 1's ceiling is just `firstItemHeightPx + gap` below the band top, which
+ * for a short first card is far above the band centre, so item 1's centre line
+ * is out of reach and a fling can never settle focus on it. This is the exact
+ * arithmetic behind "the second card is unfocusable unless it (or the first) is
+ * tall": a tall card's centre line rides up to where the ceiling already is.
+ */
+fun dynamicSecondItemMaxStartPx(
+    topPaddingPx: Int,
+    firstItemHeightPx: Int,
+    interCardGapPx: Int,
+): Int = topPaddingPx + firstItemHeightPx + interCardGapPx
+
+/**
+ * Whether the SECOND card's CENTRE snap line is physically reachable: its centre
+ * target ([dynamicSnapStartPx] for index 1) must sit at or below item 1's
+ * ceiling ([dynamicSecondItemMaxStartPx]). When false the deck cannot focus the
+ * second card at all (the regression the user hit); the cure is enough top
+ * content padding to raise the ceiling to (or past) the centre line.
+ *
+ * Mirroring the bottom centring padding on the top, i.e. a top pad of
+ * `(band - firstItemHeight) / 2` ([dynamicCenterPaddingPx] of the first item),
+ * always satisfies this: substituting it leaves the condition
+ * `(firstHeight + secondHeight) / 2 + gap >= 0`, true for any non-negative
+ * sizes. So the symmetric padding is not a heuristic, it is a proof the second
+ * card always reaches centre.
+ */
+fun dynamicSecondItemCentreReachable(
+    bandHeightPx: Int,
+    firstItemHeightPx: Int,
+    secondItemHeightPx: Int,
+    interCardGapPx: Int,
+    topPaddingPx: Int,
+): Boolean =
+    dynamicSnapStartPx(1, secondItemHeightPx, bandHeightPx) <=
+        dynamicSecondItemMaxStartPx(topPaddingPx, firstItemHeightPx, interCardGapPx)
+
+/**
  * Which item of the dynamic deck is the FOCUSED one: the item whose CURRENT
  * start sits nearest its OWN snap line ([dynamicSnapStartPx]). The deck snaps
  * per item (item 0 to the top, the rest to the centre), so after a snap settles
