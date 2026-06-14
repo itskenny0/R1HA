@@ -137,6 +137,32 @@ fun dynamicSnapStartPx(itemIndex: Int, itemSizePx: Int, bandHeightPx: Int): Int 
     if (itemIndex <= 0) 0 else (bandHeightPx - itemSizePx) / 2
 
 /**
+ * The value the deck's [androidx.compose.foundation.gestures.snapping.SnapPosition]
+ * returns for item [itemIndex]: the item-start offset measured from the START OF
+ * THE CONTENT AREA (after the top content padding), which is the frame the snap
+ * framework lands the item in (`beforeContentPaddingPx + this`).
+ *
+ * The snap line itself is computed in the FULL viewport ([layoutSizePx]) by
+ * [dynamicSnapStartPx], exactly the frame the focused-index math uses (it reasons
+ * in viewportEnd - viewportStart, which nets out to the full size). We then
+ * subtract [beforeContentPaddingPx] to express that full-viewport line as the
+ * content-relative offset the framework wants. Item 0's full-band line is 0 (the
+ * true top), so it returns `-beforeContentPaddingPx`: the item lands flush at the
+ * chrome instead of floated a whole top-pad below it. Items 1..n land on the full
+ * band centre, the same line the focus math picks them out by.
+ *
+ * Pure (no Compose) so the snap/focus frame agreement is unit-tested directly:
+ * the regression was the provider centring in the PADDED band while the focus
+ * math used the full one, so the two disagreed and the deck snapped erratically.
+ */
+fun dynamicSnapProviderOffsetPx(
+    itemIndex: Int,
+    itemSizePx: Int,
+    layoutSizePx: Int,
+    beforeContentPaddingPx: Int,
+): Int = dynamicSnapStartPx(itemIndex, itemSizePx, layoutSizePx) - beforeContentPaddingPx
+
+/**
  * The largest main-axis START offset (px, in the band frame) the SECOND deck
  * item (index 1) can ever occupy. Item 1 sits directly under item 0, so its
  * lowest-on-screen position is reached at the list's top scroll clamp: item 0

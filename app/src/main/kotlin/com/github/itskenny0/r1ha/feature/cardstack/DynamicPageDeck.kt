@@ -31,7 +31,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -95,15 +94,28 @@ import kotlinx.coroutines.flow.filterNotNull
  */
 /**
  * The dynamic deck's PER-ITEM snap rule, as a [SnapPosition]. The snap
- * machinery calls [position] for each candidate item with the viewport span and
+ * machinery calls [position] for each candidate item with the viewport size and
  * the item's measured size; we delegate to the pure [dynamicSnapStartPx] so the
  * snap line and the focused-index math are computed by one shared function.
  *
- * [position]'s contract: return the desired offset of the item's START from the
- * viewport start (after content padding). The band span the snap maths reason
- * in is the layout size minus the symmetric content padding, exactly what
- * [dynamicSnapStartPx] treats as the band height. Item 0 returns 0 (flush at the
- * top, matching SnapPosition.Start); items 1..n return the Center arithmetic.
+ * FRAME: the snap line is computed in the FULL viewport ([layoutSize]) so it
+ * matches the focused-index math, which reasons in the full span
+ * (viewportEnd - viewportStart). Item 0's line is the true top (0), items 1..n
+ * the full-band centre ((layoutSize - itemSize) / 2). [position]'s return value,
+ * though, is the item-start offset measured from the START OF THE CONTENT AREA
+ * (i.e. after [beforeContentPadding]) -- the framework lands the item at
+ * `beforeContentPadding + returned`. So we subtract [beforeContentPadding] to
+ * convert the full-viewport snap line into that content-relative offset; a line
+ * of 0 (item 0's top) becomes `-beforeContentPadding`, which lands item 0 flush
+ * at the true top rather than floated a whole top-pad below the chrome.
+ *
+ * REGRESSION FIX: the previous revision computed the centre inside the PADDED
+ * band (`layoutSize - before - after`) and returned it un-shifted. With the top
+ * centring pad that band collapsed below the card height (so every centre line
+ * degenerated toward the top) and item 0 snapped to `beforeContentPadding`
+ * (floated), while the focus math kept using the full span -- the two frames
+ * disagreed and the deck snapped inconsistently. Centring in the full viewport
+ * and shifting by the pad makes the snap line and the focus line identical.
  *
  * Object (not a lambda) so it is a stable singleton across recompositions; it
  * holds no state, only the index-keyed rule.
@@ -117,11 +129,11 @@ private val dynamicSnapPosition = object : SnapPosition {
         itemIndex: Int,
         itemCount: Int,
     ): Int {
-        val bandSpan = layoutSize - beforeContentPadding - afterContentPadding
-        return dynamicSnapStartPx(
+        return dynamicSnapProviderOffsetPx(
             itemIndex = itemIndex,
             itemSizePx = itemSize,
-            bandHeightPx = bandSpan,
+            layoutSizePx = layoutSize,
+            beforeContentPaddingPx = beforeContentPadding,
         )
     }
 }
@@ -386,14 +398,17 @@ internal fun DynamicPageDeck(
             0
         }
         val centerPadTop = with(LocalDensity.current) { centerPadTopPx.toDp() }
-        // One-shot: pin card 0 flush under the chrome on OPEN. The initial list
-        // position floats the first card down by the top centring pad; once that
-        // pad is known (first card measured) and while the user is still resting
-        // at the raw top, consume it so card 0 sits flush, the very rest its top
-        // snap line would reach on the first fling anyway. The raw-top guard
-        // (index 0, scroll offset 0) plus the once flag keep it from ever
-        // fighting a user who has scrolled away.
-        val openFlushed = remember(pageId) { mutableStateOf(false) }
+        // Pin card 0 flush under the chrome whenever the deck rests at the raw
+        // top clamp. The top centring pad floats the first card down by its whole
+        // height on the no-fling rest states (open, jump-to-top, returning to a
+        // page): the snap target for item 0 is the true top, but a programmatic
+        // or initial rest never runs the fling, so nothing pulls it up. Consume
+        // the pad here. SELF-HEALING (not one-shot): the snapshotFlow emits the
+        // pad only on ENTERING the floated raw-top state (offset 0, index 0, not
+        // scrolling) and null on leaving, so each float event flushes exactly
+        // once -- the scrollBy moves the offset off 0, flipping the value to null
+        // -- and a later revisit that floats again is corrected the same way. The
+        // not-scrolling guard keeps it from fighting an active drag.
         LaunchedEffect(listState, pageId, isActive, cards.size) {
             if (!isActive || cards.size < 2) return@LaunchedEffect
             snapshotFlow {
@@ -412,10 +427,7 @@ internal fun DynamicPageDeck(
             }
                 .filterNotNull()
                 .collect { pad ->
-                    if (!openFlushed.value) {
-                        openFlushed.value = true
-                        runCatching { listState.scrollBy(pad.toFloat()) }
-                    }
+                    runCatching { listState.scrollBy(pad.toFloat()) }
                 }
         }
         val centerPadBottom = with(LocalDensity.current) {

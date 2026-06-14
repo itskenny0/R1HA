@@ -83,6 +83,57 @@ class DynamicDeckTest {
             .isEqualTo(400)
     }
 
+    // ── snap provider / focus frame agreement ───────────────────────────────
+    // The inconsistency bug: the provider centred inside the PADDED band while
+    // the focus math used the FULL viewport, so they disagreed on every card's
+    // rest line and the deck snapped erratically (and item 0 snapped to the
+    // floated content-area top, not the chrome). These pin the shared frame.
+
+    @Test fun `provider lands item zero flush at the true top, not floated`() {
+        // Full 2043 viewport, 750 top pad. Item 0's full-band line is 0 (top);
+        // the provider returns it content-relative, so -750: the framework lands
+        // it at 750 + (-750) = 0, flush at the chrome. The OLD provider returned
+        // 0 here, landing item 0 at +750 (floated a whole pad down).
+        assertThat(
+            dynamicSnapProviderOffsetPx(
+                itemIndex = 0,
+                itemSizePx = 542,
+                layoutSizePx = 2043,
+                beforeContentPaddingPx = 750,
+            ),
+        ).isEqualTo(-750)
+    }
+
+    @Test fun `provider centres later items in the FULL viewport`() {
+        // Item 1, 536 px card, 2043 viewport, 750 top pad: full-band centre is
+        // (2043 - 536) / 2 = 753, returned content-relative as 753 - 750 = 3, so
+        // it lands at 750 + 3 = 753 -- the full-band centre the focus math also
+        // uses. The old padded-band centre ((529 - 536)/2 = -3) disagreed.
+        assertThat(
+            dynamicSnapProviderOffsetPx(
+                itemIndex = 1,
+                itemSizePx = 536,
+                layoutSizePx = 2043,
+                beforeContentPaddingPx = 750,
+            ),
+        ).isEqualTo(3)
+    }
+
+    @Test fun `a snapped card reads as focused in the same frame`() {
+        // The agreement, end to end: after the provider lands a card, its
+        // normalised offset equals the focus math's snap line for it, so the
+        // focus picks it with distance 0. Item 1 in a 2043 viewport, 750 pad:
+        // provider offset 3 -> landed norm = beforePad + offset = 753; focus
+        // snap line dynamicSnapStartPx(1, 536, 2043) = 753; distance 0.
+        val layout = 2043
+        val before = 750
+        val sz = 536
+        val providerOffset = dynamicSnapProviderOffsetPx(1, sz, layout, before)
+        val landedNorm = before + providerOffset
+        val focusLine = dynamicSnapStartPx(itemIndex = 1, itemSizePx = sz, bandHeightPx = layout)
+        assertThat(landedNorm).isEqualTo(focusLine)
+    }
+
     // ── second-card reachability: the focus bug, as geometry ────────────────
     // "I can never focus the second card unless it's huge": item 1's centre
     // snap line was above the highest offset it could ever occupy, so a fling
