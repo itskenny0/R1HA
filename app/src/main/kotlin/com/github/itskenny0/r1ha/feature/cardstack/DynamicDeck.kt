@@ -187,18 +187,69 @@ fun dynamicSecondItemMaxStartPx(
 ): Int = topPaddingPx + firstItemHeightPx + interCardGapPx
 
 /**
+ * The MINIMAL top content padding (px) that lets the SECOND card reach its
+ * CENTRE snap line, and no more.
+ *
+ * The top pad exists for exactly one reason: item 0 is pinned flush at the band
+ * top with zero slack above it, so without padding item 1's highest reachable
+ * start ([dynamicSecondItemMaxStartPx] at `topPad == 0`) is just
+ * `firstHeight + gap` below the band top. For a short first card that ceiling
+ * sits well above item 1's centre line, so a fling can never settle focus on
+ * the second card (the real bug). The pad is the slack the stack scrolls DOWN
+ * into when card 2 takes focus.
+ *
+ * We give it the SMALLEST pad that makes the ceiling reach the centre line, not
+ * the symmetric `(band - firstHeight) / 2` mirror of the bottom pad. The mirror
+ * is far more slack than needed: all of it is user-scrollable empty space ABOVE
+ * card 0, so the user can drag card 0 down into the middle and it springs back,
+ * an awkward overscroll. Solving `centre1 <= P + firstHeight + gap` for the
+ * least P:
+ *
+ *   centre1 = (band - secondHeight) / 2                 (item 1's centre line)
+ *   P_min   = max(0, centre1 - firstHeight - gap)
+ *           = max(0, (band - secondHeight) / 2 - firstHeight - gap)
+ *
+ * Worked from real logs (band 2043, card0 542, card1 536, gap 30): the mirror
+ * pad is (2043 - 542)/2 = 750; this minimal pad is (2043 - 536)/2 - 542 - 30 =
+ * 753 - 572 = 181. So ~181 px of slack instead of 750, dramatically less
+ * overscroll, and the second card still centres exactly (the inequality becomes
+ * an equality at P_min, proven in [dynamicSecondItemCentreReachable]).
+ *
+ *  - [firstCardHeightPx] / [secondCardHeightPx] null = that card has not been
+ *    measured yet (never composed, or the deck's head just changed). We return 0
+ *    until BOTH are known: with no measured heights there is nothing to centre
+ *    toward, and a speculative pad would just float card 0 down for nothing. The
+ *    caller drops a cached height whenever the head item changes identity, the
+ *    same discipline the tail pad uses, so a stale height never leaks a gap.
+ *  - A second card at least as tall as the band centres at <= 0, already at or
+ *    below the ceiling, so P_min is 0: a band-filling card never needs help.
+ *  - Clamped into `[0, band]` defensively, mirroring [dynamicCenterPaddingPx].
+ */
+fun dynamicMinTopPaddingPx(
+    bandHeightPx: Int,
+    firstCardHeightPx: Int?,
+    secondCardHeightPx: Int?,
+    gapPx: Int,
+): Int {
+    if (firstCardHeightPx == null || secondCardHeightPx == null) return 0
+    val centre1 = (bandHeightPx - secondCardHeightPx) / 2
+    val minPad = centre1 - firstCardHeightPx - gapPx
+    return minPad.coerceIn(0, bandHeightPx.coerceAtLeast(0))
+}
+
+/**
  * Whether the SECOND card's CENTRE snap line is physically reachable: its centre
  * target ([dynamicSnapStartPx] for index 1) must sit at or below item 1's
  * ceiling ([dynamicSecondItemMaxStartPx]). When false the deck cannot focus the
  * second card at all (the regression the user hit); the cure is enough top
  * content padding to raise the ceiling to (or past) the centre line.
  *
- * Mirroring the bottom centring padding on the top, i.e. a top pad of
- * `(band - firstItemHeight) / 2` ([dynamicCenterPaddingPx] of the first item),
- * always satisfies this: substituting it leaves the condition
- * `(firstHeight + secondHeight) / 2 + gap >= 0`, true for any non-negative
- * sizes. So the symmetric padding is not a heuristic, it is a proof the second
- * card always reaches centre.
+ * The MINIMAL pad [dynamicMinTopPaddingPx] satisfies this as an EQUALITY: when
+ * `P_min = centre1 - firstHeight - gap` is positive, the ceiling lands exactly
+ * on the centre line; when it clamps to 0 the second card was already reachable
+ * with no padding, so the inequality holds either way. (The old symmetric pad
+ * `(band - firstHeight) / 2` over-satisfied it by leaving the second card high
+ * above the ceiling, which is exactly the overscroll slack we trimmed.)
  */
 fun dynamicSecondItemCentreReachable(
     bandHeightPx: Int,

@@ -376,17 +376,25 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { lastItemHeightPx.intValue = it }
         }
-        // TOP centring padding, the symmetric twin of the bottom pad. Without it
-        // item 1's centre snap line sits above the highest offset it can ever
-        // occupy (item 0 is pinned flush at the top with zero slack above it), so
-        // a short second card can never be focused: the "I can never focus the
-        // second card unless it's huge" bug. A top pad of (band - firstHeight)/2
-        // raises item 1's reach past its centre line for ANY card sizes (proven
-        // in dynamicSecondItemCentreReachable). Item 0 still SNAPS to the top
-        // line (0), so once settled it rests flush under the chrome; the padding
-        // is the slack the stack scrolls DOWN into when card 2 takes focus.
-        // Keyed on the FIRST item's identity so a head mutation drops a height
-        // measured for a different card, exactly as the tail pad does.
+        // TOP padding: the MINIMAL slack above card 0 that lets the SECOND card
+        // reach its centre snap line. Without it item 1's highest reachable start
+        // sits above its centre line (item 0 is pinned flush at the top with zero
+        // slack above it), so a short second card can never be focused: the "I can
+        // never focus the second card unless it's huge" bug. We size the pad to
+        // exactly P_min = (band - secondHeight)/2 - firstHeight - gap (see
+        // dynamicMinTopPaddingPx), NOT the old (band - firstHeight)/2 mirror of
+        // the bottom pad: the mirror left far more scrollable empty space above
+        // card 0 than needed, so the user could drag card 0 down into the middle
+        // and it sprang back (the awkward overscroll). At P_min the ceiling lands
+        // exactly on the second card's centre line, so it still centres, with the
+        // least possible slack. Item 0 still SNAPS to the top line (0), so once
+        // settled it rests flush under the chrome.
+        //
+        // P_min needs BOTH the first and the second card's measured heights, so we
+        // track the second card's height too. Each measurement is keyed on its
+        // item's identity (head item key for the first, second item's key for the
+        // second), so a head mutation drops a height measured for a different card,
+        // exactly as the tail pad does, and a stale height never leaks a gap.
         val firstItemKey = cards.firstOrNull()?.key
         val firstItemHeightPx = remember(pageId, firstItemKey, cards.size) {
             mutableIntStateOf(-1)
@@ -402,38 +410,67 @@ internal fun DynamicPageDeck(
                 .distinctUntilChanged()
                 .collect { firstItemHeightPx.intValue = it }
         }
+        // The SECOND card's height, the other term P_min needs. Keyed on the
+        // second item's identity (cards[1]) so a head/second mutation drops a
+        // height measured for a different card. -1 until measured; the pad helper
+        // treats a null (the <0 -> null mapping below) as "no padding yet".
+        val secondItemKey = cards.getOrNull(1)?.key
+        val secondItemHeightPx = remember(pageId, secondItemKey, cards.size) {
+            mutableIntStateOf(-1)
+        }
+        LaunchedEffect(listState, secondItemKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == 1 }
+                    ?.size
+            }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect { secondItemHeightPx.intValue = it }
+        }
+        // The inter-card gap (Arrangement.spacedBy below) is part of item 1's
+        // ceiling, so it enters P_min. Resolved once from the same R1.space.m the
+        // LazyColumn uses, in px, so the pure pad math sees the real spacing.
+        val interCardGapPx = with(LocalDensity.current) { R1.space.m.roundToPx() }
         // Only a multi-card deck needs the top slack: a lone card has no second
-        // card to reach, so padding would just float it down for nothing. The
-        // bottom pad already no-ops a single short card the same way (it is its
-        // own end), so a one-card page stays flush at the top exactly as before.
+        // card to reach, so padding would just float it down for nothing. A
+        // one-card page stays flush at the top, and the pad is 0 until BOTH the
+        // first and second cards have reported a height.
         val centerPadTopPx = if (cards.size >= 2) {
-            dynamicCenterPaddingPx(
+            dynamicMinTopPaddingPx(
                 bandHeightPx = bandHeightPx,
-                endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+                firstCardHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+                secondCardHeightPx = secondItemHeightPx.intValue.takeIf { it >= 0 },
+                gapPx = interCardGapPx,
             )
         } else {
             0
         }
         val centerPadTop = with(LocalDensity.current) { centerPadTopPx.toDp() }
         // Pin card 0 flush under the chrome whenever the deck rests at the raw
-        // top clamp. The top centring pad floats the first card down by its whole
-        // height on the no-fling rest states (open, jump-to-top, returning to a
-        // page): the snap target for item 0 is the true top, but a programmatic
-        // or initial rest never runs the fling, so nothing pulls it up. Consume
-        // the pad here. SELF-HEALING (not one-shot): the snapshotFlow emits the
-        // pad only on ENTERING the floated raw-top state (offset 0, index 0, not
-        // scrolling) and null on leaving, so each float event flushes exactly
-        // once -- the scrollBy moves the offset off 0, flipping the value to null
-        // -- and a later revisit that floats again is corrected the same way. The
-        // not-scrolling guard keeps it from fighting an active drag.
+        // top clamp. The top pad floats the first card down by the pad amount on
+        // the no-fling rest states (open, jump-to-top, returning to a page): the
+        // snap target for item 0 is the true top, but a programmatic or initial
+        // rest never runs the fling, so nothing pulls it up. Consume the pad here.
+        // With the minimal pad this is a SMALLER correction than the old mirror
+        // pad (~181 px instead of ~750 in the worked example), so the hidden
+        // float-then-flush is gentler, but the mechanism is unchanged. SELF-
+        // HEALING (not one-shot): the snapshotFlow emits the pad only on ENTERING
+        // the floated raw-top state (offset 0, index 0, not scrolling) and null on
+        // leaving, so each float event flushes exactly once -- the scrollBy moves
+        // the offset off 0, flipping the value to null -- and a later revisit that
+        // floats again is corrected the same way. The not-scrolling guard keeps it
+        // from fighting an active drag.
         LaunchedEffect(listState, pageId, isActive, cards.size) {
             if (!isActive || cards.size < 2) return@LaunchedEffect
             snapshotFlow {
-                // Recompute the pad from the live first-card height inside the
-                // flow (a captured local would stay at its pre-measurement 0).
-                val pad = dynamicCenterPaddingPx(
+                // Recompute the pad from the live card heights inside the flow (a
+                // captured local would stay at its pre-measurement 0).
+                val pad = dynamicMinTopPaddingPx(
                     bandHeightPx = bandHeightPx,
-                    endItemHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+                    firstCardHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
+                    secondCardHeightPx = secondItemHeightPx.intValue.takeIf { it >= 0 },
+                    gapPx = interCardGapPx,
                 )
                 pad.takeIf {
                     it > 0 &&
@@ -480,10 +517,20 @@ internal fun DynamicPageDeck(
                     val info = listState.layoutInfo
                     val focusVisible = info.visibleItemsInfo.any { it.index == focus }
                     val firstH = firstItemHeightPx.intValue
-                    val measured = cards.size < 2 || firstH >= 0
+                    val secondH = secondItemHeightPx.intValue
+                    // The pad needs both head heights, so the reveal waits for
+                    // both: gating on a half-measured pad would reveal early and
+                    // let the pad shove the card post-reveal (the flash). A
+                    // single-card deck has no pad and is "measured" immediately.
+                    val measured = cards.size < 2 || (firstH >= 0 && secondH >= 0)
                     val intendedPad =
-                        if (cards.size >= 2 && firstH >= 0) {
-                            dynamicCenterPaddingPx(bandHeightPx = bandHeightPx, endItemHeightPx = firstH)
+                        if (cards.size >= 2) {
+                            dynamicMinTopPaddingPx(
+                                bandHeightPx = bandHeightPx,
+                                firstCardHeightPx = firstH.takeIf { it >= 0 },
+                                secondCardHeightPx = secondH.takeIf { it >= 0 },
+                                gapPx = interCardGapPx,
+                            )
                         } else {
                             0
                         }
@@ -505,16 +552,19 @@ internal fun DynamicPageDeck(
                 endItemHeightPx = lastItemHeightPx.intValue.takeIf { it >= 0 },
             ).toDp()
         }
-        // DIAGNOSTIC (temporary, removed once the snap is fixed): on every settle,
-        // ship a full snapshot of the snap geometry so the on-device snapping can
-        // be read from the log receiver instead of guessed at. Captures the ACTUAL
-        // content paddings Compose applied (before/after) versus what we intended,
-        // the band span and viewport frame, and every visible card's normalised
-        // offset against its computed snap line (d = how far it rested OFF its
-        // line: a large d on the focused card is a between-cards rest), plus the
-        // focus the deck chose. R1Log.i survives release builds and ships.
-        LaunchedEffect(listState, pageId, isActive) {
-            if (!isActive) return@LaunchedEffect
+        // DIAGNOSTIC, gated behind the Dev-menu "Deck snap diagnostics" toggle
+        // (default OFF). When on, on every settle it ships a full snapshot of the
+        // snap geometry so the on-device snapping can be read from the log
+        // receiver instead of guessed at: the ACTUAL content paddings Compose
+        // applied (before/after) versus what we intended, the band span and
+        // viewport frame, and every visible card's normalised offset against its
+        // computed snap line (d = how far it rested OFF its line: a large d on the
+        // focused card is a between-cards rest), plus the focus the deck chose.
+        // R1Log.i survives release builds and ships. Keyed on the toggle so
+        // flipping it off tears the collector down (no snapshotFlow runs at all).
+        val deckSnapDiag = appSettings.logShipping.deckSnapDiagnostics
+        LaunchedEffect(listState, pageId, isActive, deckSnapDiag) {
+            if (!isActive || !deckSnapDiag) return@LaunchedEffect
             snapshotFlow { listState.isScrollInProgress }
                 .distinctUntilChanged()
                 .collect { scrolling ->

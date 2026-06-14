@@ -119,6 +119,44 @@ class DynamicDeckTest {
         ).isEqualTo(3)
     }
 
+    @Test fun `provider and focus frame agree across a wide sweep`() {
+        // The core invariant, swept: for any band, card size, padding and index,
+        // the landed norm (beforePad + providerOffset) equals the focus snap line
+        // (dynamicSnapStartPx in the FULL band). If these ever diverged the deck
+        // would snap to one line and read focus off another (the inconsistency
+        // bug). Covers item 0 (flush-top line) and items 1..n (centre line).
+        for (band in listOf(400, 800, 1000, 2043, 3000)) {
+            for (size in listOf(0, 60, 200, 536, 800, band)) {
+                for (before in listOf(0, 1, 181, 400, 750, band)) {
+                    for (index in listOf(0, 1, 2, 7, 50)) {
+                        val providerOffset =
+                            dynamicSnapProviderOffsetPx(index, size, band, before)
+                        val landedNorm = before + providerOffset
+                        val focusLine = dynamicSnapStartPx(index, size, band)
+                        assertThat(landedNorm).isEqualTo(focusLine)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test fun `card zero lands flush at norm zero for any padding`() {
+        // Item 0's landed norm is ALWAYS 0 (flush at the chrome), never floated by
+        // the pad, whatever the top padding is. This is the property the flush
+        // effect leans on.
+        for (before in listOf(0, 1, 100, 181, 750, 5000)) {
+            for (size in listOf(0, 120, 542, 2000)) {
+                val landedNorm = before + dynamicSnapProviderOffsetPx(
+                    itemIndex = 0,
+                    itemSizePx = size,
+                    layoutSizePx = 2043,
+                    beforeContentPaddingPx = before,
+                )
+                assertThat(landedNorm).isEqualTo(0)
+            }
+        }
+    }
+
     @Test fun `a snapped card reads as focused in the same frame`() {
         // The agreement, end to end: after the provider lands a card, its
         // normalised offset equals the focus math's snap line for it, so the
@@ -200,6 +238,138 @@ class DynamicDeckTest {
             .isEqualTo(144)
         assertThat(dynamicSecondItemMaxStartPx(topPaddingPx = 340, firstItemHeightPx = 120, interCardGapPx = 24))
             .isEqualTo(484)
+    }
+
+    // ── dynamicMinTopPaddingPx: the MINIMAL top pad (the overscroll fix) ─────
+    // The old top pad mirrored the bottom: (band - firstHeight)/2. That is far
+    // more scrollable empty space above card 0 than needed, so the user could
+    // drag card 0 into the middle and it sprang back (awkward overscroll). The
+    // minimal pad is the LEAST slack that still lets the second card reach its
+    // centre line: P_min = (band - secondHeight)/2 - firstHeight - gap, floored
+    // at 0.
+
+    @Test fun `min top pad is zero until both head cards are measured`() {
+        // Either height null = not composed yet / head just changed: no pad, so
+        // card 0 is never speculatively floated.
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 2043, firstCardHeightPx = null, secondCardHeightPx = 536, gapPx = 30),
+        ).isEqualTo(0)
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 2043, firstCardHeightPx = 542, secondCardHeightPx = null, gapPx = 30),
+        ).isEqualTo(0)
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 2043, firstCardHeightPx = null, secondCardHeightPx = null, gapPx = 30),
+        ).isEqualTo(0)
+    }
+
+    @Test fun `min top pad matches the worked on-device example`() {
+        // The real log: band 2043, card0 542, card1 536, gap 30.
+        // P_min = (2043 - 536)/2 - 542 - 30 = 753 - 572 = 181.
+        assertThat(
+            dynamicMinTopPaddingPx(
+                bandHeightPx = 2043,
+                firstCardHeightPx = 542,
+                secondCardHeightPx = 536,
+                gapPx = 30,
+            ),
+        ).isEqualTo(181)
+    }
+
+    @Test fun `min top pad is dramatically smaller than the old mirror pad`() {
+        // The whole point of the fix: for representative sizes the minimal pad is
+        // a fraction of the symmetric (band - firstHeight)/2 mirror, so there is
+        // far less overscroll slack above card 0.
+        val band = 2043
+        val card0 = 542
+        val card1 = 536
+        val gap = 30
+        val mirror = dynamicCenterPaddingPx(bandHeightPx = band, endItemHeightPx = card0) // 750
+        val minimal = dynamicMinTopPaddingPx(band, card0, card1, gap) // 181
+        assertThat(minimal).isLessThan(mirror)
+        // Comfortably under half the mirror, not a marginal trim.
+        assertThat(minimal * 2).isLessThan(mirror)
+    }
+
+    @Test fun `min top pad makes the second card reach with EQUALITY`() {
+        // At the minimal pad the second card's ceiling lands exactly on its
+        // centre line: the inequality in dynamicSecondItemCentreReachable becomes
+        // an equality (reachable, with not a pixel of slack to spare). Verified
+        // across a sweep of short and tall head cards.
+        val band = 1000
+        val gap = 24
+        for (first in listOf(0, 50, 120, 300, 500, 900)) {
+            for (second in listOf(0, 50, 120, 300, 500, 900, 1000, 1200)) {
+                val pad = dynamicMinTopPaddingPx(band, first, second, gap)
+                // The pad always keeps the second card reachable.
+                assertThat(
+                    dynamicSecondItemCentreReachable(
+                        bandHeightPx = band,
+                        firstItemHeightPx = first,
+                        secondItemHeightPx = second,
+                        interCardGapPx = gap,
+                        topPaddingPx = pad,
+                    ),
+                ).isTrue()
+                // When the pad is positive it is the EXACT minimum: dropping it
+                // by one pixel would make the centre line unreachable.
+                if (pad > 0) {
+                    assertThat(
+                        dynamicSecondItemCentreReachable(
+                            bandHeightPx = band,
+                            firstItemHeightPx = first,
+                            secondItemHeightPx = second,
+                            interCardGapPx = gap,
+                            topPaddingPx = pad - 1,
+                        ),
+                    ).isFalse()
+                }
+            }
+        }
+    }
+
+    @Test fun `min top pad is zero when the second card already reaches`() {
+        // A band-filling (or taller) second card centres at <= 0, already at or
+        // below its ceiling, so it reaches with no padding: P_min floors to 0.
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 800, firstCardHeightPx = 120, secondCardHeightPx = 800, gapPx = 24),
+        ).isEqualTo(0)
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 800, firstCardHeightPx = 120, secondCardHeightPx = 1000, gapPx = 24),
+        ).isEqualTo(0)
+        // A tall FIRST card also pushes the ceiling up to the centre line on its
+        // own: P_min floors to 0 there too.
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 800, firstCardHeightPx = 600, secondCardHeightPx = 120, gapPx = 24),
+        ).isEqualTo(0)
+    }
+
+    @Test fun `min top pad clamps into the band`() {
+        // Defensive bounds, mirroring dynamicCenterPaddingPx: never negative,
+        // never more than one band even for a zero-height first/second card.
+        // band 800, two zero-height cards, no gap: P_min = 400, within [0, 800].
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 800, firstCardHeightPx = 0, secondCardHeightPx = 0, gapPx = 0),
+        ).isEqualTo(400)
+        // A large gap can only shrink the pad, never push it negative.
+        assertThat(
+            dynamicMinTopPaddingPx(bandHeightPx = 800, firstCardHeightPx = 0, secondCardHeightPx = 0, gapPx = 10_000),
+        ).isEqualTo(0)
+    }
+
+    @Test fun `min top pad keeps card zero pinnable to the flush top`() {
+        // Even with the minimal pad, item 0's snap line is still the true top (0)
+        // and its provider offset lands it flush under the chrome (-pad), so the
+        // flush-effect / placement scroll still pull it up by exactly the pad. The
+        // pad is just smaller now.
+        val band = 2043
+        val card0 = 542
+        val card1 = 536
+        val gap = 30
+        val pad = dynamicMinTopPaddingPx(band, card0, card1, gap)
+        assertThat(dynamicSnapStartPx(itemIndex = 0, itemSizePx = card0, bandHeightPx = band)).isEqualTo(0)
+        assertThat(
+            dynamicSnapProviderOffsetPx(itemIndex = 0, itemSizePx = card0, layoutSizePx = band, beforeContentPaddingPx = pad),
+        ).isEqualTo(-pad)
     }
 
     // ── dynamicFocusedIndex: nearest item CENTRE to the band centre ─────────
