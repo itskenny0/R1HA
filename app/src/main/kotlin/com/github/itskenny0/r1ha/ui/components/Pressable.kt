@@ -37,8 +37,13 @@ fun Modifier.r1Pressable(
     pressedScale: Float = 0.97f,
     pressedAlpha: Float = 0.78f,
     contentDescription: String? = null,
+    // An optional caller-owned press stream. A face that animates its own chrome
+    // off the press state (the fire actuator's disc wash) passes its source in so
+    // its chrome and this modifier's scale/alpha dip animate in lockstep; default
+    // null keeps a private source for every other call site.
+    interactionSource: MutableInteractionSource? = null,
 ): Modifier = composed {
-    val interactionSource = remember { MutableInteractionSource() }
+    val interactionSource = interactionSource ?: remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) pressedScale else 1f,
