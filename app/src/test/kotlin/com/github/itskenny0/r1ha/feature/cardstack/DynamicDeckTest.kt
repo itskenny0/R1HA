@@ -343,6 +343,31 @@ class DynamicDeckTest {
         ).isEqualTo(0)
     }
 
+    @Test fun `second card centred is the raw top clamp, so no flush-on-clamp`() {
+        // REGRESSION GUARD. At the minimal pad, the second card reaches its centre
+        // with zero spare slack, which means: when the second card is centred,
+        // card 0 is floated by EXACTLY the pad -- i.e. the list is at its raw top
+        // clamp (scroll offset 0). So "card 0 floated at the raw top clamp" and
+        // "the second card is focused" are the SAME list position. Any effect that
+        // pins card 0 flush by reacting to the raw top clamp (offset 0) would
+        // therefore scroll the user straight off the second card every time they
+        // tried to focus it. This asserts that coincidence so the temptation to
+        // re-add a clamp-triggered flush is caught: card 0's float when the second
+        // card sits on its centre line equals the pad.
+        val band = 2043
+        val gap = 30
+        for (card0 in listOf(120, 300, 542)) {
+            for (card1 in listOf(120, 400, 536)) {
+                val pad = dynamicMinTopPaddingPx(band, card0, card1, gap)
+                if (pad > 0) {
+                    val centre1 = dynamicSnapStartPx(itemIndex = 1, itemSizePx = card1, bandHeightPx = band)
+                    val card0FloatWhenSecondCentred = centre1 - card0 - gap
+                    assertThat(card0FloatWhenSecondCentred).isEqualTo(pad)
+                }
+            }
+        }
+    }
+
     @Test fun `min top pad clamps into the band`() {
         // Defensive bounds, mirroring dynamicCenterPaddingPx: never negative,
         // never more than one band even for a zero-height first/second card.

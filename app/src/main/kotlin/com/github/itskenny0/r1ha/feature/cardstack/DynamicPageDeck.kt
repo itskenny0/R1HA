@@ -5,7 +5,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
@@ -447,43 +446,16 @@ internal fun DynamicPageDeck(
             0
         }
         val centerPadTop = with(LocalDensity.current) { centerPadTopPx.toDp() }
-        // Pin card 0 flush under the chrome whenever the deck rests at the raw
-        // top clamp. The top pad floats the first card down by the pad amount on
-        // the no-fling rest states (open, jump-to-top, returning to a page): the
-        // snap target for item 0 is the true top, but a programmatic or initial
-        // rest never runs the fling, so nothing pulls it up. Consume the pad here.
-        // With the minimal pad this is a SMALLER correction than the old mirror
-        // pad (~181 px instead of ~750 in the worked example), so the hidden
-        // float-then-flush is gentler, but the mechanism is unchanged. SELF-
-        // HEALING (not one-shot): the snapshotFlow emits the pad only on ENTERING
-        // the floated raw-top state (offset 0, index 0, not scrolling) and null on
-        // leaving, so each float event flushes exactly once -- the scrollBy moves
-        // the offset off 0, flipping the value to null -- and a later revisit that
-        // floats again is corrected the same way. The not-scrolling guard keeps it
-        // from fighting an active drag.
-        LaunchedEffect(listState, pageId, isActive, cards.size) {
-            if (!isActive || cards.size < 2) return@LaunchedEffect
-            snapshotFlow {
-                // Recompute the pad from the live card heights inside the flow (a
-                // captured local would stay at its pre-measurement 0).
-                val pad = dynamicMinTopPaddingPx(
-                    bandHeightPx = bandHeightPx,
-                    firstCardHeightPx = firstItemHeightPx.intValue.takeIf { it >= 0 },
-                    secondCardHeightPx = secondItemHeightPx.intValue.takeIf { it >= 0 },
-                    gapPx = interCardGapPx,
-                )
-                pad.takeIf {
-                    it > 0 &&
-                        !listState.isScrollInProgress &&
-                        listState.firstVisibleItemIndex == 0 &&
-                        listState.firstVisibleItemScrollOffset == 0
-                }
-            }
-                .filterNotNull()
-                .collect { pad ->
-                    runCatching { listState.scrollBy(pad.toFloat()) }
-                }
-        }
+        // NOTE: there is deliberately NO "self-healing flush" effect that pins
+        // card 0 to the top whenever the list rests at the raw top clamp (offset
+        // 0). With the MINIMAL top pad, the raw top clamp IS the second card's
+        // centred rest (card 0 floated by exactly the pad, card 1 on its centre
+        // line), so a flush firing there would scroll the user straight back off
+        // the second card every time they tried to focus it -- the second card
+        // became unfocusable. Card 0 is instead pinned flush by the pre-paint
+        // placement (on open / revisit) and by the fling snap (provider target
+        // for item 0 is the true top) on scroll-back, neither of which fights the
+        // second-card-centred rest.
         // Pre-paint placement: keep the deck HIDDEN until the focused card has
         // been put on its snap line, so a tab switch (which rebuilds this list at
         // the floated raw-top) never paints that floated state and then corrects
