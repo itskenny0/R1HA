@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.Image
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -222,6 +224,19 @@ fun AboutScreen(
 
                 item { SectionDivider() }
 
+                // ── Version (install / downgrade picker) ─────────────────────────────────
+                // github flavour only: the F-Droid policy discourages in-app APK
+                // download + install (it needs REQUEST_INSTALL_PACKAGES, which the
+                // fdroid flavour intentionally drops). On fdroid we render a single
+                // line pointing the user at their app store instead. Gated at
+                // composition time so R8 strips the picker + AppUpdater wiring from
+                // the fdroid APK rather than just hiding it at runtime.
+                if (!BuildConfig.IS_FDROID_BUILD) {
+                    item { Section("VERSION") }
+                    item { VersionPickerSection() }
+                    item { SectionDivider() }
+                }
+
                 // ── Connection ─────────────────────────────────────────────────────────
                 item { Section("CONNECTION") }
                 item { InfoRow("Server", appSettings.server?.url ?: "(not connected)", mono = true) }
@@ -269,6 +284,16 @@ fun AboutScreen(
                         modifier = Modifier.padding(horizontal = R1.space.xl, vertical = R1.space.xs),
                     )
                 }
+                item { SectionDivider() }
+
+                // ── Acknowledgements ─────────────────────────────────────────────────────
+                // Thanks to the platform R1HA builds on, the Open Home Foundation mark
+                // (shown for nominative use), and a prominent unaffiliated-disclaimer:
+                // showing the names/marks alongside this disclaimer is exactly the
+                // nominative-use case that makes it appropriate.
+                item { Section("THANKS") }
+                item { AcknowledgementsSection() }
+
                 item { SectionDivider() }
                 // ── Dev menu ───────────────────────────────────────────────────────────
                 item { Section("DEVELOPER") }
@@ -754,6 +779,332 @@ private fun UpdaterRow() {
             else -> Unit
         }
     }
+}
+
+/**
+ * Acknowledgements: thanks to Home Assistant + Nabu Casa, the Open Home Foundation
+ * mark, and the prominent unaffiliated-disclaimer. The disclaimer is what makes
+ * showing the names/marks here nominative use rather than implying endorsement, so
+ * it sits right under the logo, not buried.
+ */
+@Composable
+private fun AcknowledgementsSection() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
+    ) {
+        Text(
+            text = "R1HA stands on Home Assistant and Nabu Casa: thank you for the open " +
+                "platform, the local-first APIs, and the community this client plugs into.",
+            style = responsiveType(R1.body),
+            color = R1.InkSoft,
+        )
+        Spacer(Modifier.height(R1.space.m))
+        // Open Home Foundation mark: an original vector recreation (res/drawable/
+        // ohf_logo.xml), tinted to the theme accent. Centred above the wordmark.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = androidx.compose.ui.res.painterResource(
+                    id = com.github.itskenny0.r1ha.R.drawable.ohf_logo,
+                ),
+                contentDescription = "Open Home Foundation logo",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(R1.AccentWarm),
+                modifier = Modifier
+                    .height(48.dp)
+                    .width(48.dp),
+            )
+            Spacer(Modifier.width(R1.space.m))
+            Text(
+                text = "Open Home Foundation",
+                style = responsiveType(R1.bodyEmph),
+                color = R1.Ink,
+            )
+        }
+        Spacer(Modifier.height(R1.space.m))
+        // Prominent disclaimer. Bordered + accent-tinted so it reads as the
+        // load-bearing legal note, not a footnote. Nominative-use wording.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(R1.SurfaceMuted, shape = R1.ShapeS)
+                .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        ) {
+            Text(
+                text = "R1HA is an unofficial, community-built client. It is not " +
+                    "affiliated with, endorsed by, or supported by Home Assistant, " +
+                    "Nabu Casa, or the Open Home Foundation.",
+                style = responsiveType(R1.body),
+                color = R1.Ink,
+            )
+        }
+    }
+}
+
+/**
+ * VERSION section (github flavour only): shows the running version and a SELECT
+ * overlay listing the releases available on GitHub for this flavour, newest-first,
+ * with the current one marked. INSTALL downloads + hands the chosen APK to the
+ * package installer via [com.github.itskenny0.r1ha.core.update.AppUpdater].
+ *
+ * States: idle / loading / loaded(list) / error (offline, 403 rate-limit, no
+ * installable releases) / downloading(%). Selecting the current version disables
+ * INSTALL. Choosing an OLDER versionCode surfaces a downgrade note: Android blocks
+ * an in-place downgrade for release builds, so the installer will ask the user to
+ * uninstall first (losing app data). We don't pretend that's seamless.
+ */
+@Composable
+private fun VersionPickerSection() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val updater = androidx.compose.runtime.remember {
+        com.github.itskenny0.r1ha.core.update.AppUpdater(http = okhttp3.OkHttpClient())
+    }
+    val state = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<VersionPickerState>(VersionPickerState.Idle)
+    }
+    val selected = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.update.ReleaseOption?>(null)
+    }
+    val pickerOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val downloadJob = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<kotlinx.coroutines.Job?>(null)
+    }
+    val installedCode = BuildConfig.VERSION_CODE.toLong()
+
+    fun loadReleases() {
+        state.value = VersionPickerState.Loading
+        scope.launch {
+            state.value = when (val r = updater.listReleases()) {
+                is com.github.itskenny0.r1ha.core.update.AppUpdater.ReleasesResult.Ok ->
+                    if (r.releases.isEmpty()) {
+                        VersionPickerState.Error("No installable releases found for this build.")
+                    } else {
+                        // Default the selection to the current build if present.
+                        selected.value = r.releases.firstOrNull { it.isCurrent } ?: r.releases.first()
+                        VersionPickerState.Loaded(r.releases)
+                    }
+                is com.github.itskenny0.r1ha.core.update.AppUpdater.ReleasesResult.Failed ->
+                    VersionPickerState.Error(r.message)
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.xl, vertical = R1.space.s),
+    ) {
+        // Current version + a SELECT chip that loads (then opens) the picker.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Installed", style = R1.bodyEmph, color = R1.Ink)
+                Text(
+                    text = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                    style = R1.body.copy(fontFamily = FontFamily.Monospace),
+                    color = R1.InkSoft,
+                )
+            }
+            Spacer(Modifier.width(R1.space.m))
+            val chipText = when (state.value) {
+                is VersionPickerState.Loading -> "LOADING…"
+                is VersionPickerState.Loaded -> "SELECT ▾"
+                is VersionPickerState.Downloading -> "DOWNLOADING ${((state.value as VersionPickerState.Downloading).fraction * 100).toInt()}%"
+                is VersionPickerState.Error -> "RETRY"
+                else -> "CHOOSE VERSION"
+            }
+            Box(
+                modifier = Modifier
+                    .background(R1.SurfaceMuted, shape = R1.ShapeS)
+                    .r1Pressable(
+                        onClick = {
+                            when (state.value) {
+                                is VersionPickerState.Loaded -> pickerOpen.value = true
+                                is VersionPickerState.Downloading -> Unit
+                                else -> loadReleases()
+                            }
+                        },
+                        contentDescription = "Choose an app version to install from GitHub",
+                    )
+                    .padding(horizontal = R1.space.s, vertical = R1.space.xs),
+            ) {
+                Text(
+                    text = chipText,
+                    style = R1.labelMicro,
+                    color = if (state.value is VersionPickerState.Error) R1.StatusRed else R1.AccentWarm,
+                )
+            }
+        }
+
+        // Error line under the row.
+        (state.value as? VersionPickerState.Error)?.let { e ->
+            Spacer(Modifier.height(R1.space.xs))
+            Text(e.message, style = R1.labelMicro, color = R1.StatusRed)
+        }
+
+        // Selected version + INSTALL, shown once a list is loaded.
+        if (state.value is VersionPickerState.Loaded || state.value is VersionPickerState.Downloading) {
+            val sel = selected.value
+            if (sel != null) {
+                Spacer(Modifier.height(R1.space.s))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Selected: ${sel.versionName}${if (sel.isCurrent) " (current)" else ""}",
+                            style = R1.body,
+                            color = R1.Ink,
+                        )
+                    }
+                    Spacer(Modifier.width(R1.space.m))
+                    val downloading = state.value is VersionPickerState.Downloading
+                    // Hold onto the loaded list so we can restore it after the
+                    // download hand-off without re-hitting the network.
+                    val loadedReleases = (state.value as? VersionPickerState.Loaded)?.releases
+                    // Current version: nothing to install. Disable the button
+                    // (but while downloading the same box turns into CANCEL).
+                    val disabled = sel.isCurrent && !downloading
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                when {
+                                    downloading -> R1.StatusRed.copy(alpha = 0.18f)
+                                    disabled -> R1.SurfaceMuted
+                                    else -> R1.AccentWarm.copy(alpha = 0.18f)
+                                },
+                                shape = R1.ShapeS,
+                            )
+                            .r1Pressable(
+                                onClick = {
+                                    // While a download runs, this box is CANCEL.
+                                    if (downloading) {
+                                        downloadJob.value?.cancel()
+                                        downloadJob.value = null
+                                        return@r1Pressable
+                                    }
+                                    if (disabled) return@r1Pressable
+                                    val target = loadedReleases ?: emptyList()
+                                    state.value = VersionPickerState.Downloading(0f)
+                                    downloadJob.value = scope.launch {
+                                        runCatching {
+                                            updater.downloadAndInstall(context, sel.toUpdateInfo()) { read, total ->
+                                                val frac = if (total > 0) (read.toFloat() / total).coerceIn(0f, 1f) else 0f
+                                                state.value = VersionPickerState.Downloading(frac)
+                                            }
+                                            // Installer takes over; restore the list.
+                                            state.value = VersionPickerState.Loaded(target)
+                                        }.onFailure {
+                                            state.value = if (it is kotlinx.coroutines.CancellationException) {
+                                                // Back to the list, not an error screen.
+                                                VersionPickerState.Loaded(target)
+                                            } else {
+                                                VersionPickerState.Error(it.message ?: "Install failed.")
+                                            }
+                                        }
+                                        downloadJob.value = null
+                                    }
+                                },
+                                contentDescription = if (downloading) "Cancel the download" else "Install the selected version",
+                            )
+                            .padding(horizontal = R1.space.m, vertical = R1.space.xs),
+                    ) {
+                        Text(
+                            text = if (downloading) "CANCEL" else "INSTALL",
+                            style = R1.labelMicro,
+                            color = when {
+                                downloading -> R1.StatusRed
+                                disabled -> R1.InkMuted
+                                else -> R1.AccentWarm
+                            },
+                        )
+                    }
+                }
+                // Downgrade honesty note: installing an older versionCode in place
+                // is blocked by Android (INSTALL_FAILED_VERSION_DOWNGRADE); the
+                // installer will offer to uninstall first, losing app data.
+                if (!sel.isCurrent && sel.versionCode < installedCode) {
+                    Spacer(Modifier.height(R1.space.xs))
+                    Text(
+                        text = "Older versions may require uninstalling the current app first; " +
+                            "your settings would be lost.",
+                        style = R1.labelMicro,
+                        color = R1.StatusAmber,
+                    )
+                }
+            }
+        }
+    }
+
+    // The picker overlay: a modal list of versions, newest-first, current marked.
+    if (pickerOpen.value) {
+        val releases = (state.value as? VersionPickerState.Loaded)?.releases.orEmpty()
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { pickerOpen.value = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .heightIn(max = 420.dp)
+                    .background(R1.Bg, shape = R1.ShapeS)
+                    .padding(R1.space.l),
+            ) {
+                Text("CHOOSE VERSION", style = R1.sectionHeader, color = R1.AccentWarm)
+                Spacer(Modifier.height(R1.space.s))
+                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                    items(releases) { r ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = R1.MinTarget)
+                                .r1Pressable(
+                                    onClick = {
+                                        selected.value = r
+                                        pickerOpen.value = false
+                                    },
+                                    contentDescription = "Select version ${r.versionName}",
+                                )
+                                .padding(vertical = R1.space.s),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = r.versionName,
+                                    style = R1.bodyEmph,
+                                    color = if (selected.value?.tagName == r.tagName) R1.AccentWarm else R1.Ink,
+                                )
+                                val tail = buildString {
+                                    if (r.isCurrent) append("current")
+                                    else if (r.versionCode < installedCode) append("older")
+                                    else append("newer")
+                                }
+                                Text(
+                                    text = "${r.tagName} · $tail",
+                                    style = R1.labelMicro.copy(fontFamily = FontFamily.Monospace),
+                                    color = R1.InkMuted,
+                                )
+                            }
+                            if (r.isCurrent) {
+                                Text("●", style = R1.labelMicro, color = R1.AccentWarm)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Local state machine for the version picker. */
+private sealed interface VersionPickerState {
+    data object Idle : VersionPickerState
+    data object Loading : VersionPickerState
+    data class Loaded(val releases: List<com.github.itskenny0.r1ha.core.update.ReleaseOption>) : VersionPickerState
+    data class Downloading(val fraction: Float) : VersionPickerState
+    data class Error(val message: String) : VersionPickerState
 }
 
 /** Local state machine for the updater row's tap flow. */

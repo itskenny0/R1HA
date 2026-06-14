@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ORIGINAL recreation of the Open Home Foundation mark, authored from scratch as a
+  vector drawable so it carries no third-party SVG (keeps the repo's Unlicense clean).
+  Shown for nominative use beside the unaffiliated-disclaimer in the About screen.
+
+  The OHF mark reads as a stylised open house: a roofline pitched over an open base,
+  with a leaf nestled inside that doubles as the "home / living" motif. This is a
+  tasteful rendition of that idea, not a pixel-exact copy:
+    * Outer stroke: a house outline whose left wall is "open" (the base gap) so the
+      shape reads as a welcoming, open home rather than a sealed box.
+    * Inner leaf: a single curved leaf with a centre vein, the Open Home Foundation's
+      living / sustainability motif.
+  fillColor is tinted at the call site (R1.AccentWarm) so the mark inherits the theme
+  accent rather than pinning a brand colour the palette can't restyle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96"
+    android:tint="#FFFFFF">
+
+    <!-- House outline: pitched roof from the apex (48,12) down both eaves to the
+         walls, with an open gap at the bottom-left so the home reads as "open". -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,10 L84,40 L78,40 L78,82 L52,82 L52,76 L72,76 L72,40 L24,40 L24,76 L40,76 L40,82 L18,82 L18,40 L12,40 Z" />
+
+    <!-- Leaf inside the home: a curved blade with a vein, the OHF living motif. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,46 C38,52 34,62 40,72 C50,68 56,58 48,46 Z" />
+    <!-- Leaf vein: a thin stroke up the centre of the blade. -->
+    <path
+        android:strokeColor="#000000"
+        android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M42,69 C45,62 46,54 47,49" />
+</vector>
