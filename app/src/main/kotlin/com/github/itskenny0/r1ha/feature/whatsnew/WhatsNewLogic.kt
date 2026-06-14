@@ -67,4 +67,5 @@ val WHATS_NEW_ENTRIES: List<String> = listOf(
     "IR and action buttons fire with style: a radiating signal pulse, an accent flare, a SENT flash and a haptic buzz.",
     "Dynamic deck: the value-bar slider now runs the full height of a card instead of stopping partway down.",
     "Dynamic deck: every card snaps cleanly now (the second one too), with a stronger magnet and a crisp lock tick.",
+    "About: pick and install any GitHub release from a version list, plus thanks to Home Assistant and Nabu Casa.",
 )
