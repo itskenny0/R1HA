@@ -466,11 +466,32 @@ internal fun DynamicPageDeck(
         LaunchedEffect(listState, pageId, cards.isNotEmpty()) {
             if (cards.isEmpty()) return@LaunchedEffect // stay hidden; nothing to place
             val focus = initialIndex.coerceIn(0, cards.size - 1)
-            // Wait briefly for the focused card to be on-screen (so its height,
-            // and thus its centre line, is known), then land it without animation.
+            // Reveal only once (a) the focused card is on-screen, so its height
+            // and centre line are known, AND (b) the top centring pad is fully
+            // APPLIED in the layout. Gating on the applied pad is what kills the
+            // "renders in the middle then snaps to top" flash: the pad depends on
+            // the first card's measured height, so it lands a frame or two after
+            // composition; if we placed + revealed before it applied, the pad
+            // would then shove the card down post-reveal and the flush would yank
+            // it back visibly. Waiting for `beforeContentPadding` to reach the
+            // intended pad means the whole float-then-flush happens while hidden.
             withTimeoutOrNull(400) {
                 snapshotFlow {
-                    listState.layoutInfo.visibleItemsInfo.any { it.index == focus }
+                    val info = listState.layoutInfo
+                    val focusVisible = info.visibleItemsInfo.any { it.index == focus }
+                    val firstH = firstItemHeightPx.intValue
+                    val measured = cards.size < 2 || firstH >= 0
+                    val intendedPad =
+                        if (cards.size >= 2 && firstH >= 0) {
+                            dynamicCenterPaddingPx(bandHeightPx = bandHeightPx, endItemHeightPx = firstH)
+                        } else {
+                            0
+                        }
+                    // Tolerance absorbs the px -> dp -> px round-trip the content
+                    // padding makes (it can land a pixel under the intended pad,
+                    // which would otherwise stall the reveal until the timeout).
+                    val padApplied = measured && info.beforeContentPadding >= intendedPad - 3
+                    focusVisible && padApplied
                 }
                     .filter { it }
                     .first()
