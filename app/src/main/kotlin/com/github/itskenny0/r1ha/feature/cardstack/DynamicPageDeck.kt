@@ -25,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,6 +44,7 @@ import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.ui.components.Chevron
 import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.components.EntityCard
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 
@@ -439,12 +441,26 @@ internal fun DynamicPageDeck(
                 val longPressTarget = entityCard
                     ?.let { appSettings.entityOverrides[it.id.value]?.longPressTarget }
                 val itemLightMode = entityCard?.let { lightWheelModes[it.id] }
+                // Manual target affordance: a tap on this card's TITLE focuses it
+                // and scrolls it to its snap line. Tall cards (a media card fills
+                // most of the screen) swallow a touch-drag in their value bar /
+                // internal scroll, so scrolling to a later card is impossible on a
+                // touch screen; the title tap is the way to select past the first.
+                // Routed through LocalOnCardTarget so each theme's title wires it
+                // without the deck reaching into the card internals.
+                val onCardTarget: () -> Unit = {
+                    if (isActive) vm.setCurrentIndex(idx) else vm.setIndexForPage(pageId, idx)
+                    deckScope.launch { runCatching { listState.scrollToItemSnapped(idx, cards.size) } }
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {
+                  CompositionLocalProvider(
+                    com.github.itskenny0.r1ha.core.theme.LocalOnCardTarget provides onCardTarget,
+                  ) {
                     // Per-kind height policy collapsed into one rule: every
                     // item hugs its content, capped at the viewport band.
                     // Entity interiors wrap for real now (fillSlot = false
@@ -563,6 +579,7 @@ internal fun DynamicPageDeck(
                         // would swallow that first tap. Wheel focus is tracked
                         // separately via the settled-focus collector.
                     }
+                  }
                 }
             }
         }

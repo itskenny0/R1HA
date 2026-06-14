@@ -259,6 +259,9 @@ object ColorfulCardsTheme : R1Theme {
                     color = Color.White,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    // Tap the title to select this card in the dynamic deck (no-op
+                    // elsewhere); full width so the whole title row is the target.
+                    modifier = Modifier.fillMaxWidth().cardTitleTarget(),
                 )
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised composable so the ticker

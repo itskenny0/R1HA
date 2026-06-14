@@ -1,11 +1,14 @@
 package com.github.itskenny0.r1ha.core.theme
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
@@ -85,6 +88,37 @@ val LocalCardInk = staticCompositionLocalOf { DefaultCardInk }
  * the providing call site itself recomposes with a different deck.
  */
 val LocalCardFillSlot = staticCompositionLocalOf { true }
+
+/**
+ * Optional "make this card the focused/targeted one" action, wired by the DYNAMIC
+ * deck so a tap on the card's TITLE selects that card (scrolls it to its snap line
+ * and routes the wheel to it) without firing the card. The deck items can be tall
+ * (a media card fills most of the screen), so a touch-drag is swallowed by the
+ * card's own value bar / internal scroll and the user cannot reach a later card by
+ * scrolling: the title tap is the manual target affordance that fixes that.
+ *
+ * Null by default (the fullscreen pager and any non-deck host do not provide it),
+ * so a theme's title is a plain label there. [compositionLocalOf] (not static)
+ * because the lambda is provided fresh per card (it closes over that card's index)
+ * and the title needs to recompose when it changes.
+ */
+val LocalOnCardTarget = compositionLocalOf<(() -> Unit)?> { null }
+
+/**
+ * Makes a card's TITLE a tap target for [LocalOnCardTarget]: when the deck has
+ * provided a target action, a tap selects this card. No-op (returns the modifier
+ * unchanged) when no action is provided, so the title stays an inert label
+ * outside the dynamic deck. Indication is suppressed (the card scrolling to its
+ * snap line is the feedback) and the press uses its own interaction source so it
+ * never fights the card body's tap-to-actuate. Shared so all three themes wire
+ * the title identically.
+ */
+@Composable
+fun Modifier.cardTitleTarget(): Modifier {
+    val onTarget = LocalOnCardTarget.current ?: return this
+    val interaction = remember { MutableInteractionSource() }
+    return clickable(interactionSource = interaction, indication = null, onClick = onTarget)
+}
 
 /**
  * Repository handle injected near the top of each screen that needs it (CardStackScreen,

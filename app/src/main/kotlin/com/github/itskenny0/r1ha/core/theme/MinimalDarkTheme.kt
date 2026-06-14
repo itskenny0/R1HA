@@ -140,6 +140,9 @@ object MinimalDarkTheme : R1Theme {
                     color = R1.Ink,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    // Tap the title to select this card in the dynamic deck (no-op
+                    // elsewhere); full width so the whole title row is the target.
+                    modifier = Modifier.fillMaxWidth().cardTitleTarget(),
                 )
                 // 'Last changed' relative-time label — parity with
                 // PragmaticHybridTheme. Localised into its own composable so

@@ -148,6 +148,9 @@ object PragmaticHybridTheme : R1Theme {
                     color = R1.Ink,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    // Tap the title to select this card in the dynamic deck (no-op
+                    // elsewhere); full width so the whole title row is the target.
+                    modifier = Modifier.fillMaxWidth().cardTitleTarget(),
                 )
                 // Auto-ticking 'last changed' label, isolated into its own
                 // composable (RelativeTimeLabel) so the 5-second tick

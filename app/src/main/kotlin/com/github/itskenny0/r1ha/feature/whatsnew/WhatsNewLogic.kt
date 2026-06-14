@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Short cards focus too: the second card in a stack now centres and takes focus, not just tall ones.",
+    "Deck cards top-align as you scroll, in natural order; tap a card's title to select it straight away.",
     "The value bar clicks under your finger on every card, not only the one the wheel is driving.",
     "Lovelace cards are first-class deck cards now: they mix with favourites on any page and look native.",
     "Add cards from your HA dashboards (browse, multi-select) or import a whole dashboard as pages.",
