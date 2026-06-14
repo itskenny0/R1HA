@@ -484,14 +484,11 @@ private fun WrapVerticalMeterScaffold(
     SubcomposeLayout(modifier = outer) { constraints ->
         val spacerPx = spacerWidthDp.dp.roundToPx()
         val floorPx = floorDp.dp.roundToPx()
-        // The width the meter and spacer claim. The meter is a fixed-width control
-        // (24 dp track + its tick-label column); give it a bounded share of the row and
-        // measure it for real below, but reserve a generous slice up front so the body
-        // width is stable. We reserve the spacer plus a meter budget = the larger of the
-        // floor-derived width guess and a hard cap, but since the meter's width is data
-        // (tick label widths) we instead measure the meter FIRST at a throwaway height to
-        // learn its width, then measure the body, then re-measure the meter at the final
-        // height. Two meter passes are cheap (a thin column) and keep the body width exact.
+        // The meter is a fixed-width control (24 dp track + its tick-label column) whose
+        // width is data (the tick label strings) rather than a constant, so we learn it by
+        // measuring a throwaway probe of the meter first (Pass A), then measure the body in
+        // the remaining width (Pass B), then place the meter at the final body height (Pass
+        // C). The meter is a thin column, so the extra probe composition is cheap.
         val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth else 0
         // Pass A: measure the meter at the floor height purely to learn its WIDTH (the
         // tick-label column + 24 dp track), which is independent of height. A measurable
