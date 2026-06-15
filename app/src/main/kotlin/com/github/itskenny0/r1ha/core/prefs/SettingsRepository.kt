@@ -259,6 +259,12 @@ class SettingsRepository private constructor(
         val nightEndHour = intPreferencesKey("theme.night_end_hour")
         /** Optional global accent ARGB override (Int.MIN_VALUE sentinel = unset). */
         val themeAccentArgb = intPreferencesKey("theme.accent_argb")
+        /** "Colourful Cards" palette set + background design. Stored as the enum
+         *  names; absent / unknown decode to VIVID / GRADIENT (the shipped look) via
+         *  their `fromStored`, so existing installs see no change. Same string-name
+         *  scheme as [uiDeckLayoutMode]. */
+        val themeColorfulPaletteSet = stringPreferencesKey("theme.colorful_palette_set")
+        val themeColorfulBackgroundDesign = stringPreferencesKey("theme.colorful_background_design")
         /** "Read-only guest mode" toggle — refuses outbound service calls. */
         val guestModeEnabled = booleanPreferencesKey("guest_mode_enabled")
         /**
@@ -427,6 +433,8 @@ class SettingsRepository private constructor(
                 nightStartHour = (p[K.nightStartHour] ?: 22).coerceIn(0, 23),
                 nightEndHour = (p[K.nightEndHour] ?: 6).coerceIn(0, 23),
                 themeAccentArgb = p[K.themeAccentArgb],
+                colorfulPaletteSet = ColorfulPaletteSet.fromStored(p[K.themeColorfulPaletteSet]),
+                colorfulBackgroundDesign = ColorfulBackgroundDesign.fromStored(p[K.themeColorfulBackgroundDesign]),
                 guestModeEnabled = p[K.guestModeEnabled] ?: false,
                 nameOverrides = decodeNameOverrides(p[K.nameOverrides]),
                 entityOverrides = decodeEntityOverrides(p[K.entityOverrides]),
@@ -637,6 +645,8 @@ class SettingsRepository private constructor(
                 p[K.nightEndHour] = next.nightEndHour
                 val accent = next.themeAccentArgb
                 if (accent == null) p.remove(K.themeAccentArgb) else p[K.themeAccentArgb] = accent
+                p[K.themeColorfulPaletteSet] = next.colorfulPaletteSet.name
+                p[K.themeColorfulBackgroundDesign] = next.colorfulBackgroundDesign.name
                 p[K.guestModeEnabled] = next.guestModeEnabled
                 p[K.nameOverrides] = encodeNameOverrides(next.nameOverrides)
                 p[K.entityOverrides] = encodeEntityOverrides(next.entityOverrides)

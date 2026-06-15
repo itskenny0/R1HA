@@ -209,6 +209,16 @@ interface R1Theme {
     val systemBars: SystemBarColors
     val baseline: ColorScheme
 
+    /**
+     * Fill for a card's small opaque inner panels (the sensor history chart box, the fire
+     * actuator disc) — provided to [com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor]
+     * by [R1ThemeHost]. The default is the near-black [R1.Surface] every dark theme used to
+     * hardcode, so Pragmatic / Minimal keep their look without overriding; a theme whose card
+     * identity IS a backdrop (Colourful Cards' gradients) overrides this with a TRANSLUCENT
+     * tint so an inner panel reads as sitting in the backdrop rather than punching a hole in it.
+     */
+    val cardPanelColor: Color get() = R1.Surface
+
     @Composable fun Card(model: CardRenderModel, modifier: Modifier, onTapToggle: () -> Unit)
 
     /**
@@ -229,6 +239,12 @@ interface R1Theme {
          *  backdrop IS the card's colour identity derive the backdrop from it
          *  so the customize sheet's colour pick genuinely recolours the card. */
         accentOverride: androidx.compose.ui.graphics.Color? = null,
+        /** The user's Colourful Cards palette-set + background-design choice
+         *  ([com.github.itskenny0.r1ha.core.theme.LocalColorfulCardsConfig]), forwarded by
+         *  EntityCard. Themes that don't key off it ignore it; only Colourful Cards reads it
+         *  to pick the palette set and paint the chosen background design. Defaulted so
+         *  callers / themes that don't care need not pass it. */
+        config: ColorfulCardsConfig = ColorfulCardsConfig(),
     ): AuxCardStyle? = null
 }
 

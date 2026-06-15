@@ -71,6 +71,47 @@ val LocalUiOptions = compositionLocalOf { UiOptions() }
 val LocalCardInk = staticCompositionLocalOf { DefaultCardInk }
 
 /**
+ * Fill colour for the small opaque "inner panels" a card body draws on top of its own
+ * backdrop — the sensor history chart's plot box and the action/IR card's fire-actuator
+ * disc. These used to hardcode [R1.Surface] (a near-black slab), which on the Colourful
+ * Cards theme punched a black hole through the per-entity gradient sky. Routing them
+ * through this CompositionLocal lets each theme decide:
+ *  - Pragmatic / Minimal: their existing near-black [R1.Surface] (the default below), so
+ *    those themes render byte-for-byte unchanged.
+ *  - Colourful Cards: a TRANSLUCENT dark tint so the panel reads as sitting IN the
+ *    gradient (the sky shows through, just dimmed for legibility) rather than as a stamped
+ *    black rectangle.
+ *
+ * Static is fine: the value only changes when the active theme changes, which rebuilds the
+ * providing [R1ThemeHost] scope anyway. The default matches the historical hardcoded fill
+ * so any composable that reads it outside a theme that overrides it is unaffected.
+ */
+val LocalCardPanelColor = staticCompositionLocalOf { R1.Surface }
+
+/**
+ * The user's "Colourful Cards" palette-set + background-design choice, surfaced to
+ * [ColorfulCardsTheme] so it can pick which six-palette set to hash entities onto and how
+ * to paint the per-entity gradient. Provided from the screens that own [AppSettings]
+ * (CardStackScreen, FavoritesPickerScreen, the theme picker preview); the default
+ * reproduces the shipped look (VIVID set, GRADIENT design) so any surface that doesn't
+ * provide it renders the original Colourful Cards.
+ *
+ * Plain holder (not the live settings object) so the theme — including its non-composable
+ * [R1Theme.auxCardStyle], which EntityCard reads this local and forwards into — depends only
+ * on the two enums, not on the whole prefs module. Static is fine: it only changes when the
+ * user edits the choice, which recomposes the providing scope.
+ */
+@androidx.compose.runtime.Immutable
+data class ColorfulCardsConfig(
+    val paletteSet: com.github.itskenny0.r1ha.core.prefs.ColorfulPaletteSet =
+        com.github.itskenny0.r1ha.core.prefs.ColorfulPaletteSet.VIVID,
+    val backgroundDesign: com.github.itskenny0.r1ha.core.prefs.ColorfulBackgroundDesign =
+        com.github.itskenny0.r1ha.core.prefs.ColorfulBackgroundDesign.GRADIENT,
+)
+
+val LocalColorfulCardsConfig = staticCompositionLocalOf { ColorfulCardsConfig() }
+
+/**
  * Whether the entity card fills its slot's full height (true, the historical
  * full-screen control surface every pre-existing caller gets) or wraps to its
  * content height (false, the DYNAMIC deck's flowing layout). Provided by the
@@ -332,7 +373,13 @@ fun R1ThemeHost(themeId: ThemeId, content: @Composable () -> Unit) {
         ThemeId.PRAGMATIC_HYBRID -> PragmaticHybridTheme
         ThemeId.COLORFUL_CARDS -> ColorfulCardsTheme
     }
-    CompositionLocalProvider(LocalR1Theme provides theme) {
+    CompositionLocalProvider(
+        LocalR1Theme provides theme,
+        // The active theme's inner-panel fill (near-black for the dark themes, a translucent
+        // tint for Colourful Cards) so the chart box / actuator disc read correctly on every
+        // theme's backdrop. Provided once here at the theme root rather than per-card.
+        LocalCardPanelColor provides theme.cardPanelColor,
+    ) {
         MaterialTheme(colorScheme = theme.baseline) {
             // Wrap in a Surface so LocalContentColor is propagated to all descendants,
             // otherwise Text composables without explicit `color` fall back to Color.Black.

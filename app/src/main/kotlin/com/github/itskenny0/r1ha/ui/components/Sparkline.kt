@@ -79,6 +79,10 @@ fun Sparkline(
     showMidline: Boolean = true,
     showLastDot: Boolean = true,
 ) {
+    // Inner-panel fill from the active theme: near-black on the dark themes (unchanged),
+    // a translucent tint on Colourful Cards so the chart box doesn't punch a black hole
+    // through the per-entity gradient sky.
+    val panel = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
     val allValues = remember(series, limitMin, limitMax) {
         series.flatMap { s -> s.samples.map { it.value } }
     }
@@ -95,7 +99,7 @@ fun Sparkline(
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(2.dp))
-            .background(R1.Surface),
+            .background(panel),
     ) {
         val w = size.width
         val h = size.height
@@ -220,12 +224,13 @@ fun SparklinePlaceholder(
     height: Dp = 72.dp,
     errorText: String? = null,
 ) {
+    val panel = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
             .clip(RoundedCornerShape(2.dp))
-            .background(R1.Surface),
+            .background(panel),
         contentAlignment = Alignment.Center,
     ) {
         if (errorText != null) {

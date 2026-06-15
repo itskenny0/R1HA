@@ -79,10 +79,12 @@ fun SensorHistoryChart(
     val tEnd = numeric.last().first
     val tSpan = Duration.between(tStart, tEnd).toMillis().coerceAtLeast(1L)
 
-    // Theme-provided ink for the labels that sit directly on the card backdrop (the
-    // chart canvas itself keeps its opaque Surface slab, so its gridlines don't move).
-    // Identical to the R1 tokens outside a themed-backdrop card.
+    // Theme-provided ink for the labels that sit directly on the card backdrop, and the
+    // theme-provided inner-panel fill for the chart box. On the dark themes the panel is
+    // the historical near-black [R1.Surface] (gridlines unchanged); on Colourful Cards it
+    // is a translucent tint so the plot reads as sitting in the gradient, not a black hole.
     val ink = LocalCardInk.current
+    val panel = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(text = "LAST ${formatSpan(tSpan)}", style = R1.labelMicro, color = ink.muted)
@@ -100,7 +102,7 @@ fun SensorHistoryChart(
                 .fillMaxWidth()
                 .height(72.dp)
                 .clip(RoundedCornerShape(2.dp))
-                .background(R1.Surface)
+                .background(panel)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
         ) {
             val w = size.width
@@ -231,15 +233,19 @@ fun SensorHistoryList(
 
 @Composable
 private fun ChartHint(text: String, modifier: Modifier = Modifier) {
+    // Same theme-provided inner-panel fill as the real chart box, so the empty-state hint
+    // doesn't read as a black tile on the Colourful Cards gradient.
+    val panel = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
+    val ink = LocalCardInk.current
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(40.dp)
             .clip(RoundedCornerShape(2.dp))
-            .background(R1.Surface),
+            .background(panel),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = text, style = R1.labelMicro, color = R1.InkMuted)
+        Text(text = text, style = R1.labelMicro, color = ink.muted)
     }
 }
 

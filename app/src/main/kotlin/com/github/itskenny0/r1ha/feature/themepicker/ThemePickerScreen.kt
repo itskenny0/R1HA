@@ -24,7 +24,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -34,8 +36,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
+import com.github.itskenny0.r1ha.core.prefs.ColorfulBackgroundDesign
+import com.github.itskenny0.r1ha.core.prefs.ColorfulPaletteSet
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.ThemeId
+import com.github.itskenny0.r1ha.core.theme.ColorfulPalettes
 import com.github.itskenny0.r1ha.core.theme.CardRenderModel
 import com.github.itskenny0.r1ha.core.theme.ColorfulCardsTheme
 import com.github.itskenny0.r1ha.core.theme.MinimalDarkTheme
@@ -114,6 +119,13 @@ fun ThemePickerScreen(
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalThemeAccentOverride provides appSettings.themeAccentArgb
             ?.let { Color(it) },
+        // So the live preview cards below paint the user's chosen palette set + background
+        // design the instant they tap a swatch, without leaving the picker.
+        com.github.itskenny0.r1ha.core.theme.LocalColorfulCardsConfig provides
+            com.github.itskenny0.r1ha.core.theme.ColorfulCardsConfig(
+                appSettings.colorfulPaletteSet,
+                appSettings.colorfulBackgroundDesign,
+            ),
     ) {
     Column(
         modifier = Modifier
@@ -147,6 +159,27 @@ fun ThemePickerScreen(
                             }
                         },
                     )
+                }
+                // Colourful-Cards-only knobs: palette set + background design. Surfaced under
+                // the theme list and only while Colourful Cards is the chosen theme, so the
+                // picker doesn't show options that would do nothing on the other two themes.
+                if (currentThemeId == ThemeId.COLORFUL_CARDS) {
+                    item {
+                        ColorfulPaletteSection(
+                            current = appSettings.colorfulPaletteSet,
+                            onPick = { set ->
+                                scope.launch { settings.update { it.copy(colorfulPaletteSet = set) } }
+                            },
+                        )
+                    }
+                    item {
+                        ColorfulBackgroundSection(
+                            current = appSettings.colorfulBackgroundDesign,
+                            onPick = { design ->
+                                scope.launch { settings.update { it.copy(colorfulBackgroundDesign = design) } }
+                            },
+                        )
+                    }
                 }
                 item {
                     AccentPickerSection(
@@ -441,5 +474,179 @@ private fun AccentSwatch(
             style = responsiveType(R1.labelMicro),
             color = if (isSelected) R1.Ink else R1.InkMuted,
         )
+    }
+}
+
+// ── Colourful Cards: palette set + background design ─────────────────────────────────────
+
+/** Human copy for each palette set, kept beside the rows so the picker reads as a guided
+ *  choice rather than three enum names. */
+private fun paletteSetLabel(set: ColorfulPaletteSet): Pair<String, String> = when (set) {
+    ColorfulPaletteSet.VIVID -> "VIVID" to "Saturated, punchy. The original set."
+    ColorfulPaletteSet.PASTEL -> "PASTEL" to "Soft and chalky. Gentler on a wall panel."
+    ColorfulPaletteSet.NEON -> "NEON" to "Electric stops over near-black. High contrast."
+}
+
+private fun backgroundDesignLabel(design: ColorfulBackgroundDesign): Pair<String, String> = when (design) {
+    ColorfulBackgroundDesign.GRADIENT -> "GRADIENT" to "A diagonal sweep through the palette."
+    ColorfulBackgroundDesign.MESH -> "MESH" to "A radial bloom lit from the corner."
+    ColorfulBackgroundDesign.DUOTONE -> "DUOTONE" to "A flatter two-tone split."
+}
+
+/** A representative entity id whose palette slot we render in the set previews, so the user
+ *  sees real palette stops rather than an abstract swatch. Matches [SAMPLE_CARD] so the row
+ *  previews echo the live preview cards above. */
+private const val PREVIEW_ENTITY = "light.living_room"
+
+/**
+ * Palette-set picker: one selectable row per set, each carrying a small gradient strip drawn
+ * from the SAME entity slot the preview card uses, so the user sees the actual hues. Only
+ * rendered when Colourful Cards is the active theme (the caller gates it).
+ */
+@Composable
+private fun ColorfulPaletteSection(
+    current: ColorfulPaletteSet,
+    onPick: (ColorfulPaletteSet) -> Unit,
+) {
+    Spacer(Modifier.height(R1.space.m))
+    PickerEyebrow(
+        label = "PALETTE",
+        hint = "The set of per-entity gradients Colourful Cards hashes each tile onto.",
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.l, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+    ) {
+        ColorfulPaletteSet.entries.forEach { set ->
+            val (label, blurb) = paletteSetLabel(set)
+            val stops = ColorfulPalettes.paletteArgbFor(PREVIEW_ENTITY, set).map { Color(it) }
+            OptionRow(
+                label = label,
+                blurb = blurb,
+                isSelected = set == current,
+                onClick = { onPick(set) },
+                preview = {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 44.dp, height = 28.dp)
+                            .clip(R1.ShapeS)
+                            .background(Brush.linearGradient(stops))
+                            .border(1.dp, R1.Hairline, R1.ShapeS),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Background-design picker: one selectable row per design, each with a small swatch painted
+ * in that design (using a fixed neutral-ish palette so the geometry is what differs, not the
+ * hue). Only rendered when Colourful Cards is active.
+ */
+@Composable
+private fun ColorfulBackgroundSection(
+    current: ColorfulBackgroundDesign,
+    onPick: (ColorfulBackgroundDesign) -> Unit,
+) {
+    Spacer(Modifier.height(R1.space.m))
+    PickerEyebrow(
+        label = "BACKGROUND",
+        hint = "How that palette is painted behind each card.",
+    )
+    // A single representative palette for the design swatches, so the rows differ only in
+    // brush geometry, not hue. Uses the same entity slot as the palette previews above.
+    val swatchStops = ColorfulPalettes.paletteArgbFor(PREVIEW_ENTITY, ColorfulPaletteSet.VIVID)
+        .map { Color(it) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = R1.space.l, vertical = R1.space.s),
+        verticalArrangement = Arrangement.spacedBy(R1.space.xs),
+    ) {
+        ColorfulBackgroundDesign.entries.forEach { design ->
+            val (label, blurb) = backgroundDesignLabel(design)
+            OptionRow(
+                label = label,
+                blurb = blurb,
+                isSelected = design == current,
+                onClick = { onPick(design) },
+                preview = {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 44.dp, height = 28.dp)
+                            .clip(R1.ShapeS)
+                            .background(designPreviewBrush(swatchStops, design))
+                            .border(1.dp, R1.Hairline, R1.ShapeS),
+                    )
+                },
+            )
+        }
+    }
+}
+
+/** Mirror of [com.github.itskenny0.r1ha.core.theme.ColorfulCardsTheme]'s backdrop builder for
+ *  the picker swatches; kept here (private) so the picker doesn't need the theme to expose its
+ *  internal brush. Same geometry, just at swatch scale. */
+private fun designPreviewBrush(stops: List<Color>, design: ColorfulBackgroundDesign): Brush =
+    when (design) {
+        ColorfulBackgroundDesign.GRADIENT -> Brush.linearGradient(stops)
+        ColorfulBackgroundDesign.MESH -> Brush.radialGradient(
+            colors = stops,
+            center = Offset(0f, 0f),
+            radius = Float.POSITIVE_INFINITY,
+        )
+        ColorfulBackgroundDesign.DUOTONE -> Brush.verticalGradient(
+            0.00f to stops[0], 0.40f to stops[0], 0.58f to stops[1],
+            0.74f to stops[2], 1.00f to stops[2],
+        )
+    }
+
+/**
+ * A selectable row for the Colourful Cards knobs: a preview swatch, a name + one-line blurb,
+ * and a trailing [SelectionCheck]. The whole row is one selectable node for TalkBack.
+ */
+@Composable
+private fun OptionRow(
+    label: String,
+    blurb: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    preview: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeM)
+            .background(if (isSelected) R1.Surface else R1.Bg)
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) R1.AccentWarm else R1.Hairline,
+                shape = R1.ShapeM,
+            )
+            .heightIn(min = R1.MinTarget)
+            .r1Pressable(onClick)
+            .semantics {
+                selected = isSelected
+                stateDescription = if (isSelected) "Selected" else "Not selected"
+            }
+            .padding(R1.space.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.clearAndSetSemantics {}) { preview() }
+        Spacer(Modifier.width(R1.space.m))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = responsiveType(R1.label),
+                color = if (isSelected) R1.AccentWarm else R1.Ink,
+            )
+            Spacer(Modifier.height(R1.space.xxs))
+            Text(text = blurb, style = responsiveType(R1.body), color = R1.InkSoft)
+        }
+        Spacer(Modifier.width(R1.space.s))
+        SelectionCheck(isSelected = isSelected)
     }
 }
