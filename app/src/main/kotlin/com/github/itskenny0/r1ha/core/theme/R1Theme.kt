@@ -192,14 +192,18 @@ val DefaultCardInk = CardInkPalette(ink = R1.Ink, soft = R1.InkSoft, muted = R1.
 
 /**
  * Backdrop + ink for an aux card, returned by [R1Theme.auxCardStyle]. The EntityCard
- * wrapper paints [backdrop] then [scrim] (when present) under the card content and
- * provides [ink] via [LocalCardInk], so the aux variants pick up a theme's card identity
- * without each layout knowing which theme is active.
+ * wrapper paints [backdrop], then [scrim] (a legibility wash behind the header), then
+ * [anchor] (a foot that seats the lower controls) when present, under the card content,
+ * and provides [ink] via [LocalCardInk], so the aux variants pick up a theme's card
+ * identity without each layout knowing which theme is active. The scrim + anchor pair
+ * mirrors the layering [R1Theme.Card] uses, so an aux tile reads as the same treatment as
+ * the scalar cards beside it rather than a darker, flatter variant.
  */
 @Immutable
 data class AuxCardStyle(
     val backdrop: Brush,
     val scrim: Brush?,
+    val anchor: Brush? = null,
     val ink: CardInkPalette,
 )
 

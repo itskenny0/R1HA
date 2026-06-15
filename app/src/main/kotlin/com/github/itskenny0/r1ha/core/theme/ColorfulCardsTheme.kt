@@ -128,16 +128,6 @@ object ColorfulCardsTheme : R1Theme {
         )
     }
 
-    // Aux-card scrim — a single fixed head for the synthetic preview / aux surfaces that
-    // don't carry a live percent. Mirrors the mid-band of [topScrimFor] so a sensor tile
-    // next to a light card reads as the same theme without per-aux palette plumbing.
-    private val auxTopScrim = Brush.verticalGradient(
-        0.00f to Color.Black.copy(alpha = 0.44f),
-        0.32f to Color.Black.copy(alpha = 0.22f),
-        0.62f to Color.Transparent,
-        1.00f to Color.Transparent,
-    )
-
     // Bottom anchor — a shallow black foot rising ~24% up from the card's base. The
     // brightness chips, the on/off pill, and any per-domain panel render in this band;
     // without it they floated on whatever vivid mid-stop the gradient happened to be at,
@@ -200,7 +190,15 @@ object ColorfulCardsTheme : R1Theme {
             ?: paletteFor(entityIdText, config.paletteSet)
         return AuxCardStyle(
             backdrop = backdropBrush(stops, config.backgroundDesign),
-            scrim = auxTopScrim,
+            // The SAME palette-adaptive top scrim + bottom anchor the scalar [Card]
+            // uses, not a fixed-alpha wash: a fixed 0.44 head sank a vivid aux tile
+            // (the now-compact scene / script / IR action cards especially) into a
+            // near-black band that clashed with the bright scalar cards beside it.
+            // The adaptive head leaves a vivid palette barely shaded while still
+            // seating a pale one, and the anchor foots the lower controls, so an aux
+            // card reads as the same colourful tile as a light / number card.
+            scrim = topScrimFor(stops),
+            anchor = bottomAnchor,
             ink = auxInk,
         )
     }

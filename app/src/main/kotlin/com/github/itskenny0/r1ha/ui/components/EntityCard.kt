@@ -308,8 +308,13 @@ fun EntityCard(
                 if (auxStyle == null) {
                     Modifier.background(R1.Bg)
                 } else {
-                    val sky = Modifier.background(auxStyle.backdrop)
-                    auxStyle.scrim?.let { sky.background(it) } ?: sky
+                    // backdrop -> scrim -> anchor, the same layering theme.Card
+                    // paints, so an aux tile reads as the same colourful card as a
+                    // scalar one beside it (not a darker, flatter variant).
+                    var sky = Modifier.background(auxStyle.backdrop)
+                    auxStyle.scrim?.let { sky = sky.background(it) }
+                    auxStyle.anchor?.let { sky = sky.background(it) }
+                    sky
                 },
             )
         if (state.id.domain.isSensor) {
