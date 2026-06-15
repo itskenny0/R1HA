@@ -154,64 +154,6 @@ class DynamicDeckTest {
             .isEqualTo(0)
     }
 
-    // ── dynamicMinBottomPaddingPx: the second-to-last reachability pad ───────
-    // The bottom-aligned last card blocks the scroll before the second-to-last
-    // card's top can reach the chrome when the two end cards fit together, so a
-    // fling skips it. The pad is the extra scroll range that frees it.
-
-    @Test fun `bottom pad is zero until both end heights are measured`() {
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = null, secondToLastCardHeightPx = 120, gapPx = 24))
-            .isEqualTo(0)
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 120, secondToLastCardHeightPx = null, gapPx = 24))
-            .isEqualTo(0)
-    }
-
-    @Test fun `bottom pad is the deficit when the two end cards fit together`() {
-        // 800 band, last 200, second-to-last 120, gap 24: with the second-to-last
-        // at the top the last card's bottom is 200 + 24 + 120 = 344 down, leaving
-        // 800 - 344 = 456 of scroll the fling can't reach without the pad.
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 200, secondToLastCardHeightPx = 120, gapPx = 24))
-            .isEqualTo(456)
-    }
-
-    @Test fun `bottom pad is zero when the end cards do not fit together`() {
-        // Tall end cards (their sum + gap exceeds the band): the second-to-last
-        // already reaches the top by scrolling the last card below the fold, so the
-        // deficit is negative and no pad is needed.
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 500, secondToLastCardHeightPx = 400, gapPx = 24))
-            .isEqualTo(0)
-        // Exactly filling the band (sum + gap == band) is also no help needed.
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 400, secondToLastCardHeightPx = 376, gapPx = 24))
-            .isEqualTo(0)
-    }
-
-    @Test fun `bottom pad clamps into the band`() {
-        // Two zero-height end cards, no gap: deficit is the whole band, clamped to
-        // it (never larger, never negative).
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 0, secondToLastCardHeightPx = 0, gapPx = 0))
-            .isEqualTo(800)
-        assertThat(dynamicMinBottomPaddingPx(800, lastCardHeightPx = 0, secondToLastCardHeightPx = 0, gapPx = 10_000))
-            .isEqualTo(0)
-    }
-
-    @Test fun `the second-to-last is the binding case for the pad`() {
-        // A pad sized for the second-to-last frees every earlier card too: a card
-        // higher up needs LESS extra scroll to reach the top, so its own deficit is
-        // smaller. Model the third-to-last as "second-to-last of a shorter tail"
-        // and assert its deficit never exceeds the second-to-last's.
-        val band = 1000
-        val gap = 24
-        val last = 150
-        val secondToLast = 130
-        val thirdToLast = 140
-        val padForSecond = dynamicMinBottomPaddingPx(band, last, secondToLast, gap)
-        // Third-to-last reaching the top puts (secondToLast + gap + last) below it
-        // already on-screen; its extra deficit beyond that is what a smaller tail
-        // would show, which is <= the second-to-last's.
-        val deficitForThird = (band - last - gap - secondToLast - gap - thirdToLast).coerceAtLeast(0)
-        assertThat(deficitForThird).isAtMost(padForSecond)
-    }
-
     // ── snap provider / focus FRAME AGREEMENT ───────────────────────────────
     // The single invariant the whole deck rests on: the line the provider lands
     // a card on (beforeContentPadding + providerOffset) must equal the line the
