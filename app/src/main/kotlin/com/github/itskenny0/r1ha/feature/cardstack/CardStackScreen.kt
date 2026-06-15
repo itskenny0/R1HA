@@ -2046,6 +2046,12 @@ fun CardStackScreen(
                     vm.pauseAllMedia()
                     quickActionsOpen.value = false
                 },
+                onAddLovelaceCard = {
+                    quickActionsOpen.value = false
+                    // Same add-card sheet the empty-page placeholder opens, but for
+                    // the active page that already has cards.
+                    addCardsForPageId.value = appSettings.activePageId
+                },
                 onDismiss = { quickActionsOpen.value = false },
             )
         }
@@ -3635,6 +3641,11 @@ private fun QuickActionsSheet(
     onAllOn: () -> Unit,
     onAllOff: () -> Unit,
     onPauseMedia: () -> Unit,
+    /** Open the add-Lovelace-card sheet for the active page. The "ADD LOVELACE
+     *  CARDS" button on the empty-page placeholder is unreachable once a page has
+     *  any card, so this surfaces the same action for a page that already has
+     *  cards (otherwise the only path was long-press tab -> LOVELACE CARDS -> ADD). */
+    onAddLovelaceCard: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     androidx.activity.compose.BackHandler(onBack = onDismiss)
@@ -3837,6 +3848,19 @@ private fun QuickActionsSheet(
                 }
             }
             Spacer(Modifier.height(14.dp))
+            // 'Add Lovelace card' — page-content management (distinct from the
+            // device on/off actions below). The empty-page placeholder's "ADD
+            // LOVELACE CARDS" button vanishes once a page has any card, so this is
+            // the discoverable way to add another card to a page that already has
+            // some; it opens the same add-card sheet. Outlined so it reads as an
+            // edit action rather than a device control.
+            R1Button(
+                text = "ADD LOVELACE CARD",
+                onClick = onAddLovelaceCard,
+                modifier = Modifier.fillMaxWidth(),
+                variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+            )
+            Spacer(Modifier.height(8.dp))
             // 'Turn all on' — one-tap fire. Lights/switches/fans coming on
             // accidentally is recoverable (re-tap the card or the all-off
             // route), so the safety bar can be lower than for turn-off.

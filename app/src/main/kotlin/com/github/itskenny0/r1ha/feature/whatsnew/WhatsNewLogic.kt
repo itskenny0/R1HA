@@ -50,8 +50,8 @@ fun whatsNewAction(
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Colourful Cards reworked for readability, with palette sets (Vivid, Pastel, Neon) and switchable background designs.",
-    "Scene, script and IR cards are compact now: the fire button sits beside the title at about half the height.",
-    "Deck cards top-align as you scroll, in natural order; tap a card's title to select it straight away.",
+    "Colourful Cards now skins scene, script, IR and sensor tiles, so they match the bright cards instead of sitting dark.",
+    "Deck scrolling now reaches every card in turn, last included; it rests flush at the bottom when tall or alone.",
     "Deck layout adds a Half-height peek mode, and Auto now flows the dynamic layout on phones.",
     "The value bar clicks under your finger on every card, not only the one the wheel is driving.",
     "Theme picker redesigned: clearer per-theme previews, selection state, and accent picker.",
