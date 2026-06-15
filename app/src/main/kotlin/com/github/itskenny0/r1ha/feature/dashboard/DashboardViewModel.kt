@@ -190,16 +190,19 @@ class DashboardViewModel(
                         "{{ states.light | selectattr('state','eq','on') | list | count }}",
                     )
                 }
-                // Sum power-class sensor states. The rejectattr guards
-                // against 'unavailable' / 'unknown' rows which would fail
-                // the float() coercion. round() to whole watts because
-                // the dashboard tile shows an integer.
+                // Total power DRAW, the exact stat the Energy screen's DRAW tile
+                // shows: the SHARED EnergyTemplates.sumPowerDraw, with the user's
+                // manual exclusion list spliced in (plus the accumulative-counter
+                // and production rejects). The dashboard used to sum every
+                // power-class sensor with its own template, so excluding a
+                // consumer on the Energy screen left this Today figure unchanged
+                // and the two views disagreed. Reading the same template keeps
+                // them identical.
+                val excludedPower = settings.settings.first().energyExcludedSensors
                 val powerJob = async {
                     haRepository.renderTemplate(
-                        "{{ states.sensor " +
-                            "| selectattr('attributes.device_class','eq','power') " +
-                            "| rejectattr('state','in',['unavailable','unknown']) " +
-                            "| map(attribute='state') | map('float',0) | sum | round(0) | int }}",
+                        com.github.itskenny0.r1ha.feature.energy.EnergyTemplates
+                            .sumPowerDraw(excludedPower),
                     )
                 }
                 // Low-battery list: every battery-class sensor under the
@@ -332,7 +335,10 @@ class DashboardViewModel(
                     ?.take(3)
                     .orEmpty()
                 val lightsOn = lightsJob.await().getOrNull()?.trim()?.toIntOrNull() ?: -1
-                val totalPower = powerJob.await().getOrNull()?.trim()?.toIntOrNull() ?: -1
+                // sumPowerDraw rounds but emits a float string ("40.0"), so parse
+                // via Double before truncating to whole watts.
+                val totalPower = powerJob.await().getOrNull()?.trim()
+                    ?.toDoubleOrNull()?.toInt() ?: -1
                 val lowBatteries = batteryJob.await().getOrNull()?.let { raw ->
                     runCatching {
                         // Reuse the HA-tolerant Json instance instead of the default singleton

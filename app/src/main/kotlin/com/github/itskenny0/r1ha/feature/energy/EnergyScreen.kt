@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
@@ -535,12 +536,26 @@ private fun BigStatTile(
             }
             Text(text = label, style = responsiveType(R1.labelMicro), color = R1.InkSoft)
         }
+        // The readout is numeralXl (72 sp), so a value wider than one or two
+        // glyphs ("40 W", "1.2 kW", "0.25 kWh") overran the tile and clipped to
+        // "40..." on a narrow phone tile. Shrink-to-fit: autoSize steps the font
+        // DOWN from the full size until the value fits one line, so it stays
+        // readable on any tile width instead of ellipsising.
+        val valueStyle = responsiveType(R1.numeralXl).copy(fontWeight = FontWeight.SemiBold)
+        val valueMax = valueStyle.fontSize.takeIf { it != androidx.compose.ui.unit.TextUnit.Unspecified }
+            ?: 72.sp
         Text(
             text = value,
-            style = responsiveType(R1.numeralXl).copy(fontWeight = FontWeight.SemiBold),
+            style = valueStyle,
             color = accent,
             maxLines = 1,
+            softWrap = false,
             overflow = TextOverflow.Ellipsis,
+            autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(
+                minFontSize = 18.sp,
+                maxFontSize = valueMax,
+                stepSize = 1.sp,
+            ),
         )
     }
 }
