@@ -8,32 +8,36 @@ import com.github.itskenny0.r1ha.ui.components.WindowTier
  * setting (which includes AUTO); this is what AUTO resolves into, so the render
  * branch in CardStackScreen never has to reason about AUTO itself.
  */
-enum class DeckLayout { FULLSCREEN, DYNAMIC }
+enum class DeckLayout { FULLSCREEN, HALF_HEIGHT, DYNAMIC }
 
 /**
  * Pure decision for which deck layout the card stack renders.
  *
- *  - [DeckLayoutMode.FULLSCREEN] / [DeckLayoutMode.DYNAMIC] force that layout
- *    regardless of screen size.
- *  - [DeckLayoutMode.AUTO] resolves by width tier: the small tiers
- *    ([WindowTier.R1], [WindowTier.COMPACT]) keep the historical full-viewport
- *    pager (a content-sized block on a 640x480 panel is too small to read or
- *    hit), while [WindowTier.MEDIUM] and up get the content-height DYNAMIC
- *    list, where several blocks fit comfortably.
+ *  - [DeckLayoutMode.FULLSCREEN] / [DeckLayoutMode.HALF_HEIGHT] /
+ *    [DeckLayoutMode.DYNAMIC] force that layout regardless of screen size.
+ *    HALF_HEIGHT is the explicit half-height peek presentation (focused card
+ *    centred, neighbours peeking); the caller forces peek on for it.
+ *  - [DeckLayoutMode.AUTO] keeps only the R1's sub-compact panel
+ *    ([WindowTier.R1]) on the historical full-viewport pager, where a
+ *    content-sized block is too small to read or hit; every larger tier,
+ *    phones ([WindowTier.COMPACT]) included, gets the (now mature)
+ *    content-height DYNAMIC list. The half-height peek that AUTO used to
+ *    produce on phones is the explicit [DeckLayoutMode.HALF_HEIGHT] mode now.
  *
- * When the resolved layout is DYNAMIC it supersedes the peek deck (the
- * half-height pager presentation): the dynamic list already shows neighbouring
- * cards, so layering peek on top would be redundant. The caller only consults
- * [effectivePeek] on the FULLSCREEN branch.
+ * When the resolved layout is DYNAMIC it supersedes the peek deck: the dynamic
+ * list already shows neighbouring cards, so layering peek on top would be
+ * redundant. The caller resolves the peek flag from this layout (forced on for
+ * HALF_HEIGHT, [effectivePeek] for FULLSCREEN, off for DYNAMIC).
  *
  * Kept pure (no Compose, no Android) so it can be unit-tested directly,
  * mirroring [effectivePeek].
  */
 fun effectiveDeckLayout(mode: DeckLayoutMode, tier: WindowTier): DeckLayout = when (mode) {
     DeckLayoutMode.FULLSCREEN -> DeckLayout.FULLSCREEN
+    DeckLayoutMode.HALF_HEIGHT -> DeckLayout.HALF_HEIGHT
     DeckLayoutMode.DYNAMIC -> DeckLayout.DYNAMIC
     DeckLayoutMode.AUTO ->
-        if (tier.isAtLeast(WindowTier.MEDIUM)) DeckLayout.DYNAMIC else DeckLayout.FULLSCREEN
+        if (tier == WindowTier.R1) DeckLayout.FULLSCREEN else DeckLayout.DYNAMIC
 }
 
 /**

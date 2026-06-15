@@ -1202,13 +1202,17 @@ private fun deckLayoutExplanation(
     tier: WindowTier,
     layout: DeckLayout,
 ): String {
-    val state = if (layout == DeckLayout.DYNAMIC) "Dynamic" else "Full"
+    val state = when (layout) {
+        DeckLayout.DYNAMIC -> "Dynamic"
+        DeckLayout.HALF_HEIGHT -> "Half"
+        DeckLayout.FULLSCREEN -> "Full"
+    }
     val reason = when (mode) {
         DeckLayoutMode.FULLSCREEN -> "mode FULL"
+        DeckLayoutMode.HALF_HEIGHT -> "mode HALF"
         DeckLayoutMode.DYNAMIC -> "mode DYNAMIC"
         DeckLayoutMode.AUTO ->
-            if (tier.isAtLeast(WindowTier.MEDIUM)) "AUTO, $tier is medium or wider"
-            else "AUTO, $tier is a small width"
+            if (tier == WindowTier.R1) "AUTO, R1 panel" else "AUTO, $tier is larger than the R1"
     }
     return "$state ($reason)"
 }

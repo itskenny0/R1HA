@@ -964,6 +964,7 @@ fun cardPeekModeLabel(mode: CardPeekMode): String = when (mode) {
 fun deckLayoutModeLabel(mode: DeckLayoutMode): String = when (mode) {
     DeckLayoutMode.AUTO -> "AUTO"
     DeckLayoutMode.FULLSCREEN -> "FULL"
+    DeckLayoutMode.HALF_HEIGHT -> "HALF"
     DeckLayoutMode.DYNAMIC -> "DYNAMIC"
 }
 

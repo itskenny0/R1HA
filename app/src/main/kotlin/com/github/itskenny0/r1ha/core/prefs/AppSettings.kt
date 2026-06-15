@@ -38,20 +38,28 @@ enum class CardPeekMode { AUTO, ALWAYS, NEVER }
  *             card per swipe, value bar + wheel always at hand. The right call on the
  *             R1's small panel, where a content-sized block would be too small to read
  *             or hit.
+ * HALF_HEIGHT: the half-height "peek" deck: the focused card centred at half the
+ *             viewport with the previous and next cards peeking above and below it.
+ *             Previously only reachable as a side effect of AUTO on a phone (via the
+ *             separate CardPeekMode); now a first-class mode the user can pick on any
+ *             device. Forces the peek presentation regardless of CardPeekMode.
  * DYNAMIC:    each card's snap block is sized to its CONTENT. A one-line Lovelace
  *             toggle takes one line, a forecast card takes its natural height (capped
  *             at the viewport, scrolling internally past that). Entity cards keep
  *             their full-viewport height so the wheel / value-bar layout is unchanged.
  *             Cards still snap into focus as discrete targets; the deck just stops
  *             marooning a small card in a screen of black.
- * AUTO:       FULLSCREEN on the small width tiers (R1 / compact), DYNAMIC on medium
- *             and up, where there is room for several content-sized blocks. This is
- *             the default. See [com.github.itskenny0.r1ha.feature.cardstack
- *             .effectiveDeckLayout] for the pure decision function the card stack reads.
+ * AUTO:       FULLSCREEN only on the R1's sub-compact panel (a content-sized block
+ *             there is too small to read or hit); DYNAMIC on every larger tier,
+ *             phones included. This is the default. The half-height peek that AUTO
+ *             used to produce on phones is now the explicit HALF_HEIGHT mode. See
+ *             [com.github.itskenny0.r1ha.feature.cardstack.effectiveDeckLayout] for
+ *             the pure decision function the card stack reads.
  */
 enum class DeckLayoutMode {
     AUTO,
     FULLSCREEN,
+    HALF_HEIGHT,
     DYNAMIC,
     ;
 

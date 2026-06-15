@@ -955,20 +955,29 @@ fun CardStackScreen(
                 // peek: its 240 px panel can report a COMPACT-range width in dp, but never
                 // clears the pixel floor. See PEEK_MIN_SHORTEST_SIDE_PX.
                 val windowPx = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
-                val peekDeck = effectivePeek(
-                    mode = appSettings.ui.cardPeekMode,
-                    tier = windowTier,
-                    isPortrait = isPortrait,
-                    shortestSidePx = minOf(windowPx.width, windowPx.height),
-                )
                 // Deck layout, resolved once per composition from the user's
-                // setting + the window tier (AUTO = full-viewport on R1 /
-                // compact, content-height DYNAMIC on medium+). A settings
-                // change flows through appSettings and re-renders the decks
-                // live. When DYNAMIC wins it supersedes the peek deck: the
-                // dynamic list already shows neighbours at their real heights,
-                // so [peekDeck] is only consulted on the FULLSCREEN branch.
+                // setting + the window tier (AUTO = full-viewport only on the R1,
+                // content-height DYNAMIC on every larger tier including phones).
+                // A settings change flows through appSettings and re-renders the
+                // decks live.
                 val deckLayout = effectiveDeckLayout(appSettings.ui.deckLayoutMode, windowTier)
+                // Whether the (full-viewport) deck renders the half-height peek
+                // presentation. HALF_HEIGHT is the explicit force-peek mode;
+                // FULLSCREEN consults the user's CardPeekMode (the historical
+                // AUTO-on-phone peek path); DYNAMIC never peeks (its list already
+                // shows neighbours at their real heights, so peek would be
+                // redundant). Threaded into every PageDeck so the active deck and
+                // its peek-composed neighbours all agree on the layout.
+                val peekDeck = when (deckLayout) {
+                    DeckLayout.HALF_HEIGHT -> true
+                    DeckLayout.FULLSCREEN -> effectivePeek(
+                        mode = appSettings.ui.cardPeekMode,
+                        tier = windowTier,
+                        isPortrait = isPortrait,
+                        shortestSidePx = minOf(windowPx.width, windowPx.height),
+                    )
+                    DeckLayout.DYNAMIC -> false
+                }
                 val pageIds = androidx.compose.runtime.remember(state.pages) {
                     state.pages.map { it.id }
                 }

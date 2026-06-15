@@ -14,25 +14,33 @@ class DynamicDeckTest {
         for (tier in WindowTier.entries) {
             assertThat(effectiveDeckLayout(DeckLayoutMode.FULLSCREEN, tier))
                 .isEqualTo(DeckLayout.FULLSCREEN)
+            assertThat(effectiveDeckLayout(DeckLayoutMode.HALF_HEIGHT, tier))
+                .isEqualTo(DeckLayout.HALF_HEIGHT)
             assertThat(effectiveDeckLayout(DeckLayoutMode.DYNAMIC, tier))
                 .isEqualTo(DeckLayout.DYNAMIC)
         }
     }
 
-    @Test fun `AUTO keeps the small tiers full-viewport`() {
+    @Test fun `AUTO keeps only the R1 full-viewport`() {
+        // A content-sized block on the R1's sub-compact panel is too small to read
+        // or hit, so AUTO stays full-viewport there and nowhere else.
         assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.R1))
-            .isEqualTo(DeckLayout.FULLSCREEN)
-        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.COMPACT))
             .isEqualTo(DeckLayout.FULLSCREEN)
     }
 
-    @Test fun `AUTO goes dynamic from medium up`() {
-        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.MEDIUM))
-            .isEqualTo(DeckLayout.DYNAMIC)
-        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.EXPANDED))
-            .isEqualTo(DeckLayout.DYNAMIC)
-        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.EXTRA_LARGE))
-            .isEqualTo(DeckLayout.DYNAMIC)
+    @Test fun `AUTO is dynamic on every tier larger than the R1`() {
+        // Phones (COMPACT) included now: the dynamic layout matured, so AUTO gives
+        // it everywhere there is room. The half-height peek AUTO used to produce on
+        // phones is the explicit HALF_HEIGHT mode.
+        for (tier in listOf(
+            WindowTier.COMPACT,
+            WindowTier.MEDIUM,
+            WindowTier.EXPANDED,
+            WindowTier.EXTRA_LARGE,
+        )) {
+            assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, tier))
+                .isEqualTo(DeckLayout.DYNAMIC)
+        }
     }
 
     // ── DYNAMIC_VALUE_BAR_HEIGHT_DP: the wrap-mode value-bar band ────────────
@@ -317,7 +325,7 @@ class DynamicDeckTest {
     @Test fun `absent and unknown stored values decode as AUTO`() {
         assertThat(DeckLayoutMode.fromStored(null)).isEqualTo(DeckLayoutMode.AUTO)
         assertThat(DeckLayoutMode.fromStored("")).isEqualTo(DeckLayoutMode.AUTO)
-        assertThat(DeckLayoutMode.fromStored("HALF_HEIGHT")).isEqualTo(DeckLayoutMode.AUTO)
+        assertThat(DeckLayoutMode.fromStored("PEEK")).isEqualTo(DeckLayoutMode.AUTO)
     }
 
     @Test fun `setting defaults to AUTO`() {
