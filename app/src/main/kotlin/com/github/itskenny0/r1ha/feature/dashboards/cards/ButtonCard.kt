@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -199,14 +200,25 @@ fun ButtonCard(
     // Cheap manual lerp keeps it out of animateColorAsState (one less node).
     val frameColor = lerpColor(R1.Hairline, accent, 0.15f + 0.85f * hot)
 
-    Column(
+    // The disc's resting fill comes from the theme so it doesn't punch a black hole in a
+    // backdrop-identity theme (Colourful Cards' gradient); near-black on the dark themes.
+    val panelColor = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
+    // Compact layout: the actuator sits BESIDE the name + footer instead of stacked above
+    // them, roughly halving the card height — the win the pinned IR command wall wanted.
+    val iconSlug = buttonIconSlug(actions.tap, card.icon)
+    val icon = when {
+        !card.showIcon -> null
+        card.entityId != null -> cardEntityIcon(card.entityId, state, iconSlug)
+        else -> R1Icons.forMdi(iconSlug)
+    }
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
             .background(R1.Surface)
-            // Soft radial inner glow: brightest at the actuator, fading out. It
-            // gives the near-black face depth (lit from within) and intensifies
-            // with the fire flare so the whole plate washes warm on a send.
+            // Soft radial inner glow anchored on the actuator (now left-of-centre), fading
+            // out across the plate; intensifies with the fire flare so the whole plate
+            // washes warm on a send, the same lit-from-within depth as before.
             .drawBehind {
                 val glow = 0.05f + 0.16f * hot
                 if (glow > 0.001f) {
@@ -216,7 +228,7 @@ fun ButtonCard(
                                 accent.copy(alpha = glow),
                                 accent.copy(alpha = 0f),
                             ),
-                            center = Offset(size.width / 2f, size.height * 0.34f),
+                            center = Offset(size.width * 0.22f, size.height / 2f),
                             radius = size.maxDimension * 0.62f,
                         ),
                     )
@@ -229,20 +241,13 @@ fun ButtonCard(
                 contentDescription = faceLabel,
                 interactionSource = interaction,
             )
-            .padding(horizontal = R1.space.l, vertical = R1.space.l),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = R1.space.l, vertical = R1.space.m),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // We honour `show_icon` and draw a glyph when we can derive one. The
-        // slug is buttonIconSlug-overridden so a `remote.send_command` button
-        // always shows the remote glyph even if its stored `icon:` is a stale
-        // cog (the user's pre-existing pinned IR cards), while every other
-        // button keeps its configured icon.
-        val iconSlug = buttonIconSlug(actions.tap, card.icon)
-        val icon = when {
-            !card.showIcon -> null
-            card.entityId != null -> cardEntityIcon(card.entityId, state, iconSlug)
-            else -> R1Icons.forMdi(iconSlug)
-        }
+        // We honour `show_icon` and draw a glyph when we can derive one. The slug is
+        // buttonIconSlug-overridden so a `remote.send_command` button always shows the
+        // remote glyph even if its stored `icon:` is a stale cog (the user's pre-existing
+        // pinned IR cards), while every other button keeps its configured icon.
         if (icon != null) {
             FireActuator(
                 icon = icon,
@@ -250,98 +255,86 @@ fun ButtonCard(
                 discSize = discSize,
                 hot = hot,
                 pulse = if (firesSignal) pulse.value else 0f,
+                panelColor = panelColor,
             )
-            Spacer(Modifier.height(R1.space.m))
+            Spacer(Modifier.size(R1.space.m))
         }
-        if (card.showName) {
-            // Small, quiet name (the deck header is the identity line). If the
-            // original name carried an "[IR]"-style tag we render it as an
-            // inline badge ahead of the cleaned label.
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (nameBadge != null) {
-                    Text(
-                        text = nameBadge,
-                        style = R1.labelMicro,
-                        color = accent,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(R1.ShapeS)
-                            .background(accent.copy(alpha = 0.14f))
-                            .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
-                    )
-                    Spacer(Modifier.size(R1.space.s))
-                }
-                Text(
-                    text = faceLabel,
-                    style = R1.bodyEmph,
-                    color = R1.Ink,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        if (card.showState && state != null) {
-            Spacer(Modifier.height(R1.space.xs))
-            Text(
-                text = compactStateText(state),
-                style = R1.labelMicro,
-                color = accent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        // Affordance footer: hairline rules flanking the verb. While a fire is
-        // hot the affordance verb crossfades out and the past-tense confirmation
-        // ("SENT" / "FIRED") crossfades in over the same slot, then back.
-        val hint = buttonTapHint(actions.tap)
-        if (hint != null) {
-            Spacer(Modifier.height(R1.space.m))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(1.dp)
-                        .background(R1.Hairline),
-                )
-                // Two texts stacked in a Box, crossfaded by `hot`: the affordance
-                // verb fades out as the confirmation fades in. Box (not a swap)
-                // keeps the footer width stable so the rules don't twitch.
-                Box(
-                    modifier = Modifier.padding(horizontal = R1.space.s),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    // Two texts crossfaded by `hot` via per-text layer alpha: the
-                    // affordance verb fades out as the past-tense confirmation
-                    // fades in over the same slot. Box keeps the footer width
-                    // stable (the wider of the two reserves the room) so the
-                    // hairline rules don't twitch as the words swap.
-                    Text(
-                        text = hint,
-                        style = R1.labelMicro,
-                        color = R1.InkSoft,
-                        maxLines = 1,
-                        modifier = Modifier.graphicsLayer { this.alpha = 1f - hot },
-                    )
-                    if (sentLabel != null) {
+        Column(modifier = Modifier.weight(1f)) {
+            if (card.showName) {
+                // Small, quiet name (the deck header is the identity line). If the original
+                // name carried an "[IR]"-style tag we render it as an inline badge ahead of
+                // the cleaned label. Left-aligned now that it sits beside the disc.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (nameBadge != null) {
                         Text(
-                            text = sentLabel,
+                            text = nameBadge,
                             style = R1.labelMicro,
                             color = accent,
                             maxLines = 1,
-                            modifier = Modifier.graphicsLayer { this.alpha = hot },
+                            modifier = Modifier
+                                .clip(R1.ShapeS)
+                                .background(accent.copy(alpha = 0.14f))
+                                .padding(horizontal = R1.space.s, vertical = R1.space.xxs),
                         )
+                        Spacer(Modifier.size(R1.space.s))
                     }
+                    Text(
+                        text = faceLabel,
+                        style = R1.bodyEmph,
+                        color = R1.Ink,
+                        textAlign = TextAlign.Start,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(1.dp)
-                        .background(R1.Hairline),
+            }
+            if (card.showState && state != null) {
+                Spacer(Modifier.height(R1.space.xxs))
+                Text(
+                    text = compactStateText(state),
+                    style = R1.labelMicro,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+            }
+            // Affordance footer: the verb, then a single trailing hairline rule. While a
+            // fire is hot the affordance verb crossfades out and the past-tense confirmation
+            // ("SENT" / "FIRED") crossfades in over the same slot, then back.
+            val hint = buttonTapHint(actions.tap)
+            if (hint != null) {
+                Spacer(Modifier.height(R1.space.s))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Two texts stacked in a Box, crossfaded by `hot` via per-text layer
+                    // alpha: the affordance verb fades out as the confirmation fades in over
+                    // the same slot. Box (not a swap) keeps the slot width stable so the rule
+                    // doesn't twitch as the words swap.
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        Text(
+                            text = hint,
+                            style = R1.labelMicro,
+                            color = R1.InkSoft,
+                            maxLines = 1,
+                            modifier = Modifier.graphicsLayer { this.alpha = 1f - hot },
+                        )
+                        if (sentLabel != null) {
+                            Text(
+                                text = sentLabel,
+                                style = R1.labelMicro,
+                                color = accent,
+                                maxLines = 1,
+                                modifier = Modifier.graphicsLayer { this.alpha = hot },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(R1.space.s))
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(R1.Hairline),
+                    )
+                }
             }
         }
     }
@@ -366,19 +359,23 @@ private fun FireActuator(
     discSize: androidx.compose.ui.unit.Dp,
     hot: Float,
     pulse: Float,
+    /** Resting disc fill from the active theme's [com.github.itskenny0.r1ha.core.theme
+     *  .LocalCardPanelColor]; near-black on the dark themes, a translucent tint on
+     *  Colourful Cards so the disc reads as a well in the gradient, not a black hole. */
+    panelColor: androidx.compose.ui.graphics.Color,
 ) {
     val ringCount = 3
-    // The pulse needs room to expand past the disc; the Box is sized larger than
-    // the disc and the rings draw out to its bounds.
-    val fieldSize = discSize * 1.9f
+    // The pulse needs room to expand past the disc; the Box is sized larger than the disc
+    // and the rings draw out to its bounds. Kept compact (1.55x) for the inline layout.
+    val fieldSize = discSize * 1.55f
     Box(
         modifier = Modifier
             .size(fieldSize)
             .drawBehind {
                 if (pulse > 0f && pulse < 1f) {
                     val maxR = size.minDimension / 2f
-                    // Rings start at the disc rim, not the centre, so they read
-                    // as leaving the actuator face.
+                    // Rings start at the disc rim, not the centre, so they read as leaving
+                    // the actuator face.
                     val minR = (discSize.toPx() / 2f).coerceAtMost(maxR)
                     val center = Offset(size.width / 2f, size.height / 2f)
                     for (i in 0 until ringCount) {
@@ -396,12 +393,13 @@ private fun FireActuator(
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Resting fill is the theme panel tint; crossfade to solid accent as the face heats.
+        val discFill = lerpColor(panelColor, accent, (0.18f + 0.82f * hot).coerceIn(0f, 1f))
         Box(
             modifier = Modifier
                 .size(discSize)
                 .clip(CircleShape)
-                // Inner disc fills from an 18% wash to solid as the face heats.
-                .background(accent.copy(alpha = 0.18f + 0.82f * hot))
+                .background(discFill)
                 // Outer hairline halo ring (always present, brightens with heat).
                 .border(1.dp, accent.copy(alpha = 0.4f + 0.6f * hot), CircleShape),
             contentAlignment = Alignment.Center,
@@ -409,8 +407,8 @@ private fun FireActuator(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                // Glyph flips accent -> dark as the disc fills, so it stays
-                // legible against the solid fill at the peak of a fire.
+                // Glyph flips accent -> dark as the disc fills, so it stays legible against
+                // the solid fill at the peak of a fire.
                 tint = lerpColor(accent, R1.Bg, hot),
                 modifier = Modifier.size(discSize * 0.5f),
             )

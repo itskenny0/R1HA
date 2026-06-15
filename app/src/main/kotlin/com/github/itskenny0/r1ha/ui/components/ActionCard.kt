@@ -45,6 +45,7 @@ import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot
 import com.github.itskenny0.r1ha.core.theme.LocalCardInk
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.core.theme.cardTitleTarget
 import com.github.itskenny0.r1ha.feature.dashboards.cards.pulseRing
 import com.github.itskenny0.r1ha.ui.icons.R1Icons
 import kotlinx.coroutines.launch
@@ -152,12 +153,22 @@ fun ActionCard(
     // flare, so a held press and a fresh fire both light the actuator.
     val hot = maxOf(pressLift, flare.value)
 
-    Column(
+    // The disc's resting fill comes from the theme so it doesn't punch a black hole in a
+    // backdrop-identity theme (Colourful Cards' gradient). Near-black on the dark themes.
+    val panelColor = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
+    val glyph = R1Icons.forMdi(domain.prefix) ?: R1Icons.forMdi("button")
+
+    // Compact layout: the actuator sits BESIDE the title rather than stacked above it,
+    // roughly halving the card height. Left: a smaller inline fire disc. Right: the header
+    // eyebrow, the friendly name, and the affordance/SENT verb footer. The whole right
+    // column carries the same drawBehind glow the full plate used to, so a fire still
+    // washes the card warm.
+    Row(
         modifier = modifier
             .then(if (fillSlot) Modifier.fillMaxSize() else Modifier.fillMaxWidth())
-            // Soft radial inner glow: brightest at the actuator, fading out. Gives
-            // the near-black face depth (lit from within) and intensifies with the
-            // fire flare so the whole plate washes warm on a fire.
+            // Soft radial inner glow anchored on the actuator (now left-of-centre), fading
+            // out across the plate; intensifies with the fire flare so the card washes warm
+            // on a fire, the same lit-from-within depth the stacked layout had.
             .drawBehind {
                 val glow = 0.04f + 0.16f * hot
                 if (glow > 0.001f) {
@@ -167,154 +178,141 @@ fun ActionCard(
                                 accent.copy(alpha = glow),
                                 accent.copy(alpha = 0f),
                             ),
-                            center = Offset(size.width / 2f, size.height * 0.62f),
+                            center = Offset(size.width * 0.22f, size.height / 2f),
                             radius = size.maxDimension * 0.7f,
                         ),
                     )
                 }
             }
-            .padding(horizontal = 22.dp, vertical = 18.dp),
+            .padding(horizontal = 22.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // ── Header ───────────────────────────────────────────────────────────
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(width = 14.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(accent),
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(domainLabel, style = R1.labelMicro, color = ink.ink)
-            Spacer(Modifier.width(8.dp))
-            Text("· TRIGGER", style = R1.labelMicro, color = ink.muted)
-            if (showArea && !state.area.isNullOrBlank()) {
-                Spacer(Modifier.width(8.dp))
-                Text("·", style = R1.labelMicro, color = ink.muted)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = areaLabel(state.area),
-                    style = R1.labelMicro,
-                    color = ink.soft,
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = state.friendlyName,
-            style = R1.titleCard,
-            color = ink.ink,
-            maxLines = 2,
+        // ── The FIRE ACTUATOR (inline, beside the title) ───────────────────────
+        // Still the hero, just smaller and to the side. The disc itself is the tap
+        // target; the press feedback rides the shared interaction source so the disc
+        // wash and the verb crossfade animate together.
+        FireActuator(
+            glyph = glyph,
+            accent = accent,
+            hot = hot,
+            pulse = pulse.value,
+            running = state.isOn,
+            panelColor = panelColor,
+            interaction = interaction,
+            onFire = {
+                fireTrigger++
+                onFire()
+            },
         )
-        // When the script last ran ("ran 2h ago"). last_triggered, not
-        // last_changed, so it reflects the actual fire rather than a config
-        // reload. Hidden until it has fired.
-        val ran = rememberRelativeTime(state.lastTriggered)
-        if (ran.isNotEmpty()) {
-            Spacer(Modifier.height(4.dp))
-            Text(text = "ran $ran", style = R1.labelMicro, color = ink.muted, maxLines = 1)
-        }
 
-        // Fill mode floats the actuator to the slot centre; wrap mode keeps a
-        // fixed gap so the card stays content-sized.
-        if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.width(16.dp))
 
-        // ── The FIRE ACTUATOR ──────────────────────────────────────────────
-        // The hero: a domain glyph held in a layered accent disc with the
-        // radiating signal pulse drawn behind it. The whole row is the tap
-        // target; r1Pressable would add its own scale dip, but we drive the
-        // press feedback through the shared interaction source so the actuator
-        // and the disc wash animate together.
-        val glyph = R1Icons.forMdi(domain.prefix) ?: R1Icons.forMdi("button")
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            FireActuator(
-                glyph = glyph,
-                accent = accent,
-                hot = hot,
-                pulse = pulse.value,
-                running = state.isOn,
-                interaction = interaction,
-                onFire = {
-                    fireTrigger++
-                    onFire()
-                },
-            )
-        }
-
-        if (fillSlot) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(16.dp))
-
-        // ── Affordance footer: hairline rules flanking the verb ────────────
-        // While a fire is hot the affordance verb ("TAP TO RUN") crossfades out
-        // and the past-tense confirmation ("RAN") crossfades in over the same
-        // slot, then back. A running script shows RUNNING… instead so the user
-        // knows a long-running action is still in flight.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(1.dp)
-                    .background(R1.Hairline),
-            )
-            Box(
-                modifier = Modifier.padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (state.isOn) {
-                    // Long-running (a script still executing): a steady status,
-                    // not the one-shot crossfade.
+        Column(modifier = Modifier.weight(1f)) {
+            // ── Header eyebrow ─────────────────────────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 14.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accent),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(domainLabel, style = R1.labelMicro, color = ink.ink)
+                Spacer(Modifier.width(8.dp))
+                Text("· TRIGGER", style = R1.labelMicro, color = ink.muted)
+                if (showArea && !state.area.isNullOrBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text("·", style = R1.labelMicro, color = ink.muted)
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = "RUNNING…",
+                        text = areaLabel(state.area),
                         style = R1.labelMicro,
-                        color = accent,
+                        color = ink.soft,
                         maxLines = 1,
-                    )
-                } else {
-                    // Two texts stacked and crossfaded by `hot` via per-text layer
-                    // alpha so the footer width stays stable and the rules don't
-                    // twitch as the words swap.
-                    Text(
-                        text = tapHint,
-                        style = R1.labelMicro,
-                        color = ink.muted,
-                        maxLines = 1,
-                        modifier = Modifier.graphicsLayer { this.alpha = 1f - hot },
-                    )
-                    Text(
-                        text = sentLabel,
-                        style = R1.labelMicro,
-                        color = accent,
-                        maxLines = 1,
-                        modifier = Modifier.graphicsLayer { this.alpha = hot },
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
                 }
             }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(1.dp)
-                    .background(R1.Hairline),
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = state.friendlyName,
+                style = R1.titleCard,
+                color = ink.ink,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                // Tap the title to select this card in the dynamic deck (no-op elsewhere).
+                modifier = Modifier.fillMaxWidth().cardTitleTarget(),
             )
+            // When the script last ran ("ran 2h ago"). last_triggered, not last_changed,
+            // so it reflects the actual fire. Hidden until it has fired.
+            val ran = rememberRelativeTime(state.lastTriggered)
+            if (ran.isNotEmpty()) {
+                Spacer(Modifier.height(2.dp))
+                Text(text = "ran $ran", style = R1.labelMicro, color = ink.muted, maxLines = 1)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Affordance footer: a hairline rule, then the verb ──────────────
+            // While a fire is hot the affordance verb ("TAP TO RUN") crossfades out and the
+            // past-tense confirmation ("RAN") crossfades in over the same slot, then back. A
+            // running script shows RUNNING… instead. Single trailing rule (not the two
+            // flanking rules of the tall layout) keeps the compact row tidy.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.height(18.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    if (state.isOn) {
+                        Text(text = "RUNNING…", style = R1.labelMicro, color = accent, maxLines = 1)
+                    } else {
+                        // Two texts stacked + crossfaded by `hot` via per-text layer alpha so
+                        // the slot width stays stable as the words swap.
+                        Text(
+                            text = tapHint,
+                            style = R1.labelMicro,
+                            color = ink.muted,
+                            maxLines = 1,
+                            modifier = Modifier.graphicsLayer { this.alpha = 1f - hot },
+                        )
+                        Text(
+                            text = sentLabel,
+                            style = R1.labelMicro,
+                            color = accent,
+                            maxLines = 1,
+                            modifier = Modifier.graphicsLayer { this.alpha = hot },
+                        )
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(1.dp)
+                        .background(R1.Hairline),
+                )
+            }
         }
     }
 }
 
 /**
- * The hero ACTUATOR: a domain glyph held in a layered accent disc, with the
- * radiating signal pulse drawn behind it. [hot] (0..1) is the combined
- * press/flare heat: the inner disc fills from a faint wash to solid accent and
- * the glyph flips from accent to dark as it climbs, so a held press or a fresh
- * fire lights the key. [pulse] (0..1) is the per-fire clock that flings the
- * concentric rings outward (geometry SHARED with the Lovelace button card via
- * [pulseRing]). [running] outlines the disc with a steady accent halo so a
- * still-executing script reads as armed even at rest.
+ * The hero ACTUATOR, re-fit for the compact INLINE layout: a domain glyph held in a
+ * layered accent disc, with the radiating signal pulse drawn behind it. Smaller than the
+ * old stacked disc (it now sits beside the title) but keeps every cue:
+ *  - [hot] (0..1) is the combined press/flare heat: the inner disc fills from a faint wash
+ *    to solid accent and the glyph flips from accent to dark as it climbs;
+ *  - [pulse] (0..1) is the per-fire clock that flings the concentric rings outward
+ *    (geometry SHARED with the Lovelace button card via [pulseRing]);
+ *  - [running] keeps a brighter steady halo so a still-executing script reads as armed.
  *
- * The disc is the tap target (its own [MutableInteractionSource] shared with the
- * caller drives the press dip), large enough to be an easy thumb hit on the R1.
+ * At rest the disc fills toward [panelColor] (the theme's inner-panel tint) rather than a
+ * hardcoded near-black, so on Colourful Cards' gradient the disc reads as a dimmed well in
+ * the sky instead of a black hole; as the face heats it crossfades to solid accent.
+ *
+ * The disc is the tap target (its own [MutableInteractionSource], shared with the caller,
+ * drives the press dip). The pulse field box stays a fixed compact size so the inline row
+ * never inflates; the rings expand to its bounds.
  */
 @Composable
 private fun FireActuator(
@@ -323,22 +321,24 @@ private fun FireActuator(
     hot: Float,
     pulse: Float,
     running: Boolean,
+    panelColor: Color,
     interaction: MutableInteractionSource,
     onFire: () -> Unit,
 ) {
-    val discSize = 88.dp
+    val discSize = 56.dp
     val ringCount = 3
-    // The pulse needs room to expand past the disc; the field box is sized larger
-    // than the disc and the rings draw out to its bounds.
-    val fieldSize = discSize * 1.7f
+    // The pulse needs room to expand past the disc; the field box is sized larger than the
+    // disc and the rings draw out to its bounds. Kept tight (1.55x) so the inline actuator
+    // doesn't dominate the compact row.
+    val fieldSize = discSize * 1.55f
     Box(
         modifier = Modifier
             .size(fieldSize)
             .drawBehind {
                 if (pulse > 0f && pulse < 1f) {
                     val maxR = size.minDimension / 2f
-                    // Rings start at the disc rim, not the centre, so they read as
-                    // leaving the actuator face.
+                    // Rings start at the disc rim, not the centre, so they read as leaving
+                    // the actuator face.
                     val minR = (discSize.toPx() / 2f).coerceAtMost(maxR)
                     val center = Offset(size.width / 2f, size.height / 2f)
                     for (i in 0 until ringCount) {
@@ -356,15 +356,16 @@ private fun FireActuator(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // A running script keeps a brighter halo so it reads as armed; otherwise
-        // the halo brightens with the press/fire heat.
+        // A running script keeps a brighter halo so it reads as armed; otherwise the halo
+        // brightens with the press/fire heat.
         val haloAlpha = maxOf(if (running) 0.7f else 0.4f, 0.4f + 0.6f * hot)
+        // Resting fill is the theme panel tint; crossfade to solid accent as the face heats.
+        val discFill = lerpActionColor(panelColor, accent, (0.18f + 0.82f * hot).coerceIn(0f, 1f))
         Box(
             modifier = Modifier
                 .size(discSize)
                 .clip(CircleShape)
-                // Inner disc fills from an 18% wash to solid as the face heats.
-                .background(accent.copy(alpha = 0.18f + 0.82f * hot))
+                .background(discFill)
                 .border(1.dp, accent.copy(alpha = haloAlpha), CircleShape)
                 .r1Pressable(
                     onClick = onFire,
@@ -377,10 +378,10 @@ private fun FireActuator(
                 Icon(
                     imageVector = glyph,
                     contentDescription = null,
-                    // Glyph flips accent -> dark as the disc fills, so it stays
-                    // legible against the solid fill at the peak of a fire.
+                    // Glyph flips accent -> dark as the disc fills, so it stays legible
+                    // against the solid fill at the peak of a fire.
                     tint = lerpActionColor(accent, R1.Bg, hot),
-                    modifier = Modifier.size(discSize * 0.42f),
+                    modifier = Modifier.size(discSize * 0.46f),
                 )
             }
         }
