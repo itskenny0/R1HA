@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +36,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
@@ -411,6 +413,46 @@ internal fun DynamicPageDeck(
         // the cap a tall Lovelace card scrolls internally past.
         val bandHeight = maxHeight
         val bandHeightPx = constraints.maxHeight
+        // BOTTOM content padding so the SECOND-TO-LAST card can reach its top snap
+        // line, otherwise the bottom-aligned last card blocks the scroll before it
+        // can and a fling skips straight past it (only a title tap / wheel could
+        // select it). See [dynamicMinBottomPaddingPx]. We measure the last and
+        // second-to-last card heights from the live layout (keyed on their item
+        // identities so a tail mutation drops a stale height) and only pad a 3+
+        // card deck: with two cards the "second-to-last" is the first card, already
+        // reachable at the top scroll clamp. The last card's bottom-align SNAP
+        // still seats it flush at the band bottom at rest, so it never floats; the
+        // pad is only slack a fling carries the second-to-last into, with a short
+        // springy over-drag below the last card as the only cost.
+        val lastCardKey = cards.lastOrNull()?.key
+        val secondToLastKey = cards.getOrNull(cards.size - 2)?.key
+        val lastCardHeightPx = remember(pageId, lastCardKey, cards.size) { mutableIntStateOf(-1) }
+        val secondToLastHeightPx = remember(pageId, secondToLastKey, cards.size) { mutableIntStateOf(-1) }
+        LaunchedEffect(listState, lastCardKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == cards.lastIndex }?.size
+            }.filterNotNull().distinctUntilChanged().collect { lastCardHeightPx.intValue = it }
+        }
+        LaunchedEffect(listState, secondToLastKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == cards.size - 2 }?.size
+            }.filterNotNull().distinctUntilChanged().collect { secondToLastHeightPx.intValue = it }
+        }
+        val interCardGapPx = with(LocalDensity.current) { R1.space.m.roundToPx() }
+        val bottomPad = with(LocalDensity.current) {
+            (
+                if (cards.size >= 3) {
+                    dynamicMinBottomPaddingPx(
+                        bandHeightPx = bandHeightPx,
+                        lastCardHeightPx = lastCardHeightPx.intValue.takeIf { it >= 0 },
+                        secondToLastCardHeightPx = secondToLastHeightPx.intValue.takeIf { it >= 0 },
+                        gapPx = interCardGapPx,
+                    )
+                } else {
+                    0
+                }
+                ).toDp()
+        }
         // DIAGNOSTIC, gated behind the Dev-menu "Deck snap diagnostics" toggle
         // (default OFF). When on, on every settle it ships a full snapshot of the
         // snap geometry so the on-device snapping can be read from the log
@@ -499,10 +541,12 @@ internal fun DynamicPageDeck(
             // of one-line toggles still feels like one deck.
             verticalArrangement = androidx.compose.foundation.layout.Arrangement
                 .spacedBy(R1.space.m),
-            // No content padding: top-align needs none. A non-last card reaches
-            // the flush top by scrolling up; the last card reaches the flush
-            // bottom at the bottom scroll clamp. The deck renders immediately
-            // (no float to hide, so no reveal gate).
+            // No TOP padding: a non-last card reaches the flush top by scrolling up
+            // and the first card is flush from the first frame. The BOTTOM pad is
+            // the slack that lets the second-to-last card reach the top too (see
+            // bottomPad above); it is 0 on 1-2 card decks and on decks whose last
+            // two cards do not fit together.
+            contentPadding = PaddingValues(bottom = bottomPad),
             modifier = Modifier.fillMaxSize(),
         ) {
             itemsIndexed(cards, key = { _, item -> item.key }) { idx, item ->

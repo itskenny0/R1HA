@@ -133,6 +133,45 @@ fun dynamicSnapStartPx(itemIndex: Int, itemSizePx: Int, bandHeightPx: Int, itemC
     }
 
 /**
+ * The MINIMAL bottom content padding (px) the deck needs so the SECOND-TO-LAST
+ * card can reach its TOP snap line, so a fling/scroll can settle focus on it.
+ *
+ * Mirror of the second-card problem at the other end of the deck. The LAST card
+ * BOTTOM-aligns at the bottom scroll clamp; when it and the second-to-last card
+ * fit in the band together, that clamp is reached BEFORE the second-to-last's top
+ * can climb to the chrome, so a fling can never land on it (only a tap on its
+ * title or the wheel can). Extending the scroll range by this pad lets the
+ * second-to-last reach the top; the last card's bottom-align SNAP still pulls it
+ * flush to the band bottom at REST, so the last card never floats and the only
+ * cost is a short springy over-drag (the pad) below it.
+ *
+ * The second-to-last is the binding case: any card above it reaches the top with
+ * LESS scroll, so the pad that frees the second-to-last frees them all. The
+ * deficit is exactly how far short the scroll falls when the second-to-last sits
+ * at the top: with it at the chrome the last card's bottom would be
+ * `secondToLastHeight + gap + lastHeight` down, i.e. `band - that` above the band
+ * bottom, which is the extra scroll needed:
+ *
+ *   P = max(0, band - lastHeight - gap - secondToLastHeight)
+ *
+ * 0 until BOTH end heights are measured, and 0 when the two end cards do not fit
+ * together (the second-to-last already reaches the top unaided, deficit <= 0).
+ * Clamped into `[0, band]`, mirroring [dynamicSnapStartPx]'s defensive clamps.
+ * Only meaningful for a deck of 3+ cards (with 2 the "second-to-last" is the
+ * first card, always reachable at the top clamp); the caller gates on that.
+ */
+fun dynamicMinBottomPaddingPx(
+    bandHeightPx: Int,
+    lastCardHeightPx: Int?,
+    secondToLastCardHeightPx: Int?,
+    gapPx: Int,
+): Int {
+    if (lastCardHeightPx == null || secondToLastCardHeightPx == null) return 0
+    val deficit = bandHeightPx - lastCardHeightPx - gapPx - secondToLastCardHeightPx
+    return deficit.coerceIn(0, bandHeightPx.coerceAtLeast(0))
+}
+
+/**
  * The value the deck's [androidx.compose.foundation.gestures.snapping.SnapPosition]
  * returns for item [itemIndex]: the item-start offset measured from the START OF
  * THE CONTENT AREA (after any content padding), which is the frame the snap
