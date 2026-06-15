@@ -218,6 +218,63 @@ internal fun DynamicPageDeck(
     // counter, actuation rights). Updated only when the list is at rest so a
     // card never counts as focused mid-fling; mirrors pagerState.settledPage.
     val settledFocus = remember(pageId) { mutableIntStateOf(initialIndex.coerceAtLeast(0)) }
+    // STICKY TARGET: the card the user last EXPLICITLY selected (wheel step, pip
+    // jump, or title tap). Held in a -1 sentinel box (no -> -1) because the deck
+    // bottom-aligns the last card: when the last cards fit together in the band
+    // the bottom scroll clamp is hit before the second-to-last card's top can
+    // reach the chrome, so that card can never sit on its snap line and the
+    // scroll-derived focus would otherwise snap selection straight back to the
+    // bottom-aligned last card (the 5/6-is-skipped bug). While a sticky target is
+    // live the settled-focus collector honours IT (see resolveSettledFocus), so
+    // every card stays selectable. Cleared on the next BY-HAND settle.
+    val stickyTarget = remember(pageId) { mutableIntStateOf(-1) }
+    // PROGRAMMATIC-SCROLL depth: > 0 while one of our scrollToItemSnapped calls
+    // (nav / jump / tap) is in flight. Used only to tell a programmatic scroll's
+    // own isScrollInProgress=true edge apart from a USER drag's: a drag that the
+    // user starts by hand clears the sticky target (they moved on), a
+    // programmatic scroll must not clear it. A plain box (not Compose state):
+    // only effects read/write it, never composition. A depth counter (not a
+    // bool) so overlapping programmatic scrolls don't clear each other early.
+    val programmaticDepth = remember(pageId) { intArrayOf(0) }
+    // Select [target] explicitly (wheel step, pip jump, title tap): record it as
+    // sticky and scroll it onto its snap line, tagging the scroll programmatic so
+    // its own scroll-start edge is not mistaken for a user drag. settledFocus is
+    // set DIRECTLY too, not left to the settle collector: a wheel onto the STUCK
+    // second-to-last card can't actually move the list (it is already at the
+    // bottom clamp), so animateScrollToItem may be a no-op that never toggles
+    // isScrollInProgress and so never produces a settle to consume. Writing the
+    // focus here makes the selection land even in that no-op case; when the
+    // scroll DOES run the settle collector re-resolves to the same sticky target
+    // (idempotent). runCatching keeps a scroll cancelled by a user touch from
+    // killing the caller's collector; the finally always unwinds the depth.
+    suspend fun scrollToTarget(target: Int) {
+        stickyTarget.intValue = target
+        if (settledFocus.intValue != target) {
+            settledFocus.intValue = target
+            if (isActive) vm.setCurrentIndex(target) else vm.setIndexForPage(pageId, target)
+        }
+        programmaticDepth[0]++
+        try {
+            runCatching { listState.scrollToItemSnapped(target, cards.size) }
+        } finally {
+            programmaticDepth[0]--
+        }
+    }
+    // USER-DRAG sticky clear: a scroll the user STARTS by hand (isScrollInProgress
+    // rises while no programmatic scroll is in flight) means they moved on from
+    // the explicit selection, so drop the sticky target and let the scroll-derived
+    // focus win again at the next settle. A programmatic scroll's own start edge
+    // (programmaticDepth > 0) is ignored. Distinct from the settle collector so
+    // provenance is read on the START edge (deterministic: the depth is held
+    // across the whole programmatic scroll) rather than racing the settle.
+    LaunchedEffect(listState, isActive, pageId) {
+        if (!isActive) return@LaunchedEffect
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling ->
+                if (scrolling && programmaticDepth[0] == 0) stickyTarget.intValue = -1
+            }
+    }
     LaunchedEffect(listState, pageId, isActive, cards.size) {
         snapshotFlow {
             // null while scrolling = "no settle yet"; the focused index is
@@ -249,9 +306,22 @@ internal fun DynamicPageDeck(
                 )
             }
         }
+            // NB: no distinctUntilChanged on the raw scroll focus. When the user
+            // wheels onto the STUCK second-to-last card the scroll cannot move it
+            // (it stays at the bottom clamp), so the raw focus is unchanged from
+            // before the selection; a distinct filter would swallow that settle
+            // and the sticky override below would never apply. The null between
+            // settles still separates consecutive settles into distinct
+            // emissions, and the effective-focus guard below dedups the writes.
             .filterNotNull()
-            .distinctUntilChanged()
-            .collect { idx ->
+            .collect { scrollFocus ->
+                // A live sticky target (an explicit selection that may sit on a
+                // stuck card the scroll can't reach) wins over the scroll-derived
+                // focus; once the user hand-drags, the drag-start effect above has
+                // already cleared the sticky, so the scroll focus takes over here.
+                val sticky = stickyTarget.intValue.takeIf { it >= 0 }
+                val idx = resolveSettledFocus(scrollFocus, sticky, cards.size)
+                if (idx == settledFocus.intValue) return@collect
                 settledFocus.intValue = idx
                 // Active page writes through setCurrentIndex (feeds activeState,
                 // the wheel routing and the chrome counter); inactive pages
@@ -307,10 +377,12 @@ internal fun DynamicPageDeck(
         if (!isActive) return@LaunchedEffect
         navRequests.collect { delta ->
             if (cards.isEmpty() || delta == 0) return@collect
+            // Step one card off the SETTLED focus (which now reflects a stuck
+            // card too), so wheeling down visits the second-to-last between the
+            // card before it and the last, and wheeling up returns from the last
+            // to the second-to-last and earlier, with no skipped index.
             val target = dynamicSnapTarget(settledFocus.intValue + delta, cards.size)
-            if (target != settledFocus.intValue) {
-                runCatching { listState.scrollToItemSnapped(target, cards.size) }
-            }
+            if (target != settledFocus.intValue) scrollToTarget(target)
         }
     }
     // Jump-to-card / widget deep-link targets. Snap the target so a programmatic
@@ -320,9 +392,7 @@ internal fun DynamicPageDeck(
         if (!isActive) return@LaunchedEffect
         jumpRequests.collect { targetIdx ->
             if (cards.isEmpty()) return@collect
-            runCatching {
-                listState.scrollToItemSnapped(dynamicSnapTarget(targetIdx, cards.size), cards.size)
-            }
+            scrollToTarget(dynamicSnapTarget(targetIdx, cards.size))
         }
     }
 
@@ -449,8 +519,12 @@ internal fun DynamicPageDeck(
                 // Routed through LocalOnCardTarget so each theme's title wires it
                 // without the deck reaching into the card internals.
                 val onCardTarget: () -> Unit = {
-                    if (isActive) vm.setCurrentIndex(idx) else vm.setIndexForPage(pageId, idx)
-                    deckScope.launch { runCatching { listState.scrollToItemSnapped(idx, cards.size) } }
+                    // Title tap selects this card explicitly: route through
+                    // scrollToTarget so the tap STICKS even on the stuck
+                    // second-to-last card (whose scroll is a no-op at the bottom
+                    // clamp), matching the wheel/jump path. scrollToTarget already
+                    // writes the focus through to the view model.
+                    deckScope.launch { scrollToTarget(idx) }
                 }
                 Box(
                     modifier = Modifier

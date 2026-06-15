@@ -203,3 +203,38 @@ fun dynamicFocusedIndex(visible: List<DynamicVisibleItem>, bandHeightPx: Int, it
  */
 fun dynamicSnapTarget(targetIndex: Int, itemCount: Int): Int =
     targetIndex.coerceIn(0, (itemCount - 1).coerceAtLeast(0))
+
+/**
+ * The settled focus the chrome counter / wheel routing should read, given the
+ * raw scroll-derived focus ([scrollFocus], picked by [dynamicFocusedIndex] from
+ * where the cards actually rest) and an optional [stickyTarget] the user
+ * EXPLICITLY selected (a wheel step, a pip jump or a title tap that fired a
+ * programmatic scroll).
+ *
+ * WHY this exists: the deck bottom-aligns the last card, so when the last two
+ * (or last few) cards fit together within the band, the bottom scroll clamp is
+ * reached before the second-to-last card's top can rise to the chrome. That card
+ * can never sit on its top-snap line, so [dynamicFocusedIndex] (distance to a
+ * card's OWN line) always hands focus to the bottom-aligned last card (distance
+ * 0) and the second-to-last is unreachable, unselectable, and SKIPPED by the pip
+ * (4/6 jumps straight to 6/6). When the user explicitly targets such a stuck
+ * card the scroll honestly cannot bring it onto its line, so the scroll-derived
+ * focus would immediately override the selection back to the last card.
+ *
+ * The rule: a live [stickyTarget] wins. Once the user explicitly selects a card,
+ * that index stays focused regardless of where the scroll could settle, so the
+ * stuck second-to-last is selectable and the wheel can step onto it. The caller
+ * clears [stickyTarget] the moment the user scrolls BY HAND to a card that
+ * settles cleanly (a non-programmatic rest), at which point the scroll-derived
+ * focus takes over again. A null [stickyTarget] (no explicit selection pending)
+ * is the common case and just passes the scroll focus through unchanged.
+ *
+ * Pure (no Compose) so the override decision is unit-tested without a
+ * composition. The sticky target is clamped defensively to the live deck.
+ */
+fun resolveSettledFocus(scrollFocus: Int, stickyTarget: Int?, itemCount: Int): Int =
+    when {
+        itemCount <= 0 -> 0
+        stickyTarget != null -> stickyTarget.coerceIn(0, itemCount - 1)
+        else -> scrollFocus.coerceIn(0, itemCount - 1)
+    }
