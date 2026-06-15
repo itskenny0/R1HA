@@ -271,8 +271,12 @@ fun EntityCard(
     // select / switch cards too.
     val auxOverrideAccent = perCardOverridePulledEarly?.accentColor
         ?.let { androidx.compose.ui.graphics.Color(it) }
-    val auxStyle = androidx.compose.runtime.remember(theme, state.id.value, auxOverrideAccent) {
-        theme.auxCardStyle(state.id.value, auxOverrideAccent)
+    // The Colourful Cards palette-set + background-design choice rides in on a CompositionLocal
+    // (default = the shipped VIVID/GRADIENT look). Key the remember on it so switching set or
+    // design rebuilds the aux backdrop; the other themes ignore it.
+    val colorfulConfig = com.github.itskenny0.r1ha.core.theme.LocalColorfulCardsConfig.current
+    val auxStyle = androidx.compose.runtime.remember(theme, state.id.value, auxOverrideAccent, colorfulConfig) {
+        theme.auxCardStyle(state.id.value, auxOverrideAccent, colorfulConfig)
     }
     androidx.compose.runtime.CompositionLocalProvider(
         com.github.itskenny0.r1ha.core.theme.LocalUiOptions provides mergedUi,

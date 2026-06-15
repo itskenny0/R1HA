@@ -41,6 +41,10 @@ data class AppBackup(
     val nightTheme: ThemeId = ThemeId.MINIMAL_DARK,
     val nightStartHour: Int = 22,
     val nightEndHour: Int = 6,
+    /** Colourful Cards palette set + background design. Defaulted to the shipped look so a
+     *  pre-feature backup restores the original Colourful Cards. */
+    val colorfulPaletteSet: ColorfulPaletteSet = ColorfulPaletteSet.VIVID,
+    val colorfulBackgroundDesign: ColorfulBackgroundDesign = ColorfulBackgroundDesign.GRADIENT,
 
     val wheelStepPercent: Int = 2,
     val wheelAcceleration: Boolean = true,
@@ -180,6 +184,8 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     nightTheme = nightTheme,
     nightStartHour = nightStartHour,
     nightEndHour = nightEndHour,
+    colorfulPaletteSet = colorfulPaletteSet,
+    colorfulBackgroundDesign = colorfulBackgroundDesign,
     wheelStepPercent = wheel.stepPercent,
     wheelAcceleration = wheel.acceleration,
     wheelInvertDirection = wheel.invertDirection,
@@ -261,6 +267,8 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
         nightTheme = nightTheme,
         nightStartHour = nightStartHour,
         nightEndHour = nightEndHour,
+        colorfulPaletteSet = colorfulPaletteSet,
+        colorfulBackgroundDesign = colorfulBackgroundDesign,
         wheel = WheelSettings(
             stepPercent = wheelStepPercent,
             acceleration = wheelAcceleration,

@@ -25,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import com.github.itskenny0.r1ha.core.prefs.ColorfulBackgroundDesign
+import com.github.itskenny0.r1ha.core.prefs.ColorfulPaletteSet
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
 import com.github.itskenny0.r1ha.core.prefs.ValueBarLocation
 import com.github.itskenny0.r1ha.core.util.areaLabel
@@ -63,23 +65,51 @@ object ColorfulCardsTheme : R1Theme {
     // Getter so the Material primary follows the live accent token (see sharedDarkBaseline).
     override val baseline get() = sharedDarkBaseline
 
-    // Six palettes, hashed per entity_id. Each runs bright→deep along the TL→BR
-    // diagonal so the darkest stop anchors the bottom-right corner where the value
-    // bar's lower ticks and the more-info dots live. The deep anchors are tuned to
-    // keep white text at a comfortable contrast (≥ ~6:1) without the gradients going
-    // muddy. NOTE: the stable hash maps id → palette via `hashCode % palette.size`,
-    // so changing the COUNT here reshuffles which entity gets which palette — accept
-    // that only when the set itself changes (as it did when teal + rose were added).
-    private val palette = listOf(
-        listOf(Color(0xFFFFB347), Color(0xFFFF6B1A), Color(0xFFA62B7C)), // warm: amber → orange → deep magenta
-        listOf(Color(0xFF41BDF5), Color(0xFF1B7BB8), Color(0xFF0D3B66)), // cool: sky → azure → navy
-        listOf(Color(0xFF52C77F), Color(0xFF2C8B5A), Color(0xFF154A35)), // green: mint → leaf → forest
-        listOf(Color(0xFF9B6BD8), Color(0xFF5B3B9E), Color(0xFF2E2057)), // violet: lilac → purple → indigo
-        listOf(Color(0xFF3FD8C2), Color(0xFF169E8F), Color(0xFF0B4F4A)), // teal: turquoise → teal → deep sea
-        listOf(Color(0xFFFF7E79), Color(0xFFE03E63), Color(0xFF6E1B45)), // rose: coral → raspberry → wine
-    )
-    private fun paletteFor(id: String): List<Color> =
-        palette[(id.hashCode().rem(palette.size) + palette.size) % palette.size]
+    // Inner panels (sensor chart box, the action/IR fire disc) read this instead of a
+    // hardcoded near-black fill. A TRANSLUCENT dark tint so the panel dims the gradient
+    // behind it just enough for legibility while the sky still shows through — it sits IN
+    // the gradient rather than punching a black hole. The dark themes keep the opaque
+    // R1.Surface default; only this theme's card identity is the backdrop.
+    override val cardPanelColor = Color.Black.copy(alpha = 0.34f)
+
+    // The six palettes are now data in [ColorfulPalettes] (one set per [ColorfulPaletteSet])
+    // so the per-entity mapping unit-tests on a plain JVM. Resolve the chosen set's gradient
+    // for an entity here, converting the packed ARGB stops to Compose Colours. NOTE: every
+    // set has six SLOTS in the same hue order, so the stable hash keeps an entity on its slot
+    // when the user switches sets — only the hue family of that slot changes.
+    private fun paletteFor(id: String, set: ColorfulPaletteSet): List<Color> =
+        ColorfulPalettes.paletteArgbFor(id, set).map { Color(it) }
+
+    /**
+     * Build the backdrop Brush for a card from its three palette stops and the chosen
+     * [ColorfulBackgroundDesign]. The palette (hue identity) is the same across designs;
+     * only the brush geometry changes:
+     *  - GRADIENT: the original TL→BR linear sweep through all three stops.
+     *  - MESH: a radial bloom — the bright stop pooled in the upper-left corner, easing
+     *    through the base to the deep anchor at the far edge, layered so it reads as a sky
+     *    lit from a corner rather than a straight diagonal band.
+     *  - DUOTONE: a near-hard vertical split — the bright stop band up top (where the header
+     *    lives), a short blend through the base, then the deep anchor filling the lower half.
+     */
+    private fun backdropBrush(stops: List<Color>, design: ColorfulBackgroundDesign): Brush =
+        when (design) {
+            ColorfulBackgroundDesign.GRADIENT -> Brush.linearGradient(stops)
+            ColorfulBackgroundDesign.MESH -> Brush.radialGradient(
+                colors = listOf(stops[0], stops[1], stops[2]),
+                // Pool the bright stop in the upper-left; a generous radius so the deep
+                // anchor only reaches the far (bottom-right) corner where the value bar's
+                // lower ticks live, matching the GRADIENT design's anchor placement.
+                center = Offset(0f, 0f),
+                radius = Float.POSITIVE_INFINITY,
+            )
+            ColorfulBackgroundDesign.DUOTONE -> Brush.verticalGradient(
+                0.00f to stops[0],
+                0.40f to stops[0],
+                0.58f to stops[1],
+                0.74f to stops[2],
+                1.00f to stops[2],
+            )
+        }
 
     // Top scrim — black easing out by ~62% height. The head alpha is data, not a
     // constant: [topScrimAlpha] reads the palette's brightest stop so a near-white amber
@@ -161,13 +191,19 @@ object ColorfulCardsTheme : R1Theme {
     override fun auxCardStyle(
         entityIdText: String,
         accentOverride: Color?,
-    ): AuxCardStyle = AuxCardStyle(
-        backdrop = Brush.linearGradient(
-            accentOverride?.let { overridePalette(it) } ?: paletteFor(entityIdText),
-        ),
-        scrim = auxTopScrim,
-        ink = auxInk,
-    )
+        config: ColorfulCardsConfig,
+    ): AuxCardStyle {
+        // A per-card colour override recolours the sky from the chosen base; otherwise the
+        // entity-id hash picks a palette from the user's chosen SET. Either way the backdrop
+        // is painted in the user's chosen DESIGN so aux cards match the main cards' look.
+        val stops = accentOverride?.let { overridePalette(it) }
+            ?: paletteFor(entityIdText, config.paletteSet)
+        return AuxCardStyle(
+            backdrop = backdropBrush(stops, config.backgroundDesign),
+            scrim = auxTopScrim,
+            ink = auxInk,
+        )
+    }
 
     /** Gradient stops derived from a per-card colour override; see [overrideGradientArgb]. */
     private fun overridePalette(base: Color): List<Color> =
@@ -197,15 +233,20 @@ object ColorfulCardsTheme : R1Theme {
         // the card's colour identity, so picking a colour in the customize sheet and
         // only tinting the slider read as "the override does nothing". Without an
         // override the entity-id hash picks from the stock palettes as before.
+        val config = LocalColorfulCardsConfig.current
         val overrideAccent = model.accentOverride
         val pal = overrideAccent?.let { ov ->
             androidx.compose.runtime.remember(ov) { overridePalette(ov) }
-        } ?: paletteFor(model.entityIdText)
-        // The gradient backdrop depends only on the (stable, interned) palette for
-        // this entity, so build the Brush once and reuse it. The card recomposes on
-        // every wheel detent (percent change); rebuilding the linear-gradient Brush
-        // each time was an allocation in the per-detent rendering path for no benefit.
-        val bgBrush = androidx.compose.runtime.remember(pal) { Brush.linearGradient(pal) }
+        } ?: androidx.compose.runtime.remember(model.entityIdText, config.paletteSet) {
+            paletteFor(model.entityIdText, config.paletteSet)
+        }
+        // The gradient backdrop depends only on the (stable) palette for this entity and the
+        // chosen background design, so build the Brush once and reuse it. The card recomposes
+        // on every wheel detent (percent change); rebuilding the Brush each time was an
+        // allocation in the per-detent rendering path for no benefit.
+        val bgBrush = androidx.compose.runtime.remember(pal, config.backgroundDesign) {
+            backdropBrush(pal, config.backgroundDesign)
+        }
         // Top scrim is palette-dependent (its head alpha is read from the bright stop),
         // so remember it on the same key as the gradient — both are stable per entity and
         // must stay out of the per-detent recomposition path.

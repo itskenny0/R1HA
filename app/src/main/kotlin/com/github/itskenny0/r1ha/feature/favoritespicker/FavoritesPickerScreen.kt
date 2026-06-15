@@ -99,6 +99,11 @@ fun FavoritesPickerScreen(
         com.github.itskenny0.r1ha.core.theme.LocalEntityOverrides provides appSettingsForOverrides.entityOverrides,
         com.github.itskenny0.r1ha.core.theme.LocalThemeAccentOverride provides appSettingsForOverrides.themeAccentArgb
             ?.let { androidx.compose.ui.graphics.Color(it) },
+        com.github.itskenny0.r1ha.core.theme.LocalColorfulCardsConfig provides
+            com.github.itskenny0.r1ha.core.theme.ColorfulCardsConfig(
+                appSettingsForOverrides.colorfulPaletteSet,
+                appSettingsForOverrides.colorfulBackgroundDesign,
+            ),
     ) {
     Box(modifier = Modifier.fillMaxSize().background(R1.Bg)) {
         Column(

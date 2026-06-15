@@ -258,6 +258,13 @@ class SettingsViewModel(
 
     fun setTheme(themeId: ThemeId) = update { it.copy(theme = themeId) }
 
+    /** Colourful Cards palette set + background design — only meaningful under that theme. */
+    fun setColorfulPaletteSet(set: com.github.itskenny0.r1ha.core.prefs.ColorfulPaletteSet) =
+        update { it.copy(colorfulPaletteSet = set) }
+
+    fun setColorfulBackgroundDesign(design: com.github.itskenny0.r1ha.core.prefs.ColorfulBackgroundDesign) =
+        update { it.copy(colorfulBackgroundDesign = design) }
+
     fun setAutoThemeEnabled(enabled: Boolean) = update { it.copy(autoThemeEnabled = enabled) }
 
     fun setNightTheme(themeId: ThemeId) = update { it.copy(nightTheme = themeId) }

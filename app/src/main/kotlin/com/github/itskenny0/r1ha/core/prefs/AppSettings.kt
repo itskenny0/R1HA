@@ -75,6 +75,65 @@ enum class DeckLayoutMode {
 }
 
 /**
+ * Which palette SET the "Colourful Cards" theme draws its per-entity gradient sky from.
+ * Each set is six 3-stop gradients; the theme hashes an entity_id onto one of the six,
+ * so the same entity keeps the same slot within a set and only its hue family changes
+ * when the user switches sets.
+ *
+ * VIVID  — the original saturated set (amber, sky, green, violet, teal, rose). Default,
+ *          so existing installs see no change.
+ * PASTEL — the same six hue families lifted and desaturated into a softer, chalkier sky;
+ *          gentler on a wall-mounted kiosk at night.
+ * NEON   — punchy electric stops with near-black anchors, for a high-contrast "synth"
+ *          look that pops on the R1's reflective panel.
+ *
+ * Only surfaced under the Colourful Cards theme (the other two themes ignore it).
+ */
+enum class ColorfulPaletteSet {
+    VIVID,
+    PASTEL,
+    NEON,
+    ;
+
+    companion object {
+        /** Decode a persisted enum name. Absent / unknown (a downgrade from a future
+         *  build, a hand-edited backup) falls back to [VIVID] so the theme keeps its
+         *  shipped look, the same lenient policy every other stored enum uses. */
+        fun fromStored(name: String?): ColorfulPaletteSet =
+            name?.let { n -> entries.firstOrNull { it.name == n } } ?: VIVID
+    }
+}
+
+/**
+ * How the "Colourful Cards" theme PAINTS the chosen per-entity palette behind a card.
+ * The palette (the three stops) is the same regardless; this only changes the brush
+ * geometry, so the per-entity hue identity is preserved across designs.
+ *
+ * GRADIENT — the original top-left → bottom-right linear sweep through all three stops.
+ *            Default, so existing installs see no change.
+ * MESH     — a radial bloom: the bright stop pooled in the upper-left corner fading out
+ *            to the deep anchor, layered over the base, for a soft "lit-from-a-corner"
+ *            sky rather than a straight diagonal band.
+ * DUOTONE  — a hard-ish two-tone split (bright band up top, deep anchor below) with a
+ *            short blend in the middle, a flatter editorial look that still seats the
+ *            header in the lighter band.
+ *
+ * Only surfaced under the Colourful Cards theme.
+ */
+enum class ColorfulBackgroundDesign {
+    GRADIENT,
+    MESH,
+    DUOTONE,
+    ;
+
+    companion object {
+        /** Decode a persisted enum name; absent / unknown → [GRADIENT] (the shipped look). */
+        fun fromStored(name: String?): ColorfulBackgroundDesign =
+            name?.let { n -> entries.firstOrNull { it.name == n } } ?: GRADIENT
+    }
+}
+
+/**
  * Display unit for temperature readouts. AUTO follows HA's reported unit
  * (`temperature_unit` attribute on climate entities, defaults to Celsius); CELSIUS and
  * FAHRENHEIT force the display + conversion regardless of HA's setting.
@@ -1430,6 +1489,15 @@ data class AppSettings(
      * editing one card at a time.
      */
     val themeAccentArgb: Int? = null,
+    /**
+     * "Colourful Cards" palette set + background design. Only consulted when [theme]
+     * is COLORFUL_CARDS; the other themes ignore both. Defaults reproduce the shipped
+     * look (the VIVID six-palette set painted as a diagonal GRADIENT), so existing
+     * installs render byte-for-byte unchanged. See [ColorfulPaletteSet] /
+     * [ColorfulBackgroundDesign].
+     */
+    val colorfulPaletteSet: ColorfulPaletteSet = ColorfulPaletteSet.VIVID,
+    val colorfulBackgroundDesign: ColorfulBackgroundDesign = ColorfulBackgroundDesign.GRADIENT,
     /**
      * Read-only "guest" mode. When true, the app refuses every outbound
      * service call (lights, switches, locks, media transport, scripts) and
