@@ -333,6 +333,105 @@ class DynamicDeckTest {
         assertThat(dynamicSnapTarget(targetIndex = 7, itemCount = 0)).isEqualTo(0)
     }
 
+    // ── the STUCK second-to-last card: focus stickiness ─────────────────────
+    // The deck bottom-aligns the last card; when the last cards fit together in
+    // the band the bottom scroll clamp is reached before the second-to-last
+    // card's top can rise to the chrome, so that card can never sit on its
+    // top-snap line. The scroll-derived focus always hands focus to the
+    // bottom-aligned last card there (distance 0), so without stickiness the
+    // second-to-last is unreachable and SKIPPED by the pip (4/6 -> 6/6).
+
+    @Test fun `at the bottom clamp the stuck second-to-last is never the scroll focus`() {
+        // The bug's geometry, 6-card deck (indices 0..5), 800 px band. Scrolled
+        // hard to the bottom: the last card (5) bottom-aligns (800 - 200 = 600,
+        // on its own line, distance 0); the second-to-last (4) sits above it
+        // (start 380), a top-aligner so its line is 0, distance 380 and never
+        // reachable. The scroll focus is the last card, so the pip would jump
+        // 4/6 -> 6/6: index 4 (the 5/6 card) is skipped.
+        val atBottomClamp = listOf(
+            DynamicVisibleItem(index = 4, offsetPx = 380, sizePx = 200),
+            DynamicVisibleItem(index = 5, offsetPx = 600, sizePx = 200),
+        )
+        val scrollFocus = dynamicFocusedIndex(atBottomClamp, bandHeightPx = 800, itemCount = 6)
+        assertThat(scrollFocus).isEqualTo(5)
+        // The second-to-last is genuinely stuck: its distance to its own line is
+        // large and positive (it can never reach the chrome at this clamp), while
+        // the last card rests exactly on its bottom line.
+        assertThat(380 - dynamicSnapStartPx(4, 200, 800, 6)).isGreaterThan(0)
+        assertThat(600 - dynamicSnapStartPx(5, 200, 800, 6)).isEqualTo(0)
+    }
+
+    @Test fun `a sticky target overrides the scroll focus so the stuck card is selectable`() {
+        // At the same bottom clamp the scroll-derived focus is the last card (5),
+        // but an explicit selection of the stuck second-to-last (4) sticks: the
+        // settled focus honours the sticky target, so 5/6 becomes selectable.
+        val scrollFocus = 5
+        assertThat(resolveSettledFocus(scrollFocus, stickyTarget = 4, itemCount = 6))
+            .isEqualTo(4)
+        // Selecting the last card explicitly also resolves to it.
+        assertThat(resolveSettledFocus(scrollFocus, stickyTarget = 5, itemCount = 6))
+            .isEqualTo(5)
+    }
+
+    @Test fun `with no sticky target the scroll focus passes through`() {
+        // The common case (no explicit selection pending): the scroll-derived
+        // focus is used unchanged.
+        assertThat(resolveSettledFocus(scrollFocus = 3, stickyTarget = null, itemCount = 6))
+            .isEqualTo(3)
+        assertThat(resolveSettledFocus(scrollFocus = 5, stickyTarget = null, itemCount = 6))
+            .isEqualTo(5)
+    }
+
+    @Test fun `resolveSettledFocus clamps both inputs to the live deck`() {
+        // Defensive: a stale sticky target or scroll focus past the deck end (a
+        // deck shrank under the selection) clamps to the last index, never out of
+        // range; an empty deck pins to 0.
+        assertThat(resolveSettledFocus(scrollFocus = 0, stickyTarget = 9, itemCount = 6))
+            .isEqualTo(5)
+        assertThat(resolveSettledFocus(scrollFocus = 0, stickyTarget = -1, itemCount = 6))
+            .isEqualTo(0)
+        assertThat(resolveSettledFocus(scrollFocus = 9, stickyTarget = null, itemCount = 6))
+            .isEqualTo(5)
+        assertThat(resolveSettledFocus(scrollFocus = 4, stickyTarget = 2, itemCount = 0))
+            .isEqualTo(0)
+    }
+
+    @Test fun `wheel stepping visits every index in order with no skip`() {
+        // Stepping the wheel one card at a time off the SETTLED focus (which now
+        // reflects a stuck card) must reach each index in turn. From the
+        // second-to-last (n-2 = 4) a +1 step reaches the last (5); from n-3 (3) a
+        // +1 step reaches n-2 (4): 4/6 -> 5/6 -> 6/6, no skip. Stepping back up
+        // from the last returns to the second-to-last, then earlier.
+        val n = 6
+        assertThat(dynamicSnapTarget(targetIndex = 3 + 1, itemCount = n)).isEqualTo(4)
+        assertThat(dynamicSnapTarget(targetIndex = 4 + 1, itemCount = n)).isEqualTo(5)
+        assertThat(dynamicSnapTarget(targetIndex = 5 - 1, itemCount = n)).isEqualTo(4)
+        assertThat(dynamicSnapTarget(targetIndex = 4 - 1, itemCount = n)).isEqualTo(3)
+        // The whole down sweep 0..n-1 with the focus carried forward as the
+        // sticky target each step lands on each index exactly once, in order.
+        var focus = 0
+        val visited = mutableListOf(focus)
+        repeat(n - 1) {
+            focus = dynamicSnapTarget(focus + 1, n)
+            // The explicit step always sticks (a stuck card included), so the
+            // next step is computed off it.
+            focus = resolveSettledFocus(scrollFocus = n - 1, stickyTarget = focus, itemCount = n)
+            visited += focus
+        }
+        assertThat(visited).containsExactly(0, 1, 2, 3, 4, 5).inOrder()
+    }
+
+    @Test fun `a cleared sticky target lets the scroll focus take over after a hand drag`() {
+        // After the user hand-drags (the deck clears the sticky), the settled
+        // focus follows the scroll again: a drag that rests at the bottom clamp
+        // focuses the genuinely-resting last card, not the previously-selected
+        // stuck second-to-last.
+        val scrollFocusAtClamp = 5
+        // Was sticky on the stuck card; the hand drag cleared it to null.
+        assertThat(resolveSettledFocus(scrollFocusAtClamp, stickyTarget = null, itemCount = 6))
+            .isEqualTo(5)
+    }
+
     // ── DeckLayoutMode storage codec + default ──────────────────────────────
 
     @Test fun `stored names round-trip`() {
