@@ -49,15 +49,15 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Colourful Cards reworked for readability, with palette sets (Vivid, Pastel, Neon) and switchable background designs.",
+    "Scene, script and IR cards are compact now: the fire button sits beside the title at about half the height.",
     "Deck cards top-align as you scroll, in natural order; tap a card's title to select it straight away.",
+    "Deck layout adds a Half-height peek mode, and Auto now flows the dynamic layout on phones.",
     "The value bar clicks under your finger on every card, not only the one the wheel is driving.",
-    "Lovelace cards are first-class deck cards now: they mix with favourites on any page and look native.",
-    "Add cards from your HA dashboards (browse, multi-select) or import a whole dashboard as pages.",
+    "Theme picker redesigned: clearer per-theme previews, selection state, and accent picker.",
+    "Lovelace cards are first-class deck cards: they mix with favourites on any page and look native.",
     "Broadlink IR/RF console under Settings: guided learn, test-fire, manage; commands live in HA as tagged automations.",
-    "Deck layout setting (Auto, Dynamic, Fullscreen): Dynamic flows cards at their content height and snaps card-to-card.",
-    "Entity cards show all their controls with a full-height value-bar slider; Lovelace and IR cards wear their titles.",
-    "IR and action buttons fire with style: a radiating signal pulse, an accent flare, a SENT flash and a haptic buzz.",
+    "Energy: the draw readout never clips, and the Today power total now matches the energy screen's DRAW.",
+    "Energy view: long-press a top consumer to exclude a mis-reporting sensor from every total; restore from EXCLUDED.",
     "About: install any GitHub release from a version list; thanks to Home Assistant, Nabu Casa and Open Home Foundation.",
-    "Energy view: long-press a top consumer to exclude a mis-reporting sensor from every total; restore it from EXCLUDED.",
-    "Scene, script and button cards fire with a tactile actuator: radiating pulse, accent flare, RAN flash and a buzz.",
 )
