@@ -17,12 +17,17 @@ enum class DeckLayout { FULLSCREEN, HALF_HEIGHT, DYNAMIC }
  *    [DeckLayoutMode.DYNAMIC] force that layout regardless of screen size.
  *    HALF_HEIGHT is the explicit half-height peek presentation (focused card
  *    centred, neighbours peeking); the caller forces peek on for it.
- *  - [DeckLayoutMode.AUTO] keeps only the R1's sub-compact panel
- *    ([WindowTier.R1]) on the historical full-viewport pager, where a
- *    content-sized block is too small to read or hit; every larger tier,
- *    phones ([WindowTier.COMPACT]) included, gets the (now mature)
- *    content-height DYNAMIC list. The half-height peek that AUTO used to
- *    produce on phones is the explicit [DeckLayoutMode.HALF_HEIGHT] mode now.
+ *  - [DeckLayoutMode.AUTO] keeps PHYSICALLY SMALL screens on the historical
+ *    full-viewport pager, where a content-sized block is too small to read or
+ *    hit, and gives every roomier screen the (now mature) content-height DYNAMIC
+ *    list. "Small" is decided by RAW pixels, not the dp width tier: the R1's
+ *    sub-compact panel ([WindowTier.R1]) and any other tiny device whose
+ *    shortest side is below [PEEK_MIN_SHORTEST_SIDE_PX] (e.g. a 480 px minimalist
+ *    "dumbphone" that still reports a COMPACT dp width) stay full-viewport, while
+ *    an ordinary phone (shortest side ~720 px+) gets DYNAMIC. The same raw-pixel
+ *    floor the peek deck uses, for the same reason: the dp tier alone can't tell
+ *    a real phone from a low-density toy panel. The half-height peek that AUTO
+ *    used to produce on phones is the explicit [DeckLayoutMode.HALF_HEIGHT] mode.
  *
  * When the resolved layout is DYNAMIC it supersedes the peek deck: the dynamic
  * list already shows neighbouring cards, so layering peek on top would be
@@ -32,12 +37,20 @@ enum class DeckLayout { FULLSCREEN, HALF_HEIGHT, DYNAMIC }
  * Kept pure (no Compose, no Android) so it can be unit-tested directly,
  * mirroring [effectivePeek].
  */
-fun effectiveDeckLayout(mode: DeckLayoutMode, tier: WindowTier): DeckLayout = when (mode) {
+fun effectiveDeckLayout(
+    mode: DeckLayoutMode,
+    tier: WindowTier,
+    shortestSidePx: Int,
+): DeckLayout = when (mode) {
     DeckLayoutMode.FULLSCREEN -> DeckLayout.FULLSCREEN
     DeckLayoutMode.HALF_HEIGHT -> DeckLayout.HALF_HEIGHT
     DeckLayoutMode.DYNAMIC -> DeckLayout.DYNAMIC
     DeckLayoutMode.AUTO ->
-        if (tier == WindowTier.R1) DeckLayout.FULLSCREEN else DeckLayout.DYNAMIC
+        if (tier == WindowTier.R1 || shortestSidePx < PEEK_MIN_SHORTEST_SIDE_PX) {
+            DeckLayout.FULLSCREEN
+        } else {
+            DeckLayout.DYNAMIC
+        }
 }
 
 /**

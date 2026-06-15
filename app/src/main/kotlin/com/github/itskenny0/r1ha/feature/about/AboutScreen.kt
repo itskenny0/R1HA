@@ -1189,7 +1189,12 @@ private fun DisplayDetectionRows(appSettings: AppSettings) {
     val layoutMode = appSettings.ui.deckLayoutMode
     InfoRow(
         "Deck layout",
-        deckLayoutExplanation(layoutMode, window.tier, effectiveDeckLayout(layoutMode, window.tier)),
+        deckLayoutExplanation(
+            layoutMode,
+            window.tier,
+            shortestPx,
+            effectiveDeckLayout(layoutMode, window.tier, shortestPx),
+        ),
     )
 }
 
@@ -1200,6 +1205,7 @@ private fun DisplayDetectionRows(appSettings: AppSettings) {
 private fun deckLayoutExplanation(
     mode: DeckLayoutMode,
     tier: WindowTier,
+    shortestSidePx: Int,
     layout: DeckLayout,
 ): String {
     val state = when (layout) {
@@ -1211,8 +1217,12 @@ private fun deckLayoutExplanation(
         DeckLayoutMode.FULLSCREEN -> "mode FULL"
         DeckLayoutMode.HALF_HEIGHT -> "mode HALF"
         DeckLayoutMode.DYNAMIC -> "mode DYNAMIC"
-        DeckLayoutMode.AUTO ->
-            if (tier == WindowTier.R1) "AUTO, R1 panel" else "AUTO, $tier is larger than the R1"
+        DeckLayoutMode.AUTO -> when {
+            tier == WindowTier.R1 -> "AUTO, R1 panel"
+            shortestSidePx < PEEK_MIN_SHORTEST_SIDE_PX ->
+                "AUTO, ${shortestSidePx}px is below the ${PEEK_MIN_SHORTEST_SIDE_PX}px small-screen floor"
+            else -> "AUTO, roomy enough for dynamic"
+        }
     }
     return "$state ($reason)"
 }

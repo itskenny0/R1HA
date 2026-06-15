@@ -10,37 +10,56 @@ class DynamicDeckTest {
 
     // ── effectiveDeckLayout: the AUTO -> mode resolution ────────────────────
 
-    @Test fun `forced modes win on every tier`() {
+    // A roomy phone's shortest side (well above the 600px floor); the dp tier
+    // can't tell a real phone from a tiny low-density panel, so the raw px decide.
+    private val ROOMY_PX = 1080
+
+    @Test fun `forced modes win on every tier and size`() {
         for (tier in WindowTier.entries) {
-            assertThat(effectiveDeckLayout(DeckLayoutMode.FULLSCREEN, tier))
-                .isEqualTo(DeckLayout.FULLSCREEN)
-            assertThat(effectiveDeckLayout(DeckLayoutMode.HALF_HEIGHT, tier))
-                .isEqualTo(DeckLayout.HALF_HEIGHT)
-            assertThat(effectiveDeckLayout(DeckLayoutMode.DYNAMIC, tier))
-                .isEqualTo(DeckLayout.DYNAMIC)
+            for (px in listOf(240, 480, 600, 1080)) {
+                assertThat(effectiveDeckLayout(DeckLayoutMode.FULLSCREEN, tier, px))
+                    .isEqualTo(DeckLayout.FULLSCREEN)
+                assertThat(effectiveDeckLayout(DeckLayoutMode.HALF_HEIGHT, tier, px))
+                    .isEqualTo(DeckLayout.HALF_HEIGHT)
+                assertThat(effectiveDeckLayout(DeckLayoutMode.DYNAMIC, tier, px))
+                    .isEqualTo(DeckLayout.DYNAMIC)
+            }
         }
     }
 
-    @Test fun `AUTO keeps only the R1 full-viewport`() {
-        // A content-sized block on the R1's sub-compact panel is too small to read
-        // or hit, so AUTO stays full-viewport there and nowhere else.
-        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.R1))
+    @Test fun `AUTO keeps the R1 full-viewport`() {
+        // The R1's sub-compact panel is too small for a content-sized block.
+        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.R1, shortestSidePx = 240))
             .isEqualTo(DeckLayout.FULLSCREEN)
     }
 
-    @Test fun `AUTO is dynamic on every tier larger than the R1`() {
-        // Phones (COMPACT) included now: the dynamic layout matured, so AUTO gives
-        // it everywhere there is room. The half-height peek AUTO used to produce on
-        // phones is the explicit HALF_HEIGHT mode.
+    @Test fun `AUTO keeps a small low-density device full-viewport even on a COMPACT tier`() {
+        // The "dumbphone" case: COMPACT dp width but only 480px on its shortest
+        // side, below the 600px floor, so it should be treated like the R1 and stay
+        // full-viewport rather than getting the cramped dynamic list.
+        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.COMPACT, shortestSidePx = 480))
+            .isEqualTo(DeckLayout.FULLSCREEN)
+        // Right at the floor is still small (the floor is the minimum to qualify as
+        // roomy, mirroring the peek rule's `>=`).
+        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.COMPACT, shortestSidePx = 599))
+            .isEqualTo(DeckLayout.FULLSCREEN)
+    }
+
+    @Test fun `AUTO is dynamic on a roomy phone or larger`() {
+        // An ordinary phone (~720px+ shortest side) and every larger tier get the
+        // matured dynamic list; the half-height peek is the explicit HALF_HEIGHT mode.
         for (tier in listOf(
             WindowTier.COMPACT,
             WindowTier.MEDIUM,
             WindowTier.EXPANDED,
             WindowTier.EXTRA_LARGE,
         )) {
-            assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, tier))
+            assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, tier, ROOMY_PX))
                 .isEqualTo(DeckLayout.DYNAMIC)
         }
+        // Exactly at the floor qualifies as roomy.
+        assertThat(effectiveDeckLayout(DeckLayoutMode.AUTO, WindowTier.COMPACT, shortestSidePx = 600))
+            .isEqualTo(DeckLayout.DYNAMIC)
     }
 
     // ── DYNAMIC_VALUE_BAR_HEIGHT_DP: the wrap-mode value-bar band ────────────

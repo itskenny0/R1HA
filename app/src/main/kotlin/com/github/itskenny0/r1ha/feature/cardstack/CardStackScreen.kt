@@ -961,11 +961,16 @@ fun CardStackScreen(
                 // clears the pixel floor. See PEEK_MIN_SHORTEST_SIDE_PX.
                 val windowPx = androidx.compose.ui.platform.LocalWindowInfo.current.containerSize
                 // Deck layout, resolved once per composition from the user's
-                // setting + the window tier (AUTO = full-viewport only on the R1,
-                // content-height DYNAMIC on every larger tier including phones).
-                // A settings change flows through appSettings and re-renders the
-                // decks live.
-                val deckLayout = effectiveDeckLayout(appSettings.ui.deckLayoutMode, windowTier)
+                // setting + the window tier + the raw window pixels. AUTO keeps
+                // physically small screens (the R1, and any sub-600px-shortest-side
+                // device like a low-density "dumbphone") on the full-viewport pager
+                // and gives roomier screens the content-height DYNAMIC list. A
+                // settings change flows through appSettings and re-renders live.
+                val deckLayout = effectiveDeckLayout(
+                    appSettings.ui.deckLayoutMode,
+                    windowTier,
+                    shortestSidePx = minOf(windowPx.width, windowPx.height),
+                )
                 // Whether the (full-viewport) deck renders the half-height peek
                 // presentation. HALF_HEIGHT is the explicit force-peek mode;
                 // FULLSCREEN consults the user's CardPeekMode (the historical
