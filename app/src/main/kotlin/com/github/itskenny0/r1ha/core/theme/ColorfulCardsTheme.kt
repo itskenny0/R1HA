@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.core.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +19,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.prefs.DisplayMode
@@ -37,12 +40,21 @@ import com.github.itskenny0.r1ha.ui.components.r1Pressable
  * just a pretty wrapper; the distinct identity here is the gradient backdrop and the
  * always-white ink/accent.
  *
- * Legibility on the gradients comes from two quiet layers rather than dimming the
- * palettes themselves: a top scrim that eases out by mid-card (the header, name, and
- * big readout all live in the top band — which is also where the linear TL→BR
- * gradient is at its brightest stop), and a narrow edge scrim under the value bar so
- * the white fill, thumb, and tick numerals sit on a seated rail instead of floating
- * on the vivid mid-stops. Both are constant brushes shared across every card.
+ * Legibility on the gradients comes from quiet layers rather than dimming the palettes
+ * themselves:
+ *  - a top scrim whose head alpha is tuned PER PALETTE ([topScrimAlpha]) — the header,
+ *    name, last-changed line, and big readout all live in the top band, which is exactly
+ *    where the TL→BR gradient is lightest, so an amber card (near-white bright stop) earns
+ *    a firmer scrim while a navy card (already dark) is barely touched;
+ *  - a shallow bottom anchor so the brightness chips, the on/off pill, and any per-domain
+ *    panel beneath them sit on a seated base instead of floating on a vivid mid-stop;
+ *  - a narrow edge scrim under a vertical value bar so the white fill, thumb, and tick
+ *    numerals read on a rail rather than on the gradient's brightest run;
+ *  - a soft 1px ink shadow on the name and header glyphs so the white type keeps an edge
+ *    even where a bright stop bleeds through the scrim.
+ *
+ * The bottom anchor and edge scrims are constant; the top scrim is built once per palette
+ * (cheap — a vertical gradient of two stops) and reused across the card's recompositions.
  */
 object ColorfulCardsTheme : R1Theme {
     override val id = ThemeId.COLORFUL_CARDS
@@ -69,14 +81,50 @@ object ColorfulCardsTheme : R1Theme {
     private fun paletteFor(id: String): List<Color> =
         palette[(id.hashCode().rem(palette.size) + palette.size) % palette.size]
 
-    // Top scrim — black easing out by ~60% height. The intermediate stop softens the
-    // fade so the scrim itself doesn't band; below it the gradient stays fully vivid
-    // (the on/off pill and preset chips carry their own translucent backing).
-    private val topScrim = Brush.verticalGradient(
-        0.00f to Color.Black.copy(alpha = 0.38f),
-        0.30f to Color.Black.copy(alpha = 0.18f),
-        0.60f to Color.Transparent,
+    // Top scrim — black easing out by ~62% height. The head alpha is data, not a
+    // constant: [topScrimAlpha] reads the palette's brightest stop so a near-white amber
+    // head gets a firm seat while navy is barely shaded. The intermediate stop is half
+    // the head so the fade never bands; below it the gradient stays fully vivid (the
+    // bottom anchor and the chips' own backings carry the lower band). Built once per
+    // palette and remembered by the caller, so this allocation never lands in the
+    // per-detent recomposition path.
+    private fun topScrimFor(palette: List<Color>): Brush {
+        val head = topScrimAlpha(palette.first().toArgb())
+        return Brush.verticalGradient(
+            0.00f to Color.Black.copy(alpha = head),
+            0.32f to Color.Black.copy(alpha = head * 0.5f),
+            0.62f to Color.Transparent,
+            1.00f to Color.Transparent,
+        )
+    }
+
+    // Aux-card scrim — a single fixed head for the synthetic preview / aux surfaces that
+    // don't carry a live percent. Mirrors the mid-band of [topScrimFor] so a sensor tile
+    // next to a light card reads as the same theme without per-aux palette plumbing.
+    private val auxTopScrim = Brush.verticalGradient(
+        0.00f to Color.Black.copy(alpha = 0.44f),
+        0.32f to Color.Black.copy(alpha = 0.22f),
+        0.62f to Color.Transparent,
         1.00f to Color.Transparent,
+    )
+
+    // Bottom anchor — a shallow black foot rising ~24% up from the card's base. The
+    // brightness chips, the on/off pill, and any per-domain panel render in this band;
+    // without it they floated on whatever vivid mid-stop the gradient happened to be at,
+    // and the translucent-black chip backings alone weren't enough to seat white labels.
+    private val bottomAnchor = Brush.verticalGradient(
+        0.00f to Color.Transparent,
+        0.76f to Color.Transparent,
+        1.00f to Color.Black.copy(alpha = 0.28f),
+    )
+
+    // Soft ink shadow for the white headline + header glyphs. One short, low-blur drop in
+    // near-black gives the type a defined edge where a bright stop bleeds through the
+    // scrim, without the muddy halo a wide blur would smear across the gradient.
+    private val inkShadow = Shadow(
+        color = Color.Black.copy(alpha = 0.55f),
+        offset = Offset(0f, 1f),
+        blurRadius = 3f,
     )
 
     // Edge scrims for the value bar. Only the vertical LEFT/RIGHT placements get one
@@ -117,7 +165,7 @@ object ColorfulCardsTheme : R1Theme {
         backdrop = Brush.linearGradient(
             accentOverride?.let { overridePalette(it) } ?: paletteFor(entityIdText),
         ),
-        scrim = topScrim,
+        scrim = auxTopScrim,
         ink = auxInk,
     )
 
@@ -158,6 +206,10 @@ object ColorfulCardsTheme : R1Theme {
         // every wheel detent (percent change); rebuilding the linear-gradient Brush
         // each time was an allocation in the per-detent rendering path for no benefit.
         val bgBrush = androidx.compose.runtime.remember(pal) { Brush.linearGradient(pal) }
+        // Top scrim is palette-dependent (its head alpha is read from the bright stop),
+        // so remember it on the same key as the gradient — both are stable per entity and
+        // must stay out of the per-detent recomposition path.
+        val topScrim = androidx.compose.runtime.remember(pal) { topScrimFor(pal) }
         val ui = LocalUiOptions.current
         // Accent is white for body text + slider. When a per-card override exists it
         // now paints the backdrop, so the accent FALLS BACK to white: a fill the same
@@ -191,6 +243,7 @@ object ColorfulCardsTheme : R1Theme {
                 .then(if (fillSlot) Modifier.fillMaxSize() else Modifier)
                 .background(bgBrush)
                 .background(topScrim)
+                .background(bottomAnchor)
                 .let { m -> if (edgeScrim != null) m.background(edgeScrim) else m }
                 .padding(
                     start = 22.dp,
@@ -238,7 +291,7 @@ object ColorfulCardsTheme : R1Theme {
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = domainLabel(model.domainGlyph),
-                        style = R1.labelMicro,
+                        style = R1.labelMicro.copy(shadow = inkShadow),
                         color = Color.White,
                     )
                     if (ui.showAreaLabel && !model.area.isNullOrBlank()) {
@@ -255,7 +308,10 @@ object ColorfulCardsTheme : R1Theme {
                 Spacer(Modifier.height(6.dp))
                 Text(
                     text = model.friendlyName,
-                    style = R1.titleCard,
+                    // Soft drop so the name keeps a defined edge over a bright stop that
+                    // bleeds through the scrim; the readout below leans on the top scrim's
+                    // firmer head instead (it's a shared component, no per-theme shadow).
+                    style = R1.titleCard.copy(shadow = inkShadow),
                     color = Color.White,
                     maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -334,7 +390,14 @@ object ColorfulCardsTheme : R1Theme {
                                     .clip(R1.ShapeS)
                                     .background(
                                         if (isCurrent) accent
-                                        else Color.Black.copy(alpha = 0.26f),
+                                        else Color.Black.copy(alpha = 0.30f),
+                                    )
+                                    // Hairline so an inactive chip reads as a real control
+                                    // on the gradient rather than a vague dark smudge; the
+                                    // active accent chip needs no outline (it carries weight).
+                                    .then(
+                                        if (isCurrent) Modifier
+                                        else Modifier.border(1.dp, Color.White.copy(alpha = 0.16f), R1.ShapeS),
                                     )
                                     .r1Pressable(onClick = {
                                         onSetPercent?.invoke(
@@ -462,12 +525,18 @@ object ColorfulCardsTheme : R1Theme {
                     val (pillLabel, pillFg, pillBg) = if (model.isOn) {
                         Triple("● ON", R1.Bg, accent)
                     } else {
-                        Triple("○ OFF", Color.White.copy(alpha = 0.80f), Color.Black.copy(alpha = 0.26f))
+                        Triple("○ OFF", Color.White.copy(alpha = 0.82f), Color.Black.copy(alpha = 0.32f))
                     }
                     Box(
                         modifier = Modifier
                             .clip(R1.ShapeRound)
                             .background(pillBg)
+                            // The OFF pill earns a hairline so it reads as a status capsule
+                            // on the gradient; ON is solid accent and needs no outline.
+                            .then(
+                                if (model.isOn) Modifier
+                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.18f), R1.ShapeRound),
+                            )
                             .padding(horizontal = 14.dp, vertical = 6.dp),
                     ) {
                         Text(

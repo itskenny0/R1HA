@@ -51,4 +51,29 @@ class PaletteDeriveTest {
         assertThat(relativeLuminance(white)).isWithin(0.001f).of(1.0f)
         assertThat(relativeLuminance(black)).isWithin(0.001f).of(0.0f)
     }
+
+    @Test fun `scrim alpha stays within the tuned band`() {
+        // The header band must never go fully opaque (that would kill the gradient
+        // identity) nor below the navy floor (white text would smear on a bright stop).
+        for (stop in listOf(white, black, orange, 0xFF41BDF5.toInt(), 0xFFFFB347.toInt())) {
+            val a = topScrimAlpha(stop)
+            assertThat(a).isAtLeast(SCRIM_ALPHA_MIN)
+            assertThat(a).isAtMost(SCRIM_ALPHA_MAX)
+        }
+    }
+
+    @Test fun `brighter stops get a heavier scrim`() {
+        // The amber palette's lifted stop (0xFFB347) is far brighter than the navy
+        // palette's (0x41BDF5), so it must earn more darkening behind white ink.
+        val amberHead = 0xFFFFB347.toInt()
+        val skyHead = 0xFF41BDF5.toInt()
+        assertThat(topScrimAlpha(amberHead)).isGreaterThan(topScrimAlpha(skyHead))
+    }
+
+    @Test fun `a near-white stop reaches the ceiling and black bottoms out`() {
+        // Monotonic endpoints: white pins to MAX, black to MIN. Guards against a
+        // future ramp tweak silently inverting the relationship.
+        assertThat(topScrimAlpha(white)).isWithin(0.001f).of(SCRIM_ALPHA_MAX)
+        assertThat(topScrimAlpha(black)).isWithin(0.001f).of(SCRIM_ALPHA_MIN)
+    }
 }
