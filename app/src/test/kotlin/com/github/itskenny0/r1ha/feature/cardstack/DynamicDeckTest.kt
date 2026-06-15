@@ -154,6 +154,105 @@ class DynamicDeckTest {
             .isEqualTo(0)
     }
 
+    @Test fun `the last card top-aligns when the hybrid flag is off`() {
+        // Fitting-tail hybrid: with lastCardBottomAligns = false the last card
+        // snaps to the top (0) like the others, instead of its bottom-align line.
+        assertThat(
+            dynamicSnapStartPx(
+                itemIndex = 4, itemSizePx = 200, bandHeightPx = 800, itemCount = 5,
+                lastCardBottomAligns = false,
+            ),
+        ).isEqualTo(0)
+        // Same inputs with the flag on keep the bottom-align line.
+        assertThat(
+            dynamicSnapStartPx(
+                itemIndex = 4, itemSizePx = 200, bandHeightPx = 800, itemCount = 5,
+                lastCardBottomAligns = true,
+            ),
+        ).isEqualTo(600)
+    }
+
+    // ── dynamicLastCardBottomAligns: the hybrid tail-fits decision ───────────
+    // Flush bottom only when the last card is tall / alone (the tail does NOT
+    // fit together); a fitting tail flips to top-align so it is scroll-steppable.
+
+    @Test fun `the last card stays flush when the tail does not fit together`() {
+        // last 500 + gap 24 + secondToLast 400 = 924 >= 800 band: the second-to-last
+        // already tops out before the last-flush clamp, so flush is safe (true).
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = 500, secondToLastCardHeightPx = 400, gapPx = 24, itemCount = 6),
+        ).isTrue()
+        // Exactly filling the band (sum + gap == band) is the boundary: deficit 0,
+        // no conflict, stay flush.
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = 400, secondToLastCardHeightPx = 376, gapPx = 24, itemCount = 6),
+        ).isTrue()
+    }
+
+    @Test fun `the last card top-aligns when the tail fits together`() {
+        // last 200 + gap 24 + secondToLast 120 = 344 < 800: deficit 456 > 0, the
+        // second-to-last is stranded by a flush last card, so top-align (false).
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = 200, secondToLastCardHeightPx = 120, gapPx = 24, itemCount = 6),
+        ).isFalse()
+    }
+
+    @Test fun `the hybrid decision defaults to flush until measured or trivial`() {
+        // Unmeasured heights (null): keep the flush look until the first layout.
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = null, secondToLastCardHeightPx = 120, gapPx = 24, itemCount = 6),
+        ).isTrue()
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = 200, secondToLastCardHeightPx = null, gapPx = 24, itemCount = 6),
+        ).isTrue()
+        // A 0/1-card deck has no real "tail"; the flag is inert (the lone card
+        // top-aligns via the index<=0 branch), so the default true is fine.
+        assertThat(
+            dynamicLastCardBottomAligns(800, lastCardHeightPx = 100, secondToLastCardHeightPx = 100, gapPx = 24, itemCount = 1),
+        ).isTrue()
+    }
+
+    // ── dynamicLastCardTopPaddingPx: the spacer for a top-aligned last card ──
+
+    @Test fun `the top-align spacer is band minus last height, only when top-aligning`() {
+        // Top-aligning (flag false): exactly band - lastHeight so the last card's
+        // top can climb to the chrome.
+        assertThat(
+            dynamicLastCardTopPaddingPx(800, lastCardHeightPx = 200, lastCardBottomAligns = false),
+        ).isEqualTo(600)
+        // Bottom-aligning (flush): no spacer, the bottom clamp seats it.
+        assertThat(
+            dynamicLastCardTopPaddingPx(800, lastCardHeightPx = 200, lastCardBottomAligns = true),
+        ).isEqualTo(0)
+    }
+
+    @Test fun `the top-align spacer is zero before measurement and never negative`() {
+        // Unmeasured last height: no spacer yet.
+        assertThat(
+            dynamicLastCardTopPaddingPx(800, lastCardHeightPx = null, lastCardBottomAligns = false),
+        ).isEqualTo(0)
+        // A last card taller than the band would give a negative spacer; clamp to 0
+        // (it already fills the band and reaches the top with no slack).
+        assertThat(
+            dynamicLastCardTopPaddingPx(800, lastCardHeightPx = 1000, lastCardBottomAligns = false),
+        ).isEqualTo(0)
+    }
+
+    @Test fun `a top-aligned last card is focused at the top by the focus math`() {
+        // Mirror of the snap rule in the focus picker: with the flag off, the last
+        // card resting at the top (norm 0) wins focus over a second-to-last that has
+        // scrolled above the chrome. lastH 200, secondToLastH 120, gap 24, band 800.
+        val visible = listOf(
+            // second-to-last scrolled partly off the top (negative norm).
+            DynamicVisibleItem(index = 3, offsetPx = -344, sizePx = 120),
+            // last card flush at the top.
+            DynamicVisibleItem(index = 4, offsetPx = 0, sizePx = 200),
+        )
+        assertThat(
+            dynamicFocusedIndex(visible, bandHeightPx = 800, itemCount = 5, lastCardBottomAligns = false),
+        ).isEqualTo(4)
+    }
+
     // ── snap provider / focus FRAME AGREEMENT ───────────────────────────────
     // The single invariant the whole deck rests on: the line the provider lands
     // a card on (beforeContentPadding + providerOffset) must equal the line the

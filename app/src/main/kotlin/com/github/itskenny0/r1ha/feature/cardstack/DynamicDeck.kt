@@ -107,30 +107,109 @@ data class DynamicVisibleItem(val index: Int, val offsetPx: Int, val sizePx: Int
  *    top clamp from the very first frame, the rest rise to the top as the user
  *    scrolls down. Natural order falls out of this: scroll up = first card at
  *    the top, scroll down = the next card rises to the top.
- *  - The LAST card (index n-1) BOTTOM-aligns: start at `band - itemHeight`, so
- *    its bottom edge sits flush with the band bottom. It can't top-align without
- *    leaving a full-viewport void below it (nothing follows it), so it rests
- *    against the bottom instead, where the bottom scroll clamp already puts it,
- *    and is the focused card there. A last card at least as tall as the band
- *    bottom-aligns at <= 0, which clamps to 0 (it simply top-aligns; never snap
- *    below the top).
+ *  - The LAST card (index n-1) BOTTOM-aligns (when [lastCardBottomAligns], the
+ *    default): start at `band - itemHeight`, so its bottom edge sits flush with
+ *    the band bottom. It rests against the bottom, where the bottom scroll clamp
+ *    already puts it, and is the focused card there. A last card at least as tall
+ *    as the band bottom-aligns at <= 0, which clamps to 0 (it simply top-aligns;
+ *    never snap below the top).
+ *  - HYBRID: when the last card and the second-to-last FIT in the band together,
+ *    bottom-aligning the last card makes the second-to-last unreachable by scroll
+ *    (the bottom clamp is hit before its top can climb to the chrome). In that
+ *    case the caller passes [lastCardBottomAligns] = false and the last card
+ *    TOP-aligns like the others (with a bottom spacer the caller adds so it can
+ *    reach the top), so the whole fitting tail is scroll-steppable; the cost is a
+ *    spacer below the last card instead of a flush rest. The flush bottom is kept
+ *    only when the last card is tall / alone (the tail does not fit together),
+ *    where there is no such conflict. [dynamicLastCardBottomAligns] is the shared
+ *    decision; the caller passes its result here and to the focus math so the two
+ *    never disagree about the last card's rest line.
  *  - A single-card deck: that card is both first and last; the `itemIndex <= 0`
- *    branch wins, so it top-aligns flush at 0.
+ *    branch wins, so it top-aligns flush at 0 regardless of the flag.
  *
  * Pure (no Compose) so the snap/focus frame agreement is unit-tested directly.
  * Item indices below 0 are treated as item 0 (defensive).
  */
-fun dynamicSnapStartPx(itemIndex: Int, itemSizePx: Int, bandHeightPx: Int, itemCount: Int): Int =
+fun dynamicSnapStartPx(
+    itemIndex: Int,
+    itemSizePx: Int,
+    bandHeightPx: Int,
+    itemCount: Int,
+    lastCardBottomAligns: Boolean = true,
+): Int =
     when {
         // Single-card deck: first and last at once; the top-align branch wins so
         // a lone card sits flush under the chrome rather than bottom-aligning.
         itemIndex <= 0 -> 0
         // Last card bottom-aligns: its bottom edge flush with the band bottom.
-        // Clamp so a band-taller card never snaps above the top.
-        itemIndex >= itemCount - 1 -> (bandHeightPx - itemSizePx).coerceAtLeast(0)
+        // Clamp so a band-taller card never snaps above the top. When the tail
+        // fits together the caller flips the flag off and the last card top-aligns
+        // (0) so the fitting tail stays scroll-steppable.
+        itemIndex >= itemCount - 1 ->
+            if (lastCardBottomAligns) (bandHeightPx - itemSizePx).coerceAtLeast(0) else 0
         // Every other card top-aligns flush under the chrome.
         else -> 0
     }
+
+/**
+ * Whether the deck's LAST card should BOTTOM-align (rest flush at the band
+ * bottom) rather than top-align like the others, given the live-measured last and
+ * second-to-last card heights, the band span and the inter-card gap.
+ *
+ * The single source of truth for the hybrid rule (see [dynamicSnapStartPx]). The
+ * last card stays flush ONLY when the tail does NOT fit together: when
+ * `lastHeight + gap + secondToLastHeight >= band`, the second-to-last card's top
+ * reaches the chrome at a scroll position BEFORE the last-flush bottom clamp, so
+ * both ends are scroll-focusable and the last card can rest flush with no cost.
+ * When the tail DOES fit together (deficit > 0) bottom-aligning the last card
+ * would strand the second-to-last (the bottom clamp blocks its rise to the
+ * chrome), so the last card top-aligns instead and the caller pads the list so it
+ * can reach the top, making the whole tail scroll-steppable.
+ *
+ *  - A 0/1-card deck: the lone card top-aligns via [dynamicSnapStartPx]'s
+ *    `itemIndex <= 0` branch, so the flag is moot; return true (flush) as the
+ *    inert default.
+ *  - Heights not yet measured (null): keep the flush look (true) until the first
+ *    layout reports them, then the fitting tail flips to top-align.
+ *
+ * Pure (no Compose) so the decision is unit-tested directly.
+ */
+fun dynamicLastCardBottomAligns(
+    bandHeightPx: Int,
+    lastCardHeightPx: Int?,
+    secondToLastCardHeightPx: Int?,
+    gapPx: Int,
+    itemCount: Int,
+): Boolean {
+    if (itemCount <= 1) return true
+    if (lastCardHeightPx == null || secondToLastCardHeightPx == null) return true
+    val deficit = bandHeightPx - lastCardHeightPx - gapPx - secondToLastCardHeightPx
+    return deficit <= 0
+}
+
+/**
+ * The bottom content padding (px) the deck needs WHEN the last card top-aligns
+ * (the fitting-tail branch of the hybrid, [dynamicLastCardBottomAligns] = false):
+ * exactly `band - lastHeight`, the slack that lets the last card's top climb to
+ * the chrome (below it is only this spacer, since nothing follows the last card).
+ * That much padding is precisely enough for the last card to reach the top no
+ * matter how many cards precede it: the last card's natural offset is
+ * `totalContent - lastHeight`, and the max scroll with this pad is
+ * `totalContent + pad - band = totalContent - lastHeight`, which meets it.
+ *
+ * 0 when the last card bottom-aligns (flush; it reaches its rest at the plain
+ * bottom clamp, no pad needed) or before the last height is measured. Clamped
+ * non-negative.
+ *
+ * Pure (no Compose) so it is unit-tested directly.
+ */
+fun dynamicLastCardTopPaddingPx(
+    bandHeightPx: Int,
+    lastCardHeightPx: Int?,
+    lastCardBottomAligns: Boolean,
+): Int =
+    if (lastCardBottomAligns || lastCardHeightPx == null) 0
+    else (bandHeightPx - lastCardHeightPx).coerceAtLeast(0)
 
 /**
  * The value the deck's [androidx.compose.foundation.gestures.snapping.SnapPosition]
@@ -158,7 +237,10 @@ fun dynamicSnapProviderOffsetPx(
     layoutSizePx: Int,
     beforeContentPaddingPx: Int,
     itemCount: Int,
-): Int = dynamicSnapStartPx(itemIndex, itemSizePx, layoutSizePx, itemCount) - beforeContentPaddingPx
+    lastCardBottomAligns: Boolean = true,
+): Int =
+    dynamicSnapStartPx(itemIndex, itemSizePx, layoutSizePx, itemCount, lastCardBottomAligns) -
+        beforeContentPaddingPx
 
 /**
  * Which item of the dynamic deck is the FOCUSED one: the item whose CURRENT
@@ -175,11 +257,17 @@ fun dynamicSnapProviderOffsetPx(
  * [itemCount] is passed through so the last card's snap line is computed as its
  * bottom-align line, the same line the provider lands it on.
  */
-fun dynamicFocusedIndex(visible: List<DynamicVisibleItem>, bandHeightPx: Int, itemCount: Int): Int {
+fun dynamicFocusedIndex(
+    visible: List<DynamicVisibleItem>,
+    bandHeightPx: Int,
+    itemCount: Int,
+    lastCardBottomAligns: Boolean = true,
+): Int {
     var bestIndex = 0
     var bestDistance = Int.MAX_VALUE
     for (item in visible) {
-        val snapStart = dynamicSnapStartPx(item.index, item.sizePx, bandHeightPx, itemCount)
+        val snapStart =
+            dynamicSnapStartPx(item.index, item.sizePx, bandHeightPx, itemCount, lastCardBottomAligns)
         val distance = kotlin.math.abs(item.offsetPx - snapStart)
         // Strict less-than: on a tie the earlier item (lists are in index
         // order) keeps the focus.

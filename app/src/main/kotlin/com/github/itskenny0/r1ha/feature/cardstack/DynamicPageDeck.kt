@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.snapping.snapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,12 +30,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
@@ -68,17 +71,20 @@ import kotlinx.coroutines.flow.filterNotNull
  *
  * Cards remain discrete snap targets: a snapping fling
  * ([SnapLayoutInfoProvider] over the list state, the PER-ITEM
- * [dynamicSnapPosition]) settles every gesture on a card's snap line. The deck
- * TOP-ALIGNS: every card snaps so its TOP edge sits flush under the chrome,
- * EXCEPT the last card, which BOTTOM-aligns so its bottom edge sits flush with
- * the band bottom (nothing follows it, so top-aligning it would leave a
- * full-viewport void). The natural scroll order falls straight out of that:
- * scroll all the way up and the first card is focused at the top; scroll down
- * and the next card rises to the top and takes focus; scroll to the bottom and
- * the last card rests flush at the bottom, focused. No content padding is
- * needed (a non-last card always reaches the top by scrolling up; the last card
- * always reaches the bottom at the bottom scroll clamp) and there is no float to
- * hide: the first card is flush at the top from the very first frame. The
+ * [DynamicSnapPosition]) settles every gesture on a card's snap line. The deck
+ * TOP-ALIGNS: every card snaps so its TOP edge sits flush under the chrome. The
+ * LAST card is the HYBRID case (see [dynamicLastCardBottomAligns]): when it is
+ * tall / alone it BOTTOM-aligns so its bottom edge sits flush with the band
+ * bottom (nothing follows it, so top-aligning it would leave a void) and it owns
+ * the bottom scroll clamp; but when the last two cards FIT in the band together,
+ * bottom-aligning would strand the second-to-last (the clamp blocks its rise to
+ * the chrome), so the last card TOP-aligns like the others with a bottom spacer
+ * ([dynamicLastCardTopPaddingPx]) and the whole tail becomes scroll-steppable.
+ * The natural scroll order falls straight out of that: scroll up and the first
+ * card is focused at the top; scroll down and each next card rises to the top and
+ * takes focus; scroll to the bottom and the last card rests (flush, or top-aligned
+ * with the spacer below it in the fitting-tail case), focused. There is no float
+ * to hide: the first card is flush at the top from the very first frame. The
  * focused card (nearest its own snap line, see [dynamicFocusedIndex]) is the one
  * the WHEEL and hardware keys drive.
  *
@@ -118,10 +124,14 @@ import kotlinx.coroutines.flow.filterNotNull
  * still subtract it so the frame stays correct for any padding the framework
  * reports.
  *
- * Object (not a lambda) so it is a stable singleton across recompositions; it
- * holds no state, only the index-keyed rule.
+ * Carries the hybrid [lastCardBottomAligns] flag (the caller recreates it, keyed
+ * on the live decision, like the fling) so the last card's snap line flips
+ * between its bottom-align rest and a top-align rest exactly when
+ * [dynamicLastCardBottomAligns] does. Holds only that flag, no scroll state.
  */
-private val dynamicSnapPosition = object : SnapPosition {
+private class DynamicSnapPosition(
+    private val lastCardBottomAligns: Boolean,
+) : SnapPosition {
     override fun position(
         layoutSize: Int,
         itemSize: Int,
@@ -136,6 +146,7 @@ private val dynamicSnapPosition = object : SnapPosition {
             layoutSizePx = layoutSize,
             beforeContentPaddingPx = beforeContentPadding,
             itemCount = itemCount,
+            lastCardBottomAligns = lastCardBottomAligns,
         )
     }
 }
@@ -143,32 +154,36 @@ private val dynamicSnapPosition = object : SnapPosition {
 /**
  * Put the [index] item on its SNAP line: cards 0..n-2 FLUSH at the chrome (top),
  * the last card FLUSH at the band bottom, matching where a fling would have
- * settled under [dynamicSnapPosition]. [animated] picks the smooth scroll (nav /
+ * settled under [DynamicSnapPosition]. [animated] picks the smooth scroll (nav /
  * jump targets) or an instant one (rare; placement now leans on the list state's
  * initial index instead).
  *
  * [LazyListState.scrollToItem] aligns an item's START with the start of the
  * content area; with no top content padding that is already the flush top, so a
- * non-last target needs only the plain scroll. The last card bottom-aligns: we
- * bring it on-screen, then shift it DOWN by the gap between the full band and its
- * measured height so its bottom edge meets the band bottom. The height is only
- * known once the item is on-screen, which is why the bottom-align is a two-step
- * scroll; that is what lets a FAR jump to the last card still land flush. A
- * band-taller last card already fills the band (clamp <= 0), so it just
- * top-aligns.
+ * non-last target needs only the plain scroll. The last card bottom-aligns (when
+ * [lastCardBottomAligns]): we bring it on-screen, then shift it DOWN by the gap
+ * between the full band and its measured height so its bottom edge meets the band
+ * bottom. The height is only known once the item is on-screen, which is why the
+ * bottom-align is a two-step scroll; that is what lets a FAR jump to the last card
+ * still land flush. A band-taller last card already fills the band (clamp <= 0),
+ * so it just top-aligns. In the fitting-tail hybrid ([lastCardBottomAligns] =
+ * false) the last card top-aligns like the others, so the plain scroll already
+ * lands it and the second step is skipped.
  */
 private suspend fun androidx.compose.foundation.lazy.LazyListState.scrollToItemSnapped(
     index: Int,
     itemCount: Int,
+    lastCardBottomAligns: Boolean = true,
     animated: Boolean = true,
 ) {
     suspend fun go(i: Int, offset: Int = 0) =
         if (animated) animateScrollToItem(i, offset) else scrollToItem(i, offset)
     // Bring the item on-screen with its start at the content-area top.
     go(index)
-    // Only the LAST card bottom-aligns; everything else is already flush at the
-    // top after the plain scroll.
-    if (index < itemCount - 1) return
+    // Only a BOTTOM-aligned last card needs the second step; everything else
+    // (including a top-aligned last card in the fitting-tail hybrid) is already
+    // flush at the top after the plain scroll.
+    if (index < itemCount - 1 || !lastCardBottomAligns) return
     val info = layoutInfo
     val item = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return
     val bandSpan = info.viewportEndOffset - info.viewportStartOffset
@@ -236,6 +251,15 @@ internal fun DynamicPageDeck(
     // only effects read/write it, never composition. A depth counter (not a
     // bool) so overlapping programmatic scrolls don't clear each other early.
     val programmaticDepth = remember(pageId) { intArrayOf(0) }
+    // HYBRID last-card alignment: does the last card rest FLUSH at the band bottom
+    // (true, the default and the look when the last card is tall / alone), or
+    // TOP-align like the others (false, when the last two cards fit in the band
+    // together so bottom-aligning would strand the second-to-last)? Computed from
+    // the live-measured tail heights inside the constraints scope below and
+    // written there in an effect; held here as state so the snap provider, the
+    // fling, the content padding AND the scroll/focus effects above the
+    // constraints scope all read one decision (see [dynamicLastCardBottomAligns]).
+    val lastCardBottomAligns = remember(pageId) { mutableStateOf(true) }
     // Select [target] explicitly (wheel step, pip jump, title tap): record it as
     // sticky and scroll it onto its snap line, tagging the scroll programmatic so
     // its own scroll-start edge is not mistaken for a user drag. settledFocus is
@@ -255,7 +279,9 @@ internal fun DynamicPageDeck(
         }
         programmaticDepth[0]++
         try {
-            runCatching { listState.scrollToItemSnapped(target, cards.size) }
+            runCatching {
+                listState.scrollToItemSnapped(target, cards.size, lastCardBottomAligns.value)
+            }
         } finally {
             programmaticDepth[0]--
         }
@@ -303,6 +329,10 @@ internal fun DynamicPageDeck(
                     },
                     bandHeightPx = bandSpan,
                     itemCount = cards.size,
+                    // Read the hybrid flag here so the focus math uses the SAME
+                    // last-card rest line as the snap provider; snapshotFlow then
+                    // re-emits if the flag flips while the deck is at rest.
+                    lastCardBottomAligns = lastCardBottomAligns.value,
                 )
             }
         }
@@ -411,6 +441,52 @@ internal fun DynamicPageDeck(
         // the cap a tall Lovelace card scrolls internally past.
         val bandHeight = maxHeight
         val bandHeightPx = constraints.maxHeight
+        // HYBRID last-card alignment, measured live. When the last card and the
+        // second-to-last FIT in the band together, bottom-aligning the last card
+        // strands the second-to-last (the bottom clamp blocks its rise to the
+        // chrome, the 5/6-is-skipped bug); in that case the last card TOP-aligns
+        // like the others and we pad the list by [dynamicLastCardTopPaddingPx] so
+        // it can reach the top, making the whole tail scroll-steppable. The flush
+        // bottom is kept only when the last card is tall / alone (the tail does not
+        // fit together), where there is no conflict. We probe the last and
+        // second-to-last heights from the live layout (keyed on their item
+        // identities so a tail mutation drops a stale height); the decision and the
+        // pad both flow from [dynamicLastCardBottomAligns].
+        val lastCardKey = cards.lastOrNull()?.key
+        val secondToLastKey = cards.getOrNull(cards.size - 2)?.key
+        val lastCardHeightPx = remember(pageId, lastCardKey, cards.size) { mutableIntStateOf(-1) }
+        val secondToLastHeightPx = remember(pageId, secondToLastKey, cards.size) { mutableIntStateOf(-1) }
+        LaunchedEffect(listState, lastCardKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == cards.lastIndex }?.size
+            }.filterNotNull().distinctUntilChanged().collect { lastCardHeightPx.intValue = it }
+        }
+        LaunchedEffect(listState, secondToLastKey, cards.size) {
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == cards.size - 2 }?.size
+            }.filterNotNull().distinctUntilChanged().collect { secondToLastHeightPx.intValue = it }
+        }
+        val interCardGapPx = with(LocalDensity.current) { R1.space.m.roundToPx() }
+        // Resolve the hybrid decision into the hoisted state (effect-phase write,
+        // so composition above never reads a half-updated value). Read back below
+        // for the pad / snap provider and above for the scroll / focus effects.
+        val resolvedBottomAligns = dynamicLastCardBottomAligns(
+            bandHeightPx = bandHeightPx,
+            lastCardHeightPx = lastCardHeightPx.intValue.takeIf { it >= 0 },
+            secondToLastCardHeightPx = secondToLastHeightPx.intValue.takeIf { it >= 0 },
+            gapPx = interCardGapPx,
+            itemCount = cards.size,
+        )
+        LaunchedEffect(resolvedBottomAligns) { lastCardBottomAligns.value = resolvedBottomAligns }
+        // Bottom spacer ONLY when the last card top-aligns (fitting tail), so it
+        // can climb to the chrome; 0 (no spacer) for the flush bottom-align case.
+        val bottomPad = with(LocalDensity.current) {
+            dynamicLastCardTopPaddingPx(
+                bandHeightPx = bandHeightPx,
+                lastCardHeightPx = lastCardHeightPx.intValue.takeIf { it >= 0 },
+                lastCardBottomAligns = resolvedBottomAligns,
+            ).toDp()
+        }
         // DIAGNOSTIC, gated behind the Dev-menu "Deck snap diagnostics" toggle
         // (default OFF). When on, on every settle it ships a full snapshot of the
         // snap geometry so the on-device snapping can be read from the log
@@ -422,7 +498,7 @@ internal fun DynamicPageDeck(
         // release builds and ships. Keyed on the toggle so flipping it off tears
         // the collector down (no snapshotFlow runs at all).
         val deckSnapDiag = appSettings.logShipping.deckSnapDiagnostics
-        LaunchedEffect(listState, pageId, isActive, deckSnapDiag, cards.size) {
+        LaunchedEffect(listState, pageId, isActive, deckSnapDiag, cards.size, resolvedBottomAligns) {
             if (!isActive || !deckSnapDiag) return@LaunchedEffect
             snapshotFlow { listState.isScrollInProgress }
                 .distinctUntilChanged()
@@ -432,7 +508,7 @@ internal fun DynamicPageDeck(
                     val span = info.viewportEndOffset - info.viewportStartOffset
                     val vis = info.visibleItemsInfo.joinToString(" | ") { it ->
                         val norm = it.offset - info.viewportStartOffset
-                        val snap = dynamicSnapStartPx(it.index, it.size, span, cards.size)
+                        val snap = dynamicSnapStartPx(it.index, it.size, span, cards.size, resolvedBottomAligns)
                         "#${it.index} off=${it.offset} norm=$norm sz=${it.size} snap=$snap d=${norm - snap}"
                     }
                     val focus = dynamicFocusedIndex(
@@ -441,10 +517,12 @@ internal fun DynamicPageDeck(
                         },
                         span,
                         cards.size,
+                        resolvedBottomAligns,
                     )
                     com.github.itskenny0.r1ha.core.util.R1Log.i(
                         "DeckSnap",
                         "settle page=$pageId layoutH=$bandHeightPx span=$span " +
+                            "lastBottomAligns=$resolvedBottomAligns " +
                             "before=${info.beforeContentPadding} after=${info.afterContentPadding} " +
                             "vpStart=${info.viewportStartOffset} " +
                             "vpEnd=${info.viewportEndOffset} spacing=${info.mainAxisItemSpacing} " +
@@ -460,18 +538,24 @@ internal fun DynamicPageDeck(
         // friction mapping.
         val sensitivity = appSettings.ui.cardScrollSensitivity.coerceIn(1, 100)
         val flingFriction = (0.8f / (sensitivity / 100f)).coerceIn(0.5f, 4f)
-        val deckFling = remember(listState, flingFriction) {
+        // Recreated when the hybrid flag flips so the last card's snap line follows
+        // the live tail-fits decision (mirrors the fling's friction keying).
+        val deckSnapPosition = remember(resolvedBottomAligns) {
+            DynamicSnapPosition(lastCardBottomAligns = resolvedBottomAligns)
+        }
+        val deckFling = remember(listState, flingFriction, deckSnapPosition) {
             snapFlingBehavior(
                 snapLayoutInfoProvider = SnapLayoutInfoProvider(
                     lazyListState = listState,
                     // PER-ITEM snap (not the uniform SnapPosition.Center it
                     // replaced): cards 0..n-2 snap TOP-aligned so the focused
-                    // card sits flush under the chrome, the last card snaps
-                    // BOTTOM-aligned so it rests flush against the band bottom
-                    // (nothing follows it, so top-aligning it would leave a
-                    // void). The single source of truth is [dynamicSnapStartPx]
+                    // card sits flush under the chrome. The last card snaps
+                    // BOTTOM-aligned (flush at the band bottom) when it is tall /
+                    // alone, or TOP-aligned in the fitting-tail hybrid so the whole
+                    // tail is scroll-steppable; [DynamicSnapPosition] carries that
+                    // decision. The single source of truth is [dynamicSnapStartPx]
                     // (shared with the focused-index math).
-                    snapPosition = dynamicSnapPosition,
+                    snapPosition = deckSnapPosition,
                 ),
                 decayAnimationSpec = exponentialDecay(frictionMultiplier = flingFriction),
                 // Terminal snap stiffened from StiffnessMedium to StiffnessHigh:
@@ -499,16 +583,15 @@ internal fun DynamicPageDeck(
             // of one-line toggles still feels like one deck.
             verticalArrangement = androidx.compose.foundation.layout.Arrangement
                 .spacedBy(R1.space.m),
-            // No content padding in either direction: a non-last card reaches the
-            // flush top by scrolling up (the first card is flush from the first
-            // frame), and the last card reaches its bottom-align rest at the bottom
-            // scroll clamp, where it OWNS the clamp and is the focused card. The
-            // snap maths therefore never see a content-padding offset. A bottom pad
-            // was tried (to let touch-scroll step onto a fitting tail card) but it
-            // pushes the natural clamp past the last card's flush rest, so the last
-            // card stops owning the end of the scroll and never focuses on a fling;
-            // the fitting tail is reached by wheel / title tap instead (sticky
-            // target), which has no such conflict.
+            // No TOP padding: a non-last card reaches the flush top by scrolling up
+            // and the first card is flush from the first frame. The BOTTOM pad is 0
+            // in the flush case (the bottom-aligned last card OWNS the bottom clamp
+            // there) and exactly `band - lastHeight` in the fitting-tail hybrid,
+            // where the last card TOP-aligns and needs that spacer below it to climb
+            // to the chrome (see [dynamicLastCardTopPaddingPx]). It is the one case
+            // the snap maths read a non-zero afterContentPadding, which the snap
+            // provider already nets out via beforeContentPadding-relative offsets.
+            contentPadding = PaddingValues(bottom = bottomPad),
             modifier = Modifier.fillMaxSize(),
         ) {
             itemsIndexed(cards, key = { _, item -> item.key }) { idx, item ->
