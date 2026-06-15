@@ -32,6 +32,7 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
 import com.github.itskenny0.r1ha.core.util.areaLabel
 import com.github.itskenny0.r1ha.core.theme.LocalCardFillSlot
 import com.github.itskenny0.r1ha.core.theme.LocalCardInk
+import com.github.itskenny0.r1ha.core.theme.cardTitleTarget
 import com.github.itskenny0.r1ha.core.theme.R1
 
 /**
@@ -96,6 +97,9 @@ fun SwitchCard(
             style = R1.titleCard,
             color = ink.ink,
             maxLines = 2,
+            // Tap the title to select this card in the dynamic deck (no-op
+            // elsewhere); full width so the whole title row is the target.
+            modifier = Modifier.fillMaxWidth().cardTitleTarget(),
         )
         Spacer(Modifier.height(20.dp))
 
