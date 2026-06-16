@@ -89,6 +89,21 @@ val LocalCardInk = staticCompositionLocalOf { DefaultCardInk }
 val LocalCardPanelColor = staticCompositionLocalOf { R1.Surface }
 
 /**
+ * True when a WRAPPER has already painted this card's backdrop (a theme whose card
+ * identity IS a gradient, e.g. Colourful Cards, painted via a deck slot surface), so a
+ * card FACE that would otherwise stamp its own opaque [R1.Surface] plate should paint a
+ * TRANSPARENT face instead and let the wrapper's backdrop + scrim show through. Lets a
+ * pinned Lovelace button / IR card read as the same colourful tile as the entity action
+ * cards rather than a flat near-black plate sitting on top of the gradient.
+ *
+ * Default false: every surface that doesn't sit under such a wrapper (the dark themes, a
+ * Lovelace card rendered in a full dashboard view rather than a deck slot) keeps painting
+ * its opaque plate, byte-identical to today. Static is fine — it only flips when the deck
+ * slot wrapper provides it.
+ */
+val LocalCardBackdropPainted = staticCompositionLocalOf { false }
+
+/**
  * The user's "Colourful Cards" palette-set + background-design choice, surfaced to
  * [ColorfulCardsTheme] so it can pick which six-palette set to hash entities onto and how
  * to paint the per-entity gradient. Provided from the screens that own [AppSettings]

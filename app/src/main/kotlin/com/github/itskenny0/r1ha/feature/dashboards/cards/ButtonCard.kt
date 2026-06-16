@@ -203,6 +203,15 @@ fun ButtonCard(
     // The disc's resting fill comes from the theme so it doesn't punch a black hole in a
     // backdrop-identity theme (Colourful Cards' gradient); near-black on the dark themes.
     val panelColor = com.github.itskenny0.r1ha.core.theme.LocalCardPanelColor.current
+    // When the deck slot already painted a colourful backdrop (Colourful Cards),
+    // the face goes TRANSPARENT so the per-card gradient + scrim show through and
+    // the IR / button card reads as the same colourful tile as the entity action
+    // cards. On the dark themes (default false) it keeps its near-black plate.
+    val faceColor = if (com.github.itskenny0.r1ha.core.theme.LocalCardBackdropPainted.current) {
+        androidx.compose.ui.graphics.Color.Transparent
+    } else {
+        R1.Surface
+    }
     // Compact layout: the actuator sits BESIDE the name + footer instead of stacked above
     // them, roughly halving the card height — the win the pinned IR command wall wanted.
     val iconSlug = buttonIconSlug(actions.tap, card.icon)
@@ -215,7 +224,7 @@ fun ButtonCard(
         modifier = modifier
             .fillMaxWidth()
             .clip(R1.ShapeM)
-            .background(R1.Surface)
+            .background(faceColor)
             // Soft radial inner glow anchored on the actuator (now left-of-centre), fading
             // out across the plate; intensifies with the fire flare so the whole plate
             // washes warm on a send, the same lit-from-within depth as before.

@@ -16,16 +16,22 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
+import com.github.itskenny0.r1ha.core.theme.LocalCardBackdropPainted
+import com.github.itskenny0.r1ha.core.theme.LocalCardInk
+import com.github.itskenny0.r1ha.core.theme.LocalColorfulCardsConfig
+import com.github.itskenny0.r1ha.core.theme.LocalR1Theme
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates
 import com.github.itskenny0.r1ha.feature.dashboards.cards.LovelaceCardRenderer
@@ -133,6 +139,20 @@ internal fun LovelaceDeckCard(
     // fixed-aspect box only fights the pager. Other card types can outgrow
     // the slot, so they scroll.
     val isIframe = content is LovelaceCard.Unsupported && content.url != null
+    // A theme whose card identity IS a backdrop (Colourful Cards' gradients)
+    // paints the per-card sky behind pinned Lovelace slots too, so a button / IR
+    // remote card reads as the same colourful tile as the entity cards rather
+    // than a flat near-black panel (the IR "TAP TO RUN" cards were the visible
+    // mismatch). Keyed on the slot's STABLE id so each card keeps its hue across
+    // recompositions and palette-set switches; null on the plain themes keeps the
+    // R1.Bg surface byte-identical. The ink rides in on LocalCardInk so the deck
+    // header line turns white over the gradient (the card's own face owns the
+    // rest of its content).
+    val theme = LocalR1Theme.current
+    val colorfulConfig = LocalColorfulCardsConfig.current
+    val auxStyle = remember(theme, item.id, colorfulConfig) {
+        theme.auxCardStyle(item.id, null, colorfulConfig)
+    }
     Box(
         modifier = modifier.then(
             if (isIframe) {
@@ -148,32 +168,44 @@ internal fun LovelaceDeckCard(
         DeckCardSurface(
             scrollable = !isIframe,
             modifier = surfaceModifier,
+            backdrop = auxStyle?.backdrop,
+            scrim = auxStyle?.scrim,
+            anchor = auxStyle?.anchor,
         ) {
-            // Identity header above EVERY face: the SAME derived title the
-            // jump sheet shows for this slot (displayName -> deckCardTitle on
-            // the stored card), so the stack and the pip's jump list agree on
-            // what each card is called. Always on; suppressing it for
-            // self-naming configs left button cards (IR remotes always carry
-            // `name`) and titled Lovelace cards with no visible identity line
-            // in the deck; see [deckCardHeaderTitle]. Deliberately a bare
-            // micro text line, not a chip or framed band: the heavier
-            // per-card type chip was tried and rejected.
-            Text(
-                text = deckCardHeaderTitle(item.card),
-                style = R1.labelMicro,
-                color = R1.InkMuted,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp),
-            )
-            LovelaceCardRenderer(
-                card = content,
-                stateMap = states.sliceFor(content),
-                onAction = { action -> hooks.dispatch(scope, action) },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            CompositionLocalProvider(
+                LocalCardInk provides (auxStyle?.ink ?: LocalCardInk.current),
+                // Tell a card face (e.g. the button / IR card) that the slot already
+                // painted a colourful backdrop, so it renders a transparent face and
+                // lets the gradient show instead of stamping its own dark plate.
+                LocalCardBackdropPainted provides (auxStyle != null),
+            ) {
+                // Identity header above EVERY face: the SAME derived title the
+                // jump sheet shows for this slot (displayName -> deckCardTitle on
+                // the stored card), so the stack and the pip's jump list agree on
+                // what each card is called. Always on; suppressing it for
+                // self-naming configs left button cards (IR remotes always carry
+                // `name`) and titled Lovelace cards with no visible identity line
+                // in the deck; see [deckCardHeaderTitle]. Deliberately a bare
+                // micro text line, not a chip or framed band: the heavier
+                // per-card type chip was tried and rejected. Reads LocalCardInk so
+                // it turns white over a colourful backdrop, grey on the plain themes.
+                Text(
+                    text = deckCardHeaderTitle(item.card),
+                    style = R1.labelMicro,
+                    color = LocalCardInk.current.muted,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 2.dp),
+                )
+                LovelaceCardRenderer(
+                    card = content,
+                    stateMap = states.sliceFor(content),
+                    onAction = { action -> hooks.dispatch(scope, action) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
         // "…" menu affordance: same dot-cluster mark as the entity cards'
         // detail button, anchored bottom-right where that button lives.
@@ -219,12 +251,15 @@ internal fun LovelaceDeckCard(
  *    i.e. zero when the content fits, so a short card consumes no drags
  *    beyond what nested scroll hands to the pager).
  *
- * The surface paints the plain near-black [R1.Bg]: invisible against the
- * page background, but it keeps the layer opaque so the shadow [modifier]
+ * The surface paints the plain near-black [R1.Bg] by default: invisible against
+ * the page background, but it keeps the layer opaque so the shadow [modifier]
  * the caller supplies doesn't bleed through the gaps a stack card leaves
  * between its children. No padding: the card's own chrome is the visible
  * panel and any deck-side inset would re-introduce the full-width frame
- * this fixes.
+ * this fixes. When the caller supplies a [backdrop] (a theme whose card identity
+ * IS a gradient, e.g. Colourful Cards) it is painted instead, with the optional
+ * [scrim] + [anchor] layered over it exactly as the entity cards layer them, so
+ * a pinned Lovelace slot reads as the same colourful tile.
  *
  * Iframe slots pass [scrollable] = false: the WebView owns vertical drags
  * inside its bounds and a second scroll consumer around a fixed-aspect box
@@ -245,6 +280,13 @@ internal fun LovelaceDeckCard(
 internal fun DeckCardSurface(
     scrollable: Boolean,
     modifier: Modifier = Modifier,
+    /** Theme backdrop for the slot. Null = the plain near-black [R1.Bg] (every
+     *  theme without a backdrop card identity); non-null = paint it, then the
+     *  optional [scrim] and [anchor] over it, the same layering the entity cards
+     *  use for the colourful gradient. */
+    backdrop: Brush? = null,
+    scrim: Brush? = null,
+    anchor: Brush? = null,
     content: @Composable () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -253,10 +295,18 @@ internal fun DeckCardSurface(
     } else {
         Modifier
     }
+    val surfaceBackground = if (backdrop == null) {
+        Modifier.background(R1.Bg)
+    } else {
+        var sky = Modifier.background(backdrop)
+        scrim?.let { sky = sky.background(it) }
+        anchor?.let { sky = sky.background(it) }
+        sky
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(R1.Bg)
+            .then(surfaceBackground)
             .then(bodyModifier),
     ) {
         content()
