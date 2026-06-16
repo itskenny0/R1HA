@@ -356,6 +356,14 @@ fun CardStackScreen(
     val addCardsForPageId = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
+    // Whether the user has acknowledged the "Lovelace cards are experimental"
+    // notice for the CURRENT open of the add-cards flow. Gates the add sheet
+    // behind that modal so every entry point (empty placeholder, QuickActions,
+    // per-page manager) shows the steer-to-favourites warning first; reset to
+    // false whenever the flow closes so the next add re-shows it.
+    val lovelaceWarnAck = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
     // Pending `confirmation:` gate for a Lovelace tap action; the dispatch
     // coroutine suspends on the deferred until the overlay resolves it.
     val lovelaceConfirm = androidx.compose.runtime.remember {
@@ -1910,19 +1918,38 @@ fun CardStackScreen(
         // structured editor. Composed after the manager for the same z-order
         // reason as the editor above.
         val addTargetPageId = addCardsForPageId.value
-        if (addTargetPageId != null) {
+        // Close the whole add flow and reset the experimental-notice gate so the
+        // next add re-shows it.
+        val closeAddFlow: () -> Unit = {
+            addCardsForPageId.value = null
+            lovelaceWarnAck.value = false
+        }
+        if (addTargetPageId != null && !lovelaceWarnAck.value) {
+            // Experimental notice, shown FIRST on every add: Lovelace card support
+            // is still experimental and native cards via the favourites panel are
+            // the encouraged path. Continue proceeds to the add sheet; the
+            // favourites route bails straight to the native picker.
+            ExperimentalLovelaceDialog(
+                onOpenFavourites = {
+                    closeAddFlow()
+                    onOpenFavoritesPicker()
+                },
+                onContinue = { lovelaceWarnAck.value = true },
+                onDismiss = closeAddFlow,
+            )
+        } else if (addTargetPageId != null) {
             AddLovelaceCardSheet(
                 haRepository = haRepository,
                 pageName = appSettings.pages.firstOrNull { it.id == addTargetPageId }?.name ?: "",
                 onAddCards = { raws ->
                     vm.addPinnedCards(addTargetPageId, raws)
-                    addCardsForPageId.value = null
+                    closeAddFlow()
                 },
                 onImportPages = { specs ->
                     vm.importViewsAsPages(specs)
-                    addCardsForPageId.value = null
+                    closeAddFlow()
                 },
-                onDismiss = { addCardsForPageId.value = null },
+                onDismiss = closeAddFlow,
             )
         }
 
@@ -3601,6 +3628,68 @@ private data class QuickJump(
     val label: String,
     val onClick: () -> Unit,
 )
+
+/**
+ * Experimental-notice modal shown before the add-Lovelace-card sheet on every
+ * add. Lovelace card support is still experimental, so the modal steers the user
+ * to the native favourites panel ([onOpenFavourites], the encouraged path) and
+ * lets them proceed anyway ([onContinue]). Tapping the scrim / back dismisses the
+ * whole flow ([onDismiss]). Matches the QuickActions sheet's modal scaffold.
+ */
+@Composable
+private fun ExperimentalLovelaceDialog(
+    onOpenFavourites: () -> Unit,
+    onContinue: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.92f))
+            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
+            .systemBarsPadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .fillMaxWidth()
+                .padding(horizontal = R1.space.l, vertical = R1.space.l)
+                .clip(R1.ShapeS)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeS)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(R1.space.l),
+        ) {
+            Text(text = "EXPERIMENTAL", style = R1.sectionHeader, color = R1.StatusAmber)
+            Spacer(Modifier.height(R1.space.xs))
+            Text(
+                text = "Lovelace card support is still experimental and may not render " +
+                    "or behave correctly. For the most reliable cards, add native " +
+                    "entities from the favourites panel instead.",
+                style = R1.body,
+                color = R1.InkSoft,
+            )
+            Spacer(Modifier.height(R1.space.l))
+            // The encouraged native path leads.
+            R1Button(
+                text = "ADD FROM FAVOURITES",
+                onClick = onOpenFavourites,
+                modifier = Modifier.fillMaxWidth(),
+                accent = R1.AccentWarm,
+            )
+            Spacer(Modifier.height(8.dp))
+            // Proceed to the experimental Lovelace add flow anyway.
+            R1Button(
+                text = "CONTINUE TO LOVELACE",
+                onClick = onContinue,
+                modifier = Modifier.fillMaxWidth(),
+                variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
+            )
+        }
+    }
+}
 
 @Composable
 private fun QuickActionsSheet(
