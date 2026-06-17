@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.platform.LocalView
@@ -364,6 +365,23 @@ fun CardStackScreen(
     val lovelaceWarnAck = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // Measured height (px) of the top chrome overlay (ChromeRow + TabStrip, status
+    // bar included). The decks top-align their first card under the chrome, but the
+    // inset they use for that was a hard-coded statusBar + 80 dp guess for the
+    // chrome content; the real ChromeRow + TabStrip runs a few dp taller (font
+    // scale, taller status bars), so the chrome covered the top card's header by a
+    // few pixels. Measuring the actual overlay and feeding it to the decks keeps
+    // the first card's header fully clear on every device. 0 until first layout, so
+    // the decks fall back to their statusBar + 80 dp guess for the first frame.
+    val chromeOverlayHeightPx = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableIntStateOf(0)
+    }
+    // The measured chrome height as a Dp inset (+ a hair of breathing room so a
+    // sub-pixel rounding never re-clips), or null until measured.
+    val deckTopInsetOverride: androidx.compose.ui.unit.Dp? =
+        with(androidx.compose.ui.platform.LocalDensity.current) {
+            chromeOverlayHeightPx.intValue.takeIf { it > 0 }?.toDp()?.plus(4.dp)
+        }
     // Pending `confirmation:` gate for a Lovelace tap action; the dispatch
     // coroutine suspends on the deferred until the overlay resolves it.
     val lovelaceConfirm = androidx.compose.runtime.remember {
@@ -1260,6 +1278,7 @@ fun CardStackScreen(
                             lightWheelModes = state.lightWheelMode,
                             lovelaceStates = lovelaceStates,
                             lovelaceHooks = lovelaceHooks,
+                            topInsetOverride = deckTopInsetOverride,
                             onActivePagerAnimatingChange = { animating ->
                                 verticalPagerAnimating.value = animating
                             },
@@ -1278,6 +1297,7 @@ fun CardStackScreen(
                             lightWheelModes = state.lightWheelMode,
                             lovelaceStates = lovelaceStates,
                             lovelaceHooks = lovelaceHooks,
+                            topInsetOverride = deckTopInsetOverride,
                             // Only the active deck's pager state gates the
                             // wheel — neighbour decks (peek-composed via
                             // beyondViewportPageCount = 1) animate
@@ -1301,7 +1321,11 @@ fun CardStackScreen(
         // the cold-start splash so the user sees a clean throbber and not chrome
         // perched above a loading spinner.
         if (state.settingsLoaded) androidx.compose.foundation.layout.Column(
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                // Report the real overlay height so the decks inset their first
+                // card exactly below it (see chromeOverlayHeightPx).
+                .onSizeChanged { chromeOverlayHeightPx.intValue = it.height },
         ) {
             // Effective position-pip slot for the currently-active card.
             // Per-card override wins; otherwise inherit the global setting.
@@ -2109,6 +2133,11 @@ private fun PageDeck(
     lovelaceStates: com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates,
     /** Action-dispatch + context-menu wiring for the Lovelace slots. */
     lovelaceHooks: LovelaceDeckHooks,
+    /** Measured height of the top chrome overlay (ChromeRow + TabStrip), used as
+     *  the pager's top inset so the first card clears the chrome exactly. Null
+     *  until the chrome is measured, where the historical statusBar + 80 dp guess
+     *  stands in for the first frame. */
+    topInsetOverride: androidx.compose.ui.unit.Dp? = null,
     /** Reports VerticalPager animation state up to the screen-level
      *  wheel handler. Only the active deck pushes through (the
      *  effect is gated on isActive below) so a neighbour deck's
@@ -2271,7 +2300,9 @@ private fun PageDeck(
         // on top keeps every device aligned correctly.
         val statusBarTop = androidx.compose.foundation.layout.WindowInsets.statusBars
             .asPaddingValues().calculateTopPadding()
-        val pagerTopPadding = statusBarTop + 80.dp
+        // Prefer the measured chrome overlay height; fall back to the historical
+        // statusBar + 80 dp content guess until the chrome reports its real size.
+        val pagerTopPadding = topInsetOverride ?: (statusBarTop + 80.dp)
         // Same inset-aware treatment on the bottom: phones with gesture
         // navigation (Pixel 7-class hardware) reserve 24–48 dp at the bottom
         // for the navigation-hint pill. The previous hard-coded 24 dp

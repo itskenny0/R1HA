@@ -208,6 +208,11 @@ internal fun DynamicPageDeck(
     lightWheelModes: Map<com.github.itskenny0.r1ha.core.ha.EntityId, com.github.itskenny0.r1ha.core.ha.LightWheelMode>,
     lovelaceStates: com.github.itskenny0.r1ha.feature.dashboards.cards.EntityStates,
     lovelaceHooks: LovelaceDeckHooks,
+    /** Measured height of the top chrome overlay (ChromeRow + TabStrip), used as
+     *  the band's top inset so the first card top-aligns exactly under the chrome
+     *  instead of a few px behind it. Null until the chrome is measured, where the
+     *  historical statusBar + 80 dp guess stands in for the first frame. */
+    topInsetOverride: androidx.compose.ui.unit.Dp? = null,
     /** Reports list scroll-in-progress up to the screen-level wheel gate,
      *  exactly like PageDeck's pager-animating report: while true the wheel
      *  handler drops events so a spin mid-fling can't land on the card the
@@ -432,10 +437,15 @@ internal fun DynamicPageDeck(
     // snap maths never see the padding.
     val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // Prefer the measured chrome overlay height; fall back to the historical
+    // statusBar + 80 dp content guess until the chrome reports its real size. The
+    // guess ran a few px short of the real ChromeRow + TabStrip, clipping the top
+    // card's header.
+    val deckTopPadding = topInsetOverride ?: (statusBarTop + 80.dp)
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = statusBarTop + 80.dp, bottom = navBarBottom + 16.dp),
+            .padding(top = deckTopPadding, bottom = navBarBottom + 16.dp),
     ) {
         // The band height: what a full-viewport (entity) item measures, and
         // the cap a tall Lovelace card scrolls internally past.
