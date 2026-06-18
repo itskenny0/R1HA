@@ -296,7 +296,10 @@ class App : Application() {
         // JobService on every emission so a flip-flop at runtime takes effect on the
         // next setting tick rather than waiting for an app restart. JobScheduler is
         // idempotent on schedule with the same JOB_ID.
-        appScope.launch {
+        // Skipped in R1HAL (legacy): the BackgroundRefreshJob service is stripped
+        // from its manifest, so scheduling it would throw on a (possibly HA-synced)
+        // enabled flag. Same reasoning for every opt-in service observer below.
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map { it.advanced.backgroundRefreshEnabled }
                 .distinctUntilChanged()
@@ -310,7 +313,7 @@ class App : Application() {
         }
         // HA notification mirror — same observe-and-react pattern as the background job,
         // so a toggle flip immediately starts or stops the mirror without an app restart.
-        appScope.launch {
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map { it.advanced.mirrorHaNotifications }
                 .distinctUntilChanged()
@@ -326,7 +329,7 @@ class App : Application() {
         // a foreground notification; the start/stop calls are cheap so flipping
         // port or webhook_id without toggling off-then-on is also safe because
         // the service restarts with the new extras.
-        appScope.launch {
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map {
                     Triple(it.advanced.webhookEnabled, it.advanced.webhookPort, it.advanced.webhookId)
@@ -350,7 +353,7 @@ class App : Application() {
         // service alive vs dead. Before starting, seed the per-device
         // secrets (random MJPEG password + node id) if the user hasn't
         // set them — never broadcast an open MJPEG stream.
-        appScope.launch {
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map { it.iotCamera.enabled }
                 .distinctUntilChanged()
@@ -381,7 +384,7 @@ class App : Application() {
         // from the same flow inside applyConfig, so per-entity toggles
         // (publish battery / control flashlight / etc.) don't bounce the
         // outer service.
-        appScope.launch {
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map { it.iotSensors.enabled }
                 .distinctUntilChanged()
@@ -410,7 +413,7 @@ class App : Application() {
         // minor) together so a UUID change while the toggle is on tears down
         // and re-starts with the new payload. Distinct on the full tuple so
         // unrelated settings emissions don't re-arm the advertiser.
-        appScope.launch {
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) appScope.launch {
             graph.settings.settings
                 .map { s ->
                     Quad(

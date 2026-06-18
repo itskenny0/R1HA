@@ -340,6 +340,13 @@ class MainActivity : ComponentActivity() {
                                 navPanel.pinnedDashboards,
                                 navPanel.pinnedPanels,
                             ) {
+                                // R1HAL (legacy) is the slim card-stack build: drop the
+                                // nav-drawer entries whose routes are placeholdered in this
+                                // flavour (Today / Search / Assist all resolve to the
+                                // LegacyUnavailableScreen), leaving Home + Settings, so the
+                                // drawer stops offering dead screens. The dashboard / panel
+                                // WebView pins are dropped outright below.
+                                val isLegacy = com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY
                                 val core = com.github.itskenny0.r1ha.ui.components.defaultNavDestinations(
                                     homeRoute = Routes.CARD_STACK,
                                     dashboardRoute = Routes.DASHBOARD,
@@ -347,6 +354,10 @@ class MainActivity : ComponentActivity() {
                                     assistRoute = Routes.ASSIST,
                                     settingsRoute = Routes.SETTINGS,
                                 ).filter { it.id !in navPanel.hiddenNavItems }
+                                    .filter {
+                                        !isLegacy ||
+                                            com.github.itskenny0.r1ha.nav.LegacyFeatures.isAvailable(it.route)
+                                    }
                                 // User-pinned surfaces, mapped via the shared registry,
                                 // appended after the core destinations. Drop any pin that
                                 // duplicates a core route (e.g. Today, which is both a core
@@ -373,7 +384,10 @@ class MainActivity : ComponentActivity() {
                                 // them visually grouped (the rail/drawer render text glyphs,
                                 // so the optional mdi icon slug isn't used here). The route is
                                 // the stable id so two views with the same title don't collide.
-                                val dashboardPins = navPanel.pinnedDashboards.map { pinned ->
+                                // WebView dashboards are gated out of R1HAL entirely (the
+                                // slim build is card-stack-only; pinned Lovelace views open a
+                                // WebView, which legacy drops).
+                                val dashboardPins = if (isLegacy) emptyList() else navPanel.pinnedDashboards.map { pinned ->
                                     com.github.itskenny0.r1ha.ui.components.NavDestination(
                                         route = pinned.route,
                                         label = pinned.title,
@@ -387,7 +401,9 @@ class MainActivity : ComponentActivity() {
                                 // "plug/grid" glyph keeps them visually distinct from dashboard
                                 // pins. The url_path doubles as the stable id so two panels with
                                 // the same display title can't collide in the nav rail.
-                                val panelPins = navPanel.pinnedPanels.map { pinned ->
+                                // HA sidebar panels open an authenticated WebView, so they are
+                                // likewise dropped from R1HAL.
+                                val panelPins = if (isLegacy) emptyList() else navPanel.pinnedPanels.map { pinned ->
                                     com.github.itskenny0.r1ha.ui.components.NavDestination(
                                         route = Routes.panelViewerRoute(pinned.urlPath),
                                         label = pinned.title,

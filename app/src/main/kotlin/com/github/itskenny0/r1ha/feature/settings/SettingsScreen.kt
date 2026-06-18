@@ -300,44 +300,61 @@ fun SettingsScreen(
     // so the registry-only search misses them. We match their keywords here
     // and surface them as a "Jump to" group above the field-level results.
     val settingsDestinations = androidx.compose.runtime.remember(onOpenCategory, onOpenKeyBindings, push) {
-        listOf(
-            SettingsDestination(
-                title = "MQTT broker",
-                subtitle = "Host, port, auth, TLS for the IoT modes",
-                keywords = listOf("mqtt", "broker", "publish", "topic", "iot"),
-                open = { onOpenCategory(SettingsCategory.MQTT) },
-            ),
-            SettingsDestination(
-                title = "Sync",
-                subtitle = "Mirror settings across devices via Home Assistant",
-                keywords = listOf("sync", "mirror", "devices", "backup"),
-                open = { onOpenCategory(SettingsCategory.SYNC) },
-            ),
-            SettingsDestination(
-                title = "IoT Camera Mode",
-                subtitle = "Stream the device camera to Home Assistant",
-                keywords = listOf("iot", "camera", "stream", "mjpeg", "snapshot"),
-                open = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
-            ),
-            SettingsDestination(
-                title = "IoT Sensors Mode",
-                subtitle = "Expose device sensors and controls to Home Assistant",
-                keywords = listOf("iot", "sensors", "sensor", "battery", "flashlight", "vibration"),
-                open = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
-            ),
-            SettingsDestination(
-                title = "Security",
-                subtitle = "TLS certificate pinning, mTLS client cert",
-                keywords = listOf("security", "tls", "pin", "pinning", "mtls", "certificate", "cert", "keystore"),
-                open = { push(SettingsNode.CONNECTION_SECURITY) },
-            ),
-            SettingsDestination(
-                title = "Key bindings",
-                subtitle = "Map hardware keys to in-app actions",
-                keywords = listOf("key", "keys", "bindings", "binding", "hardware", "button", "shortcut"),
-                open = onOpenKeyBindings,
-            ),
-        )
+        buildList {
+            // Device-as-a-service screens (MQTT / Sync / IoT Camera / IoT Sensors)
+            // are dropped in R1HAL (legacy), so don't surface them in settings
+            // search either — only the kept screens below.
+            if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
+                add(
+                    SettingsDestination(
+                        title = "MQTT broker",
+                        subtitle = "Host, port, auth, TLS for the IoT modes",
+                        keywords = listOf("mqtt", "broker", "publish", "topic", "iot"),
+                        open = { onOpenCategory(SettingsCategory.MQTT) },
+                    ),
+                )
+                add(
+                    SettingsDestination(
+                        title = "Sync",
+                        subtitle = "Mirror settings across devices via Home Assistant",
+                        keywords = listOf("sync", "mirror", "devices", "backup"),
+                        open = { onOpenCategory(SettingsCategory.SYNC) },
+                    ),
+                )
+                add(
+                    SettingsDestination(
+                        title = "IoT Camera Mode",
+                        subtitle = "Stream the device camera to Home Assistant",
+                        keywords = listOf("iot", "camera", "stream", "mjpeg", "snapshot"),
+                        open = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+                    ),
+                )
+                add(
+                    SettingsDestination(
+                        title = "IoT Sensors Mode",
+                        subtitle = "Expose device sensors and controls to Home Assistant",
+                        keywords = listOf("iot", "sensors", "sensor", "battery", "flashlight", "vibration"),
+                        open = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
+                    ),
+                )
+            }
+            add(
+                SettingsDestination(
+                    title = "Security",
+                    subtitle = "TLS certificate pinning, mTLS client cert",
+                    keywords = listOf("security", "tls", "pin", "pinning", "mtls", "certificate", "cert", "keystore"),
+                    open = { push(SettingsNode.CONNECTION_SECURITY) },
+                ),
+            )
+            add(
+                SettingsDestination(
+                    title = "Key bindings",
+                    subtitle = "Map hardware keys to in-app actions",
+                    keywords = listOf("key", "keys", "bindings", "binding", "hardware", "button", "shortcut"),
+                    open = onOpenKeyBindings,
+                ),
+            )
+        }
     }
     val matchedDestinations = androidx.compose.runtime.remember(settingsQuery, settingsDestinations) {
         searchSettingsDestinations(settingsQuery, settingsDestinations)
@@ -1835,6 +1852,11 @@ private fun LazyListScope.integrationsRoot(
     onOpenCategory: (SettingsCategory) -> Unit,
     onOpenBroadlink: () -> Unit,
 ) {
+    // R1HAL (legacy): the Cameras row, the whole DEVICE-AS-A-SERVICE block
+    // (Sync / IoT Camera / IoT Sensors / MQTT) and the Broadlink row all open
+    // screens this slim build drops to a placeholder, so hide them outright;
+    // only the generic TUNING rows + reset stay.
+    val isLegacy = com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY
     item { SubGroupLabel("TUNING") }
     item {
         val badge = groupBadge(arrayOf("INTEGRATIONS"))
@@ -1847,7 +1869,7 @@ private fun LazyListScope.integrationsRoot(
             trailing = if (badge > 0) { { R1Chip(text = badge.toString(), variant = R1ChipVariant.Pill) } } else null,
         )
     }
-    item {
+    if (!isLegacy) item {
         R1Row(
             label = SettingsNode.INTEGRATIONS_CAMERAS.title,
             description = "Snapshot polling, default grid view",
@@ -1866,67 +1888,69 @@ private fun LazyListScope.integrationsRoot(
             contentDescription = "Open Defaults & limits",
         )
     }
-    item { SubGroupLabel("DEVICE AS A SERVICE") }
-    item {
-        R1Row(
-            label = "Sync",
-            description = "Mirror settings across devices via Home Assistant",
-            value = if (s.integrations.haSyncEnabled) "ON · ${s.integrations.haSyncIntervalSec}s" else "Off",
-            onClick = { onOpenCategory(SettingsCategory.SYNC) },
-            showChevron = true,
-            contentDescription = "Open Sync",
-        )
-    }
-    item {
-        R1Row(
-            label = "IoT Camera Mode",
-            description = "Stream the device camera to Home Assistant",
-            value = if (s.iotCamera.enabled) {
-                val sinks = buildList {
-                    if (s.iotCamera.mjpegEnabled) add("MJPEG")
-                    if (s.iotCamera.mqttEnabled) add("MQTT")
-                }
-                "ON · ${if (sinks.isEmpty()) "no sinks" else sinks.joinToString(" + ")}"
-            } else "Off",
-            onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
-            showChevron = true,
-            contentDescription = "Open IoT Camera Mode",
-        )
-    }
-    item {
-        R1Row(
-            label = "IoT Sensors Mode",
-            description = "Expose device sensors + controls to Home Assistant",
-            value = if (s.iotSensors.enabled) "On" else "Off",
-            onClick = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
-            showChevron = true,
-            contentDescription = "Open IoT Sensors Mode",
-        )
-    }
-    item {
-        R1Row(
-            label = "MQTT broker",
-            description = "Host / port / auth / TLS · required by IoT modes",
-            value = if (s.advanced.mqttHost.isNotBlank()) {
-                "${s.advanced.mqttHost}:${s.advanced.mqttPort}" + (if (s.advanced.mqttUseTls) " · TLS" else "")
-            } else "Not configured",
-            onClick = { onOpenCategory(SettingsCategory.MQTT) },
-            showChevron = true,
-            contentDescription = "Open MQTT broker",
-        )
-    }
-    item { SubGroupLabel("IR / RF") }
-    item {
-        R1Row(
-            label = "Broadlink remote",
-            description = "Learn, fire + automate IR/RF commands",
-            // The catalog lives in HA (R1HA-tagged automations), so there
-            // is no local count to summarize here.
-            value = "Catalog stored in HA",
-            onClick = onOpenBroadlink,
-            showChevron = true,
-            contentDescription = "Open the Broadlink console",
-        )
+    if (!isLegacy) {
+        item { SubGroupLabel("DEVICE AS A SERVICE") }
+        item {
+            R1Row(
+                label = "Sync",
+                description = "Mirror settings across devices via Home Assistant",
+                value = if (s.integrations.haSyncEnabled) "ON · ${s.integrations.haSyncIntervalSec}s" else "Off",
+                onClick = { onOpenCategory(SettingsCategory.SYNC) },
+                showChevron = true,
+                contentDescription = "Open Sync",
+            )
+        }
+        item {
+            R1Row(
+                label = "IoT Camera Mode",
+                description = "Stream the device camera to Home Assistant",
+                value = if (s.iotCamera.enabled) {
+                    val sinks = buildList {
+                        if (s.iotCamera.mjpegEnabled) add("MJPEG")
+                        if (s.iotCamera.mqttEnabled) add("MQTT")
+                    }
+                    "ON · ${if (sinks.isEmpty()) "no sinks" else sinks.joinToString(" + ")}"
+                } else "Off",
+                onClick = { onOpenCategory(SettingsCategory.IOT_CAMERA) },
+                showChevron = true,
+                contentDescription = "Open IoT Camera Mode",
+            )
+        }
+        item {
+            R1Row(
+                label = "IoT Sensors Mode",
+                description = "Expose device sensors + controls to Home Assistant",
+                value = if (s.iotSensors.enabled) "On" else "Off",
+                onClick = { onOpenCategory(SettingsCategory.IOT_SENSORS) },
+                showChevron = true,
+                contentDescription = "Open IoT Sensors Mode",
+            )
+        }
+        item {
+            R1Row(
+                label = "MQTT broker",
+                description = "Host / port / auth / TLS · required by IoT modes",
+                value = if (s.advanced.mqttHost.isNotBlank()) {
+                    "${s.advanced.mqttHost}:${s.advanced.mqttPort}" + (if (s.advanced.mqttUseTls) " · TLS" else "")
+                } else "Not configured",
+                onClick = { onOpenCategory(SettingsCategory.MQTT) },
+                showChevron = true,
+                contentDescription = "Open MQTT broker",
+            )
+        }
+        item { SubGroupLabel("IR / RF") }
+        item {
+            R1Row(
+                label = "Broadlink remote",
+                description = "Learn, fire + automate IR/RF commands",
+                // The catalog lives in HA (R1HA-tagged automations), so there
+                // is no local count to summarize here.
+                value = "Catalog stored in HA",
+                onClick = onOpenBroadlink,
+                showChevron = true,
+                contentDescription = "Open the Broadlink console",
+            )
+        }
     }
     item { CategoryResetRow(label = "RESET INTEGRATIONS", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS, vm = vm) }
 }
