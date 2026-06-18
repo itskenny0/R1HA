@@ -4227,6 +4227,11 @@ private fun ChromeRow(
                     // enabled flag still governs that on-card button (see
                     // onCardMoreInfo), so the toggle is preserved, just relocated.
                     com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.DETAIL -> false
+                    // ASSIST opens the voice surface, which R1HAL drops — never
+                    // show the mic glyph in the slim build (it would land on the
+                    // Not-in-R1HAL stub).
+                    com.github.itskenny0.r1ha.core.prefs.ChromeButtonRef.ASSIST_MIC ->
+                        cfg.enabled && !com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY
                     else -> cfg.enabled
                 }
             }

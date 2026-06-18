@@ -301,19 +301,25 @@ private fun MoreInfoContent(
             onOpenLogbook = onOpenLogbook?.let { open -> { open(entity.id.value); onDismiss() } },
         )
 
-        // ── Related (same device + same area) ──────────────────────────────
-        RelatedSection(haRepository = haRepository, entity = entity, accent = accent)
+        // The HA-registry / raw-detail sections (Related, Same area, Details,
+        // Attributes) are power-user reference material that R1HAL drops — the slim
+        // build's more-info keeps the entity controls plus history / recent
+        // activity / logbook only.
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
+            // ── Related (same device + same area) ──────────────────────────
+            RelatedSection(haRepository = haRepository, entity = entity, accent = accent)
 
-        // ── Details (state block + YAML) ───────────────────────────────────
-        DetailsSection(entity = entity)
+            // ── Details (state block + YAML) ───────────────────────────────
+            DetailsSection(entity = entity)
 
-        // ── Attributes ────────────────────────────────────────────────────
-        // Last on purpose: the raw attribute dump is reference material, while
-        // forecast/history/activity answer the questions a long-press usually
-        // asks. Burying a weather entity's forecast below twenty attribute rows
-        // forced a scroll past noise to reach the payoff; HA's own more-info
-        // orders the same way (graph first, attributes at the bottom).
-        AttributesSection(entity)
+            // ── Attributes ─────────────────────────────────────────────────
+            // Last on purpose: the raw attribute dump is reference material, while
+            // forecast/history/activity answer the questions a long-press usually
+            // asks. Burying a weather entity's forecast below twenty attribute rows
+            // forced a scroll past noise to reach the payoff; HA's own more-info
+            // orders the same way (graph first, attributes at the bottom).
+            AttributesSection(entity)
+        }
 
         Spacer(Modifier.height(R1.space.l))
     }
