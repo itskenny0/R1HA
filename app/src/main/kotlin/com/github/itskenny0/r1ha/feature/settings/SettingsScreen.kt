@@ -696,12 +696,16 @@ private fun LazyListScope.rootCategories(
     onOpenCategory: (SettingsCategory) -> Unit,
     onOpenAbout: () -> Unit,
 ) {
-    featuredSection(featured)
+    // R1HAL drops the FEATURED spotlight + tiles (Cameras / Automations /
+    // Statistics are all dropped HA features) and the whole Today & Dashboard
+    // category (the Today dashboard it configures is dropped).
+    val isLegacy = com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY
+    if (!isLegacy) featuredSection(featured)
     item { CategoryRow(node = SettingsNode.CONNECTION, summary = s.server?.url ?: "Not connected", badge = groupBadge(arrayOf("SERVER")), onClick = { push(SettingsNode.CONNECTION) }) }
     item { CategoryRow(node = SettingsNode.APPEARANCE, summary = "Theme: ${prettyEnumName(s.theme.name)} · text size, clock, motion", badge = groupBadge(arrayOf("APPEARANCE", "CARD UI")), onClick = { push(SettingsNode.APPEARANCE) }) }
     item { CategoryRow(node = SettingsNode.INPUT, summary = "Wheel step: ${s.wheel.stepPercent}%", badge = groupBadge(arrayOf("SCROLL WHEEL")), onClick = { push(SettingsNode.INPUT) }) }
     item { CategoryRow(node = SettingsNode.BEHAVIOUR, summary = "Haptics, screen, tiles", badge = groupBadge(arrayOf("BEHAVIOUR")), onClick = { push(SettingsNode.BEHAVIOUR) }) }
-    item { CategoryRow(node = SettingsNode.DASHBOARD, summary = "Cards, thresholds, tile order", badge = groupBadge(arrayOf("DASHBOARD")), onClick = { push(SettingsNode.DASHBOARD) }) }
+    if (!isLegacy) item { CategoryRow(node = SettingsNode.DASHBOARD, summary = "Cards, thresholds, tile order", badge = groupBadge(arrayOf("DASHBOARD")), onClick = { push(SettingsNode.DASHBOARD) }) }
     item { CategoryRow(node = SettingsNode.INTEGRATIONS, summary = "Refresh, cameras, IoT, sync", badge = groupBadge(arrayOf("INTEGRATIONS")), onClick = { push(SettingsNode.INTEGRATIONS) }) }
     item { CategoryRow(node = SettingsNode.ADVANCED, summary = "Dev menu, modified, reset", badge = 0, onClick = { push(SettingsNode.ADVANCED) }) }
     item { CategoryRow(node = SettingsNode.BROWSE, summary = "Dashboard, Assist, Scenes, tools", badge = 0, onClick = { push(SettingsNode.BROWSE) }) }

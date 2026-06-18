@@ -22,7 +22,19 @@ import com.github.itskenny0.r1ha.core.theme.R1
  * deep links rather than something users routinely hit.
  */
 @Composable
-fun LegacyUnavailableScreen(onBack: () -> Unit) {
+fun LegacyUnavailableScreen(route: String, onBack: () -> Unit) {
+    // Ship a WARN naming the [route] that landed here: every hit means a UI
+    // affordance (a settings row, a drawer item, a sheet tile) still navigates to
+    // a dropped feature and should be gated. The route is the exact key to look up
+    // in LegacyFeatures, so the shipped logs pinpoint each remaining gap instead of
+    // needing a screenshot. Once per navigation (keyed on route), not per recompose.
+    androidx.compose.runtime.LaunchedEffect(route) {
+        com.github.itskenny0.r1ha.core.util.R1Log.w(
+            "LegacyGap",
+            "Not-in-R1HAL placeholder shown for route='$route' — a UI entry still " +
+                "points at this dropped feature; gate that affordance.",
+        )
+    }
     BackHandler(onBack = onBack)
     Box(
         modifier = Modifier

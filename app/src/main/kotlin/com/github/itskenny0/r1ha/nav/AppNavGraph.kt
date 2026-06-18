@@ -150,6 +150,7 @@ fun AppNavGraph(
             LegacyFeatures.PLACEHOLDER_ROUTES.forEach { route ->
                 composable(route) {
                     com.github.itskenny0.r1ha.ui.components.LegacyUnavailableScreen(
+                        route = route,
                         onBack = { navController.popBackStack() },
                     )
                 }
