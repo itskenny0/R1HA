@@ -417,9 +417,14 @@ class MainActivity : ComponentActivity() {
                             // Suppress the rail / drawer on full-bleed flows where there's
                             // no app to navigate yet (onboarding, the long-lived-token
                             // setup), and whenever the user has turned the side panel off.
-                            // Everywhere else the shell decides chrome by tier.
-                            val showShellChrome = when (currentRoute) {
-                                Routes.ONBOARDING, Routes.LONG_LIVED_TOKEN -> false
+                            // Everywhere else the shell decides chrome by tier. R1HAL
+                            // (legacy) has no sidebar at all — the slim build is
+                            // card-stack-only and reaches Settings via the chrome gear —
+                            // so the rail / drawer is never shown.
+                            val showShellChrome = when {
+                                com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY -> false
+                                currentRoute == Routes.ONBOARDING ||
+                                    currentRoute == Routes.LONG_LIVED_TOKEN -> false
                                 else -> navPanel.sidePanelEnabled
                             }
                             // Ambient pin controller — built from the current route + the

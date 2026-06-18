@@ -4155,19 +4155,23 @@ private fun ChromeRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Hamburger — tap opens the navigation slide-out (or the QuickActions sheet when
             // the slide-out isn't available); long-press always opens the QuickActions sheet.
-            // r1RowPressable keeps both gestures on the same tile.
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .r1RowPressable(
-                        onTap = onTapHamburger,
-                        onLongPress = onLongPressHamburger,
-                        contentDescription = "Open menu",
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                HamburgerGlyph(size = 18.dp)
+            // r1RowPressable keeps both gestures on the same tile. OMITTED in R1HAL
+            // (legacy): the slim build has no sidebar / drawer, and Settings is
+            // reached via the gear, so there's nothing for the hamburger to open.
+            if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .r1RowPressable(
+                            onTap = onTapHamburger,
+                            onLongPress = onLongPressHamburger,
+                            contentDescription = "Open menu",
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    HamburgerGlyph(size = 18.dp)
+                }
             }
             // Favourites — opens the favourites picker (the action the hamburger tap
             // used to do). Clear star mark so it reads as "favourites" at a glance.
