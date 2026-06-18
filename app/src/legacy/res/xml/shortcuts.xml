@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  No launcher shortcuts on the slim build. The main set targets dropped routes
+  (search / assist / today / automations) and hardcodes the full app's package name,
+  neither of which applies to R1HAL, so the legacy flavour ships an empty set.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android" />

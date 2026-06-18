@@ -49,15 +49,6 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Colourful Cards reworked for readability, with palette sets (Vivid, Pastel, Neon) and switchable background designs.",
-    "Colourful Cards now skins scene, script, IR and sensor tiles, so they match the bright cards instead of sitting dark.",
-    "Deck scrolling now reaches every card in turn, last included; it rests flush at the bottom when tall or alone.",
-    "Deck layout adds a Half-height peek mode, and Auto now flows the dynamic layout on phones.",
-    "The value bar clicks under your finger on every card, not only the one the wheel is driving.",
-    "Theme picker redesigned: clearer per-theme previews, selection state, and accent picker.",
-    "Lovelace cards are first-class deck cards: they mix with favourites on any page and look native.",
-    "Broadlink IR/RF console under Settings: guided learn, test-fire, manage; commands live in HA as tagged automations.",
-    "Energy: the draw readout never clips, and the Today power total now matches the energy screen's DRAW.",
-    "Energy view: long-press a top consumer to exclude a mis-reporting sensor from every total; restore from EXCLUDED.",
-    "About: install any GitHub release from a version list; thanks to Home Assistant, Nabu Casa and Open Home Foundation.",
+    "New: R1HAL, a slim companion build centred on the card stack, installable alongside R1HA.",
+    "R1HAL drops the extra screens and most permissions for a leaner, focused Home Assistant remote.",
 )

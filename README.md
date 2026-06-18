@@ -138,6 +138,16 @@ The app is built and tested against modern Android (the R1 itself runs Android 1
 
 Nothing in that table blocks the app from installing or running; it is only about which conveniences light up where. The oldest version I have actually tested on is Android 9 (Pie). Anything between the 6.0 floor and there should work but is untested; if you run the app on something older, reports are welcome.
 
+## R1HAL: the slim build
+
+R1HA also ships a deliberately reduced build called **R1HAL**. It keeps the card stack (the heart of the app) and the entity drill-ins reached from a card's more-info sheet (history, logbook, media browsing), and drops everything else: dashboards, energy, automations, scenes, cameras, the voice satellite, the IoT camera and sensor modes, widgets, Quick Settings tiles, and the rest of the management surface. The dropped screens are compiled out, not just hidden. The permissions those features needed (camera, microphone, NFC, Bluetooth, foreground services, write-settings, post-notifications) are stripped from the build too, so R1HAL requests little more than network access (plus install-packages, for its self-updater).
+
+R1HAL is its own app, not a mode you toggle. It has a separate package id, so it installs and runs **alongside** a full R1HA rather than replacing it. It shows up as "R1HAL" in the app drawer with a yellow icon and a yellow accent so the two are never confused.
+
+It runs on the same Android 6.0 floor as the full app. The current Jetpack Compose toolkit hard-requires Android 6.0, so that is genuinely the lowest the card stack can go; R1HAL is about a smaller, single-purpose app rather than a lower OS requirement.
+
+**You may actually prefer R1HAL even on a modern phone.** If all you want is a fast, focused Home Assistant remote built around the card stack, without the dozens of extra screens and the broad permission set the full app carries, the slim build is the leaner, lower-footprint choice. Pick R1HA for the complete tour; pick R1HAL when less is more.
+
 ## Install
 
 Download the latest `r1ha-YYYY.MM.DD.HHmm.apk` from the [Releases](../../releases) page and install it:
@@ -159,7 +169,7 @@ cd R1HA
 adb install app/build/outputs/apk/github/debug/app-github-debug.apk
 ```
 
-There are two product flavors: `github` (includes the in-app self-updater) and `fdroid` (relies on the F-Droid client for updates). Swap `Github` for `Fdroid` in the task name to build the other one.
+There are three product flavors: `github` (includes the in-app self-updater), `fdroid` (relies on the F-Droid client for updates), and `legacy` (the slim "R1HAL" build, see below). Swap `Github` for `Fdroid` or `Legacy` in the task name to build another one.
 
 The local build uses today's date as the version (`YYYYMMDD` for `versionCode`, `YYYY.MM.DD` for `versionName`); CI passes `APP_VERSION_CODE` / `APP_VERSION_NAME` from the release tag.
 

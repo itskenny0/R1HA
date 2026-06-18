@@ -24,7 +24,10 @@ class MainActivityStartDestinationTest {
     @Test fun dashboard_when_startOnDashboard_and_today_visible() {
         val s = AppSettings(server = ServerConfig(url = "http://h"))
             .let { it.copy(behavior = it.behavior.copy(startOnDashboard = true)) }
-        assertThat(resolveStartDestination(s)).isEqualTo(Routes.DASHBOARD)
+        // The legacy (R1HAL) build drops the dashboard, so a persisted "start on
+        // dashboard" still lands on the card stack there; the full builds honour it.
+        val expected = if (BuildConfig.IS_LEGACY) Routes.CARD_STACK else Routes.DASHBOARD
+        assertThat(resolveStartDestination(s)).isEqualTo(expected)
     }
 
     @Test fun cardStack_when_startOnDashboard_but_today_hidden() {

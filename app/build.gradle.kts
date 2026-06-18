@@ -97,30 +97,65 @@ android {
         }
     }
 
-    // Two product flavours so the F-Droid build can omit the in-app self-updater
-    // (and the REQUEST_INSTALL_PACKAGES permission that backs it) without a separate
-    // branch. F-Droid users get updates from the F-Droid client; folding the same
-    // affordance into the github flavour would duplicate notifications and the
-    // permission would be flagged in F-Droid's anti-feature scanner.
+    // Three product flavours so distribution-specific behaviour can vary without a
+    // separate branch:
     //
     //   github  → default; ships to GitHub Releases with self-updater enabled.
-    //   fdroid  → strips the updater UI and drops REQUEST_INSTALL_PACKAGES via a
+    //   fdroid  → strips the in-app self-updater (and REQUEST_INSTALL_PACKAGES) via a
     //             flavour-specific manifest overlay at app/src/fdroid/AndroidManifest.xml.
+    //             F-Droid users get updates from the F-Droid client; folding the same
+    //             affordance in would duplicate notifications and trip F-Droid's
+    //             anti-feature scanner.
+    //   legacy  → a deliberately slim build for aging hardware, branded "R1HAL". Ships
+    //             only the card stack + its more-info drill-ins. minSdk stays at 23
+    //             because the current Jetpack Compose (BOM foundation-layout) hard-floors
+    //             there — 23 is genuinely the lowest API the card stack can run on, so
+    //             the legacy build's value is the reduced feature set + slim APK + its
+    //             own installable package, not a lower OS floor. The reduced set is
+    //             enforced two ways: the
+    //             manifest overlay at app/src/legacy/AndroidManifest.xml drops the
+    //             hardware/service permissions the dropped features needed, and
+    //             AppNavGraph routes the dropped destinations to a placeholder when
+    //             BuildConfig.IS_LEGACY is set. Because IS_LEGACY is a compile-time
+    //             constant, R8 dead-code-eliminates the real feature screens out of the
+    //             release APK entirely (see com.github.itskenny0.r1ha.nav.LegacyFeatures).
+    //             Unlike the other flavours it takes a distinct applicationId (the
+    //             ".legacy" suffix) and its own label / icon / accent so R1HAL installs
+    //             ALONGSIDE a full R1HA rather than upgrading it.
     //
-    // applicationId stays identical across flavours so the two builds register as the
-    // SAME app from Android's POV — switching distribution requires a sign-out then
-    // sign-in only if the signatures differ (they do for f-droid.org's main repo
-    // because F-Droid signs with their own key; they don't for IzzyOnDroid, which
-    // re-publishes the github-flavour APK signed with our key).
+    // github and fdroid keep an identical applicationId so they register as the SAME app
+    // from Android's POV — switching distribution requires a sign-out then sign-in only
+    // if the signatures differ (they do for f-droid.org's main repo because F-Droid signs
+    // with their own key; they don't for IzzyOnDroid, which re-publishes the
+    // github-flavour APK signed with our key).
     flavorDimensions += "distribution"
     productFlavors {
         create("github") {
             dimension = "distribution"
             buildConfigField("boolean", "IS_FDROID_BUILD", "false")
+            buildConfigField("boolean", "IS_LEGACY", "false")
         }
         create("fdroid") {
             dimension = "distribution"
             buildConfigField("boolean", "IS_FDROID_BUILD", "true")
+            buildConfigField("boolean", "IS_LEGACY", "false")
+        }
+        create("legacy") {
+            dimension = "distribution"
+            // Stays at the project floor: the Compose BOM's foundation-layout requires
+            // minSdk 23, so going lower would need tools:overrideLibrary and risk runtime
+            // crashes on exactly the old devices this build targets. 23 is the real floor.
+            minSdk = 23
+            // Distinct package so R1HAL coexists with a full R1HA install. The
+            // FileProvider authority (${applicationId}.updates) and any other
+            // applicationId-derived names follow the suffix automatically.
+            applicationIdSuffix = ".legacy"
+            // Surfaces in the About screen / window title so the slim build is
+            // unmistakable; the launcher label comes from the manifest overlay's
+            // @string/app_name override (R1HAL).
+            versionNameSuffix = "-legacy"
+            buildConfigField("boolean", "IS_FDROID_BUILD", "false")
+            buildConfigField("boolean", "IS_LEGACY", "true")
         }
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.github.itskenny0.r1ha.BuildConfig
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import kotlinx.coroutines.flow.first
@@ -141,6 +142,19 @@ fun AppNavGraph(
             else navPopExit
         },
     ) {
+        // Legacy (R1HAL) build: every dropped route resolves to a stub so a stray
+        // affordance or deep link can't crash the NavHost. The full-build branches that
+        // follow register the real screens; R8 strips whichever branch is dead for the
+        // variant being built (BuildConfig.IS_LEGACY is a compile-time constant).
+        if (BuildConfig.IS_LEGACY) {
+            LegacyFeatures.PLACEHOLDER_ROUTES.forEach { route ->
+                composable(route) {
+                    com.github.itskenny0.r1ha.ui.components.LegacyUnavailableScreen(
+                        onBack = { navController.popBackStack() },
+                    )
+                }
+            }
+        }
         composable(Routes.ONBOARDING) {
             OnboardingScreen(
                 settings = settings,
@@ -209,6 +223,9 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        // Routes dropped from the legacy (R1HAL) build follow, wrapped so R8 strips the
+        // real screens there; the placeholder block above owns them in legacy.
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.SETTINGS_SYNC) {
             com.github.itskenny0.r1ha.feature.settings.SyncSettingsScreen(
                 settings = settings,
@@ -243,6 +260,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        }
         composable(Routes.THEME_PICKER) {
             ThemePickerScreen(
                 settings = settings,
@@ -276,6 +294,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.ASSIST) {
             com.github.itskenny0.r1ha.feature.assist.AssistScreen(
                 haRepository = haRepository,
@@ -302,6 +321,7 @@ fun AppNavGraph(
                 wheelInput = wheelInput,
                 onBack = { navController.popBackStack() },
             )
+        }
         }
         composable(Routes.LOGBOOK) {
             com.github.itskenny0.r1ha.feature.logbook.LogbookScreen(
@@ -333,6 +353,7 @@ fun AppNavGraph(
                 initialEntityFilter = backStackEntry.arguments?.getString("entityId"),
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.TEMPLATE) {
             com.github.itskenny0.r1ha.feature.template.TemplateScreen(
                 haRepository = haRepository,
@@ -401,6 +422,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        }
         composable(Routes.LONG_LIVED_TOKEN) {
             com.github.itskenny0.r1ha.feature.longlived.LongLivedTokenScreen(
                 settings = settings,
@@ -421,6 +443,7 @@ fun AppNavGraph(
                 },
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.AREAS) {
             com.github.itskenny0.r1ha.feature.areas.AreasScreen(
                 haRepository = haRepository,
@@ -500,6 +523,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        }
         composable(Routes.MEDIA_BROWSE) {
             com.github.itskenny0.r1ha.feature.mediabrowse.MediaBrowseScreen(
                 haRepository = haRepository,
@@ -520,6 +544,7 @@ fun AppNavGraph(
                 initialEntityId = backStackEntry.arguments?.getString("entityId"),
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.BACKUPS) {
             com.github.itskenny0.r1ha.feature.backups.BackupsScreen(
                 haRepository = haRepository,
@@ -558,6 +583,7 @@ fun AppNavGraph(
                 wheelInput = wheelInput,
                 onBack = { navController.popBackStack() },
             )
+        }
         }
         composable(Routes.LOVELACE) {
             com.github.itskenny0.r1ha.feature.lovelace.LovelaceScreen(
@@ -622,6 +648,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.DEVICES) {
             com.github.itskenny0.r1ha.feature.devices.DevicesScreen(
                 haRepository = haRepository,
@@ -638,6 +665,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        }
         composable(Routes.LOGS) {
             com.github.itskenny0.r1ha.feature.logs.LogsScreen(
                 haRepository = haRepository,
@@ -646,6 +674,7 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
             )
         }
+        if (!BuildConfig.IS_LEGACY) {
         composable(Routes.USERS) {
             com.github.itskenny0.r1ha.feature.users.UsersScreen(
                 haRepository = haRepository,
@@ -818,6 +847,7 @@ fun AppNavGraph(
                     navController.navigate(Routes.historyRoute(entityId)) { launchSingleTop = true }
                 },
             )
+        }
         }
     }
 }

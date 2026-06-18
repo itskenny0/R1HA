@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher label for the slim build. Distinct from R1HA so the two can be told
+         apart in the app drawer when installed side by side. -->
+    <string name="app_name" translatable="false">R1HAL</string>
+</resources>

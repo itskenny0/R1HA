@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.nav
 
 import androidx.compose.runtime.Immutable
+import com.github.itskenny0.r1ha.BuildConfig
 
 /**
  * One surface the user is allowed to PIN to the side navigation rail / drawer
@@ -37,7 +38,12 @@ data class PinnableSurface(
  */
 object PinnableSurfaces {
 
-    /** All pinnable surfaces, in offer order. */
+    /**
+     * All pinnable surfaces, in offer order. On the slim legacy build (R1HAL) the
+     * catalogue is filtered to surfaces whose screen survives (see [LegacyFeatures]),
+     * so the drawer never offers a destination that resolves only to the
+     * "not in this build" placeholder.
+     */
     val ALL: List<PinnableSurface> = listOf(
         PinnableSurface(Routes.DASHBOARD, "Today", "◴"),
         PinnableSurface(Routes.DASHBOARDS, "Dashboards", "▤"),
@@ -71,7 +77,9 @@ object PinnableSurfaces {
         PinnableSurface(Routes.SERVICE_CALLER, "Call action", "⎆"),
         PinnableSurface(Routes.TEMPLATE, "Templates", "{}"),
         PinnableSurface(Routes.BACKUPS, "Backups", "⤓"),
-    )
+    ).let { all ->
+        if (BuildConfig.IS_LEGACY) all.filter { LegacyFeatures.isAvailable(it.route) } else all
+    }
 
     private val byRoute: Map<String, PinnableSurface> = ALL.associateBy { it.route }
 

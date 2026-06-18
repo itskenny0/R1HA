@@ -43,6 +43,9 @@ import com.github.itskenny0.r1ha.nav.Routes
  */
 fun resolveStartDestination(settings: AppSettings): String = when {
     settings.server == null -> Routes.ONBOARDING
+    // The Today/Dashboard overview is dropped from the legacy (R1HAL) build, so even a
+    // persisted "start on dashboard" preference resolves to the card stack there.
+    com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY -> Routes.CARD_STACK
     settings.behavior.startOnDashboard &&
         com.github.itskenny0.r1ha.core.prefs.NavItemId.TODAY !in settings.navPanel.hiddenNavItems ->
         Routes.DASHBOARD

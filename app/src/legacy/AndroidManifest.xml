@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy (R1HAL) flavour overlay. The slim build ships only the card stack and its
+  more-info drill-ins (see com.github.itskenny0.r1ha.nav.LegacyFeatures), so the
+  permissions and background components that the dropped features needed are stripped
+  here via the manifest merger. The self-updater is kept (R1HAL is distributed off
+  GitHub like the github flavour), so REQUEST_INSTALL_PACKAGES, the package-installer
+  query and the FileProvider stay.
+
+  Component names are relative to the namespace package (com.github.itskenny0.r1ha),
+  not the applicationId, so the ".legacy" suffix doesn't change the names below.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Voice satellite (mic) — dropped. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.microphone" tools:node="remove"/>
+
+    <!-- IoT Camera Mode — dropped. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.camera" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.camera.any" tools:node="remove"/>
+
+    <!-- NFC / tags — dropped. -->
+    <uses-permission android:name="android.permission.NFC" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.nfc" tools:node="remove"/>
+
+    <!-- iBeacon advertiser — dropped. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove"/>
+    <uses-feature android:name="android.hardware.bluetooth_le" tools:node="remove"/>
+
+    <!-- HA notification mirror — dropped. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" tools:node="remove"/>
+
+    <!-- No foreground services in the slim build (webhook / IoT camera / IoT sensors
+         all dropped), so every FGS permission goes. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" tools:node="remove"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:node="remove"/>
+
+    <!-- IoT Sensors brightness control — dropped. -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:node="remove"/>
+
+    <application>
+        <!-- Quick Settings tiles — dropped. -->
+        <service android:name=".feature.quicktile.HaQuickTileService" tools:node="remove"/>
+        <service android:name=".feature.quicktile.HaQuickTileServiceB" tools:node="remove"/>
+        <service android:name=".feature.quicktile.HaQuickTileServiceC" tools:node="remove"/>
+        <service android:name=".feature.quicktile.HaQuickTileServiceD" tools:node="remove"/>
+
+        <!-- IoT Camera / Sensors foreground services + device-admin receiver — dropped. -->
+        <service android:name=".core.iotcamera.IotCameraService" tools:node="remove"/>
+        <service android:name=".core.iotsensors.IotSensorsService" tools:node="remove"/>
+        <receiver android:name=".core.iotsensors.LockAdminReceiver" tools:node="remove"/>
+
+        <!-- Webhook listener + background-refresh job — dropped. -->
+        <service android:name=".core.webhook.WebhookListenerService" tools:node="remove"/>
+        <service android:name=".core.background.BackgroundRefreshJob" tools:node="remove"/>
+
+        <!-- Home-screen widgets — dropped. -->
+        <receiver android:name=".feature.widget.R1haWidgetProvider" tools:node="remove"/>
+        <receiver android:name=".feature.widget.FavoriteCardWidgetProvider" tools:node="remove"/>
+        <activity android:name=".feature.widget.FavoriteCardWidgetConfigActivity" tools:node="remove"/>
+
+        <!-- HA notification-mirror dismiss receiver + external-automation receiver — dropped. -->
+        <receiver
+            android:name=".core.notifications.HaNotificationMirror$DismissActionReceiver"
+            tools:node="remove"/>
+        <receiver android:name=".core.extern.AutomationReceiver" tools:node="remove"/>
+    </application>
+</manifest>

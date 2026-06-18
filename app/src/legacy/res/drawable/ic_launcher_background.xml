@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Legacy (R1HAL) launcher background. Bright yellow instead of the github/fdroid orange
+  so the slim build is unmistakable in the app drawer when installed alongside a full
+  R1HA, and to match R1HAL's yellow default accent (see R1Dynamic.DEFAULT_ACCENT). This
+  overrides the main drawable of the same name for the legacy flavour only.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0 H108 V108 H0 Z" android:fillColor="#FFC400"/>
+</vector>

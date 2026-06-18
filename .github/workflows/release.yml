@@ -79,8 +79,13 @@ jobs:
         #               permission. Mirror-ready for IzzyOnDroid and f-droid.org so
         #               users on those catalogs get a single update path through the
         #               catalog client.
-        # Both share the same applicationId / versionCode / versionName so they
-        # register as the same Android app.
+        # github and fdroid share the same applicationId / versionCode / versionName so
+        # they register as the same Android app.
+        #
+        #   - legacy  → the slim "R1HAL" build. A reduced feature set (card stack + its
+        #               more-info drill-ins only) and a distinct applicationId so it
+        #               installs ALONGSIDE a full R1HA rather than upgrading it. Shipped
+        #               as a separate r1ha-legacy-*.apk artifact below.
         #
         # We build the RELEASE variant rather than debug so R8 minification + resource
         # shrinking apply. The resulting APK is ~5 MB instead of ~70 MB, which keeps
@@ -89,7 +94,7 @@ jobs:
         # local.properties (the case for CI), so the signature stays consistent with
         # the existing user base from prior tag builds — direct-install upgrades work
         # without uninstall.
-        run: ./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease
+        run: ./gradlew :app:assembleGithubRelease :app:assembleFdroidRelease :app:assembleLegacyRelease
 
       - name: Rename APKs
         run: |
@@ -97,6 +102,8 @@ jobs:
              "r1ha-${{ steps.version.outputs.version_name }}.apk"
           mv app/build/outputs/apk/fdroid/release/app-fdroid-release.apk \
              "r1ha-fdroid-${{ steps.version.outputs.version_name }}.apk"
+          mv app/build/outputs/apk/legacy/release/app-legacy-release.apk \
+             "r1ha-legacy-${{ steps.version.outputs.version_name }}.apk"
 
       - name: Generate release notes
         id: notes
@@ -122,3 +129,4 @@ jobs:
           files: |
             r1ha-${{ steps.version.outputs.version_name }}.apk
             r1ha-fdroid-${{ steps.version.outputs.version_name }}.apk
+            r1ha-legacy-${{ steps.version.outputs.version_name }}.apk

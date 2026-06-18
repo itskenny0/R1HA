@@ -140,11 +140,16 @@ fun namedFontFamily(name: String): FontFamily =
  * old values are discarded. Defaults reproduce today's rendering exactly.
  */
 object R1Dynamic {
-    /** The stock R1 orange — the accent when no override is set. */
-    val DEFAULT_ACCENT = Color(0xFFF36F21)
+    /**
+     * The accent when no override is set: stock R1 orange on the normal builds, and a
+     * bright yellow on the slim legacy build (R1HAL) so the two installs are visually
+     * distinct at a glance and match R1HAL's yellow launcher icon.
+     */
+    val DEFAULT_ACCENT =
+        if (com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) Color(0xFFFFC400) else Color(0xFFF36F21)
 
     @Volatile
-    var accent: Color = Color(0xFFF36F21)
+    var accent: Color = DEFAULT_ACCENT
 
     @Volatile
     var ramp: R1TypeRamp = buildTypeRamp("")
