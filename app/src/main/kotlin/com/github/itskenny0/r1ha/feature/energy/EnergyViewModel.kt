@@ -115,11 +115,16 @@ class EnergyViewModel(
          *  nonsensical lifetime total for installs with cumulative meters.) */
         val todayKwh: Double? = null,
         /** Today's consumption derived from the recorder: sum of every
-         *  energy meter's per-bucket `change` since local midnight. Null
-         *  until a history fetch covering today has succeeded. This is the
-         *  authoritative (and only) TODAY figure shown; [todayKwh] is a
-         *  cumulative template sum and is deliberately NOT used as a fallback. */
+         *  energy meter's per-bucket `change` since local midnight. The FALLBACK
+         *  for the TODAY tile when the real-time figure isn't available; [todayKwh]
+         *  is a cumulative template sum and is deliberately NOT used as a fallback. */
         val statsTodayKwh: Double? = null,
+        /** REAL-TIME today (kWh): each energy meter's rise in reading from local
+         *  midnight to now, summed (see [EnergyTodayCalc]). Computed from raw state
+         *  history every refresh, so it is current during the day and ~0 right after
+         *  midnight, with no hourly recorder lag. The PREFERRED TODAY figure;
+         *  [statsTodayKwh] is the recorder fallback when the history fetch fails. */
+        val realtimeTodayKwh: Double? = null,
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
         /** Power sensors the user has manually excluded from every aggregate.
@@ -252,7 +257,13 @@ class EnergyViewModel(
             // UNVERIFIED OFFLINE: energy/get_prefs WS command not tested against
             // a live HA instance.
             val prefsJob = async { haRepository.getEnergyPrefs() }
-            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob, waterJob, gasJob, prefsJob)
+            // REAL-TIME today: per-meter state-history delta since local midnight,
+            // in parallel with the templates. Best-effort — a null result (no
+            // meters, or every history fetch failed) leaves the last value / the
+            // recorder fallback in place rather than blanking the tile.
+            val realtimeJob = async { computeRealtimeTodayKwh() }
+            awaitAll(drawJob, prodJob, kwhJob, topJob, batJob, waterJob, gasJob, prefsJob, realtimeJob)
+            val realtimeToday = realtimeJob.await()
 
             val drawRaw = drawJob.await().getOrNull()?.trim()
             val prodRaw = prodJob.await().getOrNull()?.trim()
@@ -308,6 +319,9 @@ class EnergyViewModel(
                 currentDrawW = drawRaw?.toDoubleOrNull(),
                 productionW = prodRaw?.toDoubleOrNull(),
                 todayKwh = kwhRaw?.toDoubleOrNull(),
+                // Keep the previous real-time figure when this fetch yields null
+                // (transient history failure) so the tile doesn't flicker to '—'.
+                realtimeTodayKwh = realtimeToday ?: _ui.value.realtimeTodayKwh,
                 topConsumers = top,
                 excludedSensors = excludedSensors,
                 // Best-effort enrichment: leave the flag unchanged if the
@@ -468,6 +482,63 @@ class EnergyViewModel(
             )
         }
     }
+
+    /**
+     * REAL-TIME today (kWh): for every energy meter, fetch its raw state history
+     * since local midnight and sum the rise in reading (see [EnergyTodayCalc]).
+     * Runs each refresh in parallel with the templates; returns null when there
+     * are no energy meters or every history fetch failed, so the caller keeps the
+     * last value / falls back to the recorder figure. Per-meter fetches run
+     * concurrently; the energy screen is foreground so the handful of history
+     * calls is acceptable.
+     */
+    private suspend fun computeRealtimeTodayKwh(): Double? {
+        val ids = ensureEnergyMeters()
+        if (ids.isEmpty()) return null
+        val now = Instant.now()
+        val midnight = localMidnight(now)
+        // History span to request: hours since midnight + a 2 h margin so the
+        // pre-midnight baseline sample is included; clamped to a sane ceiling.
+        val hours = ((now.epochSecond - midnight.epochSecond) / 3600 + 2)
+            .toInt().coerceIn(1, 26)
+        val pointsById = kotlinx.coroutines.coroutineScope {
+            ids.map { id ->
+                id to async {
+                    haRepository.fetchHistory(
+                        com.github.itskenny0.r1ha.core.ha.EntityId(id),
+                        hours,
+                    ).getOrNull().orEmpty()
+                }
+            }.associate { (id, job) -> id to job.await() }
+        }
+        return EnergyTodayCalc.todayKwh(
+            pointsById = pointsById,
+            unitById = energyStatisticUnits,
+            midnight = midnight,
+            unitToKwh = { unit -> energyUnitToKwh(unit) },
+        )
+    }
+
+    /** Resolve (and cache) the energy-meter statistic ids + units from the recorder
+     *  catalogue. Shared by the history chart and the real-time today computation;
+     *  returns the empty list (and caches it) when the catalogue load fails. */
+    private suspend fun ensureEnergyMeters(): List<String> {
+        if (energyStatisticIds.isNotEmpty()) return energyStatisticIds
+        val resolved = haRepository.listStatisticIds().fold(
+            onSuccess = { rows ->
+                energyStatisticUnits = rows.associate { it.statisticId to it.unitOfMeasurement }
+                selectEnergyStatisticIds(rows)
+            },
+            onFailure = { emptyList() },
+        )
+        energyStatisticIds = resolved
+        return resolved
+    }
+
+    /** Local midnight (start of today in the device timezone) as an Instant. */
+    private fun localMidnight(now: Instant): Instant =
+        now.atZone(ZoneId.systemDefault()).toLocalDate()
+            .atStartOfDay(ZoneId.systemDefault()).toInstant()
 
     /** Cached energy-meter statistic ids, resolved from the recorder
      *  catalogue on first history load and reused across window flips. */

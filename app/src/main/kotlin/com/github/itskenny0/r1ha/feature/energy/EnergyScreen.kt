@@ -194,15 +194,12 @@ fun EnergyScreen(
                 // ── DRAW + PRODUCTION (+ TODAY on wide tiers) row ──────
                 // On expanded panels the TODAY tile joins the top row as a
                 // third column so the headline stats read as one band instead
-                // of stacking down a mostly-empty wide page. ONLY the recorder
-                // figure (HA-accurate sum of per-bucket consumption since
-                // midnight) is shown; '—' until it lands. The old template
-                // fallback summed cumulative meter STATES (lifetime totals), so
-                // it showed a nonsensical figure (e.g. 1846 kWh "today") on
-                // installs whose energy sensors are lifetime counters — a Jinja
-                // template can't compute a since-midnight delta, so there is no
-                // honest fallback.
-                val today = ui.statsTodayKwh
+                // of stacking down a mostly-empty wide page. Prefer the REAL-TIME
+                // figure (each meter's state-history rise since local midnight),
+                // which is current during the day and never empty-looking; fall
+                // back to the recorder figure, then '—'. The cumulative template
+                // sum (ui.todayKwh) is deliberately never used here.
+                val today = ui.realtimeTodayKwh ?: ui.statsTodayKwh
                 val wideStats = dimens.tier == com.github.itskenny0.r1ha.ui.components.WindowTier.EXPANDED ||
                     dimens.tier == com.github.itskenny0.r1ha.ui.components.WindowTier.EXTRA_LARGE
                 Row(

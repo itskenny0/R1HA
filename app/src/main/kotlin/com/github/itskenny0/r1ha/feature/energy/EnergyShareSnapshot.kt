@@ -89,10 +89,10 @@ internal object EnergyShareSnapshot {
         bigPaint.color = INK
         y += 70f
 
-        // TODAY kWh — single row. Recorder-derived figure only, matching the
-        // tile; the old todayKwh template fallback summed cumulative meter states
-        // (a lifetime total, not today's delta), so the share never carries it.
-        val today = state.statsTodayKwh
+        // TODAY kWh — single row. Real-time figure preferred (matching the tile),
+        // recorder figure as fallback; the cumulative todayKwh template sum (a
+        // lifetime total, not today's delta) is never carried.
+        val today = state.realtimeTodayKwh ?: state.statsTodayKwh
         canvas.drawText("TODAY", PADDING, y, labelPaint)
         y += 80f
         canvas.drawText(formatKwh(today), PADDING, y, bigPaint)

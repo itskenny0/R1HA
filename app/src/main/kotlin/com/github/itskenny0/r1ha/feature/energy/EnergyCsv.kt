@@ -75,9 +75,9 @@ internal fun energyCsv(
 internal fun energyCsv(ui: EnergyViewModel.UiState): String = energyCsv(
     currentDrawW = ui.currentDrawW,
     productionW = ui.productionW,
-    // Recorder figure only: ui.todayKwh is a cumulative meter sum (lifetime
-    // total), not today's delta, so the export never falls back to it.
-    todayKwh = ui.statsTodayKwh,
+    // Real-time figure preferred, recorder figure as fallback. ui.todayKwh is a
+    // cumulative meter sum (lifetime total), not today's delta, so it is never used.
+    todayKwh = ui.realtimeTodayKwh ?: ui.statsTodayKwh,
     topConsumers = ui.topConsumers,
     historyBars = ui.historyBars,
 )
