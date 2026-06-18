@@ -79,11 +79,19 @@ class OnboardingViewModel(
                 val httpCode = withContext(Dispatchers.IO) {
                     val req = Request.Builder()
                         .url("$baseUrl/auth/authorize?response_type=code&client_id=https%3A%2F%2Fitskenny0.github.io%2FR1HA%2F&redirect_uri=r1ha://auth-callback")
-                        .head()
+                        // GET, not HEAD: HA serves /auth/authorize as a GET-only
+                        // route, and on many setups (aiohttp without auto-HEAD, or
+                        // behind a reverse proxy) a HEAD there answers 405, which the
+                        // probe then mis-read as "not a Home Assistant login page" and
+                        // blocked sign-in even though the page loads fine in a browser.
+                        // GET is exactly what the OAuth WebView loads next, so a 200
+                        // here means the real login page is reachable. The body (a few
+                        // KB of login HTML) is discarded — we only read the status.
+                        .get()
                         .build()
                     http.newCall(req).execute().use { it.code }
                 }
-                R1Log.i("Onboarding.probe", "HEAD returned HTTP $httpCode")
+                R1Log.i("Onboarding.probe", "GET returned HTTP $httpCode")
                 // A response is not the same as a usable HA login page: a 404 from
                 // some other web server on the host, or a reverse proxy demanding
                 // its own auth, would previously sail into the WebView and strand
