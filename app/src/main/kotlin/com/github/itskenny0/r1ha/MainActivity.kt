@@ -687,15 +687,27 @@ class MainActivity : ComponentActivity() {
         // Engage NFC reader mode while the activity is foregrounded — the
         // NfcReader checks the per-feature toggle internally before firing
         // HA events, so calling bind() with the toggle off is a cheap no-op.
-        com.github.itskenny0.r1ha.feature.nfc.NfcReader.bind(this)
+        // NEVER in R1HAL (legacy): it strips android.permission.NFC, but on some
+        // OEMs (observed on Xiaomi/MIUI, API 36) checkSelfPermission(NFC) still
+        // reports GRANTED for the undeclared permission, so the in-bind permission
+        // guard wasn't enough and enableReaderMode threw Security=NFC-required,
+        // crashing onResume on every resume. Gate the whole call out of legacy so
+        // the NFC path is unreachable there regardless of the OEM's permission view.
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
+            com.github.itskenny0.r1ha.feature.nfc.NfcReader.bind(this)
+        }
     }
 
     override fun onPause() {
         super.onPause()
         // Release reader mode; without this another foreground app would have
         // to wait for our adapter to time out before its own NFC features
-        // could engage. Safe to call when bind() was a no-op.
-        com.github.itskenny0.r1ha.feature.nfc.NfcReader.unbind(this)
+        // could engage. Safe to call when bind() was a no-op. Skipped in legacy
+        // for the same reason as bind() above (disableReaderMode can throw the
+        // same NFC SecurityException on OEMs that mis-report the permission).
+        if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
+            com.github.itskenny0.r1ha.feature.nfc.NfcReader.unbind(this)
+        }
     }
 
     private fun handleOAuthCallback(intent: Intent?) {
