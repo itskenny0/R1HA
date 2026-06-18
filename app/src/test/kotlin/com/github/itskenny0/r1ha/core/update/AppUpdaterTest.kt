@@ -50,13 +50,35 @@ class AppUpdaterTest {
     private fun asset(name: String, url: String = "https://github.com/itskenny0/R1HA/releases/download/t/$name") =
         AppUpdater.GhAsset(name = name, browser_download_url = url, size = 1_000L)
 
-    @Test fun `github flavour picks the non-fdroid apk`() {
+    @Test fun `github flavour picks the bare apk, never fdroid or legacy`() {
+        // All three flavours present, legacy listed first so a naive firstOrNull
+        // that only filters -fdroid- would wrongly grab it.
         val assets = listOf(
+            asset("r1ha-legacy-2026.05.13.1409.apk"),
             asset("r1ha-fdroid-2026.05.13.1409.apk"),
             asset("r1ha-2026.05.13.1409.apk"),
         )
         val picked = AppUpdater.flavorAssetFor(assets, "github")
         assertThat(picked?.name).isEqualTo("r1ha-2026.05.13.1409.apk")
+    }
+
+    @Test fun `legacy flavour picks the legacy apk, never the github one`() {
+        // Regression: R1HAL (applicationId ...r1ha.legacy) was installing the
+        // github APK and landing as a SEPARATE app instead of updating itself.
+        // github asset listed first to prove the legacy build doesn't grab it.
+        val assets = listOf(
+            asset("r1ha-2026.05.13.1409.apk"),
+            asset("r1ha-fdroid-2026.05.13.1409.apk"),
+            asset("r1ha-legacy-2026.05.13.1409.apk"),
+        )
+        val picked = AppUpdater.flavorAssetFor(assets, "legacy")
+        assertThat(picked?.name).isEqualTo("r1ha-legacy-2026.05.13.1409.apk")
+    }
+
+    @Test fun `legacy flavour returns null when only a github apk is present`() {
+        // A legacy build must NOT fall back to the github APK.
+        val assets = listOf(asset("r1ha-2026.05.13.1409.apk"))
+        assertThat(AppUpdater.flavorAssetFor(assets, "legacy")).isNull()
     }
 
     @Test fun `fdroid flavour picks the fdroid apk`() {

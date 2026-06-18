@@ -174,18 +174,16 @@ class AppUpdater(
             R1Log.i("Updater.check", "already on latest (${BuildConfig.VERSION_CODE} ≥ $versionCode)")
             return@withContext CheckResult.UpToDate
         }
-        // Each release now ships two APKs: the github-flavour one (with the
-        // self-updater enabled — that's what we want here) named
-        //   r1ha-YYYY.MM.DD.HHmm.apk
-        // and the fdroid-flavour one (no self-updater, fewer permissions) named
-        //   r1ha-fdroid-YYYY.MM.DD.HHmm.apk
-        // The in-app updater MUST pick the github asset, otherwise an updating
-        // user would land on the fdroid build and lose the self-updater on their
-        // next install. Filter `-fdroid-` out explicitly rather than relying on
-        // alphabetical order in the assets array.
-        val apkAsset = release.assets.firstOrNull {
-            it.name.endsWith(".apk") && !it.name.contains("-fdroid-")
-        } ?: return@withContext CheckResult.Failed("No github-flavour APK attached to ${release.tag_name}")
+        // Each release ships one APK per flavour (github / fdroid / legacy-R1HAL).
+        // Pick the one matching THIS build's flavour via [flavorAssetFor]: a legacy
+        // build must install the `-legacy-` APK, not the github one — the github
+        // APK has a different applicationId and would install R1HA as a separate
+        // app instead of updating R1HAL (the bug this replaces, which only filtered
+        // out `-fdroid-` and so handed legacy the github asset).
+        val apkAsset = flavorAssetFor(release.assets, BuildConfig.FLAVOR)
+            ?: return@withContext CheckResult.Failed(
+                "No ${BuildConfig.FLAVOR}-flavour APK attached to ${release.tag_name}",
+            )
         CheckResult.Available(
             UpdateInfo(
                 versionCode = versionCode,
@@ -279,18 +277,33 @@ class AppUpdater(
          * Pick the APK asset matching [flavor] from a release's asset list.
          *
          * Asset naming is flavour-encoded by the release workflow:
-         *  - github flavour: `r1ha-YYYY.MM.DD.HHmm.apk` (no `-fdroid-` infix)
+         *  - github flavour: `r1ha-YYYY.MM.DD.HHmm.apk` (no flavour infix)
          *  - fdroid flavour: `r1ha-fdroid-YYYY.MM.DD.HHmm.apk`
+         *  - legacy (R1HAL):  `r1ha-legacy-YYYY.MM.DD.HHmm.apk`
          *
-         * So an fdroid build only ever installs an fdroid APK and a github build
-         * only a github APK; cross-flavour installs would either re-introduce the
-         * REQUEST_INSTALL_PACKAGES permission on an fdroid device or strip the
-         * self-updater on a github one. Returns null when no asset matches.
+         * Each build installs only its OWN flavour's APK. This matters most for
+         * legacy: R1HAL has applicationId `...r1ha.legacy`, so installing the
+         * github APK wouldn't update it — Android would install R1HA as a SEPARATE
+         * app. (The earlier `!= -fdroid-` test treated legacy as github and did
+         * exactly that.) A cross-flavour install would also re-introduce the
+         * REQUEST_INSTALL_PACKAGES permission on fdroid or strip the self-updater
+         * on github. Returns null when no asset matches the flavour.
          */
         internal fun flavorAssetFor(assets: List<GhAsset>, flavor: String): GhAsset? {
-            val wantFdroid = flavor == "fdroid"
+            // The exact infix this flavour's asset carries; github has none.
+            val infix = when (flavor) {
+                "fdroid" -> "-fdroid-"
+                "legacy" -> "-legacy-"
+                else -> null
+            }
             return assets.firstOrNull { a ->
-                a.name.endsWith(".apk") && a.name.contains("-fdroid-") == wantFdroid
+                if (!a.name.endsWith(".apk")) return@firstOrNull false
+                if (infix != null) {
+                    a.name.contains(infix)
+                } else {
+                    // github: the bare name, carrying NO other flavour's infix.
+                    !a.name.contains("-fdroid-") && !a.name.contains("-legacy-")
+                }
             }
         }
 
