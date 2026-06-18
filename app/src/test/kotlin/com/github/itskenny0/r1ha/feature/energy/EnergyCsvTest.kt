@@ -144,9 +144,10 @@ class EnergyCsvTest {
 
     // ---- UiState convenience overload ----------------------------------------
 
-    @Test fun `UiState overload prefers statsTodayKwh over todayKwh`() {
+    @Test fun `UiState overload exports the recorder statsTodayKwh`() {
         val ui = EnergyViewModel.UiState(
             loading = false,
+            // todayKwh is the cumulative template sum and must NEVER reach the CSV.
             todayKwh = 5.0,
             statsTodayKwh = 6.0,
             currentDrawW = null,
@@ -157,13 +158,17 @@ class EnergyCsvTest {
         assertThat(csv).doesNotContain("today_kwh,5.0000")
     }
 
-    @Test fun `UiState overload falls back to todayKwh when statsTodayKwh is null`() {
+    @Test fun `UiState overload does NOT fall back to the cumulative todayKwh`() {
+        // statsTodayKwh null (recorder not yet populated) must export an EMPTY
+        // today_kwh, never the cumulative lifetime sum in todayKwh (the old
+        // fallback showed a nonsensical "today" total).
         val ui = EnergyViewModel.UiState(
             loading = false,
             todayKwh = 3.5,
             statsTodayKwh = null,
         )
         val csv = energyCsv(ui)
-        assertThat(csv).contains("today_kwh,3.5000")
+        assertThat(csv).contains("today_kwh,")
+        assertThat(csv).doesNotContain("today_kwh,3.5000")
     }
 }

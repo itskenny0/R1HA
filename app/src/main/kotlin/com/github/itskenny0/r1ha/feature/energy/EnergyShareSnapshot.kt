@@ -89,9 +89,10 @@ internal object EnergyShareSnapshot {
         bigPaint.color = INK
         y += 70f
 
-        // TODAY kWh — single row. Prefer the recorder-derived figure so the
-        // share image carries the same authoritative TODAY total as the tile.
-        val today = state.statsTodayKwh ?: state.todayKwh
+        // TODAY kWh — single row. Recorder-derived figure only, matching the
+        // tile; the old todayKwh template fallback summed cumulative meter states
+        // (a lifetime total, not today's delta), so the share never carries it.
+        val today = state.statsTodayKwh
         canvas.drawText("TODAY", PADDING, y, labelPaint)
         y += 80f
         canvas.drawText(formatKwh(today), PADDING, y, bigPaint)

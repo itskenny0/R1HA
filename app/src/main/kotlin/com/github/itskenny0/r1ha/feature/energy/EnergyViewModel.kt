@@ -103,16 +103,22 @@ class EnergyViewModel(
          *  hints in the entity_id. Conservative — only known
          *  patterns count. */
         val productionW: Double? = null,
-        /** Today's energy total in kWh. Prefer [statsTodayKwh] (recorder
-         *  `change` summed since local midnight, exactly how HA's Energy
-         *  panel computes it); fall back to the live-template sum only when
-         *  the recorder hasn't answered yet. */
+        /** Raw [SUM_TODAY_KWH] template result: the summed CURRENT STATE of every
+         *  `device_class=energy state_class=total_increasing` sensor. NOTE this is
+         *  NOT "today's energy": those counters are cumulative (a smart plug's
+         *  lifetime kWh, a utility meter's running total), so the sum is a lifetime
+         *  figure, not a since-midnight delta. A Jinja template cannot compute the
+         *  daily delta (it has no recorder history), so this is kept ONLY as a
+         *  template-engine liveness probe for the error gate, never shown as TODAY.
+         *  The displayed TODAY is [statsTodayKwh] (recorder), or '—' until it
+         *  answers. (Was previously surfaced as a fallback, which showed a
+         *  nonsensical lifetime total for installs with cumulative meters.) */
         val todayKwh: Double? = null,
         /** Today's consumption derived from the recorder: sum of every
          *  energy meter's per-bucket `change` since local midnight. Null
          *  until a history fetch covering today has succeeded. This is the
-         *  authoritative TODAY figure; [todayKwh] holds the template
-         *  fallback used before the recorder answers. */
+         *  authoritative (and only) TODAY figure shown; [todayKwh] is a
+         *  cumulative template sum and is deliberately NOT used as a fallback. */
         val statsTodayKwh: Double? = null,
         /** Top consumers by current W draw. Empty when no data. */
         val topConsumers: List<Consumer> = emptyList(),
