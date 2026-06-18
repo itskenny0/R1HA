@@ -60,6 +60,20 @@ object NfcReader {
      *  callback. The callback fires on a binder thread; we dispatch onto the
      *  app's IO scope to keep HA call latency off the UI thread. */
     fun bind(activity: Activity) {
+        // Hard requirement BEFORE touching reader mode: the NFC permission must be
+        // held. The R1HAL (legacy) flavour strips android.permission.NFC from its
+        // manifest, but the device still has an NFC chip, so adapterOrNull returns
+        // non-null and enableReaderMode then throws SecurityException ("NFC
+        // permission required") — and on Android 16 / API 36 that throw escapes the
+        // runCatching below (it surfaces through a deferred service callback), so it
+        // crashed MainActivity.onResume on every resume. Gate on the permission
+        // itself (checkSelfPermission is DENIED when the manifest doesn't declare
+        // it) so a build without the permission simply never engages reader mode.
+        if (activity.checkSelfPermission(android.Manifest.permission.NFC) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         val adapter = adapterOrNull(activity) ?: return
         if (!adapter.isEnabled) {
             // NFC chip present but turned off. The user can still configure the
