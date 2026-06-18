@@ -249,8 +249,8 @@ fun SidebarConfigScreen(
                     )
                 }
 
-                // ── PINNED DASHBOARDS (unpin) ──
-                if (navPanel.pinnedDashboards.isNotEmpty()) {
+                // ── PINNED DASHBOARDS (unpin) ── (Lovelace WebViews; not in R1HAL)
+                if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY && navPanel.pinnedDashboards.isNotEmpty()) {
                     item { SectionHeader("PINNED DASHBOARDS") }
                     items(navPanel.pinnedDashboards, key = { "dash-${it.route}" }) { dash ->
                         GlyphSwitchRow(
@@ -276,7 +276,9 @@ fun SidebarConfigScreen(
                     }
                 }
 
-                // ── EXTERNAL PANELS ──
+                // ── EXTERNAL PANELS ── (authenticated WebViews; gated out of R1HAL,
+                // which is card-stack-only and drops the in-app browser.)
+                if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
                 item { SectionHeader("EXTERNAL PANELS") }
                 when (val state = panelLoadState) {
                     is PanelLoadState.Idle, is PanelLoadState.Loading -> {
@@ -342,6 +344,7 @@ fun SidebarConfigScreen(
                         }
                     }
                 }
+                } // end EXTERNAL PANELS legacy gate
 
                 item { Spacer(Modifier.height(R1.space.xl)) }
             }

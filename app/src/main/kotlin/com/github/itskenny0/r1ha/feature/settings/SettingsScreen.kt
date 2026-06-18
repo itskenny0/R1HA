@@ -50,6 +50,7 @@ import com.github.itskenny0.r1ha.core.prefs.TokenStore
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.ui.components.R1Chip
 import com.github.itskenny0.r1ha.ui.components.R1ChipVariant
+import com.github.itskenny0.r1ha.nav.Routes
 import com.github.itskenny0.r1ha.ui.components.R1Row
 import com.github.itskenny0.r1ha.ui.components.R1Switch
 import com.github.itskenny0.r1ha.ui.components.R1TextField
@@ -1993,16 +1994,45 @@ private fun LazyListScope.advancedRoot(
 
 // ── Browse ─────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A NavRow that vanishes in R1HAL (legacy) when its target [route] is dropped to
+ * the LegacyUnavailableScreen, so the slim build never lists a power-user feature
+ * it can't open. A plain NavRow in every other flavour. Pass [legacyHidden] = true
+ * to force-hide a row whose route is technically kept but unwanted in legacy
+ * (the in-app Lovelace WebView).
+ */
+private fun LazyListScope.navRowGated(
+    route: String,
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    legacyHidden: Boolean = false,
+) {
+    if (com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY &&
+        (legacyHidden || !com.github.itskenny0.r1ha.nav.LegacyFeatures.isAvailable(route))
+    ) {
+        return
+    }
+    item { NavRow(label = label, value = value, onClick = onClick) }
+}
+
 private fun LazyListScope.browseRoot(push: (SettingsNode) -> Unit) {
-    item { R1Row(label = SettingsNode.BROWSE_TODAY.title, description = "Dashboard, Quick Search", onClick = { push(SettingsNode.BROWSE_TODAY) }, showChevron = true, contentDescription = "Open Today") }
-    item { R1Row(label = SettingsNode.BROWSE_TALK.title, description = "Assist, Scenes, Automations, Helpers", onClick = { push(SettingsNode.BROWSE_TALK) }, showChevron = true, contentDescription = "Open Talk & fire") }
+    // Today (Dashboard / Search) and Talk (Assist / Scenes / Automations / Helpers /
+    // To-do) are entirely dropped in R1HAL, so their browse sub-screens would be
+    // empty — hide the entries. Status and Power keep a few items (Recent Activity,
+    // Device, Media Browse, System Health, Logs), so they stay.
+    val isLegacy = com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY
+    if (!isLegacy) {
+        item { R1Row(label = SettingsNode.BROWSE_TODAY.title, description = "Dashboard, Quick Search", onClick = { push(SettingsNode.BROWSE_TODAY) }, showChevron = true, contentDescription = "Open Today") }
+        item { R1Row(label = SettingsNode.BROWSE_TALK.title, description = "Assist, Scenes, Automations, Helpers", onClick = { push(SettingsNode.BROWSE_TALK) }, showChevron = true, contentDescription = "Open Talk & fire") }
+    }
     item { R1Row(label = SettingsNode.BROWSE_STATUS.title, description = "Cameras, Weather, People, registries", onClick = { push(SettingsNode.BROWSE_STATUS) }, showChevron = true, contentDescription = "Open Status views") }
     item { R1Row(label = SettingsNode.BROWSE_POWER.title, description = "Updates, Repairs, diagnostics, backups", onClick = { push(SettingsNode.BROWSE_POWER) }, showChevron = true, contentDescription = "Open Power tools") }
 }
 
 private fun LazyListScope.browseToday(onOpenDashboard: () -> Unit, onOpenSearch: () -> Unit) {
-    item { NavRow(label = "Dashboard", value = "Weather · People · Next event", onClick = onOpenDashboard) }
-    item { NavRow(label = "Quick Search", value = "Find any entity", onClick = onOpenSearch) }
+    navRowGated(Routes.DASHBOARD, "Dashboard", "Weather · People · Next event", onOpenDashboard)
+    navRowGated(Routes.SEARCH, "Quick Search", "Find any entity", onOpenSearch)
 }
 
 private fun LazyListScope.browseTalk(
@@ -2012,11 +2042,11 @@ private fun LazyListScope.browseTalk(
     onOpenHelpers: () -> Unit,
     onOpenTodo: () -> Unit,
 ) {
-    item { NavRow(label = "Assist", value = "Talk to HA", onClick = onOpenAssist) }
-    item { NavRow(label = "Scenes & Scripts", value = "Fire instantly", onClick = onOpenScenes) }
-    item { NavRow(label = "Automations", value = "List, trigger, enable / disable", onClick = onOpenAutomations) }
-    item { NavRow(label = "Helpers", value = "input_*, counter, timer", onClick = onOpenHelpers) }
-    item { NavRow(label = "To-do lists", value = "Shopping lists, tasks", onClick = onOpenTodo) }
+    navRowGated(Routes.ASSIST, "Assist", "Talk to HA", onOpenAssist)
+    navRowGated(Routes.SCENES, "Scenes & Scripts", "Fire instantly", onOpenScenes)
+    navRowGated(Routes.AUTOMATIONS, "Automations", "List, trigger, enable / disable", onOpenAutomations)
+    navRowGated(Routes.HELPERS, "Helpers", "input_*, counter, timer", onOpenHelpers)
+    navRowGated(Routes.TODO, "To-do lists", "Shopping lists, tasks", onOpenTodo)
 }
 
 private fun LazyListScope.browseStatus(
@@ -2033,18 +2063,18 @@ private fun LazyListScope.browseStatus(
     onOpenEnergy: () -> Unit,
     onOpenDevice: () -> Unit,
 ) {
-    item { NavRow(label = "Cameras", value = "Live snapshots", onClick = onOpenCameras) }
-    item { NavRow(label = "Weather", value = "Conditions readout", onClick = onOpenWeather) }
-    item { NavRow(label = "Who's home", value = "People + device trackers", onClick = onOpenPersons) }
-    item { NavRow(label = "Calendars", value = "Next event preview", onClick = onOpenCalendars) }
-    item { NavRow(label = "Recent Activity", value = "Logbook feed", onClick = onOpenLogbook) }
-    item { NavRow(label = "Notifications", value = "HA persistent alerts", onClick = onOpenNotifications) }
-    item { NavRow(label = "Areas", value = "HA area registry", onClick = onOpenAreas) }
-    item { NavRow(label = "Labels", value = "HA label registry (tags)", onClick = onOpenLabels) }
-    item { NavRow(label = "Floors", value = "Floor → areas hierarchy", onClick = onOpenFloors) }
-    item { NavRow(label = "Zones", value = "Geographic zones + who's there", onClick = onOpenZones) }
-    item { NavRow(label = "Energy", value = "Draw, production, today's kWh", onClick = onOpenEnergy) }
-    item { NavRow(label = "Device", value = "Local: brightness, volume, flashlight", onClick = onOpenDevice) }
+    navRowGated(Routes.CAMERAS, "Cameras", "Live snapshots", onOpenCameras)
+    navRowGated(Routes.WEATHER, "Weather", "Conditions readout", onOpenWeather)
+    navRowGated(Routes.PERSONS, "Who's home", "People + device trackers", onOpenPersons)
+    navRowGated(Routes.CALENDARS, "Calendars", "Next event preview", onOpenCalendars)
+    navRowGated(Routes.LOGBOOK, "Recent Activity", "Logbook feed", onOpenLogbook)
+    navRowGated(Routes.NOTIFICATIONS, "Notifications", "HA persistent alerts", onOpenNotifications)
+    navRowGated(Routes.AREAS, "Areas", "HA area registry", onOpenAreas)
+    navRowGated(Routes.LABELS, "Labels", "HA label registry (tags)", onOpenLabels)
+    navRowGated(Routes.FLOORS, "Floors", "Floor → areas hierarchy", onOpenFloors)
+    navRowGated(Routes.ZONES, "Zones", "Geographic zones + who's there", onOpenZones)
+    navRowGated(Routes.ENERGY, "Energy", "Draw, production, today's kWh", onOpenEnergy)
+    navRowGated(Routes.DEVICE, "Device", "Local: brightness, volume, flashlight", onOpenDevice)
 }
 
 private fun LazyListScope.browsePower(
@@ -2068,23 +2098,23 @@ private fun LazyListScope.browsePower(
     onOpenTags: () -> Unit,
     onOpenStatistics: () -> Unit,
 ) {
-    item { NavRow(label = "Updates", value = "HA Core, add-ons, integrations", onClick = onOpenUpdates) }
-    item { NavRow(label = "Repairs", value = "HA issues + ignore", onClick = onOpenRepairs) }
-    item { NavRow(label = "Media Browse", value = "Browse + play any media_player library", onClick = onOpenMediaBrowse) }
-    item { NavRow(label = "Backups", value = "View + create HA backups", onClick = onOpenBackups) }
-    item { NavRow(label = "Zigbee pair", value = "Open the network to enrol new devices", onClick = onOpenZhaPairing) }
-    item { NavRow(label = "Templates", value = "Jinja2 evaluator", onClick = onOpenTemplate) }
-    item { NavRow(label = "Service Caller", value = "Fire any service", onClick = onOpenServiceCaller) }
-    item { NavRow(label = "Services Browser", value = "Discover available services", onClick = onOpenServices) }
-    item { NavRow(label = "System Health", value = "HA version + error log", onClick = onOpenSystemHealth) }
-    item { NavRow(label = "Lovelace (WebView)", value = "Open HA's frontend in-app", onClick = onOpenLovelace) }
-    item { NavRow(label = "Devices", value = "Browse HA's device registry", onClick = onOpenDevices) }
-    item { NavRow(label = "Integrations", value = "Configured integrations + reload", onClick = onOpenIntegrations) }
-    item { NavRow(label = "Blueprints", value = "Installed automations + scripts, import from URL", onClick = onOpenBlueprints) }
-    item { NavRow(label = "Logs", value = "Full /api/error_log with level + search", onClick = onOpenLogs) }
-    item { NavRow(label = "Users", value = "Read-only HA user list (admin)", onClick = onOpenUsers) }
-    item { NavRow(label = "Tags", value = "NFC / QR tag registry", onClick = onOpenTags) }
-    item { NavRow(label = "Statistics", value = "Long-term sensor stats", onClick = onOpenStatistics) }
+    navRowGated(Routes.UPDATES, "Updates", "HA Core, add-ons, integrations", onOpenUpdates)
+    navRowGated(Routes.REPAIRS, "Repairs", "HA issues + ignore", onOpenRepairs)
+    navRowGated(Routes.MEDIA_BROWSE, "Media Browse", "Browse + play any media_player library", onOpenMediaBrowse)
+    navRowGated(Routes.BACKUPS, "Backups", "View + create HA backups", onOpenBackups)
+    navRowGated(Routes.ZHA_PAIRING, "Zigbee pair", "Open the network to enrol new devices", onOpenZhaPairing)
+    navRowGated(Routes.TEMPLATE, "Templates", "Jinja2 evaluator", onOpenTemplate)
+    navRowGated(Routes.SERVICE_CALLER, "Service Caller", "Fire any service", onOpenServiceCaller)
+    navRowGated(Routes.SERVICES, "Services Browser", "Discover available services", onOpenServices)
+    navRowGated(Routes.SYSTEM_HEALTH, "System Health", "HA version + error log", onOpenSystemHealth)
+    navRowGated(Routes.LOVELACE, "Lovelace (WebView)", "Open HA's frontend in-app", onOpenLovelace, legacyHidden = true)
+    navRowGated(Routes.DEVICES, "Devices", "Browse HA's device registry", onOpenDevices)
+    navRowGated(Routes.INTEGRATIONS, "Integrations", "Configured integrations + reload", onOpenIntegrations)
+    navRowGated(Routes.BLUEPRINTS, "Blueprints", "Installed automations + scripts, import from URL", onOpenBlueprints)
+    navRowGated(Routes.LOGS, "Logs", "Full /api/error_log with level + search", onOpenLogs)
+    navRowGated(Routes.USERS, "Users", "Read-only HA user list (admin)", onOpenUsers)
+    navRowGated(Routes.TAGS, "Tags", "NFC / QR tag registry", onOpenTags)
+    navRowGated(Routes.STATISTICS, "Statistics", "Long-term sensor stats", onOpenStatistics)
     item {
         val backupArmed = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
         androidx.compose.runtime.LaunchedEffect(backupArmed.value) {
