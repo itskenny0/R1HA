@@ -3812,6 +3812,11 @@ private fun QuickActionsSheet(
             )
             Spacer(Modifier.height(R1.space.m))
 
+            // R1HAL (legacy) is card-stack-only: hide the whole navigation tier
+            // (BROWSE grid, GO TO jumps, DASHBOARDS, PINNED) so the quick-actions
+            // sheet is just the page device controls below — every onOpen* here
+            // routes to a surface this slim build drops.
+            if (!com.github.itskenny0.r1ha.BuildConfig.IS_LEGACY) {
             // ── BROWSE row — 2×4 grid of icon-glyph nav shortcuts ──
             // These doubles as the HA-Companion-style 'drawer'
             // navigation: every major surface is reachable from one
@@ -3967,6 +3972,7 @@ private fun QuickActionsSheet(
                     Spacer(Modifier.height(6.dp))
                 }
             }
+            } // end legacy-gated navigation tier (BROWSE / GO TO / DASHBOARDS / PINNED)
             Spacer(Modifier.height(14.dp))
             // 'Add Lovelace card' — page-content management (distinct from the
             // device on/off actions below). The empty-page placeholder's "ADD
