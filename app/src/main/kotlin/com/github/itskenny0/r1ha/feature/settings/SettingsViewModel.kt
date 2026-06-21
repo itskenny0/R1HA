@@ -98,6 +98,10 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(showZeroPercentWhenOff = enabled)) }
     fun setCardPeekMode(mode: com.github.itskenny0.r1ha.core.prefs.CardPeekMode) =
         update { it.copy(ui = it.ui.copy(cardPeekMode = mode)) }
+    fun setLowPerfMode(mode: com.github.itskenny0.r1ha.core.prefs.LowPerfMode) =
+        update { it.copy(ui = it.ui.copy(lowPerfMode = mode)) }
+    fun setValueBarTapTargetDp(dp: Int) =
+        update { it.copy(ui = it.ui.copy(valueBarTapTargetDp = dp.coerceIn(24, 72))) }
     fun setDeckLayoutMode(mode: com.github.itskenny0.r1ha.core.prefs.DeckLayoutMode) =
         update { it.copy(ui = it.ui.copy(deckLayoutMode = mode)) }
     fun setCardScrollSensitivity(percent: Int) =

@@ -49,5 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Smoother page (tab) switching: fewer dropped frames when swiping between pages.",
+    "Fixed a rare black screen when rapidly switching tabs or opening panels mid-transition.",
+    "New: Optimize for low performance hardware (Settings), a lighter theme and smoother card stack on slow devices.",
+    "New: adjustable value bar tap target, with a live preview, in Settings.",
 )

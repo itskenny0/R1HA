@@ -279,7 +279,19 @@ class MainActivity : ComponentActivity() {
                 com.github.itskenny0.r1ha.core.theme.R1Dynamic.apply(accentArgb, fontFamilyName)
             }
             androidx.compose.runtime.key(accentArgb, fontFamilyName) {
-            R1ThemeHost(themeId = themeNow) {
+            // "Optimize for low performance hardware": auto-detect the device tier (or
+            // honour the explicit on/off), then let R1ThemeHost downgrade the heavy
+            // theme and the card stack swap in the lightweight tab-swipe placeholder.
+            val lowPerfContext = androidx.compose.ui.platform.LocalContext.current
+            val lowPerf = androidx.compose.runtime.remember(uiOptions.lowPerfMode) {
+                when (uiOptions.lowPerfMode) {
+                    com.github.itskenny0.r1ha.core.prefs.LowPerfMode.ON -> true
+                    com.github.itskenny0.r1ha.core.prefs.LowPerfMode.OFF -> false
+                    com.github.itskenny0.r1ha.core.prefs.LowPerfMode.AUTO ->
+                        com.github.itskenny0.r1ha.core.theme.isLowEndDevice(lowPerfContext)
+                }
+            }
+            R1ThemeHost(themeId = themeNow, lowPerf = lowPerf) {
                 // Global text-size step: multiply the composition's font scale (sp axis
                 // only — dp layout is untouched) so EVERY text in the app honours the
                 // Settings → Appearance → Text size choice, including the card-stack

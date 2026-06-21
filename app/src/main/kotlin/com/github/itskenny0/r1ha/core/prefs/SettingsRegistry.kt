@@ -956,6 +956,12 @@ fun cardPeekModeLabel(mode: CardPeekMode): String = when (mode) {
     CardPeekMode.NEVER -> "NEVER"
 }
 
+fun lowPerfModeLabel(mode: LowPerfMode): String = when (mode) {
+    LowPerfMode.AUTO -> "AUTO"
+    LowPerfMode.ON -> "ON"
+    LowPerfMode.OFF -> "OFF"
+}
+
 /**
  * Compact human label for a [DeckLayoutMode] value. Shared by the Settings
  * deck-layout selector and the registry `currentDisplay` so the diff screen

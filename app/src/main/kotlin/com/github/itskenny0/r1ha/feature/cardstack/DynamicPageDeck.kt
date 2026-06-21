@@ -44,9 +44,8 @@ import com.github.itskenny0.r1ha.ui.components.rememberR1Haptic
 import com.github.itskenny0.r1ha.core.prefs.AppSettings
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
-import com.github.itskenny0.r1ha.ui.components.Chevron
-import com.github.itskenny0.r1ha.ui.components.ChevronDirection
 import com.github.itskenny0.r1ha.ui.components.EntityCard
+import com.github.itskenny0.r1ha.ui.components.ScrollCueDown
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -766,7 +765,7 @@ internal fun DynamicPageDeck(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp),
         ) {
-            Chevron(direction = ChevronDirection.Down, size = 14.dp, tint = R1.InkMuted)
+            ScrollCueDown(tint = R1.InkMuted)
         }
     }
 }

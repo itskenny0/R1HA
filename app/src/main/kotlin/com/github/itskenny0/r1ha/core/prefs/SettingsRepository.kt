@@ -216,6 +216,11 @@ class SettingsRepository private constructor(
          *  enum name. Absent / unknown → AUTO (peek only on phone-portrait),
          *  so existing installs on the R1 / sub-compact tier see no change. */
         val uiCardPeekMode = stringPreferencesKey("ui.card_peek_mode")
+        val uiLowPerfMode = stringPreferencesKey("ui.low_perf_mode")
+        /** Width (dp) of the card value bar's invisible touch hit area. Absent → 24
+         *  (the historical fixed hit-area width). Coerced to 24..72 on read so a stray
+         *  value can't crowd out the card body or shrink below the original width. */
+        val uiValueBarTapTargetDp = intPreferencesKey("ui.value_bar_tap_target_dp")
         /** Card-stack deck layout. Stored as the [DeckLayoutMode] enum name.
          *  Absent / unknown decodes as AUTO (full-viewport on R1 / compact,
          *  content-height DYNAMIC on medium+) via [DeckLayoutMode.fromStored],
@@ -366,6 +371,10 @@ class SettingsRepository private constructor(
                     cardPeekMode = p[K.uiCardPeekMode]
                         ?.let { runCatching { CardPeekMode.valueOf(it) }.getOrNull() }
                         ?: CardPeekMode.AUTO,
+                    lowPerfMode = p[K.uiLowPerfMode]
+                        ?.let { runCatching { LowPerfMode.valueOf(it) }.getOrNull() }
+                        ?: LowPerfMode.AUTO,
+                    valueBarTapTargetDp = (p[K.uiValueBarTapTargetDp] ?: 24).coerceIn(24, 72),
                     // Lenient decode (fromStored): absent / unknown names fall back
                     // to AUTO, which keeps the R1 / compact tier on the historical
                     // full-viewport pager.
@@ -629,6 +638,8 @@ class SettingsRepository private constructor(
                 p[K.uiChromeButtons] = encodeChromeButtons(next.ui.chromeButtons)
                 p[K.uiShowZeroPercentWhenOff] = next.ui.showZeroPercentWhenOff
                 p[K.uiCardPeekMode] = next.ui.cardPeekMode.name
+                p[K.uiLowPerfMode] = next.ui.lowPerfMode.name
+                p[K.uiValueBarTapTargetDp] = next.ui.valueBarTapTargetDp
                 p[K.uiDeckLayoutMode] = next.ui.deckLayoutMode.name
                 p[K.uiCardScrollSensitivity] = next.ui.cardScrollSensitivity
                 p[K.uiMoreInfoEnabledDefault] = next.ui.moreInfoEnabledDefault

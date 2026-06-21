@@ -151,7 +151,7 @@ fun AppNavGraph(
                 composable(route) {
                     com.github.itskenny0.r1ha.ui.components.LegacyUnavailableScreen(
                         route = route,
-                        onBack = { navController.popBackStack() },
+                        onBack = { navController.popIfIdle() },
                     )
                 }
             }
@@ -169,7 +169,7 @@ fun AppNavGraph(
                 // token instead' link in the URL form so kiosk users
                 // never need to OAuth in just to reach the LLAT setup.
                 onOpenLongLivedToken = {
-                    navController.navigate(Routes.LONG_LIVED_TOKEN) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.LONG_LIVED_TOKEN)
                 },
             )
         }
@@ -197,7 +197,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SETTINGS) {
@@ -213,7 +213,7 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.settings.KeyBindingsScreen(
                 settings = settings,
                 tokens = tokens,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SIDEBAR_CONFIG) {
@@ -221,7 +221,14 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
+            )
+        }
+        composable(Routes.VALUE_BAR_TUNING) {
+            com.github.itskenny0.r1ha.feature.settings.ValueBarTuningScreen(
+                settings = settings,
+                tokens = tokens,
+                onBack = { navController.popIfIdle() },
             )
         }
         // Routes dropped from the legacy (R1HAL) build follow, wrapped so R8 strips the
@@ -231,7 +238,7 @@ fun AppNavGraph(
             com.github.itskenny0.r1ha.feature.settings.SyncSettingsScreen(
                 settings = settings,
                 tokens = tokens,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SETTINGS_IOT_CAMERA) {
@@ -239,16 +246,16 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 onOpenMqttSettings = {
-                    navController.navigate(Routes.SETTINGS_MQTT) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.SETTINGS_MQTT)
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SETTINGS_MQTT) {
             com.github.itskenny0.r1ha.feature.settings.MqttSettingsScreen(
                 settings = settings,
                 tokens = tokens,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SETTINGS_IOT_SENSORS) {
@@ -256,23 +263,23 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 onOpenMqttSettings = {
-                    navController.navigate(Routes.SETTINGS_MQTT) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.SETTINGS_MQTT)
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
         composable(Routes.THEME_PICKER) {
             ThemePickerScreen(
                 settings = settings,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.MODIFIED_SETTINGS) {
             com.github.itskenny0.r1ha.feature.settings.ModifiedSettingsScreen(
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.ABOUT) {
@@ -281,9 +288,9 @@ fun AppNavGraph(
                 settings = settings,
                 wheelInput = wheelInput,
                 onOpenDevMenu = {
-                    navController.navigate(Routes.DEV_MENU) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.DEV_MENU)
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.DEV_MENU) {
@@ -291,7 +298,7 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 haRepository = haRepository,
             )
         }
@@ -301,9 +308,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenVoiceSatellite = {
-                    navController.navigate(Routes.VOICE_SATELLITE) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.VOICE_SATELLITE)
                 },
             )
         }
@@ -312,7 +319,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 tokens = tokens,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SCENES) {
@@ -320,7 +327,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
@@ -329,9 +336,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
             )
         }
@@ -347,9 +354,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
                 initialEntityFilter = backStackEntry.arguments?.getString("entityId"),
             )
@@ -360,7 +367,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SERVICE_CALLER) {
@@ -368,7 +375,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.NOTIFICATIONS) {
@@ -376,7 +383,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.TODO) {
@@ -384,7 +391,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.CAMERAS) {
@@ -393,7 +400,7 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.WEATHER) {
@@ -401,7 +408,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.PERSONS) {
@@ -409,9 +416,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
             )
         }
@@ -420,7 +427,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
@@ -430,7 +437,7 @@ fun AppNavGraph(
                 tokens = tokens,
                 haRepository = haRepository,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SYSTEM_HEALTH) {
@@ -438,9 +445,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenFullLog = {
-                    navController.navigate(Routes.LOGS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.LOGS)
                 },
             )
         }
@@ -450,7 +457,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.LABELS) {
@@ -458,7 +465,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.FLOORS) {
@@ -466,7 +473,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SERVICES) {
@@ -474,7 +481,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.SEARCH) {
@@ -482,12 +489,12 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
                 onOpenAssist = {
-                    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.ASSIST)
                 },
             )
         }
@@ -496,9 +503,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
             )
         }
@@ -507,7 +514,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.UPDATES) {
@@ -515,20 +522,20 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.REPAIRS) {
             com.github.itskenny0.r1ha.feature.repairs.RepairsScreen(
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
         composable(Routes.MEDIA_BROWSE) {
             com.github.itskenny0.r1ha.feature.mediabrowse.MediaBrowseScreen(
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(
@@ -541,7 +548,7 @@ fun AppNavGraph(
         ) { backStackEntry ->
             com.github.itskenny0.r1ha.feature.mediabrowse.MediaBrowseScreen(
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 initialEntityId = backStackEntry.arguments?.getString("entityId"),
             )
         }
@@ -549,13 +556,13 @@ fun AppNavGraph(
         composable(Routes.BACKUPS) {
             com.github.itskenny0.r1ha.feature.backups.BackupsScreen(
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.ZHA_PAIRING) {
             com.github.itskenny0.r1ha.feature.zha.ZhaPairingScreen(
                 haRepository = haRepository,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.BROADLINK) {
@@ -563,7 +570,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.ENERGY) {
@@ -571,9 +578,9 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
             )
         }
@@ -582,7 +589,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
@@ -591,7 +598,7 @@ fun AppNavGraph(
                 settings = settings,
                 tokens = tokens,
                 refresher = tokenRefresher,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(
@@ -617,14 +624,14 @@ fun AppNavGraph(
                 refresher = tokenRefresher,
                 panelUrlPath = urlPath,
                 title = pinnedTitle,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.DEVICE) {
             com.github.itskenny0.r1ha.feature.device.DeviceScreen(
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(
@@ -646,7 +653,7 @@ fun AppNavGraph(
                 settings = settings,
                 wheelInput = wheelInput,
                 entityId = eid,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         if (!BuildConfig.IS_LEGACY) {
@@ -655,7 +662,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.INTEGRATIONS) {
@@ -663,7 +670,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         }
@@ -672,7 +679,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         if (!BuildConfig.IS_LEGACY) {
@@ -681,7 +688,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.TAGS) {
@@ -689,7 +696,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.BLUEPRINTS) {
@@ -697,7 +704,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.STATISTICS) {
@@ -705,7 +712,7 @@ fun AppNavGraph(
                 haRepository = haRepository,
                 settings = settings,
                 wheelInput = wheelInput,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
             )
         }
         composable(Routes.DASHBOARDS) {
@@ -731,7 +738,7 @@ fun AppNavGraph(
                         launchSingleTop = true
                     }
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 settings = settings,
             )
         }
@@ -764,21 +771,21 @@ fun AppNavGraph(
                 viewPath = viewPath,
                 serverUrl = dashServerUrl,
                 settings = settings,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenLovelace = {
-                    navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.LOVELACE)
                 },
                 onOpenAssist = {
-                    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.ASSIST)
                 },
                 onOpenHistory = { eid ->
-                    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(eid))
                 },
                 onOpenMediaBrowse = { eid ->
-                    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.mediaBrowseRoute(eid))
                 },
                 onOpenLogbook = { eid ->
-                    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.logbookRoute(eid))
                 },
                 onOpenView = { navPath ->
                     // A `navigate` tap_action's navigation_path. Mapping (empty /
@@ -786,7 +793,7 @@ fun AppNavGraph(
                     // tap is never a dead end) lives in resolveNavigateTarget.
                     when (val target = resolveNavigateTarget(navPath, dashboardUrlPath)) {
                         NavigateTarget.Lovelace ->
-                            navController.navigate(Routes.LOVELACE) { launchSingleTop = true }
+                            navController.navigateIfIdle(Routes.LOVELACE)
                         is NavigateTarget.DashboardView ->
                             navController.navigate(
                                 Routes.dashboardsViewRoute(target.dashboard, target.view),
@@ -806,46 +813,46 @@ fun AppNavGraph(
                 settings = settings,
                 wheelInput = wheelInput,
                 canGoBack = canGoBack,
-                onBack = { navController.popBackStack() },
+                onBack = { navController.popIfIdle() },
                 onOpenWeather = {
-                    navController.navigate(Routes.WEATHER) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.WEATHER)
                 },
                 onOpenPersons = {
-                    navController.navigate(Routes.PERSONS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.PERSONS)
                 },
                 onOpenCalendars = {
-                    navController.navigate(Routes.CALENDARS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.CALENDARS)
                 },
                 onOpenCameras = {
-                    navController.navigate(Routes.CAMERAS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.CAMERAS)
                 },
                 onOpenNotifications = {
-                    navController.navigate(Routes.NOTIFICATIONS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.NOTIFICATIONS)
                 },
                 onOpenScenes = {
-                    navController.navigate(Routes.SCENES) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.SCENES)
                 },
                 onOpenEnergy = {
-                    navController.navigate(Routes.ENERGY) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.ENERGY)
                 },
                 onOpenDevice = {
-                    navController.navigate(Routes.DEVICE) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.DEVICE)
                 },
                 onOpenCardStack = {
                     // Kiosk-mode escape hatch — Dashboard is the start
                     // destination so there's nothing to pop back to.
                     // launchSingleTop keeps a rapid double-tap from
                     // stacking copies.
-                    navController.navigate(Routes.CARD_STACK) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.CARD_STACK)
                 },
                 onOpenSettings = {
-                    navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.SETTINGS)
                 },
                 onOpenAssist = {
-                    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.ASSIST)
                 },
                 onOpenHistory = { entityId ->
-                    navController.navigate(Routes.historyRoute(entityId)) { launchSingleTop = true }
+                    navController.navigateIfIdle(Routes.historyRoute(entityId))
                 },
             )
         }
@@ -891,57 +898,84 @@ private fun SettingsRouteContent(
             }
             if (route != null) navController.navigate(route) { launchSingleTop = true }
         },
-        onOpenThemePicker = { navController.navigate(Routes.THEME_PICKER) { launchSingleTop = true } },
-        onOpenAbout = { navController.navigate(Routes.ABOUT) { launchSingleTop = true } },
-        onOpenDevMenu = { navController.navigate(Routes.DEV_MENU) { launchSingleTop = true } },
-        onOpenAssist = { navController.navigate(Routes.ASSIST) { launchSingleTop = true } },
-        onOpenScenes = { navController.navigate(Routes.SCENES) { launchSingleTop = true } },
-        onOpenLogbook = { navController.navigate(Routes.LOGBOOK) { launchSingleTop = true } },
-        onOpenTemplate = { navController.navigate(Routes.TEMPLATE) { launchSingleTop = true } },
-        onOpenServiceCaller = { navController.navigate(Routes.SERVICE_CALLER) { launchSingleTop = true } },
-        onOpenNotifications = { navController.navigate(Routes.NOTIFICATIONS) { launchSingleTop = true } },
-        onOpenCameras = { navController.navigate(Routes.CAMERAS) { launchSingleTop = true } },
-        onOpenWeather = { navController.navigate(Routes.WEATHER) { launchSingleTop = true } },
-        onOpenPersons = { navController.navigate(Routes.PERSONS) { launchSingleTop = true } },
-        onOpenCalendars = { navController.navigate(Routes.CALENDARS) { launchSingleTop = true } },
-        onOpenLongLivedToken = { navController.navigate(Routes.LONG_LIVED_TOKEN) { launchSingleTop = true } },
-        onOpenSystemHealth = { navController.navigate(Routes.SYSTEM_HEALTH) { launchSingleTop = true } },
-        onOpenDashboard = { navController.navigate(Routes.DASHBOARD) { launchSingleTop = true } },
-        onOpenAreas = { navController.navigate(Routes.AREAS) { launchSingleTop = true } },
-        onOpenLabels = { navController.navigate(Routes.LABELS) { launchSingleTop = true } },
-        onOpenFloors = { navController.navigate(Routes.FLOORS) { launchSingleTop = true } },
-        onOpenServices = { navController.navigate(Routes.SERVICES) { launchSingleTop = true } },
-        onOpenSearch = { navController.navigate(Routes.SEARCH) { launchSingleTop = true } },
-        onOpenAutomations = { navController.navigate(Routes.AUTOMATIONS) { launchSingleTop = true } },
-        onOpenHelpers = { navController.navigate(Routes.HELPERS) { launchSingleTop = true } },
-        onOpenTodo = { navController.navigate(Routes.TODO) { launchSingleTop = true } },
-        onOpenUpdates = { navController.navigate(Routes.UPDATES) { launchSingleTop = true } },
-        onOpenRepairs = { navController.navigate(Routes.REPAIRS) { launchSingleTop = true } },
-        onOpenMediaBrowse = { navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true } },
-        onOpenBackups = { navController.navigate(Routes.BACKUPS) { launchSingleTop = true } },
-        onOpenZhaPairing = { navController.navigate(Routes.ZHA_PAIRING) { launchSingleTop = true } },
-        onOpenBroadlink = { navController.navigate(Routes.BROADLINK) { launchSingleTop = true } },
-        onOpenEnergy = { navController.navigate(Routes.ENERGY) { launchSingleTop = true } },
-        onOpenZones = { navController.navigate(Routes.ZONES) { launchSingleTop = true } },
-        onOpenLovelace = { navController.navigate(Routes.LOVELACE) { launchSingleTop = true } },
-        onOpenDevice = { navController.navigate(Routes.DEVICE) { launchSingleTop = true } },
-        onOpenModifiedSettings = { navController.navigate(Routes.MODIFIED_SETTINGS) { launchSingleTop = true } },
-        onOpenKeyBindings = { navController.navigate(Routes.SETTINGS_KEY_BINDINGS) { launchSingleTop = true } },
-        onOpenDevices = { navController.navigate(Routes.DEVICES) { launchSingleTop = true } },
-        onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) { launchSingleTop = true } },
-        onOpenLogs = { navController.navigate(Routes.LOGS) { launchSingleTop = true } },
-        onOpenUsers = { navController.navigate(Routes.USERS) { launchSingleTop = true } },
-        onOpenTags = { navController.navigate(Routes.TAGS) { launchSingleTop = true } },
-        onOpenBlueprints = { navController.navigate(Routes.BLUEPRINTS) { launchSingleTop = true } },
-        onOpenStatistics = { navController.navigate(Routes.STATISTICS) { launchSingleTop = true } },
-        onOpenDashboards = { navController.navigate(Routes.DASHBOARDS) { launchSingleTop = true } },
+        onOpenThemePicker = { navController.navigateIfIdle(Routes.THEME_PICKER) },
+        onOpenAbout = { navController.navigateIfIdle(Routes.ABOUT) },
+        onOpenDevMenu = { navController.navigateIfIdle(Routes.DEV_MENU) },
+        onOpenAssist = { navController.navigateIfIdle(Routes.ASSIST) },
+        onOpenScenes = { navController.navigateIfIdle(Routes.SCENES) },
+        onOpenLogbook = { navController.navigateIfIdle(Routes.LOGBOOK) },
+        onOpenTemplate = { navController.navigateIfIdle(Routes.TEMPLATE) },
+        onOpenServiceCaller = { navController.navigateIfIdle(Routes.SERVICE_CALLER) },
+        onOpenNotifications = { navController.navigateIfIdle(Routes.NOTIFICATIONS) },
+        onOpenCameras = { navController.navigateIfIdle(Routes.CAMERAS) },
+        onOpenWeather = { navController.navigateIfIdle(Routes.WEATHER) },
+        onOpenPersons = { navController.navigateIfIdle(Routes.PERSONS) },
+        onOpenCalendars = { navController.navigateIfIdle(Routes.CALENDARS) },
+        onOpenLongLivedToken = { navController.navigateIfIdle(Routes.LONG_LIVED_TOKEN) },
+        onOpenSystemHealth = { navController.navigateIfIdle(Routes.SYSTEM_HEALTH) },
+        onOpenDashboard = { navController.navigateIfIdle(Routes.DASHBOARD) },
+        onOpenAreas = { navController.navigateIfIdle(Routes.AREAS) },
+        onOpenLabels = { navController.navigateIfIdle(Routes.LABELS) },
+        onOpenFloors = { navController.navigateIfIdle(Routes.FLOORS) },
+        onOpenServices = { navController.navigateIfIdle(Routes.SERVICES) },
+        onOpenSearch = { navController.navigateIfIdle(Routes.SEARCH) },
+        onOpenAutomations = { navController.navigateIfIdle(Routes.AUTOMATIONS) },
+        onOpenHelpers = { navController.navigateIfIdle(Routes.HELPERS) },
+        onOpenTodo = { navController.navigateIfIdle(Routes.TODO) },
+        onOpenUpdates = { navController.navigateIfIdle(Routes.UPDATES) },
+        onOpenRepairs = { navController.navigateIfIdle(Routes.REPAIRS) },
+        onOpenMediaBrowse = { navController.navigateIfIdle(Routes.MEDIA_BROWSE) },
+        onOpenBackups = { navController.navigateIfIdle(Routes.BACKUPS) },
+        onOpenZhaPairing = { navController.navigateIfIdle(Routes.ZHA_PAIRING) },
+        onOpenBroadlink = { navController.navigateIfIdle(Routes.BROADLINK) },
+        onOpenEnergy = { navController.navigateIfIdle(Routes.ENERGY) },
+        onOpenZones = { navController.navigateIfIdle(Routes.ZONES) },
+        onOpenLovelace = { navController.navigateIfIdle(Routes.LOVELACE) },
+        onOpenDevice = { navController.navigateIfIdle(Routes.DEVICE) },
+        onOpenModifiedSettings = { navController.navigateIfIdle(Routes.MODIFIED_SETTINGS) },
+        onOpenValueBarTuning = { navController.navigateIfIdle(Routes.VALUE_BAR_TUNING) },
+        onOpenKeyBindings = { navController.navigateIfIdle(Routes.SETTINGS_KEY_BINDINGS) },
+        onOpenDevices = { navController.navigateIfIdle(Routes.DEVICES) },
+        onOpenIntegrations = { navController.navigateIfIdle(Routes.INTEGRATIONS) },
+        onOpenLogs = { navController.navigateIfIdle(Routes.LOGS) },
+        onOpenUsers = { navController.navigateIfIdle(Routes.USERS) },
+        onOpenTags = { navController.navigateIfIdle(Routes.TAGS) },
+        onOpenBlueprints = { navController.navigateIfIdle(Routes.BLUEPRINTS) },
+        onOpenStatistics = { navController.navigateIfIdle(Routes.STATISTICS) },
+        onOpenDashboards = { navController.navigateIfIdle(Routes.DASHBOARDS) },
         onSignedOut = {
             navController.navigate(Routes.ONBOARDING) {
                 popUpTo(0) { inclusive = true }
             }
         },
-        onBack = { navController.popBackStack() },
+        onBack = { navController.popIfIdle() },
     )
+}
+
+/**
+ * Anti-reentrancy nav guards. Confirmed on device: rapidly alternating a forward
+ * nav (gear -> Settings) with a back (Settings -> card stack) faster than the
+ * NavHost cross-fade can settle strands the whole app on a persistent black screen
+ * (MainActivity stays resumed, but the Compose tree collapses to an empty frame and
+ * the card_stack back-stack entry is torn down mid-transition). The fix is to admit
+ * a navigate or a pop ONLY when the current destination is RESUMED, i.e. no
+ * transition is already in flight. This serialises navigation to one transition at a
+ * time without the silent-skip failure of a route-allowlist (the route is null
+ * mid-transition; the lifecycle state is not): a normal tap lands on a settled,
+ * resumed screen and goes through; a second tap fired during the cross-fade is
+ * dropped instead of racing it. The favourites-picker open keeps its own
+ * (deliberately mid-transition-tolerant) time-debounce and is left untouched.
+ */
+private fun androidx.navigation.NavController.isIdle(): Boolean =
+    currentBackStackEntry?.lifecycle?.currentState
+        ?.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) == true
+
+private fun androidx.navigation.NavController.navigateIfIdle(route: String) {
+    if (isIdle()) navigate(route) { launchSingleTop = true }
+}
+
+private fun androidx.navigation.NavController.popIfIdle() {
+    if (isIdle()) popBackStack()
 }
 
 @androidx.compose.runtime.Composable
@@ -993,55 +1027,55 @@ private fun CardStackDestination(
     }
         },
         onOpenSettings = {
-    navController.navigate(Routes.SETTINGS) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.SETTINGS)
         },
         onOpenDashboard = {
-    navController.navigate(Routes.DASHBOARD) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.DASHBOARD)
         },
         onOpenSearch = {
-    navController.navigate(Routes.SEARCH) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.SEARCH)
         },
         onOpenAssist = {
-    navController.navigate(Routes.ASSIST) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.ASSIST)
         },
         onOpenAutomations = {
-    navController.navigate(Routes.AUTOMATIONS) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.AUTOMATIONS)
         },
         onOpenEnergy = {
-    navController.navigate(Routes.ENERGY) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.ENERGY)
         },
         onOpenScenes = {
-    navController.navigate(Routes.SCENES) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.SCENES)
         },
         onOpenNotifications = {
-    navController.navigate(Routes.NOTIFICATIONS) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.NOTIFICATIONS)
         },
         onOpenZones = {
-    navController.navigate(Routes.ZONES) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.ZONES)
         },
         onOpenDevice = {
-    navController.navigate(Routes.DEVICE) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.DEVICE)
         },
         onOpenCameras = {
-    navController.navigate(Routes.CAMERAS) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.CAMERAS)
         },
         onOpenMediaBrowse = {
-    navController.navigate(Routes.MEDIA_BROWSE) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.MEDIA_BROWSE)
         },
         onOpenMediaBrowseFor = { eid ->
-    navController.navigate(Routes.mediaBrowseRoute(eid)) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.mediaBrowseRoute(eid))
         },
         onOpenWeather = {
-    navController.navigate(Routes.WEATHER) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.WEATHER)
         },
         onOpenPersons = {
-    navController.navigate(Routes.PERSONS) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.PERSONS)
         },
         onOpenHistory = { eid ->
-    navController.navigate(Routes.historyRoute(eid)) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.historyRoute(eid))
         },
         onOpenLogbook = { eid ->
-    navController.navigate(Routes.logbookRoute(eid)) { launchSingleTop = true }
+    navController.navigateIfIdle(Routes.logbookRoute(eid))
         },
         onOpenDashboardRoute = { route ->
     navController.navigate(route) { launchSingleTop = true }

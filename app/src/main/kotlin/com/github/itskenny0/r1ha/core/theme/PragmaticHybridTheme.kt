@@ -841,6 +841,12 @@ internal fun VerticalTapeMeter(
     // a useless pointerInput.
     val onSetPercent = com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent.current
     val interactive = onSetPercent != null
+    // User-configurable TOUCH hit-area width. The visible track / fill / thumb stay
+    // pinned to CenterEnd at their fixed drawn widths; only the outer Box (the
+    // pointerInput surface) widens, so a finger landing short of the thin hairline
+    // still scrubs. 24 dp reproduces the historical hit area. Coerced defensively in
+    // case an out-of-range value reaches the composition.
+    val tapTargetWidth = LocalUiOptions.current.valueBarTapTargetDp.coerceIn(24, 72).dp
     // Detent haptic for the TOUCH-drag scrub. The wheel-driven value change (on
     // the focused card) already clicks per detent, so without this an INACTIVE
     // card's bar, which can only be scrubbed by touch, felt dead under the
@@ -947,7 +953,7 @@ internal fun VerticalTapeMeter(
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .width(24.dp)
+                .width(tapTargetWidth)
                 .then(trackInteractionMod),
         ) {
             if (rainbow) {
@@ -1032,6 +1038,11 @@ internal fun HorizontalTapeMeter(
     val labels = (tickLabels ?: listOf("100", "75", "50", "25", "0")).reversed()
     val onSetPercent = com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent.current
     val interactive = onSetPercent != null
+    // User-configurable TOUCH hit-area thickness (the horizontal bar's analogue of the
+    // vertical bar's width). The visible track / fill / thumb stay centred at their
+    // fixed drawn thicknesses; only the outer Box (the pointerInput surface) grows.
+    // 24 dp reproduces the historical hit area.
+    val tapTargetThickness = LocalUiOptions.current.valueBarTapTargetDp.coerceIn(24, 72).dp
     // Detent haptic for touch scrub, same rationale as VerticalTapeMeter: the
     // bar must click under the finger on an inactive card, not just when the
     // wheel drives the focused one.
@@ -1079,7 +1090,7 @@ internal fun HorizontalTapeMeter(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(24.dp)
+                .height(tapTargetThickness)
                 .then(trackInteractionMod),
         ) {
             if (rainbow) {

@@ -201,6 +201,7 @@ fun SettingsScreen(
     onOpenLovelace: () -> Unit,
     onOpenDevice: () -> Unit,
     onOpenModifiedSettings: () -> Unit,
+    onOpenValueBarTuning: () -> Unit = {},
     onOpenKeyBindings: () -> Unit = {},
     onOpenDevices: () -> Unit = {},
     onOpenIntegrations: () -> Unit = {},
@@ -565,7 +566,7 @@ fun SettingsScreen(
                     )
                     SettingsNode.APPEARANCE_THEME -> appearanceTheme(s = s, vm = vm, onOpenThemePicker = onOpenThemePicker)
                     SettingsNode.APPEARANCE_NAVPANEL -> appearanceNavPanel(s = s, vm = vm)
-                    SettingsNode.APPEARANCE_CARDS -> appearanceCards(s = s, vm = vm, push = push)
+                    SettingsNode.APPEARANCE_CARDS -> appearanceCards(s = s, vm = vm, push = push, onOpenValueBarTuning = onOpenValueBarTuning)
                     SettingsNode.APPEARANCE_CARDS_VALUEBAR -> appearanceValueBar(s = s, vm = vm)
                     SettingsNode.APPEARANCE_CARDS_CHROME -> appearanceChrome(s = s, vm = vm)
 
@@ -1241,6 +1242,7 @@ private fun LazyListScope.appearanceCards(
     s: AppSettings,
     vm: SettingsViewModel,
     push: (SettingsNode) -> Unit,
+    onOpenValueBarTuning: () -> Unit,
 ) {
     item {
         LabeledControl(label = "Display mode") {
@@ -1330,6 +1332,25 @@ private fun LazyListScope.appearanceCards(
         }
     }
     item {
+        LabeledControl(label = "Optimize for low performance hardware") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.LowPerfMode.entries,
+                selected = s.ui.lowPerfMode,
+                label = { com.github.itskenny0.r1ha.core.prefs.lowPerfModeLabel(it) },
+                onSelect = { vm.setLowPerfMode(it) },
+            )
+            Spacer(Modifier.height(R1.space.s))
+            Text(
+                text = "On slow devices, use the flat Pragmatic Hybrid theme and a " +
+                    "lightweight placeholder while swiping between tabs, so the card " +
+                    "stack stays smooth. Auto: apply only on devices that look low-end. " +
+                    "On: always apply. Off: never (full fidelity everywhere).",
+                style = R1.labelMicro,
+                color = R1.InkMuted,
+            )
+        }
+    }
+    item {
         SliderRow(
             label = "Card stack scroll sensitivity",
             subtitle = "How far a flick coasts when scrolling the card stack. Higher = more " +
@@ -1338,6 +1359,16 @@ private fun LazyListScope.appearanceCards(
             value = s.ui.cardScrollSensitivity,
             valueLabel = "${s.ui.cardScrollSensitivity}%",
             onChange = { vm.setCardScrollSensitivity(it) },
+        )
+    }
+    item {
+        R1Row(
+            label = "Value bar tap target",
+            description = "How wide a band accepts a press on the value bar",
+            value = "${s.ui.valueBarTapTargetDp} dp",
+            onClick = onOpenValueBarTuning,
+            showChevron = true,
+            contentDescription = "Open Value bar tap target",
         )
     }
     item {

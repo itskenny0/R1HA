@@ -32,6 +32,17 @@ enum class DisplayMode { PERCENT, RAW }
 enum class CardPeekMode { AUTO, ALWAYS, NEVER }
 
 /**
+ * "Optimize for low performance hardware." One override that adapts the app to slow
+ * devices: it downgrades the GPU-heavy Colourful Cards theme to the flat Pragmatic
+ * Hybrid theme (the gradient cards are the scroll bottleneck on weak GPUs) AND swaps
+ * the real deck for a lightweight placeholder during tab swipes.
+ *  - [AUTO]: apply the optimizations only when the device looks low-end (RAM tier).
+ *  - [ON]: always apply them.
+ *  - [OFF]: never apply them (full fidelity on every device).
+ */
+enum class LowPerfMode { AUTO, ON, OFF }
+
+/**
  * How the card-stack deck lays its cards out vertically.
  *
  * FULLSCREEN: every card is a uniform full-viewport page (the historical pager), one
@@ -372,6 +383,24 @@ data class UiOptions(
      * Default AUTO so existing installs see no change on the R1 / sub-compact tier.
      */
     val cardPeekMode: CardPeekMode = CardPeekMode.AUTO,
+    /** "Optimize for low performance hardware." Default [LowPerfMode.AUTO]: on devices
+     *  that look low-end, use the flat Pragmatic Hybrid theme and the lightweight
+     *  tab-swipe placeholder; ON forces it everywhere, OFF never applies it. */
+    val lowPerfMode: LowPerfMode = LowPerfMode.AUTO,
+    /**
+     * Width (dp) of the card value bar's invisible TOUCH hit area, i.e. how wide a
+     * band along the bar's edge accepts a press / drag. The VISIBLE slider (track,
+     * fill, thumb) is unaffected and keeps its drawn width; this only widens the
+     * region where a finger registers, so a press that lands short of the thin
+     * hairline still scrubs.
+     *
+     * Default 24 reproduces the historical hit area exactly (the bar Box was a fixed
+     * 24 dp wide). Raising it makes the bar far easier to grab on a touch screen, at
+     * the cost of crowding the card body a little; the dedicated Value bar tap target
+     * subpage previews the trade-off live. Coerced to a sane 24..72 on load so a
+     * stray value can't swallow the whole card or shrink below the original width.
+     */
+    val valueBarTapTargetDp: Int = 24,
     /**
      * Card-stack deck layout. AUTO (default) keeps the historical full-viewport pager
      * on the small width tiers (R1 / compact) and switches to the content-height

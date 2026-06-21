@@ -65,8 +65,7 @@ import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
-import com.github.itskenny0.r1ha.ui.components.Chevron
-import com.github.itskenny0.r1ha.ui.components.ChevronDirection
+import com.github.itskenny0.r1ha.ui.components.ScrollCueDown
 import com.github.itskenny0.r1ha.ui.components.EntityCard
 import com.github.itskenny0.r1ha.ui.components.HamburgerGlyph
 import com.github.itskenny0.r1ha.ui.components.R1Button
@@ -403,6 +402,28 @@ fun CardStackScreen(
     // chrome taps that land while it's still STARTED (mid-transition) are the ones
     // that raced the transition into a black screen, so we drop them.
     val navEntryLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    // Shared debounce across ALL chrome-row taps. Each chrome action animates a
+    // transition: the hamburger slides the drawer in, the gear runs the NavHost
+    // cross-fade to Settings, the others open a sheet. Firing a SECOND chrome
+    // action before the first settles raced the drawer against the nav transition
+    // and stranded the app on a persistent black screen (confirmed repro: rapid
+    // alternating hamburger + gear; neither alone does it, only the interleave).
+    // The hamburger already had an isResumed guard for the same reason, but the gear
+    // did not, so the pair still collided. Serialising every chrome tap, drop a
+    // second one inside the settle window, removes the race as a class instead of
+    // patching one pair. Mirrors the favourites-picker time-debounce.
+    val lastChromeTapAt = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableLongStateOf(0L)
+    }
+    val chromeTap: (() -> Unit) -> Unit = androidx.compose.runtime.remember {
+        { action ->
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastChromeTapAt.longValue >= 350L) {
+                lastChromeTapAt.longValue = now
+                action()
+            }
+        }
+    }
     // Jump-to-card overlay visibility — tapped open from the chrome counter to let
     // the user pick a target card by name rather than scrolling through the deck.
     // Declared here (rather than at the chrome-render site) so the wheel-events
@@ -1033,6 +1054,12 @@ fun CardStackScreen(
                         pageCount = { state.pages.size },
                     )
                 }
+                // Low-performance verdict for this device, resolved once at the theme
+                // root from the "Optimize for low performance hardware" setting (auto /
+                // on / off) and provided via [LocalLowPerf]. Drives the tab-swipe
+                // placeholder below (the same setting also downgrades the heavy theme,
+                // see R1ThemeHost).
+                val lowPerf = com.github.itskenny0.r1ha.core.theme.LocalLowPerf.current
                 // Sync activePageId → horizontal pager: when the user taps a tab
                 // chip or a page is added programmatically, animate the pager so
                 // the chrome and the deck stay in lockstep.
@@ -1101,6 +1128,44 @@ fun CardStackScreen(
                         .distinctUntilChanged()
                         .collect { horizontalPagerAnimating.value = it }
                 }
+                // RE-SETTLE GUARD. The "stuck between two tabs" bug: a snap animation
+                // gets cancelled mid-flight (a recomposition, or a competing
+                // animateScrollToPage that the targetPage guards then skip), and the
+                // pager comes to REST at a fractional offset (~0.33 of a page seen on
+                // device). Because [settledPage] rounds to the nearest page, it already
+                // equals activePageId, so every other sync path sees "nothing to do"
+                // and the pager is wedged off-grid forever, neighbour-page slivers
+                // pinned at the screen edge. This watches the AT-REST offset only
+                // (NaN sentinel while scrolling, collapsed by distinctUntilChanged) and,
+                // when the pager is settled yet more than a hair off a page boundary,
+                // finishes the snap to its nearest page. It cannot reintroduce the old
+                // flicker loop: it acts only when isScrollInProgress is false AND the
+                // offset is non-trivial, which never happens during a healthy fling
+                // (that lands on exactly 0). The child-Job lets a user grabbing the
+                // pager cancel the correction without killing the collector; R1Log
+                // records each catch so the (previously unlogged) event is visible.
+                androidx.compose.runtime.LaunchedEffect(horizontalPagerState) {
+                    var fixJob: kotlinx.coroutines.Job? = null
+                    snapshotFlow {
+                        if (horizontalPagerState.isScrollInProgress) Float.NaN
+                        else horizontalPagerState.currentPageOffsetFraction
+                    }
+                        .distinctUntilChanged()
+                        .collect { off ->
+                            if (!off.isNaN() && kotlin.math.abs(off) > 0.05f) {
+                                val target = horizontalPagerState.currentPage
+                                com.github.itskenny0.r1ha.core.util.R1Log.i(
+                                    "TabResettle",
+                                    "off-grid rest off=$off currentPage=$target " +
+                                        "settledPage=${horizontalPagerState.settledPage}; snapping",
+                                )
+                                fixJob?.cancel()
+                                fixJob = launch {
+                                    runCatching { horizontalPagerState.animateScrollToPage(target) }
+                                }
+                            }
+                        }
+                }
                 // DIAGNOSTIC, gated behind the Dev-menu "Tab swipe diagnostics"
                 // toggle (default OFF). Frame-times every horizontal tab switch so
                 // the "sometimes janky" feel can be read off the log receiver instead
@@ -1117,10 +1182,10 @@ fun CardStackScreen(
                 // cascade. Keyed on the toggle so flipping it off tears the sampler
                 // down entirely.
                 // How many off-screen pages the tab pager keeps composed beyond the
-                // visible one(s). 0 after the TabSwipe diagnostics showed peeking a
-                // page each side left too many cards live and recomposing mid-swipe
-                // (see the HorizontalPager call site). Hoisted so the diagnostic line
-                // and the pager can't drift apart.
+                // visible one(s). 0: pages compose lazily as they enter, and what they
+                // compose mid-swipe is the cheap DeckPagePlaceholder (see the content
+                // lambda), so there is nothing to gain from holding neighbours live.
+                // Hoisted so the diagnostic line and the pager can't drift apart.
                 val tabBeyondViewport = 0
                 val tabSwipeDiag = appSettings.logShipping.tabSwitchDiagnostics
                 androidx.compose.runtime.LaunchedEffect(horizontalPagerState, pageIds, tabSwipeDiag) {
@@ -1260,19 +1325,14 @@ fun CardStackScreen(
                 androidx.compose.foundation.pager.HorizontalPager(
                     state = horizontalPagerState,
                     modifier = Modifier.fillMaxSize(),
-                    // Compose only the visible page(s); neighbours compose lazily
-                    // as they scroll in, the same choice the VerticalPager makes
-                    // ("the cheaper path the R1 wants"). On-device TabSwipe frame
-                    // timing showed the steady-state swipe holds a clean 60 Hz but
-                    // ~45% of switches dropped a frame to a SPORADIC mid-swipe hitch
-                    // (uncorrelated with swipe length: a 1-page swipe spiked to 83 ms
-                    // while a 6-page one stayed flush). With a peek of 1, THREE full
-                    // pages of cards stayed composed and subscribed to HA state at
-                    // once, so an update arriving mid-swipe recomposed cards across
-                    // pages the user couldn't even see. Dropping to 0 shrinks that
-                    // live, state-subscribed surface to what's on screen; the clean
-                    // long-swipe numbers show composing the entering page lazily
-                    // doesn't cost us a settle hitch.
+                    // Compose only the visible page(s); neighbours compose lazily as
+                    // they scroll in, the same choice the VerticalPager makes ("the
+                    // cheaper path the R1 wants"). What the entering page composes mid
+                    // swipe is the cheap DeckPagePlaceholder, not its real deck (see
+                    // the content lambda below), so a peek of 0 keeps the at-rest live
+                    // surface minimal without the placeholder having to fight a deck
+                    // the pager pre-measured. The real deck composes once, at rest,
+                    // after settle.
                     beyondViewportPageCount = tabBeyondViewport,
                     // Stable per-page key = the page's id (a UUID), not the slot
                     // index. Without it Compose matches pages positionally, so a
@@ -1284,6 +1344,53 @@ fun CardStackScreen(
                     key = { pageIdx -> state.pages.getOrNull(pageIdx)?.id ?: pageIdx },
                 ) { pageIdx ->
                     val page = state.pages.getOrNull(pageIdx) ?: return@HorizontalPager
+                    // While the tab pager is mid-swipe, any page that is NOT the one
+                    // we left renders a lightweight placeholder instead of its real
+                    // deck. Composing a full deck as it is prefetched into view costs
+                    // ~80 ms of UI-thread measure/layout (Perfetto: measureAndLayout +
+                    // the pager's lazy:prefetch dominate every dropped swipe frame,
+                    // GPU idle), which stuffs the buffer and drops frames for the whole
+                    // gesture. The placeholder is draw-only and near-free, so the
+                    // incoming page glides in; the real deck composes once, at rest,
+                    // the frame after settle. Gating on settledPage (not currentPage)
+                    // keeps the page we are LEAVING fully live as it exits while only
+                    // the arriving page(s) are stood in for. Sits ABOVE the layout
+                    // choice so it covers the fullscreen PageDeck, the DynamicPageDeck
+                    // and the empty state alike.
+                    val pageItemsForPlaceholder = state.deckByPage[page.id].orEmpty()
+                    if (lowPerf &&
+                        pageItemsForPlaceholder.isNotEmpty() &&
+                        horizontalPagerState.isScrollInProgress &&
+                        pageIdx != horizontalPagerState.settledPage
+                    ) {
+                        // Build one spec per VISIBLE card (capped) starting at the page's
+                        // focused index, carrying each card's entity id + accent override
+                        // so the placeholder paints each in its real backdrop colour and
+                        // renders a stack matching the page's card count.
+                        val focusIdx = (state.indexByPage[page.id] ?: 0)
+                            .coerceIn(0, (pageItemsForPlaceholder.size - 1).coerceAtLeast(0))
+                        val visible = pageItemsForPlaceholder.drop(focusIdx).take(4)
+                            .ifEmpty { pageItemsForPlaceholder.take(4) }
+                        val specs = visible.map { item ->
+                            val eid = (item as? DeckItem.Entity)?.state?.id?.value
+                            PlaceholderCardSpec(
+                                entityId = eid,
+                                accent = eid?.let {
+                                    appSettings.entityOverrides[it]?.accentColor
+                                        ?.let { a -> androidx.compose.ui.graphics.Color(a) }
+                                },
+                            )
+                        }
+                        DeckPagePlaceholder(
+                            cards = specs,
+                            title = page.name,
+                            topInset = deckTopInsetOverride ?: 96.dp,
+                            singleLarge = deckLayout != DeckLayout.DYNAMIC &&
+                                !peekActiveForDeck(peekDeck, pageItemsForPlaceholder.size),
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        return@HorizontalPager
+                    }
                     val pageItemsRaw = state.deckByPage[page.id].orEmpty()
                     // Apply optimistic overrides to this page's entity slots so
                     // wheel changes track instantly even when the page becomes
@@ -1422,35 +1529,43 @@ fun CardStackScreen(
                 // without affecting the chrome row's right-cluster layout.
                 showCounter = deck.size > 1 &&
                     activePip == com.github.itskenny0.r1ha.core.prefs.PositionDotLocation.TOP_CENTER,
-                onOpenFavoritesPicker = onOpenFavoritesPicker,
-                onOpenSettings = onOpenSettings,
+                onOpenFavoritesPicker = { chromeTap(onOpenFavoritesPicker) },
+                onOpenSettings = { chromeTap(onOpenSettings) },
                 onEditActive = {
-                    // Only allow editing when there's an active card to edit — empty deck
-                    // is a no-op.
-                    state.activeState?.let { customizingId.value = it.id.value }
-                },
-                onMoreInfoActive = {
-                    // Open the ultra-detail more-info sheet for the focused card. An
-                    // explicit user tap always opens it (the per-card moreInfoEnabled
-                    // flag governs only the implicit wheel-open path); empty deck no-ops.
-                    state.activeState?.id?.value?.let { moreInfoEntityId.value = it }
-                },
-                onTapCounter = { jumpPickerOpen.value = true },
-                onTapHamburger = {
-                    // Ignore a hamburger tap that lands while the deck is still animating
-                    // in from a back navigation (the NavBackStackEntry isn't RESUMED yet).
-                    // Opening the slide-out / modal mid-transition raced the NavHost's
-                    // cross-fade and could strand the app on a black screen needing a
-                    // restart; once the transition settles the tap behaves normally.
-                    if (navEntryLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
-                        // Slide-out when the shell offers it (SLIDEOUT style on a portrait tier);
-                        // otherwise the QuickActions modal, which long-press also opens.
-                        if (navDrawer?.available == true) navDrawer.open() else quickActionsOpen.value = true
+                    chromeTap {
+                        // Only allow editing when there's an active card to edit — empty deck
+                        // is a no-op.
+                        state.activeState?.let { customizingId.value = it.id.value }
                     }
                 },
-                onLongPressHamburger = { quickActionsOpen.value = true },
-                onLongPressGear = onOpenSearch,
-                onOpenAssist = onOpenAssist,
+                onMoreInfoActive = {
+                    chromeTap {
+                        // Open the ultra-detail more-info sheet for the focused card. An
+                        // explicit user tap always opens it (the per-card moreInfoEnabled
+                        // flag governs only the implicit wheel-open path); empty deck no-ops.
+                        state.activeState?.id?.value?.let { moreInfoEntityId.value = it }
+                    }
+                },
+                onTapCounter = { chromeTap { jumpPickerOpen.value = true } },
+                onTapHamburger = {
+                    chromeTap {
+                        // Ignore a hamburger tap that lands while the deck is still animating
+                        // in from a back navigation (the NavBackStackEntry isn't RESUMED yet).
+                        // Opening the slide-out / modal mid-transition raced the NavHost's
+                        // cross-fade and could strand the app on a black screen needing a
+                        // restart; once the transition settles the tap behaves normally. The
+                        // shared chromeTap debounce additionally bars it from racing a gear
+                        // nav (or any other chrome action) that fired a moment earlier.
+                        if (navEntryLifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+                            // Slide-out when the shell offers it (SLIDEOUT style on a portrait tier);
+                            // otherwise the QuickActions modal, which long-press also opens.
+                            if (navDrawer?.available == true) navDrawer.open() else quickActionsOpen.value = true
+                        }
+                    }
+                },
+                onLongPressHamburger = { chromeTap { quickActionsOpen.value = true } },
+                onLongPressGear = { chromeTap(onOpenSearch) },
+                onOpenAssist = { chromeTap(onOpenAssist) },
                 solidBackdrop = appSettings.ui.hideCardTailAbove,
                 // Battery indicator surfaces only when the system status bar is hidden
                 // AND the user explicitly opted in — otherwise the system bar already
@@ -2729,7 +2844,7 @@ private fun PageDeck(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp),
         ) {
-            Chevron(direction = ChevronDirection.Down, size = 14.dp, tint = R1.InkMuted)
+            ScrollCueDown(tint = R1.InkMuted)
         }
     }
 }
