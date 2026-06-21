@@ -49,5 +49,5 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "New developer-menu toggle logs page-switch (tab) timing to help track down occasional switching stutter.",
+    "Smoother page (tab) switching: fewer dropped frames when swiping between pages.",
 )

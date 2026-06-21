@@ -1111,10 +1111,17 @@ fun CardStackScreen(
                 // pip / chrome recompose all land on the settle frame). On settle we
                 // ship one summary: span, slowest frame, how many frames blew the
                 // 60 Hz (16.7 ms) and 30 Hz (33.3 ms) budgets, and the worst tail
-                // frame separately. A long max during the scroll points at draw cost
-                // (the two live neighbour decks under beyondViewportPageCount=1); a
-                // long tail max points at the settle cascade. Keyed on the toggle so
-                // flipping it off tears the sampler down entirely.
+                // frame separately. A high in-scroll max points at per-frame draw /
+                // recompose cost during the swipe (e.g. cards across more than the
+                // visible pages staying live); a high tail max points at the settle
+                // cascade. Keyed on the toggle so flipping it off tears the sampler
+                // down entirely.
+                // How many off-screen pages the tab pager keeps composed beyond the
+                // visible one(s). 0 after the TabSwipe diagnostics showed peeking a
+                // page each side left too many cards live and recomposing mid-swipe
+                // (see the HorizontalPager call site). Hoisted so the diagnostic line
+                // and the pager can't drift apart.
+                val tabBeyondViewport = 0
                 val tabSwipeDiag = appSettings.logShipping.tabSwitchDiagnostics
                 androidx.compose.runtime.LaunchedEffect(horizontalPagerState, pageIds, tabSwipeDiag) {
                     if (!tabSwipeDiag) return@LaunchedEffect
@@ -1153,7 +1160,7 @@ fun CardStackScreen(
                         com.github.itskenny0.r1ha.core.util.R1Log.i(
                             "TabSwipe",
                             "switch from=$fromPage to=$toPage pages=${state.pages.size} " +
-                                "beyond=1 layout=$deckLayout " +
+                                "beyond=$tabBeyondViewport layout=$deckLayout " +
                                 "scrollFrames=$scrollFrames span=${fmt(span)}ms " +
                                 "max=${fmt(maxMs)}ms mean=${fmt(meanMs)}ms " +
                                 "jank>16.7=$jank60 jank>33.3=$jank30 " +
@@ -1253,11 +1260,20 @@ fun CardStackScreen(
                 androidx.compose.foundation.pager.HorizontalPager(
                     state = horizontalPagerState,
                     modifier = Modifier.fillMaxSize(),
-                    // Pre-compose one page on each side of the visible one so
-                    // a swipe between tabs reveals fully-rendered cards
-                    // immediately. The crash trace identified the pip-thumb
-                    // spring overshoot as the cause, not this peek; restored.
-                    beyondViewportPageCount = 1,
+                    // Compose only the visible page(s); neighbours compose lazily
+                    // as they scroll in, the same choice the VerticalPager makes
+                    // ("the cheaper path the R1 wants"). On-device TabSwipe frame
+                    // timing showed the steady-state swipe holds a clean 60 Hz but
+                    // ~45% of switches dropped a frame to a SPORADIC mid-swipe hitch
+                    // (uncorrelated with swipe length: a 1-page swipe spiked to 83 ms
+                    // while a 6-page one stayed flush). With a peek of 1, THREE full
+                    // pages of cards stayed composed and subscribed to HA state at
+                    // once, so an update arriving mid-swipe recomposed cards across
+                    // pages the user couldn't even see. Dropping to 0 shrinks that
+                    // live, state-subscribed surface to what's on screen; the clean
+                    // long-swipe numbers show composing the entering page lazily
+                    // doesn't cost us a settle hitch.
+                    beyondViewportPageCount = tabBeyondViewport,
                     // Stable per-page key = the page's id (a UUID), not the slot
                     // index. Without it Compose matches pages positionally, so a
                     // page insert / delete / reorder threw away every PageDeck's
@@ -1276,19 +1292,18 @@ fun CardStackScreen(
                     // through untouched (no entity to override).
                     //
                     // Memoised: the prior version allocated a fresh list via
-                    // .map { ... } on every recomp, including the ones
-                    // HorizontalPager peek triggered for both neighbour pages.
-                    // With beyondViewportPageCount=1, three pages re-derived
-                    // their list on every wheel detent at 50 Hz. remember keyed
-                    // on the raw list + optimistic map identity means we only
-                    // re-map when either actually changes; the no-optimistic
-                    // case returns the existing list reference verbatim.
+                    // .map { ... } on every recomp, re-deriving the list on every
+                    // wheel detent at 50 Hz (and, back when the pager kept a peek
+                    // page each side composed, for those neighbours too). remember
+                    // keyed on the raw list + optimistic map identity means we only
+                    // re-map when either actually changes; the no-optimistic case
+                    // returns the existing list reference verbatim.
                     val isActive = page.id == state.activePageId
-                    // Only the active page shows the wheel-driven optimistic overrides; peek
-                    // neighbours never receive wheel events, so paying the per-detent re-map
-                    // cost on them just churns recompositions of cards the user isn't even
-                    // touching. Gating saves N-cards re-allocation × 2 peek neighbours per
-                    // wheel detent during sustained spins (R1's perf-critical path).
+                    // Only the active page shows the wheel-driven optimistic overrides; a
+                    // page being swiped in receives no wheel events, so paying the
+                    // per-detent re-map cost on it would just churn recompositions of
+                    // cards the user isn't touching. Gating keeps the re-map on the one
+                    // page the wheel actually drives (R1's perf-critical path).
                     val pageItems = androidx.compose.runtime.remember(
                         pageItemsRaw, if (isActive) state.optimisticPercents else null,
                     ) {
