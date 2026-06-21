@@ -43,7 +43,13 @@ object CameraEnumerator {
     )
 
     fun list(context: Context): List<CameraDescriptor> {
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+        // Always resolve the CameraManager through applicationContext. The camera
+        // subsystem's process singleton (CameraManagerGlobal) retains the context it
+        // was obtained from; handed a Service context (IotCameraService calls
+        // pickDefault(this) at startup) it pins the whole service past onDestroy
+        // (LeakCanary caught exactly this). Pinning the Application instead is harmless
+        // since it lives for the process lifetime. Same mitigation as CameraCapture.
+        val manager = context.applicationContext.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
             ?: return emptyList()
         val logicalIds = runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())
         val seenIds = mutableSetOf<String>()
