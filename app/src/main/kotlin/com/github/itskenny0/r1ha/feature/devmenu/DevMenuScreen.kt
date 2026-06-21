@@ -934,6 +934,12 @@ private fun LogShippingPanel(
             checked = logShipping.deckSnapDiagnostics,
             onChange = { v -> vm.updateLogShipping { it.copy(deckSnapDiagnostics = v) } },
         )
+        DevSwitchRow(
+            label = "Tab swipe diagnostics",
+            subtitle = "Log a frame-timing summary for every horizontal page (tab) switch: frame count, slowest frame, dropped-frame counts, and the settle-cascade frames. For chasing tab-switch jank from the log; off by default.",
+            checked = logShipping.tabSwitchDiagnostics,
+            onChange = { v -> vm.updateLogShipping { it.copy(tabSwitchDiagnostics = v) } },
+        )
         Spacer(Modifier.height(8.dp))
         Text(text = "ENDPOINT URL", style = R1.labelMicro, color = R1.InkSoft)
         Spacer(Modifier.height(2.dp))

@@ -49,6 +49,5 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "New: R1HAL, a slim companion build centred on the card stack, installable alongside R1HA.",
-    "R1HAL drops the extra screens and most permissions for a leaner, focused Home Assistant remote.",
+    "New developer-menu toggle logs page-switch (tab) timing to help track down occasional switching stutter.",
 )

@@ -1101,6 +1101,66 @@ fun CardStackScreen(
                         .distinctUntilChanged()
                         .collect { horizontalPagerAnimating.value = it }
                 }
+                // DIAGNOSTIC, gated behind the Dev-menu "Tab swipe diagnostics"
+                // toggle (default OFF). Frame-times every horizontal tab switch so
+                // the "sometimes janky" feel can be read off the log receiver instead
+                // of guessed at. While the pager is scrolling (drag + fling), we
+                // sample the real frame clock with withFrameNanos and accumulate the
+                // per-frame deltas; once it settles we sample a short TAIL of frames
+                // to catch the settle-cascade hitch (setActivePage → activeState /
+                // pip / chrome recompose all land on the settle frame). On settle we
+                // ship one summary: span, slowest frame, how many frames blew the
+                // 60 Hz (16.7 ms) and 30 Hz (33.3 ms) budgets, and the worst tail
+                // frame separately. A long max during the scroll points at draw cost
+                // (the two live neighbour decks under beyondViewportPageCount=1); a
+                // long tail max points at the settle cascade. Keyed on the toggle so
+                // flipping it off tears the sampler down entirely.
+                val tabSwipeDiag = appSettings.logShipping.tabSwitchDiagnostics
+                androidx.compose.runtime.LaunchedEffect(horizontalPagerState, pageIds, tabSwipeDiag) {
+                    if (!tabSwipeDiag) return@LaunchedEffect
+                    while (true) {
+                        // Park until a swipe starts; first { it } resumes on the
+                        // rising edge of isScrollInProgress.
+                        snapshotFlow { horizontalPagerState.isScrollInProgress }.first { it }
+                        val fromPage = horizontalPagerState.currentPage
+                        val frameDeltasMs = ArrayList<Double>(64)
+                        var last = androidx.compose.runtime.withFrameNanos { it }
+                        // Sample every frame for as long as the pager reports motion.
+                        while (horizontalPagerState.isScrollInProgress) {
+                            val t = androidx.compose.runtime.withFrameNanos { it }
+                            frameDeltasMs.add((t - last) / 1_000_000.0)
+                            last = t
+                        }
+                        val scrollFrames = frameDeltasMs.size
+                        // TAIL: a handful of frames after the gesture settles, where
+                        // the setActivePage recomposition cascade lands. Tracked
+                        // apart from the scroll frames so a settle hitch is legible.
+                        val tailDeltasMs = ArrayList<Double>(8)
+                        repeat(6) {
+                            val t = androidx.compose.runtime.withFrameNanos { it }
+                            tailDeltasMs.add((t - last) / 1_000_000.0)
+                            last = t
+                        }
+                        val toPage = horizontalPagerState.currentPage
+                        fun fmt(v: Double) = ((v * 10).toLong() / 10.0)
+                        val all = frameDeltasMs
+                        val span = all.sum()
+                        val maxMs = all.maxOrNull() ?: 0.0
+                        val meanMs = if (all.isEmpty()) 0.0 else span / all.size
+                        val jank60 = all.count { it > 16.7 }
+                        val jank30 = all.count { it > 33.3 }
+                        val tailMax = tailDeltasMs.maxOrNull() ?: 0.0
+                        com.github.itskenny0.r1ha.core.util.R1Log.i(
+                            "TabSwipe",
+                            "switch from=$fromPage to=$toPage pages=${state.pages.size} " +
+                                "beyond=1 layout=$deckLayout " +
+                                "scrollFrames=$scrollFrames span=${fmt(span)}ms " +
+                                "max=${fmt(maxMs)}ms mean=${fmt(meanMs)}ms " +
+                                "jank>16.7=$jank60 jank>33.3=$jank30 " +
+                                "settleTailMax=${fmt(tailMax)}ms",
+                        )
+                    }
+                }
                 // Tab-chip tap consumer: drives the pager directly. Same
                 // child-Job cancellation pattern as the hardware key handler
                 // so that a rapid sequence of taps (re-targeting mid-

@@ -1230,6 +1230,14 @@ data class LogShippingSettings(
      *  in intent (a developer flips it on while diagnosing), but it still only
      *  reaches a destination when shipping is configured. */
     val deckSnapDiagnostics: Boolean = false,
+    /** Diagnostic-only: when on, every horizontal TAB swipe (page switch) ships a
+     *  TabSwipe frame-timing summary on settle: how many frames the swipe spanned,
+     *  the slowest frame, and how many frames blew the 60 Hz / 30 Hz budgets, plus
+     *  a separate read of the settle-cascade frames after the gesture lands. Lets
+     *  the tab-switch jank be measured on-device from the log receiver instead of
+     *  guessed at. Off by default; same intent and shipping dependency as
+     *  [deckSnapDiagnostics]. */
+    val tabSwitchDiagnostics: Boolean = false,
 )
 
 @Immutable
