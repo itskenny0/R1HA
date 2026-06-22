@@ -69,4 +69,63 @@ class HaSettingsSyncTest {
 
         assertThat(merged.behavior.lastSeenVersionCode).isEqualTo(250609)
     }
+
+    /**
+     * Regression (the "tab loop"): activePageId is the currently-open tab,
+     * ephemeral per-device UI state, not a shared preference. A pull must not
+     * overwrite it with another device's open tab. On a receive-only device,
+     * which can never push its own selection back, a foreign activePageId the
+     * card stack can't reconcile drove a ~5x/second settings-write ping-pong
+     * (pager bouncing between the foreign page and the local one).
+     */
+    @Test fun `preserveDeviceLocal keeps the device-local active tab`() {
+        val prev = AppSettings(activePageId = "home")
+        // Remote backup was authored on a device whose open tab was a different
+        // page id.
+        val applied = AppSettings(activePageId = "p9b79711d")
+
+        val merged = preserveDeviceLocal(applied, prev)
+
+        assertThat(merged.activePageId).isEqualTo("home")
+    }
+
+    /**
+     * The sync configuration is each device's own stance and must never be
+     * adopted from a remote payload: whether sync is on, its direction
+     * (receive-only), cadence, manual-only flag, and the seen-prompt flag all
+     * stay local regardless of the Integrations category opt-in. Syncing
+     * haSyncEnabled in particular could cascade a single device's "off" toggle
+     * across the whole fleet.
+     */
+    @Test fun `preserveDeviceLocal keeps the device-local sync configuration`() {
+        val base = AppSettings()
+        val prev = base.copy(
+            integrations = base.integrations.copy(
+                haSyncEnabled = true,
+                haSyncReadOnly = true,
+                haSyncManualOnly = true,
+                haSyncIntervalSec = 60,
+                haSyncPromptSeen = true,
+            ),
+        )
+        // Remote authored by a two-way, faster-polling device that had sync off
+        // and never saw the prompt.
+        val applied = base.copy(
+            integrations = base.integrations.copy(
+                haSyncEnabled = false,
+                haSyncReadOnly = false,
+                haSyncManualOnly = false,
+                haSyncIntervalSec = 300,
+                haSyncPromptSeen = false,
+            ),
+        )
+
+        val merged = preserveDeviceLocal(applied, prev)
+
+        assertThat(merged.integrations.haSyncEnabled).isTrue()
+        assertThat(merged.integrations.haSyncReadOnly).isTrue()
+        assertThat(merged.integrations.haSyncManualOnly).isTrue()
+        assertThat(merged.integrations.haSyncIntervalSec).isEqualTo(60)
+        assertThat(merged.integrations.haSyncPromptSeen).isTrue()
+    }
 }

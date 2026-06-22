@@ -51,4 +51,5 @@ fun whatsNewAction(
 val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Sync setup is now one dialog: pick two-way or receive-only and how to seed. No more being asked twice.",
     "New: receive-only sync, follow the household's settings without uploading this device's changes.",
+    "Fixed a loop that made the card stack rapidly flip between tabs; the open tab and sync settings now stay local.",
 )

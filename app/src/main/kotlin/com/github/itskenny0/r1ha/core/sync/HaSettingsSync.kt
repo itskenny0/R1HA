@@ -373,11 +373,29 @@ private fun AppSettings.toSyncBackup(): AppBackup {
         mqttUseTls = defaults.mqttUseTls,
         mqttClientId = defaults.mqttClientId,
     )
-    val sanitized = copy(server = null, advanced = sanitizedAdvanced)
+    val defaultsAll = AppSettings()
+    val sanitized = copy(
+        server = null,
+        advanced = sanitizedAdvanced,
+        // Device-local state that must never travel in the shared payload: the
+        // currently-open tab and this device's sync configuration. Zeroing them
+        // to defaults here (rather than the live values) also keeps them out of
+        // the synced-subset hash, so switching tabs or toggling a sync setting
+        // no longer schedules a push. Mirror of the restore in
+        // preserveDeviceLocal.
+        activePageId = defaultsAll.activePageId,
+        integrations = integrations.copy(
+            haSyncEnabled = defaultsAll.integrations.haSyncEnabled,
+            haSyncReadOnly = defaultsAll.integrations.haSyncReadOnly,
+            haSyncManualOnly = defaultsAll.integrations.haSyncManualOnly,
+            haSyncIntervalSec = defaultsAll.integrations.haSyncIntervalSec,
+            haSyncPromptSeen = defaultsAll.integrations.haSyncPromptSeen,
+            haSyncExcludedCategories = defaultsAll.integrations.haSyncExcludedCategories,
+        ),
+    )
     // For each excluded category, overwrite the live fields with their
     // built-in defaults so the upload doesn't reveal local values the user
     // explicitly chose not to share.
-    val defaultsAll = AppSettings()
     val excluded = excludedSyncCategories()
     val masked = excluded.fold(sanitized) { acc, cat -> cat.preserve(acc, defaultsAll) }
     return masked.toBackup(createdAt = "")
@@ -413,10 +431,22 @@ private fun AppSettings.excludedSyncCategories(): Set<SyncCategory> =
  * that includes the Behaviour category would reset the flag to a remote value
  * and re-show the one-shot "wheel to adjust" hint after every sync. Preserved
  * unconditionally, independent of the Behaviour category opt-in.
+ *
+ * [AppSettings.activePageId] is preserved for the same reason: it is the
+ * currently-open tab, ephemeral per-device UI state (the sibling of
+ * [com.github.itskenny0.r1ha.feature.cardstack.CardStackViewModel.UiState.currentIndex],
+ * which is never persisted at all), NOT a shared preference. Letting a pull
+ * overwrite it makes a device adopt another device's open tab; on a
+ * receive-only device, which can never push its own selection back, the card
+ * stack's activePageId<->pager binding can never reconcile the foreign value
+ * and ping-pongs settings writes ~5x/second (the pager visibly bounces between
+ * the foreign page and the local one). The page LIST still syncs via the PAGES
+ * category; only which tab is open stays device-local.
  */
 internal fun preserveDeviceLocal(applied: AppSettings, prev: AppSettings): AppSettings {
     return applied.copy(
         server = prev.server,
+        activePageId = prev.activePageId,
         behavior = applied.behavior.copy(
             wheelTutorialSeen = prev.behavior.wheelTutorialSeen,
             // Same per-device reasoning as the wheel hint: the what's-new stamp
@@ -436,6 +466,23 @@ internal fun preserveDeviceLocal(applied: AppSettings, prev: AppSettings): AppSe
             mqttPassword = prev.advanced.mqttPassword,
             mqttUseTls = prev.advanced.mqttUseTls,
             mqttClientId = prev.advanced.mqttClientId,
+        ),
+        // Sync configuration is device-local: whether this device syncs, in
+        // which direction (receive-only), how often, what it excludes, and
+        // whether it has seen the first-run prompt are each device's own
+        // stance, not a shared preference. A pull must never let one device's
+        // sync settings overwrite another's (syncing haSyncEnabled could even
+        // cascade a single "off" toggle across the whole fleet). Masked out of
+        // the uploaded payload by toSyncBackup; restored from the live local
+        // value here so it survives every remote apply regardless of the
+        // Integrations category opt-in.
+        integrations = applied.integrations.copy(
+            haSyncEnabled = prev.integrations.haSyncEnabled,
+            haSyncReadOnly = prev.integrations.haSyncReadOnly,
+            haSyncManualOnly = prev.integrations.haSyncManualOnly,
+            haSyncIntervalSec = prev.integrations.haSyncIntervalSec,
+            haSyncPromptSeen = prev.integrations.haSyncPromptSeen,
+            haSyncExcludedCategories = prev.integrations.haSyncExcludedCategories,
         ),
     )
 }

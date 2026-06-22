@@ -73,9 +73,11 @@ enum class SyncCategory(val displayLabel: String, val description: String) {
         "Per-surface auto-refresh intervals + camera polling cadences",
     ) {
         override fun preserve(applied: AppSettings, source: AppSettings): AppSettings {
-            // Preserve everything in integrations EXCEPT the sync meta itself
-            // (haSyncEnabled / Interval / PromptSeen) — those are device-local
-            // by definition and always stay with the live source.
+            // Sync the per-surface refresh cadences only. The sync meta itself
+            // (haSyncEnabled / ReadOnly / ManualOnly / Interval / PromptSeen /
+            // ExcludedCategories) is device-local regardless of this category's
+            // opt-in and is pinned to the live value by preserveDeviceLocal()
+            // in HaSettingsSync, so it is deliberately not copied here.
             val srcInt = source.integrations
             val appInt = applied.integrations
             return applied.copy(
@@ -103,7 +105,9 @@ enum class SyncCategory(val displayLabel: String, val description: String) {
         override fun preserve(applied: AppSettings, source: AppSettings): AppSettings =
             applied.copy(
                 pages = source.pages,
-                activePageId = source.activePageId,
+                // activePageId (the open tab) is NOT handled here: it is
+                // device-local regardless of this category's opt-in, pinned to
+                // the live value by preserveDeviceLocal() in HaSettingsSync.
                 favorites = source.favorites,
             )
     },
