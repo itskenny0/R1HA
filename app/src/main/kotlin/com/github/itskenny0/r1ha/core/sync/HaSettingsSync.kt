@@ -132,13 +132,15 @@ class HaSettingsSync(
         // against the last value we either pushed or pulled. Different
         // → schedule a push (debounced 5 s so a wheel of changes from
         // a settings sweep coalesces into one upload). Suppressed in
-        // manual-only mode so edits don't trigger network churn.
+        // manual-only mode so edits don't trigger network churn, and in
+        // read-only mode so this device never writes its state up at all.
         scope.launch {
             settings.settings
                 .distinctUntilChanged()
                 .collect { s ->
                     if (!s.integrations.haSyncEnabled) return@collect
                     if (s.integrations.haSyncManualOnly) return@collect
+                    if (s.integrations.haSyncReadOnly) return@collect
                     val hash = syncedSubsetHash(s)
                     if (hash == lastAppliedHash) return@collect
                     pendingPushJob?.cancel()
@@ -159,10 +161,17 @@ class HaSettingsSync(
 
     /** Force an immediate push, ignoring debounce. Mainly useful when the
      *  user is about to hand a freshly-configured device to someone else
-     *  and wants the current local state mirrored before sleep / shutdown. */
+     *  and wants the current local state mirrored before sleep / shutdown.
+     *  No-op in read-only mode: a receive-only device must never write its
+     *  state up, even on an explicit PUSH tap, so the authority guarantee
+     *  holds regardless of entry point. */
     fun pushNow() {
         scope.launch {
             val s = settings.settings.first()
+            if (s.integrations.haSyncReadOnly) {
+                R1Log.i("HaSync", "push skipped; receive-only mode")
+                return@launch
+            }
             push(s, syncedSubsetHash(s))
         }
     }

@@ -53,12 +53,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
 import com.github.itskenny0.r1ha.core.prefs.TokenStore
-import com.github.itskenny0.r1ha.core.sync.SyncCategory
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.theme.rememberResponsiveDimens
 import com.github.itskenny0.r1ha.core.theme.responsiveType
-import com.github.itskenny0.r1ha.core.util.Toaster
-import com.github.itskenny0.r1ha.feature.sync.SyncOnboardingStep
 import com.github.itskenny0.r1ha.ui.components.R1Button
 import com.github.itskenny0.r1ha.ui.components.R1TextField
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
@@ -69,13 +66,12 @@ import okhttp3.OkHttpClient
  * Onboarding host. Drives the user through:
  *   01 LINK       URL entry, normaliser preview, probe.
  *   02 AUTHORISE  in-app OAuth WebView (or LLAT escape hatch).
- *   03 SYNC       opt in / out of cross-device settings mirror.
  *
- * Sync is the last gate before card-stack; it covers fullscreen as its
- * own overlay so any underlying onboarding state (Done, freshly-saved
- * LLAT) gets the same prompt. Choice persists `haSyncPromptSeen` so the
- * post-launch [com.github.itskenny0.r1ha.feature.sync.HaSyncOnboardingPrompt]
- * does not re-fire for fresh installs.
+ * Completing authentication navigates straight to the card stack. The
+ * cross-device sync offer is no longer an onboarding step: it is presented
+ * once on the card stack by the single
+ * [com.github.itskenny0.r1ha.feature.sync.HaSyncOnboardingPrompt], so the
+ * user is never asked about sync twice.
  */
 @Composable
 fun OnboardingScreen(
@@ -95,81 +91,41 @@ fun OnboardingScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
 
-    // Sync onboarding gate. Authentication completing (OAuth Done OR a
-    // fresh LLAT detected on resume) flips this true; the sync step
-    // covers everything until the user picks a path, then onComplete().
-    var awaitingSyncChoice by rememberSaveable { mutableStateOf(false) }
-    val syncScope = rememberCoroutineScope()
-
-    LaunchedEffect(state) {
-        if (state is OnboardingViewModel.State.Done) awaitingSyncChoice = true
+    // One-shot completion latch. Authentication finishing (OAuth reaching
+    // Done, OR a fresh LLAT detected on resume) navigates straight to the card
+    // stack. The cross-device sync offer is handled there by
+    // HaSyncOnboardingPrompt — the single sync dialog — so onboarding no
+    // longer asks about sync itself. The latch keeps onComplete (which pops
+    // the onboarding entry) from firing twice if both triggers race.
+    var completed by rememberSaveable { mutableStateOf(false) }
+    fun finishOnboarding() {
+        if (!completed) {
+            completed = true
+            onComplete()
+        }
     }
 
-    // The LLAT escape hatch saves directly to TokenStore without running
-    // the OAuth state machine, so OnboardingViewModel never reaches Done.
-    // Observe the activity lifecycle and re-check token presence on
-    // ON_RESUME: when the user comes back from the LLAT screen with a
-    // freshly-saved token, route through the sync step so they get the
-    // same offer fresh OAuth users do.
+    LaunchedEffect(state) {
+        if (state is OnboardingViewModel.State.Done) finishOnboarding()
+    }
+
+    // The LLAT escape hatch saves directly to TokenStore without running the
+    // OAuth state machine, so OnboardingViewModel never reaches Done. Observe
+    // the activity lifecycle and re-check token presence on ON_RESUME: when
+    // the user comes back from the LLAT screen with a freshly-saved token,
+    // complete onboarding the same way a fresh OAuth user does.
     val lifecycleOwner = LocalLifecycleOwner.current
     val resumeScope = rememberCoroutineScope()
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 resumeScope.launch {
-                    if (tokens.load() != null) awaitingSyncChoice = true
+                    if (tokens.load() != null) finishOnboarding()
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    if (awaitingSyncChoice) {
-        SyncOnboardingStep(
-            onAcceptAll = {
-                syncScope.launch {
-                    settings.update { s ->
-                        s.copy(
-                            integrations = s.integrations.copy(
-                                haSyncEnabled = true,
-                                // Recommended default: everything except wheel
-                                // + input, which is per-device.
-                                haSyncExcludedCategories = setOf(SyncCategory.WHEEL_INPUT.name),
-                                haSyncPromptSeen = true,
-                            ),
-                        )
-                    }
-                    Toaster.show("Sync on. Wheel + input stay local. Refine in Settings, Sync.")
-                    onComplete()
-                }
-            },
-            onAcceptWithExclusions = { excludedNames ->
-                syncScope.launch {
-                    settings.update { s ->
-                        s.copy(
-                            integrations = s.integrations.copy(
-                                haSyncEnabled = true,
-                                haSyncExcludedCategories = excludedNames,
-                                haSyncPromptSeen = true,
-                            ),
-                        )
-                    }
-                    onComplete()
-                }
-            },
-            onDecline = {
-                syncScope.launch {
-                    settings.update { s ->
-                        s.copy(
-                            integrations = s.integrations.copy(haSyncPromptSeen = true),
-                        )
-                    }
-                    onComplete()
-                }
-            },
-        )
-        return
     }
 
     when (val s = state) {
@@ -203,8 +159,8 @@ fun OnboardingScreen(
         is OnboardingViewModel.State.Exchanging -> ExchangingStep()
 
         is OnboardingViewModel.State.Done -> {
-            // LaunchedEffect above flips awaitingSyncChoice; render nothing
-            // while the sync overlay paints over us.
+            // LaunchedEffect above navigates to the card stack; render a bare
+            // background for the frame or two until the nav transition lands.
             Box(Modifier.fillMaxSize().background(R1.Bg))
         }
 

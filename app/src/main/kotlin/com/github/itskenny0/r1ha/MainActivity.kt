@@ -552,9 +552,18 @@ class MainActivity : ComponentActivity() {
                         val connectionForPrompt by graph.haRepository.connection
                             .collectAsStateWithLifecycle()
                         val promptScope = androidx.compose.runtime.rememberCoroutineScope()
+                        val promptRoute = navController
+                            .currentBackStackEntryAsState().value?.destination?.route
                         com.github.itskenny0.r1ha.feature.sync.HaSyncOnboardingPrompt(
                             settings = settingsForPrompt,
                             connection = connectionForPrompt,
+                            // Only over the card stack, never over the onboarding
+                            // screen or any sub-screen. Onboarding no longer carries
+                            // its own sync step, so this is the single sync offer:
+                            // it fires once a freshly-onboarded device lands on the
+                            // card stack with a live WS.
+                            onCardStack = promptRoute == Routes.CARD_STACK ||
+                                promptRoute == Routes.CARD_STACK_FOCUS,
                             onMarkSeen = {
                                 promptScope.launch {
                                     graph.settings.update { s ->
@@ -566,34 +575,28 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             },
-                            onChooseImport = { excludedNames ->
+                            onEnable = { excludedNames, readOnly, seedFromThisDevice ->
                                 promptScope.launch {
                                     graph.settings.update { s ->
                                         s.copy(
                                             integrations = s.integrations.copy(
                                                 haSyncEnabled = true,
+                                                haSyncReadOnly = readOnly,
                                                 haSyncExcludedCategories = excludedNames,
                                             ),
                                         )
                                     }
-                                    // Enable observer fires the initial pull;
-                                    // pullNow() makes the import feel immediate
-                                    // rather than waiting for the collector to
-                                    // wake up.
-                                    graph.haSettingsSync.pullNow()
-                                }
-                            },
-                            onChoosePush = { excludedNames ->
-                                promptScope.launch {
-                                    graph.settings.update { s ->
-                                        s.copy(
-                                            integrations = s.integrations.copy(
-                                                haSyncEnabled = true,
-                                                haSyncExcludedCategories = excludedNames,
-                                            ),
-                                        )
+                                    // Seeding pushes this device up as the source;
+                                    // otherwise pull. pushNow/pullNow make the first
+                                    // sync feel immediate rather than waiting for the
+                                    // enable observer to wake up. (pushNow is itself a
+                                    // no-op under read-only, so the guard is belt-and-
+                                    // braces.)
+                                    if (seedFromThisDevice && !readOnly) {
+                                        graph.haSettingsSync.pushNow()
+                                    } else {
+                                        graph.haSettingsSync.pullNow()
                                     }
-                                    graph.haSettingsSync.pushNow()
                                 }
                             },
                         )

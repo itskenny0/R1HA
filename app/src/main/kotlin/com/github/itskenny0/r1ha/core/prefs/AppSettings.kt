@@ -1025,6 +1025,20 @@ data class IntegrationsSettings(
      */
     val haSyncManualOnly: Boolean = false,
     /**
+     * Receive-only mode. When true, this device still pulls the shared
+     * payload (initial pull on enable + every periodic tick) but NEVER
+     * uploads its own state: the local-edit push observer is suppressed and
+     * [com.github.itskenny0.r1ha.core.sync.HaSettingsSync.pushNow] becomes a
+     * no-op. Lets a secondary / guest / kiosk device follow the household's
+     * settings without its local tweaks ever leaking back to the fleet.
+     *
+     * Orthogonal to [haSyncManualOnly]: manual-only suppresses BOTH
+     * directions of automatic traffic (pull and push) and is about chatter;
+     * read-only suppresses only the WRITE direction and is about authority.
+     * No effect when [haSyncEnabled] is false.
+     */
+    val haSyncReadOnly: Boolean = false,
+    /**
      * One-shot flag flipped true after the user has seen (and either accepted
      * or dismissed) the HA-sync first-run prompt. Off by default so existing
      * installs surface the prompt once after upgrading to a build that ships

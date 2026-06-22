@@ -114,10 +114,15 @@ fun SyncSettingsScreen(
                 MasterRow(
                     label = "Enable",
                     description = if (s.integrations.haSyncEnabled) {
-                        if (s.integrations.haSyncManualOnly) {
-                            "Manual only. PULL / PUSH chips below."
-                        } else {
-                            "Auto. Every edit + every ${s.integrations.haSyncIntervalSec}s."
+                        when {
+                            s.integrations.haSyncReadOnly && s.integrations.haSyncManualOnly ->
+                                "Receive only, manual. SYNC chip below."
+                            s.integrations.haSyncReadOnly ->
+                                "Receive only. Pulls every ${s.integrations.haSyncIntervalSec}s; never uploads."
+                            s.integrations.haSyncManualOnly ->
+                                "Manual only. PULL / PUSH chips below."
+                            else ->
+                                "Auto. Every edit + every ${s.integrations.haSyncIntervalSec}s."
                         }
                     } else {
                         "Off. Settings stay local to this device."
@@ -138,17 +143,39 @@ fun SyncSettingsScreen(
                     R1Section(title = "Status") { StatsCard(stats) }
                 }
 
+                // ── Direction ─────────────────────────────────────────
+                item {
+                    R1Section(title = "Direction") {
+                        SwitchInlineRow(
+                            title = "Receive only",
+                            subtitle = if (s.integrations.haSyncReadOnly) {
+                                "Follows HA. This device never uploads its own changes."
+                            } else {
+                                "Two-way. Sends this device's changes up and pulls others' down."
+                            },
+                            checked = s.integrations.haSyncReadOnly,
+                            onCheckedChange = { v ->
+                                vm.updateIntegrations { it.copy(haSyncReadOnly = v) }
+                            },
+                        )
+                    }
+                }
+
                 // ── Manual triggers ───────────────────────────────────
                 item {
                     R1Section(title = "Manual") {
+                        // PUSH is hidden in receive-only mode: it would be a
+                        // no-op (pushNow short-circuits) and offering it would
+                        // contradict the "never uploads" promise above.
                         SyncActionsRow(
+                            canPush = !s.integrations.haSyncReadOnly,
                             onSyncNow = { syncManager?.pullNow() },
                             onPushNow = { syncManager?.pushNow() },
                         )
                         SwitchInlineRow(
                             title = "Manual only",
                             subtitle = if (s.integrations.haSyncManualOnly) {
-                                "No auto-pull or auto-push. SYNC / PUSH chips still work."
+                                "No auto-pull or auto-push. Chips above still work."
                             } else {
                                 "Sync runs automatically on edit and on interval."
                             },
@@ -187,11 +214,15 @@ fun SyncSettingsScreen(
                 }
 
                 // ── Reset and rebroadcast ─────────────────────────────
-                item {
-                    R1Section(title = "Reset") {
-                        ResetRebroadcastRow(
-                            onConfirm = { syncManager?.pushNow() },
-                        )
+                // Hidden in receive-only mode: rebroadcast is a push, which a
+                // receive-only device must never do.
+                if (!s.integrations.haSyncReadOnly) {
+                    item {
+                        R1Section(title = "Reset") {
+                            ResetRebroadcastRow(
+                                onConfirm = { syncManager?.pushNow() },
+                            )
+                        }
                     }
                 }
 
@@ -296,6 +327,7 @@ private fun ConflictModelCard() {
 
 @Composable
 private fun SyncActionsRow(
+    canPush: Boolean,
     onSyncNow: () -> Unit,
     onPushNow: () -> Unit,
 ) {
@@ -313,13 +345,15 @@ private fun SyncActionsRow(
             modifier = Modifier.weight(1f).height(R1.MinTarget),
             onClick = onSyncNow,
         )
-        R1Button(
-            text = "PUSH",
-            variant = R1ButtonVariant.Outlined,
-            accent = R1.AccentGreen,
-            modifier = Modifier.weight(1f).height(R1.MinTarget),
-            onClick = onPushNow,
-        )
+        if (canPush) {
+            R1Button(
+                text = "PUSH",
+                variant = R1ButtonVariant.Outlined,
+                accent = R1.AccentGreen,
+                modifier = Modifier.weight(1f).height(R1.MinTarget),
+                onClick = onPushNow,
+            )
+        }
     }
 }
 

@@ -49,7 +49,6 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Fixed a rare black screen when rapidly switching tabs or opening panels mid-transition.",
-    "New: Optimize for low performance hardware (Settings), a lighter theme and smoother card stack on slow devices.",
-    "New: adjustable value bar tap target, with a live preview, in Settings.",
+    "Sync setup is now one dialog: pick two-way or receive-only and how to seed. No more being asked twice.",
+    "New: receive-only sync, follow the household's settings without uploading this device's changes.",
 )
