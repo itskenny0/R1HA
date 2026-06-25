@@ -770,11 +770,7 @@ internal fun CardMiniEditor(
         initialObj != null && (
             type in SINGLE_ENTITY_TYPES || type in MULTI_ENTITY_TYPES ||
                 type == "iframe" || type == "markdown" || type == "heading"
-            ) &&
-            // Multi-entity editing only handles plain string entries; rows
-            // with per-entity options would be silently flattened, so those
-            // configs go straight to JSON.
-            (type !in MULTI_ENTITY_TYPES || entitiesAllPrimitive(initialObj))
+            )
     }
     // Invalid blobs (repair path) and structural types start in JSON mode.
     var jsonMode by remember { mutableStateOf(!structuredCapable) }
@@ -797,9 +793,9 @@ internal fun CardMiniEditor(
             cardTogglesFor(type).forEach { t -> put(t.key, initialObj.boolOr(t.key, t.default)) }
         }
     }
-    val multiEntities = remember(initialObj) {
-        androidx.compose.runtime.mutableStateListOf<String>().apply {
-            addAll(primitiveEntities(initialObj))
+    val rows = remember(initialObj) {
+        androidx.compose.runtime.mutableStateListOf<CardEntityRow>().apply {
+            addAll(parseEntityRows(initialObj ?: JsonObject(emptyMap())))
         }
     }
     // Raw JSON text (the escape hatch); kept in sync from the structured side
@@ -827,7 +823,7 @@ internal fun CardMiniEditor(
                 url = url,
                 aspect = aspect,
                 content = content,
-                rows = multiEntities.map { CardEntityRow(entityId = it) },
+                rows = rows.toList(),
                 name = name,
                 icon = icon,
                 toggles = toggleState.toMap(),
@@ -895,8 +891,8 @@ internal fun CardMiniEditor(
                                     cardTogglesFor(type).forEach { t ->
                                         toggleState[t.key] = parsed.boolOr(t.key, t.default)
                                     }
-                                    multiEntities.clear()
-                                    multiEntities.addAll(primitiveEntities(parsed))
+                                    rows.clear()
+                                    rows.addAll(parseEntityRows(parsed))
                                     jsonMode = false
                                 }
                             }
@@ -969,19 +965,50 @@ internal fun CardMiniEditor(
                     Spacer(Modifier.height(8.dp))
                     Text(text = "ENTITIES", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.height(4.dp))
-                    multiEntities.forEachIndexed { idx, id ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) { EntityChip(entityId = id, onClick = null) }
-                            Spacer(Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .r1Pressable(onClick = { multiEntities.removeAt(idx) })
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                            ) { Text(text = "✕", style = R1.labelMicro, color = R1.StatusRed) }
+                    var expandedRow by remember { mutableStateOf(-1) }
+                    rows.forEachIndexed { idx, row ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = if (row.special == null) {
+                                        Modifier.weight(1f).clip(R1.ShapeS).r1Pressable(
+                                            onClick = { expandedRow = if (expandedRow == idx) -1 else idx },
+                                        )
+                                    } else {
+                                        Modifier.weight(1f)
+                                    },
+                                ) {
+                                    EntityChip(
+                                        entityId = if (row.special != null) "ADVANCED ROW (KEPT AS-IS)" else row.entityId,
+                                        onClick = null,
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(R1.ShapeS)
+                                        .r1Pressable(
+                                            onClick = {
+                                                rows.removeAt(idx)
+                                                // Keep the expansion pointing at the same row when an
+                                                // earlier row is removed; collapse if it was this one.
+                                                expandedRow = when {
+                                                    expandedRow == idx -> -1
+                                                    expandedRow > idx -> expandedRow - 1
+                                                    else -> expandedRow
+                                                }
+                                            },
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                ) { Text(text = "✕", style = R1.labelMicro, color = R1.StatusRed) }
+                            }
+                            if (expandedRow == idx && row.special == null) {
+                                RowOptionsEditor(
+                                    type = type,
+                                    row = row,
+                                    onChange = { rows[idx] = it },
+                                )
+                            }
                         }
                     }
                     SheetButton(
@@ -1095,7 +1122,7 @@ internal fun CardMiniEditor(
             onPick = { id ->
                 when (pickTarget) {
                     EntityPickTarget.Single -> entity = id
-                    EntityPickTarget.Multi -> multiEntities.add(id)
+                    EntityPickTarget.Multi -> rows.add(CardEntityRow(entityId = id))
                 }
                 entityPickerFor = null
             },
@@ -1108,17 +1135,6 @@ private enum class EntityPickTarget { Single, Multi }
 
 private fun JsonObject?.str(key: String): String =
     (this?.get(key) as? JsonPrimitive)?.content.orEmpty()
-
-/** True when the config's `entities:` array contains only plain string ids. */
-internal fun entitiesAllPrimitive(obj: JsonObject): Boolean {
-    val arr = obj["entities"] as? kotlinx.serialization.json.JsonArray ?: return true
-    return arr.all { it is JsonPrimitive && it.isString }
-}
-
-private fun primitiveEntities(obj: JsonObject?): List<String> {
-    val arr = obj?.get("entities") as? kotlinx.serialization.json.JsonArray ?: return emptyList()
-    return arr.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-}
 
 @Composable
 private fun EditorField(
@@ -1269,6 +1285,77 @@ private fun EntityPickerOverlay(
             Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SheetButton(label = "CANCEL", accent = false, onClick = onDismiss)
+            }
+        }
+    }
+}
+
+/** secondary_info values the entities renderer understands (plus NONE). */
+private val SECONDARY_INFO_OPTIONS = listOf(
+    null, "entity-id", "area", "state", "last-changed", "last-updated",
+    "last-triggered", "position", "tilt-position", "brightness",
+)
+
+/** Per-row native sub-element editor for entities/glance rows: a secondary_info
+ *  selector (entities only) plus tri-state (AUTO / ON / OFF) chips driven by
+ *  rowTogglesFor. */
+@Composable
+private fun RowOptionsEditor(
+    type: String,
+    row: CardEntityRow,
+    onChange: (CardEntityRow) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 6.dp)) {
+        if (type == "entities") {
+            Text(text = "SECONDARY INFO", style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SECONDARY_INFO_OPTIONS.forEach { opt ->
+                    EditorToggleChip(
+                        label = (opt ?: "none").uppercase().replace('-', ' '),
+                        selected = row.secondaryInfo == opt,
+                        onClick = { onChange(row.copy(secondaryInfo = opt)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Text(text = "ROW SHOW", style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            rowTogglesFor(type).forEach { t ->
+                val current: Boolean? = when (t.key) {
+                    "show_state" -> row.showState
+                    "state_color" -> row.stateColor
+                    "show_last_changed" -> row.showLastChanged
+                    else -> null
+                }
+                val suffix = when (current) {
+                    null -> "AUTO"
+                    true -> "ON"
+                    false -> "OFF"
+                }
+                EditorToggleChip(
+                    label = "${t.label}: $suffix",
+                    selected = current != null,
+                    onClick = {
+                        val next = triStateNext(current)
+                        onChange(
+                            when (t.key) {
+                                "show_state" -> row.copy(showState = next)
+                                "state_color" -> row.copy(stateColor = next)
+                                "show_last_changed" -> row.copy(showLastChanged = next)
+                                else -> row
+                            },
+                        )
+                    },
+                )
             }
         }
     }
