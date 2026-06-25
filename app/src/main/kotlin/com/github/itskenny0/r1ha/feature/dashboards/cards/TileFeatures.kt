@@ -37,6 +37,7 @@ import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceTileFeature
 import com.github.itskenny0.r1ha.core.theme.LocalHaRepository
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.attrBoolean
 import com.github.itskenny0.r1ha.ui.components.attrInt
 import com.github.itskenny0.r1ha.ui.components.attrString
 import com.github.itskenny0.r1ha.ui.components.attrStringList
@@ -536,17 +537,24 @@ private fun renderFeature(
             val showOpen = state.coverRawHasFeature(EntityState.CoverFeature.OPEN_TILT)
             val showClose = state.coverRawHasFeature(EntityState.CoverFeature.CLOSE_TILT)
             val showStop = state.coverRawHasFeature(EntityState.CoverFeature.STOP_TILT)
+            // HA's canOpenTilt / canCloseTilt: an assumed-state cover is always
+            // actionable; otherwise open is dead at full-open tilt (100) and close
+            // at fully-closed (0). Unknown position leaves both live.
+            val assumed = state.attrBoolean("assumed_state") == true
+            val tilt = state.attrInt("current_tilt_position")
+            val canOpenTilt = state.isAvailable && (assumed || tilt != 100)
+            val canCloseTilt = state.isAvailable && (assumed || tilt != 0)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (showOpen) FeatureButton(label = "OPEN TILT", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                if (showOpen) FeatureButton(label = "OPEN TILT", accent = accent, selected = false, enabled = canOpenTilt, modifier = Modifier.weight(1f)) {
                     onAction(LovelaceAction.CallService("cover.open_cover_tilt", entityId, null))
                 }
-                if (showStop) FeatureButton(label = "STOP", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                if (showStop) FeatureButton(label = "STOP", accent = accent, selected = false, enabled = state.isAvailable, modifier = Modifier.weight(1f)) {
                     onAction(LovelaceAction.CallService("cover.stop_cover_tilt", entityId, null))
                 }
-                if (showClose) FeatureButton(label = "CLOSE TILT", accent = accent, selected = false, modifier = Modifier.weight(1f)) {
+                if (showClose) FeatureButton(label = "CLOSE TILT", accent = accent, selected = false, enabled = canCloseTilt, modifier = Modifier.weight(1f)) {
                     onAction(LovelaceAction.CallService("cover.close_cover_tilt", entityId, null))
                 }
             }
@@ -606,7 +614,26 @@ private fun renderFeature(
         // ── Update actions ────────────────────────────────────────────────────
         is LovelaceTileFeature.UpdateActions -> {
             if (domain != "update") return false
+            // HA gates the whole feature on UpdateEntityFeature.INSTALL (bit 1);
+            // an update entity that can't be installed from the UI shows nothing.
+            // Forgive a missing supported_features (render) as elsewhere.
+            val sf = state.attrInt("supported_features")
+            if (sf != null && (sf and 1) == 0) return false
             val unavailable = state.rawState == "unavailable"
+            // HA's stateActive for update = state "on" (an update is available).
+            val updateAvailable = state.rawState == "on"
+            // skipped_version matching latest_version means the user already
+            // dismissed this exact version: install stays allowed, skip doesn't.
+            val skippedVersion = state.attrString("skipped_version") != null &&
+                state.attrString("skipped_version") == state.attrString("latest_version")
+            // in_progress is `true` or a numeric percentage while installing.
+            val installing = state.attrBoolean("in_progress") == true ||
+                state.attrInt("in_progress") != null
+            // Mirror HA more-info-update: install enabled unless (no update and
+            // not skipped) or already installing; skip enabled only when there's
+            // an un-skipped update and nothing installing.
+            val installEnabled = !unavailable && !installing && (updateAvailable || skippedVersion)
+            val skipEnabled = !unavailable && !installing && !skippedVersion && updateAvailable
             // "ask" mode: gate behind a YES/NO dialog before firing install.
             var showBackupAsk by remember(entityId) { mutableStateOf(false) }
             val fireInstall: (Boolean) -> Unit = { withBackup ->
@@ -622,14 +649,14 @@ private fun renderFeature(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                FeatureButton(label = "INSTALL", accent = accent, selected = false, enabled = !unavailable, modifier = Modifier.weight(1f)) {
+                FeatureButton(label = "INSTALL", accent = accent, selected = false, enabled = installEnabled, modifier = Modifier.weight(1f)) {
                     when (feature.backup) {
                         "yes" -> fireInstall(true)
                         "ask" -> showBackupAsk = true
                         else -> fireInstall(false)
                     }
                 }
-                FeatureButton(label = "SKIP", accent = accent, selected = false, enabled = !unavailable, modifier = Modifier.weight(1f)) {
+                FeatureButton(label = "SKIP", accent = accent, selected = false, enabled = skipEnabled, modifier = Modifier.weight(1f)) {
                     onAction(LovelaceAction.CallService("update.skip", entityId, null))
                 }
             }
@@ -685,6 +712,7 @@ private fun renderFeature(
                 label = "TILT",
                 percent = tiltPos,
                 accent = accent,
+                enabled = state.isAvailable,
                 onSet = { pct ->
                     onAction(
                         LovelaceAction.CallService(
@@ -703,6 +731,7 @@ private fun renderFeature(
                 label = "POSITION",
                 percent = state.percent ?: 0,
                 accent = accent,
+                enabled = state.isAvailable,
                 onSet = { pct ->
                     onAction(
                         LovelaceAction.CallService(
@@ -720,13 +749,14 @@ private fun renderFeature(
             val humidity = state.attrInt("humidity") ?: return false
             val minH = state.attrInt("min_humidity") ?: 0
             val maxH = state.attrInt("max_humidity") ?: 100
+            val avail = state.isAvailable
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = "HUMIDITY", style = R1.labelMicro, color = R1.InkMuted)
                     Spacer(Modifier.height(2.dp))
-                    Text(text = "$humidity%", style = R1.numeralM, color = accent)
+                    Text(text = "$humidity%", style = R1.numeralM, color = if (avail) accent else R1.InkMuted)
                 }
-                StepperButton(label = "−", accent = accent, enabled = true) {
+                StepperButton(label = "−", accent = accent, enabled = avail) {
                     onAction(
                         LovelaceAction.CallService(
                             service = "humidifier.set_humidity",
@@ -736,7 +766,7 @@ private fun renderFeature(
                     )
                 }
                 Spacer(Modifier.width(10.dp))
-                StepperButton(label = "+", accent = accent, enabled = true) {
+                StepperButton(label = "+", accent = accent, enabled = avail) {
                     onAction(
                         LovelaceAction.CallService(
                             service = "humidifier.set_humidity",
@@ -759,6 +789,7 @@ private fun renderFeature(
                 value = current,
                 step = step,
                 accent = accent,
+                enabled = state.isAvailable,
                 onSet = { next ->
                     val clamped = if (min != null && max != null) next.coerceIn(min, max) else next
                     onAction(
@@ -788,6 +819,7 @@ private fun renderFeature(
                 step = step,
                 unit = "K",
                 accent = accent,
+                enabled = state.isAvailable,
                 onSet = { next ->
                     val clamped = next.coerceIn(minK.toDouble(), maxK.toDouble())
                     onAction(
@@ -952,13 +984,34 @@ private fun renderFeature(
         }
         // ── Date-set (HA 2025.9) ─────────────────────────────────────────────
         is LovelaceTileFeature.DateSet -> {
-            if (domain != "date" && domain != "datetime") return false
-            val isDatetime = domain == "datetime"
+            // HA's date-set feature also covers input_datetime entities that
+            // carry a date (has_date). For those the service differs:
+            // input_datetime.set_datetime rather than <domain>.set_value.
+            val isInputDatetime = domain == "input_datetime"
+            val hasDate = if (isInputDatetime) state.attrBoolean("has_date") == true else true
+            val hasTime = if (isInputDatetime) state.attrBoolean("has_time") == true else domain == "datetime"
+            if (domain != "date" && domain != "datetime" && !(isInputDatetime && hasDate)) return false
+            // A datetime is one carrying both date and time; the day-nudge then
+            // preserves the time-of-day component.
+            val isDatetime = if (isInputDatetime) hasDate && hasTime else domain == "datetime"
             val current = state.rawState
             val datePattern = Regex("\\d{4}-\\d{2}-\\d{2}")
             val datetimePattern = Regex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}")
             val valid = if (isDatetime) current?.matches(datetimePattern) == true
                         else current?.matches(datePattern) == true
+            val service = if (isInputDatetime) "input_datetime.set_datetime" else "$domain.set_value"
+            val serviceKey = if (isDatetime) "datetime" else "date"
+            val nudge: (Int) -> Unit = nudge@{ days ->
+                if (!valid || current == null) return@nudge
+                val next = if (isDatetime) nudgeDateTimeByDays(current, days) else nudgeDateByDays(current, days)
+                onAction(
+                    LovelaceAction.CallService(
+                        service = service,
+                        entityId = entityId,
+                        data = buildJsonObject { put(serviceKey, JsonPrimitive(next)) },
+                    ),
+                )
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(text = if (isDatetime) "DATETIME" else "DATE", style = R1.labelMicro, color = R1.InkMuted)
@@ -971,31 +1024,9 @@ private fun renderFeature(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                StepperButton(label = "-", accent = accent, enabled = valid) {
-                    if (!valid || current == null) return@StepperButton
-                    val serviceKey = if (isDatetime) "datetime" else "date"
-                    val next = if (isDatetime) nudgeDateTimeByDays(current, -1) else nudgeDateByDays(current, -1)
-                    onAction(
-                        LovelaceAction.CallService(
-                            service = "$domain.set_value",
-                            entityId = entityId,
-                            data = buildJsonObject { put(serviceKey, JsonPrimitive(next)) },
-                        ),
-                    )
-                }
+                StepperButton(label = "-", accent = accent, enabled = valid) { nudge(-1) }
                 Spacer(Modifier.width(10.dp))
-                StepperButton(label = "+", accent = accent, enabled = valid) {
-                    if (!valid || current == null) return@StepperButton
-                    val serviceKey = if (isDatetime) "datetime" else "date"
-                    val next = if (isDatetime) nudgeDateTimeByDays(current, +1) else nudgeDateByDays(current, +1)
-                    onAction(
-                        LovelaceAction.CallService(
-                            service = "$domain.set_value",
-                            entityId = entityId,
-                            data = buildJsonObject { put(serviceKey, JsonPrimitive(next)) },
-                        ),
-                    )
-                }
+                StepperButton(label = "+", accent = accent, enabled = valid) { nudge(+1) }
             }
         }
         is LovelaceTileFeature.Unsupported -> {
@@ -1168,6 +1199,7 @@ private fun LockOpenDoorFeature(
     val needsCode = !state.lockCodeFormat.isNullOrBlank() && regOptions.defaultCode.isNullOrBlank()
     var confirming by remember(entityId) { mutableStateOf(false) }
     var pending by remember(entityId) { mutableStateOf(false) }
+    var done by remember(entityId) { mutableStateOf(false) }
     // Auto-reset the confirm state after HA's 5 s window.
     LaunchedEffect(confirming) {
         if (confirming) {
@@ -1175,13 +1207,20 @@ private fun LockOpenDoorFeature(
             confirming = false
         }
     }
+    // HA flashes a 2 s "done" confirmation after firing the open command.
+    LaunchedEffect(done) {
+        if (done) {
+            kotlinx.coroutines.delay(2_000L)
+            done = false
+        }
+    }
     val open: () -> Unit = {
-        if (needsCode) pending = true else onAction(lockServiceAction("open", entityId, null))
+        if (needsCode) pending = true else { onAction(lockServiceAction("open", entityId, null)); done = true }
     }
     FeatureButton(
-        label = if (confirming) "CONFIRM OPEN" else "OPEN",
+        label = if (done) "OPENED" else if (confirming) "CONFIRM OPEN" else "OPEN",
         accent = if (confirming) R1.AccentWarm else accent,
-        selected = confirming,
+        selected = confirming || done,
         enabled = lockCanOpen(state),
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -1200,6 +1239,7 @@ private fun LockOpenDoorFeature(
             onConfirm = { code ->
                 pending = false
                 onAction(lockServiceAction("open", entityId, code))
+                done = true
             },
         )
     }
@@ -1301,6 +1341,9 @@ private fun TargetTemperatureFeature(
     val max = state.climateMaxTemp
     val targetLow = state.climateTargetTempLow
     val targetHigh = state.climateTargetTempHigh
+    // HA disables every setpoint button on an unavailable entity.
+    val avail = state.isAvailable
+    val readout = if (avail) accent else R1.InkMuted
     if (targetLow != null && targetHigh != null) {
         // Dual setpoint (heat_cool): two steppers for low / high bounds.
         Row(
@@ -1311,14 +1354,14 @@ private fun TargetTemperatureFeature(
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "COOL", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.height(2.dp))
-                Text(text = "${fmtTemp(targetHigh)}$unit", style = R1.numeralM, color = accent)
+                Text(text = "${fmtTemp(targetHigh)}$unit", style = R1.numeralM, color = readout)
             }
-            StepperButton(label = "−", accent = accent, enabled = true) {
+            StepperButton(label = "−", accent = accent, enabled = avail) {
                 val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = false, direction = -1, step = step, min = min, max = max)
                 onAction(setTempRangeFeatureAction(domain, entityId, low = targetLow, high = next))
             }
             Spacer(Modifier.width(4.dp))
-            StepperButton(label = "+", accent = accent, enabled = true) {
+            StepperButton(label = "+", accent = accent, enabled = avail) {
                 val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = false, direction = +1, step = step, min = min, max = max)
                 onAction(setTempRangeFeatureAction(domain, entityId, low = targetLow, high = next))
             }
@@ -1326,14 +1369,14 @@ private fun TargetTemperatureFeature(
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "HEAT", style = R1.labelMicro, color = R1.InkMuted)
                 Spacer(Modifier.height(2.dp))
-                Text(text = "${fmtTemp(targetLow)}$unit", style = R1.numeralM, color = accent)
+                Text(text = "${fmtTemp(targetLow)}$unit", style = R1.numeralM, color = readout)
             }
-            StepperButton(label = "−", accent = accent, enabled = true) {
+            StepperButton(label = "−", accent = accent, enabled = avail) {
                 val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = true, direction = -1, step = step, min = min, max = max)
                 onAction(setTempRangeFeatureAction(domain, entityId, low = next, high = targetHigh))
             }
             Spacer(Modifier.width(4.dp))
-            StepperButton(label = "+", accent = accent, enabled = true) {
+            StepperButton(label = "+", accent = accent, enabled = avail) {
                 val next = nudgeDualSetpoint(targetLow, targetHigh, editingLow = true, direction = +1, step = step, min = min, max = max)
                 onAction(setTempRangeFeatureAction(domain, entityId, low = next, high = targetHigh))
             }
@@ -1345,14 +1388,14 @@ private fun TargetTemperatureFeature(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = "TARGET", style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.height(2.dp))
-            Text(text = "${fmtTemp(target)}$unit", style = R1.numeralM, color = accent)
+            Text(text = "${fmtTemp(target)}$unit", style = R1.numeralM, color = readout)
         }
-        StepperButton(label = "−", accent = accent, enabled = true) {
+        StepperButton(label = "−", accent = accent, enabled = avail) {
             val next = (target - step).let { if (min != null) it.coerceAtLeast(min) else it }
             onAction(setTemperatureFeatureAction(domain, entityId, next))
         }
         Spacer(Modifier.width(10.dp))
-        StepperButton(label = "+", accent = accent, enabled = true) {
+        StepperButton(label = "+", accent = accent, enabled = avail) {
             val next = (target + step).let { if (max != null) it.coerceAtMost(max) else it }
             onAction(setTemperatureFeatureAction(domain, entityId, next))
         }
@@ -1846,6 +1889,7 @@ private fun NumericStepperFeature(
     step: Double,
     accent: Color,
     unit: String = "",
+    enabled: Boolean = true,
     onSet: (Double) -> Unit,
 ) {
     val display = if (value == kotlin.math.floor(value)) value.toLong().toString() else
@@ -1854,13 +1898,13 @@ private fun NumericStepperFeature(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = label, style = R1.labelMicro, color = R1.InkMuted)
             Spacer(Modifier.height(2.dp))
-            Text(text = "$display$unit", style = R1.numeralM, color = accent)
+            Text(text = "$display$unit", style = R1.numeralM, color = if (enabled) accent else R1.InkMuted)
         }
-        StepperButton(label = "−", accent = accent, enabled = true) {
+        StepperButton(label = "−", accent = accent, enabled = enabled) {
             onSet(kotlin.math.round((value - step) * 1000.0) / 1000.0)
         }
         Spacer(Modifier.width(10.dp))
-        StepperButton(label = "+", accent = accent, enabled = true) {
+        StepperButton(label = "+", accent = accent, enabled = enabled) {
             onSet(kotlin.math.round((value + step) * 1000.0) / 1000.0)
         }
     }
