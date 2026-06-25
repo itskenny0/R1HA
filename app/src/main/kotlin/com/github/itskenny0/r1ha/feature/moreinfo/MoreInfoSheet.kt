@@ -35,9 +35,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -1971,7 +1973,12 @@ private fun AttributesSection(entity: EntityState) {
                 .padding(R1.space.m),
             verticalArrangement = Arrangement.spacedBy(R1.space.xs),
         ) {
+            val uriHandler = LocalUriHandler.current
             rows.forEach { (key, value) ->
+                // HA renders an attribute value that is an http(s) URL as a
+                // tappable link (ha-attribute-value); mirror that.
+                val url = (value as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+                    ?.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
                         text = humanizeKey(key),
@@ -1986,10 +1993,18 @@ private fun AttributesSection(entity: EntityState) {
                     Text(
                         text = formatAttributeValue(value),
                         style = responsiveType(R1.body),
-                        color = R1.Ink,
+                        color = if (url != null) R1.AccentCool else R1.Ink,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(0.55f),
+                        modifier = Modifier
+                            .weight(0.55f)
+                            .then(
+                                if (url != null) {
+                                    Modifier.clickable { runCatching { uriHandler.openUri(url) } }
+                                } else {
+                                    Modifier
+                                },
+                            ),
                     )
                 }
             }
