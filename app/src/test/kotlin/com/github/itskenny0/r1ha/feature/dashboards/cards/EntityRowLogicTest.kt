@@ -74,7 +74,12 @@ class EntityRowLogicTest {
         assertThat(rowKindFor("timer.laundry")).isEqualTo(RowKind.Timer)
         // remaining sensor-style domains fall through to the generic display row.
         assertThat(rowKindFor("sensor.temp")).isEqualTo(RowKind.Display)
-        assertThat(rowKindFor("date.x")).isEqualTo(RowKind.Display)
+        // text and the standalone date / time / datetime domains are editable,
+        // sharing the input_text / input_datetime rows (service routed by domain).
+        assertThat(rowKindFor("text.x")).isEqualTo(RowKind.InputText)
+        assertThat(rowKindFor("date.x")).isEqualTo(RowKind.InputDatetime)
+        assertThat(rowKindFor("time.x")).isEqualTo(RowKind.InputDatetime)
+        assertThat(rowKindFor("datetime.x")).isEqualTo(RowKind.InputDatetime)
     }
 
     // ── cover gating ────────────────────────────────────────────────────────

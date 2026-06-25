@@ -49,7 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Sync setup is now one dialog: pick two-way or receive-only and how to seed. No more being asked twice.",
-    "New: receive-only sync, follow the household's settings without uploading this device's changes.",
-    "Fixed a loop that made the card stack rapidly flip between tabs; the open tab and sync settings now stay local.",
+    "Long-press a button or glance tile to open its details, just like the Home Assistant app.",
+    "Text, date and time entities can now be edited from a list instead of only being shown.",
+    "Richer entity details: a simple on/off light shows a toggle, fans gain horizontal swing, sirens a duration.",
+    "Controls now follow state: vacuum start/pause, update install, and steppers grey out when they cannot act.",
+    "Tapping a weather forecast no longer opens the wrong dialog, and map entities open from the legend.",
 )
