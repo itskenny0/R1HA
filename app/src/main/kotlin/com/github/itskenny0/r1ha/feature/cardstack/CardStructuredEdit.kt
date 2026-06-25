@@ -153,9 +153,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
  * re-emitted from the form (blank string = key removed, matching how the
  * form clears a field).
  *
- * Button toggles emit when they deviate from HA's default OR the key was
- * already present (so flipping a stored `show_state: false` to true and back
- * keeps the explicit key instead of silently dropping it).
+ * Show/hide toggles ([cardTogglesFor]) emit when they deviate from the key's
+ * default OR the key was already present (so flipping a stored `show_state: false`
+ * to true and back keeps the explicit key instead of silently dropping it).
  */
 internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonObject {
     val type = form.type
