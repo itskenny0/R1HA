@@ -480,6 +480,17 @@ private fun PrimaryControl(
             ValvePanel(state = entity, accent = accent)
         }
         Domain.LOCK -> {
+            // Jammed: HA's more-info-lock swaps the toggle for a warning + explicit
+            // LOCK/UNLOCK buttons. Our ToggleRow already exposes both as chips, so
+            // we only need to surface the jammed warning above them.
+            if (entity.rawState.equals("jammed", ignoreCase = true)) {
+                Text(
+                    text = "JAMMED",
+                    style = responsiveType(R1.label),
+                    color = R1.StatusRed,
+                    modifier = Modifier.padding(bottom = R1.space.xs),
+                )
+            }
             // LockPanel renders the keypad path for code locks; for plain locks it
             // early-returns, so always pair it with the explicit toggle below.
             ToggleRow(
@@ -653,13 +664,29 @@ private fun LightControl(
     dispatch: (ServiceCall) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(R1.space.s)) {
-        PercentControl(
-            label = "BRIGHTNESS",
-            pct = entity.percent ?: if (entity.isOn) 100 else 0,
-            accent = accent,
-            onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
-        )
         val colorModes = entity.supportedColorModes.map { it.lowercase() }
+        // HA's lightSupportsBrightness: every color mode supports brightness
+        // except `onoff` (and the placeholder `unknown`). A pure on/off bulb gets
+        // a plain toggle instead of a dead 0/100 slider (more-info-light.ts).
+        val supportsBrightness = colorModes.any { it != "onoff" && it != "unknown" }
+        if (supportsBrightness) {
+            PercentControl(
+                label = "BRIGHTNESS",
+                pct = entity.percent ?: if (entity.isOn) 100 else 0,
+                accent = accent,
+                onChange = { dispatch(ServiceCall.setPercent(entity.id, it)) },
+            )
+        } else {
+            ToggleRow(
+                entity = entity,
+                accent = accent,
+                onLabel = "ON",
+                offLabel = "OFF",
+                isOn = entity.isOn,
+                onOn = { dispatch(ServiceCall(entity.id, "turn_on", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+                onOff = { dispatch(ServiceCall(entity.id, "turn_off", kotlinx.serialization.json.JsonObject(emptyMap()))) },
+            )
+        }
         val supportsColor = colorModes.any { it in COLOR_CAPABLE_MODES }
         val supportsCt = colorModes.any { it == "color_temp" }
         // HA-style continuous colour controls: a circular HS wheel for colour-capable
@@ -1900,15 +1927,26 @@ private fun SelectControl(entity: EntityState, accent: Color, dispatch: (Service
 
 @Composable
 private fun VacuumButtons(entity: EntityState, accent: Color, dispatch: (ServiceCall) -> Unit) {
+    // State-gate the primary actions like HA's more-info-vacuum: the start/pause
+    // button is a single toggle (PAUSE while cleaning, START otherwise) and DOCK
+    // hides when there's nothing to return from (unavailable / already returning).
+    val raw = entity.rawState?.lowercase().orEmpty()
+    val isCleaning = raw == "cleaning" || raw == "on"
+    val canReturnHome = raw != "unavailable" && raw != "returning"
     ChipStrip(wrap = true) {
-        DetailChip("START", accent) {
-            dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.START))
+        if (isCleaning && entity.hasVacuumFeature(EntityState.VacuumFeature.PAUSE)) {
+            DetailChip("PAUSE", accent) {
+                dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.PAUSE))
+            }
+        } else if (!isCleaning && raw != "unavailable") {
+            DetailChip("START", accent) {
+                dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.START))
+            }
         }
-        DetailChip("PAUSE", accent) {
-            dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.PAUSE))
-        }
-        DetailChip("DOCK", accent) {
-            dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.RETURN_TO_BASE))
+        if (canReturnHome && entity.hasVacuumFeature(EntityState.VacuumFeature.RETURN_HOME)) {
+            DetailChip("DOCK", accent) {
+                dispatch(ServiceCall.vacuumCommand(entity.id, com.github.itskenny0.r1ha.core.ha.VacuumAction.RETURN_TO_BASE))
+            }
         }
     }
 }
@@ -3271,6 +3309,26 @@ private fun SirenControl(entity: EntityState, accent: Color, dispatch: (ServiceC
                     ))
                 },
             )
+        }
+        // DURATION (SirenEntityFeature.DURATION, bit 16): HA's advanced controls
+        // expose a free numeric seconds input. On the keyboard-less R1 we offer
+        // preset durations instead (same stepper-vs-keyboard adaptation as the
+        // numeric controls); each fires turn_on with the chosen `duration`.
+        if ((entity.supportedFeatures and 16) != 0) {
+            Text(text = "DURATION", style = responsiveType(R1.labelMicro), color = R1.InkMuted)
+            ChipStrip(wrap = true) {
+                listOf(5, 15, 30, 60, 120).forEach { secs ->
+                    DetailChip(label = "${secs}s", accent = accent, selected = false) {
+                        dispatch(ServiceCall(
+                            entity.id,
+                            "turn_on",
+                            kotlinx.serialization.json.buildJsonObject {
+                                put("duration", kotlinx.serialization.json.JsonPrimitive(secs))
+                            },
+                        ))
+                    }
+                }
+            }
         }
     }
 }

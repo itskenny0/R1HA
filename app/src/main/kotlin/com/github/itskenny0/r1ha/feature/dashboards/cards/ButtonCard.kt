@@ -119,7 +119,11 @@ fun ButtonCard(
     // all bound to the card entity, in one shot via the shared action layer.
     val actions = resolveCardActions(
         tapAction = card.tapAction,
-        holdAction = card.holdAction,
+        // HA's button card installs `hold_action: more-info` as the default
+        // (hui-button-card setConfig), so a long-press always reaches the detail
+        // sheet. Guarded on an entity: a pure action button (no entity) has no
+        // more-info target and stays hold-inert.
+        holdAction = card.holdAction ?: card.entityId?.let { LovelaceAction.Builtin("more-info", it) },
         doubleTapAction = card.doubleTapAction,
         cardEntityId = card.entityId,
     )

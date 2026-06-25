@@ -108,7 +108,9 @@ private fun GlanceTile(
     val accent = glanceTileAccent(row.entityId, state, stateColor)
     val actions = resolveCardActions(
         tapAction = row.tapAction,
-        holdAction = row.holdAction,
+        // HA's glance card injects `hold_action: more-info` per entity in
+        // setConfig, so every tile long-presses to its detail sheet by default.
+        holdAction = row.holdAction ?: LovelaceAction.Builtin("more-info", row.entityId),
         doubleTapAction = row.doubleTapAction,
         cardEntityId = row.entityId,
     )

@@ -1341,7 +1341,7 @@ class DefaultHaRepository(
             // via [EntityState.hasFeature] to gate their respective chips.
             supportedFeatures = when (domain) {
                 Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
-                Domain.ALARM_CONTROL_PANEL ->
+                Domain.ALARM_CONTROL_PANEL, Domain.SIREN ->
                     raw.attributes["supported_features"].asInt() ?: 0
                 else -> 0
             },
@@ -3042,7 +3042,7 @@ class DefaultHaRepository(
                         attrs["supported_features"].asInt() ?: 0 else 0,
                     supportedFeatures = when (domain) {
                         Domain.LAWN_MOWER, Domain.CLIMATE, Domain.VALVE, Domain.WATER_HEATER,
-                        Domain.ALARM_CONTROL_PANEL ->
+                        Domain.ALARM_CONTROL_PANEL, Domain.SIREN ->
                             attrs["supported_features"].asInt() ?: 0
                         else -> 0
                     },

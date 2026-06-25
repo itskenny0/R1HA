@@ -102,11 +102,15 @@ private fun PanelChip(
 fun VacuumPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier) {
     if (state.id.domain != Domain.VACUUM) return
     val dispatch = LocalOnEntityCall.current
-    val showPause = state.hasVacuumFeature(EntityState.VacuumFeature.PAUSE)
-    val showStop = state.hasVacuumFeature(EntityState.VacuumFeature.STOP)
+    // PAUSE lives in the primary START/PAUSE toggle (VacuumButtons), so this
+    // secondary panel only carries STOP / LOCATE / SPOT. STOP is gated on HA's
+    // canStop (nothing to stop when docked / off / idle).
+    val raw = state.rawState?.lowercase().orEmpty()
+    val canStop = raw != "docked" && raw != "off" && raw != "idle"
+    val showStop = canStop && state.hasVacuumFeature(EntityState.VacuumFeature.STOP)
     val showLocate = state.hasVacuumFeature(EntityState.VacuumFeature.LOCATE)
     val showSpot = state.hasVacuumFeature(EntityState.VacuumFeature.CLEAN_SPOT)
-    val hasChips = showPause || showStop || showLocate || showSpot
+    val hasChips = showStop || showLocate || showSpot
     val fanSpeeds = state.vacuumFanSpeedList
     val battery = state.vacuumBatteryLevel
     if (!hasChips && fanSpeeds.isEmpty() && battery == null) return
@@ -119,9 +123,6 @@ fun VacuumPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                if (showPause) PanelChip("PAUSE", accent) {
-                    dispatch?.invoke(ServiceCall.vacuumCommand(state.id, VacuumAction.PAUSE))
-                }
                 if (showStop) PanelChip("STOP", accent) {
                     dispatch?.invoke(ServiceCall.vacuumCommand(state.id, VacuumAction.STOP))
                 }
@@ -525,6 +526,45 @@ fun ClimatePanel(state: EntityState, accent: Color, modifier: Modifier = Modifie
                 }
             }
         }
+        // Horizontal swing — HA's more-info-climate adds a second select for
+        // `swing_horizontal_modes` when the SWING_HORIZONTAL_MODE feature is set,
+        // firing climate.set_swing_horizontal_mode. Same raw-attribute approach
+        // as the vertical swing row above.
+        val swingHorizontalModes = state.attrStringList("swing_horizontal_modes")
+        if (swingHorizontalModes.isNotEmpty()) {
+            val currentSwingH = state.attrString("swing_horizontal_mode")
+            Spacer(Modifier.height(8.dp))
+            Text(text = "SWING (HORIZONTAL)", style = R1.labelMicro, color = R1.InkMuted)
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                swingHorizontalModes.forEach { swing ->
+                    PanelChip(
+                        label = optionLabel(swing),
+                        accent = accent,
+                        selected = currentSwingH.equals(swing, ignoreCase = true),
+                        onClick = {
+                            dispatch?.invoke(
+                                ServiceCall(
+                                    state.id,
+                                    "set_swing_horizontal_mode",
+                                    kotlinx.serialization.json.buildJsonObject {
+                                        put(
+                                            "swing_horizontal_mode",
+                                            kotlinx.serialization.json.JsonPrimitive(swing),
+                                        )
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+        }
         val current = state.climateCurrentTemperature
         if (current != null) {
             // Convert to the user's chosen temperature unit so the panel
@@ -885,11 +925,16 @@ fun AlarmPanel(state: EntityState, accent: Color, modifier: Modifier = Modifier)
         }
     }
 
-    val showAway = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_AWAY)
-    val showHome = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_HOME)
-    val showNight = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_NIGHT)
-    val showVacation = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_VACATION)
-    val showBypass = state.hasAlarmFeature(EntityState.AlarmFeature.ARM_CUSTOM_BYPASS)
+    // During a transition (arming / pending) or while triggered, HA's
+    // more-info-alarm_control_panel hides the arm-mode control entirely and
+    // offers only DISARM (the user's single sensible action). Mirror that:
+    // gate every arm chip on the panel being in a settled, disarmable state.
+    val transitional = raw == "arming" || raw == "pending" || raw == "triggered"
+    val showAway = !transitional && state.hasAlarmFeature(EntityState.AlarmFeature.ARM_AWAY)
+    val showHome = !transitional && state.hasAlarmFeature(EntityState.AlarmFeature.ARM_HOME)
+    val showNight = !transitional && state.hasAlarmFeature(EntityState.AlarmFeature.ARM_NIGHT)
+    val showVacation = !transitional && state.hasAlarmFeature(EntityState.AlarmFeature.ARM_VACATION)
+    val showBypass = !transitional && state.hasAlarmFeature(EntityState.AlarmFeature.ARM_CUSTOM_BYPASS)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(text = "MODE", style = R1.labelMicro, color = R1.InkMuted)
