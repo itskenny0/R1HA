@@ -28,9 +28,8 @@ internal val MULTI_ENTITY_TYPES = setOf("entities", "glance")
 /**
  * Everything the structured form can hold, regardless of card type;
  * [buildStructuredCard] only consults the fields the [type] actually edits.
- * Defaults mirror HA's button-card defaults (show_name / show_icon on,
- * show_state off) so a config that omits the keys seeds the toggles the way
- * the card actually renders.
+ * Show/hide toggles live in [toggles], keyed by real config key; their per-key
+ * defaults come from [cardTogglesFor] so a config that omits a key emits nothing.
  */
 internal data class CardEditorForm(
     val type: String,
@@ -43,9 +42,8 @@ internal data class CardEditorForm(
     val entities: List<String> = emptyList(),
     val name: String = "",
     val icon: String = "",
-    val showName: Boolean = true,
-    val showIcon: Boolean = true,
-    val showState: Boolean = false,
+    /** Real config-key -> value (HIDE-sense already resolved). Driven by [cardTogglesFor]. */
+    val toggles: Map<String, Boolean> = emptyMap(),
 )
 
 /** The config keys the form owns (re-emits) for this card type. */
@@ -67,10 +65,8 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
     if (type == "button") {
         add("name")
         add("icon")
-        add("show_name")
-        add("show_icon")
-        add("show_state")
     }
+    cardTogglesFor(type).forEach { add(it.key) }
 }
 
 /**
@@ -113,12 +109,13 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
         if (type == "button") {
             putIfSet("name", form.name)
             putIfSet("icon", form.icon)
-            fun putToggle(key: String, value: Boolean, default: Boolean) {
-                if (value != default || base.containsKey(key)) put(key, JsonPrimitive(value))
-            }
-            putToggle("show_name", form.showName, default = true)
-            putToggle("show_icon", form.showIcon, default = true)
-            putToggle("show_state", form.showState, default = false)
+        }
+        // Generic native show/hide toggles for the card type. Emit only when the
+        // value deviates from the app default OR the key was already present, so
+        // round-trips stay lossless and configs stay clean.
+        for (t in cardTogglesFor(type)) {
+            val v = form.toggles[t.key] ?: t.default
+            if (v != t.default || base.containsKey(t.key)) put(t.key, JsonPrimitive(v))
         }
     }
 }

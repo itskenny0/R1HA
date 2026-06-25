@@ -790,9 +790,13 @@ internal fun CardMiniEditor(
     // chips show how an omitting config actually renders.
     var name by remember { mutableStateOf(initialObj.str("name")) }
     var icon by remember { mutableStateOf(initialObj.str("icon")) }
-    var showName by remember { mutableStateOf(initialObj.boolOr("show_name", true)) }
-    var showIcon by remember { mutableStateOf(initialObj.boolOr("show_icon", true)) }
-    var showState by remember { mutableStateOf(initialObj.boolOr("show_state", false)) }
+    // Per-key show/hide state seeded from the config, keyed by the real JSON key
+    // and holding the real value (HIDE-sense resolved only on display).
+    val toggleState = remember(initialObj, type) {
+        androidx.compose.runtime.mutableStateMapOf<String, Boolean>().apply {
+            cardTogglesFor(type).forEach { t -> put(t.key, initialObj.boolOr(t.key, t.default)) }
+        }
+    }
     val multiEntities = remember(initialObj) {
         androidx.compose.runtime.mutableStateListOf<String>().apply {
             addAll(primitiveEntities(initialObj))
@@ -826,9 +830,7 @@ internal fun CardMiniEditor(
                 entities = multiEntities.toList(),
                 name = name,
                 icon = icon,
-                showName = showName,
-                showIcon = showIcon,
-                showState = showState,
+                toggles = toggleState.toMap(),
             ),
         )
     }
@@ -889,9 +891,10 @@ internal fun CardMiniEditor(
                                     content = parsed.str("content")
                                     name = parsed.str("name")
                                     icon = parsed.str("icon")
-                                    showName = parsed.boolOr("show_name", true)
-                                    showIcon = parsed.boolOr("show_icon", true)
-                                    showState = parsed.boolOr("show_state", false)
+                                    toggleState.clear()
+                                    cardTogglesFor(type).forEach { t ->
+                                        toggleState[t.key] = parsed.boolOr(t.key, t.default)
+                                    }
                                     multiEntities.clear()
                                     multiEntities.addAll(primitiveEntities(parsed))
                                     jsonMode = false
@@ -952,14 +955,6 @@ internal fun CardMiniEditor(
                         onChange = { icon = it },
                         monospace = true,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(text = "SHOW", style = R1.labelMicro, color = R1.InkSoft)
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        EditorToggleChip(label = "NAME", selected = showName, onClick = { showName = !showName })
-                        EditorToggleChip(label = "ICON", selected = showIcon, onClick = { showIcon = !showIcon })
-                        EditorToggleChip(label = "STATE", selected = showState, onClick = { showState = !showState })
-                    }
                 }
                 if (type in SINGLE_ENTITY_TYPES) {
                     Spacer(Modifier.height(8.dp))
@@ -1050,6 +1045,23 @@ internal fun CardMiniEditor(
                         ),
                     )
                 }
+                val showToggles = cardTogglesFor(type)
+                if (showToggles.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = "SHOW", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        showToggles.forEach { t ->
+                            val raw = toggleState[t.key] ?: t.default
+                            val shown = toggleChipShown(raw, t.sense)
+                            EditorToggleChip(
+                                label = t.label,
+                                selected = shown,
+                                onClick = { toggleState[t.key] = toggleStoredValue(!shown, t.sense) },
+                            )
+                        }
+                    }
+                }
                 if (!structuredCapable) {
                     Text(
                         text = "This card type edits as raw JSON.",
@@ -1125,8 +1137,8 @@ private fun EditorField(
     )
 }
 
-/** On/off chip for the button card's show_name / show_icon / show_state
- *  toggles; same visual language as the iframe aspect presets. */
+/** On/off chip for a card's native show/hide toggles (driven by cardTogglesFor);
+ *  same visual language as the iframe aspect presets. */
 @Composable
 private fun EditorToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(

@@ -31,7 +31,7 @@ class CardStructuredEditTest {
         val base = broadlinkCommandCard()
         val edited = buildStructuredCard(
             base,
-            CardEditorForm(type = "button", name = "Telly", icon = "mdi:power", showState = false),
+            CardEditorForm(type = "button", name = "Telly", icon = "mdi:power"),
         )
         // The call-service block (service, target, data incl. num_repeats)
         // must survive untouched: the form doesn't model it.
@@ -56,9 +56,7 @@ class CardStructuredEditTest {
             CardEditorForm(
                 type = "button",
                 name = "TV Power",
-                showName = false,
-                showIcon = false,
-                showState = true,
+                toggles = mapOf("show_name" to false, "show_icon" to false, "show_state" to true),
             ),
         )
         assertThat(edited["show_name"]).isEqualTo(JsonPrimitive(false))
@@ -193,5 +191,31 @@ class CardStructuredEditTest {
         assertThat(obj.boolOr("show_icon", false)).isTrue()
         assertThat(obj.boolOr("show_name", true)).isTrue()
         assertThat((null as JsonObject?).boolOr("show_name", false)).isFalse()
+    }
+
+    @Test
+    fun glanceTogglesEmitWhenDeviating() {
+        val base = buildJsonObject {
+            put("type", "glance")
+            put("entities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("light.a"))))
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "glance", entities = listOf("light.a"), toggles = mapOf("show_name" to false)),
+        )
+        assertThat(edited["show_name"]).isEqualTo(JsonPrimitive(false))
+        // show_state default (true) untouched and absent in base -> stays absent.
+        assertThat(edited.containsKey("show_state")).isFalse()
+    }
+
+    @Test
+    fun tileHideStateEmitsRealKey() {
+        // The editor stores the real key value; hide_state default is false.
+        val base = buildJsonObject { put("type", "tile"); put("entity", "light.k") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "tile", entity = "light.k", toggles = mapOf("hide_state" to true)),
+        )
+        assertThat(edited["hide_state"]).isEqualTo(JsonPrimitive(true))
     }
 }
