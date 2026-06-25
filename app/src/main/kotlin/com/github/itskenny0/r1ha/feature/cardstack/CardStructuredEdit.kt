@@ -25,6 +25,84 @@ internal val SINGLE_ENTITY_TYPES = setOf(
 /** Multi-entity list (plain `entities:` array) applies to these. */
 internal val MULTI_ENTITY_TYPES = setOf("entities", "glance")
 
+/** Row-list keys the editor models; everything else on a row is passthrough. */
+private val ROW_OWNED_KEYS = setOf("entity", "secondary_info", "show_state", "state_color", "show_last_changed")
+
+/** Special (non-entity) entities-row types preserved verbatim, mirroring the parser. */
+private val SPECIAL_ROW_TYPES_EDIT = setOf(
+    "section", "divider", "attribute", "button", "buttons",
+    "call-service", "perform-action", "conditional", "text", "weblink", "cast",
+)
+
+internal data class CardEntityRow(
+    val entityId: String,
+    val secondaryInfo: String? = null,
+    val showState: Boolean? = null,
+    val stateColor: Boolean? = null,
+    val showLastChanged: Boolean? = null,
+    /** Every non-owned key on the row object, kept for lossless round-trip. */
+    val passthrough: JsonObject = JsonObject(emptyMap()),
+    /** A non-entity special/divider/section row, kept verbatim and non-editable. */
+    val special: JsonObject? = null,
+)
+
+/** Parse the `entities:` array into the editor's row model. Bare string ids,
+ *  entity-row objects (owned sub-keys lifted out, the rest stashed in
+ *  passthrough), and special/non-entity rows (kept verbatim in [CardEntityRow.special]). */
+internal fun parseEntityRows(base: JsonObject): List<CardEntityRow> {
+    val arr = base["entities"] as? JsonArray ?: return emptyList()
+    fun bool(o: JsonObject, k: String): Boolean? =
+        (o[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+    fun str(o: JsonObject, k: String): String? = (o[k] as? JsonPrimitive)?.content
+    return arr.mapNotNull { el ->
+        when (el) {
+            is JsonPrimitive -> if (el.isString) CardEntityRow(entityId = el.content) else null
+            is JsonObject -> {
+                val rowType = (el["type"] as? JsonPrimitive)?.content?.lowercase()
+                val entity = str(el, "entity")
+                if (entity == null || (rowType != null && rowType in SPECIAL_ROW_TYPES_EDIT)) {
+                    CardEntityRow(entityId = entity.orEmpty(), special = el)
+                } else {
+                    CardEntityRow(
+                        entityId = entity,
+                        secondaryInfo = str(el, "secondary_info"),
+                        showState = bool(el, "show_state"),
+                        stateColor = bool(el, "state_color"),
+                        showLastChanged = bool(el, "show_last_changed"),
+                        passthrough = JsonObject(el.filterKeys { it !in ROW_OWNED_KEYS }),
+                    )
+                }
+            }
+            else -> null
+        }
+    }
+}
+
+/** Re-emit the `entities:` array from the row model. Bare rows stay bare
+ *  strings; rows with owned sub-keys or passthrough become objects (passthrough
+ *  first, owned values last so edits win); special rows pass through verbatim. */
+internal fun buildEntitiesArray(form: CardEditorForm): JsonArray {
+    val out = form.rows.filter { it.special != null || it.entityId.isNotBlank() }.map { row ->
+        row.special?.let { return@map it }
+        val owned = buildJsonObject {
+            row.secondaryInfo?.takeIf { it.isNotBlank() }?.let { put("secondary_info", JsonPrimitive(it)) }
+            row.showState?.let { put("show_state", JsonPrimitive(it)) }
+            row.stateColor?.let { put("state_color", JsonPrimitive(it)) }
+            row.showLastChanged?.let { put("show_last_changed", JsonPrimitive(it)) }
+        }
+        if (owned.isEmpty() && row.passthrough.isEmpty()) {
+            JsonPrimitive(row.entityId)
+        } else {
+            buildJsonObject {
+                put("entity", JsonPrimitive(row.entityId))
+                row.passthrough.forEach { (k, v) -> put(k, v) }
+                owned.forEach { (k, v) -> put(k, v) }
+            }
+        }
+    }
+    return JsonArray(out)
+}
+
 /**
  * Everything the structured form can hold, regardless of card type;
  * [buildStructuredCard] only consults the fields the [type] actually edits.
@@ -39,7 +117,7 @@ internal data class CardEditorForm(
     val url: String = "",
     val aspect: String = "",
     val content: String = "",
-    val entities: List<String> = emptyList(),
+    val rows: List<CardEntityRow> = emptyList(),
     val name: String = "",
     val icon: String = "",
     /** Real config-key -> value (HIDE-sense already resolved). Driven by [cardTogglesFor]. */
@@ -100,12 +178,7 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
             putIfSet("aspect_ratio", form.aspect)
         }
         if (type == "markdown") putIfSet("content", form.content)
-        if (type in MULTI_ENTITY_TYPES) {
-            put(
-                "entities",
-                JsonArray(form.entities.filter { it.isNotBlank() }.map { JsonPrimitive(it) }),
-            )
-        }
+        if (type in MULTI_ENTITY_TYPES) put("entities", buildEntitiesArray(form))
         if (type == "button") {
             putIfSet("name", form.name)
             putIfSet("icon", form.icon)

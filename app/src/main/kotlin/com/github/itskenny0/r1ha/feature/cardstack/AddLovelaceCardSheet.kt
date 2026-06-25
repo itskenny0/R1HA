@@ -827,7 +827,7 @@ internal fun CardMiniEditor(
                 url = url,
                 aspect = aspect,
                 content = content,
-                entities = multiEntities.toList(),
+                rows = multiEntities.map { CardEntityRow(entityId = it) },
                 name = name,
                 icon = icon,
                 toggles = toggleState.toMap(),
