@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.HaRepository
+import com.github.itskenny0.r1ha.core.lovelace.ActionConfirmation
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.LocalCardBackdropPainted
@@ -59,7 +60,7 @@ internal class LovelaceDeckHooks(
     val onOpenCardMenu: (DeckItem.Card) -> Unit,
     /** Pending tap-action confirmation (HA `confirmation:` config); rendered
      *  by [LovelaceConfirmOverlay] above the deck. */
-    val pendingConfirm: MutableState<Pair<String, CompletableDeferred<Boolean>>?>,
+    val pendingConfirm: MutableState<Pair<ActionConfirmation, CompletableDeferred<Boolean>>?>,
 )
 
 /** Dispatch a Lovelace tap action through the shared action pipeline, gating
@@ -80,7 +81,7 @@ internal fun LovelaceDeckHooks.dispatch(scope: CoroutineScope, action: LovelaceA
             stateLookup = { rawId -> states().byRaw(rawId) },
             confirmGate = { confirmation, _ ->
                 val deferred = CompletableDeferred<Boolean>()
-                pendingConfirm.value = (confirmation.text ?: "Are you sure?") to deferred
+                pendingConfirm.value = confirmation to deferred
                 try {
                     deferred.await()
                 } finally {
@@ -397,11 +398,12 @@ internal fun LovelaceCardMenu(
  */
 @Composable
 internal fun LovelaceConfirmOverlay(
-    pendingConfirm: MutableState<Pair<String, CompletableDeferred<Boolean>>?>,
+    pendingConfirm: MutableState<Pair<ActionConfirmation, CompletableDeferred<Boolean>>?>,
     accent: androidx.compose.ui.graphics.Color,
 ) {
     val pending = pendingConfirm.value ?: return
-    val (text, deferred) = pending
+    val (confirmation, deferred) = pending
+    val text = confirmation.text ?: "Are you sure?"
     androidx.activity.compose.BackHandler { deferred.complete(false) }
     Box(
         modifier = Modifier
@@ -419,6 +421,12 @@ internal fun LovelaceConfirmOverlay(
                 .r1Pressable(onClick = {}),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Honour the configured title / confirm-text / dismiss-text (HA's
+            // showConfirmationDialog fields) instead of fixed labels.
+            confirmation.title?.takeIf { it.isNotBlank() }?.let {
+                Text(text = it, style = R1.bodyEmph, color = R1.Ink)
+                Spacer(Modifier.size(6.dp))
+            }
             Text(text = text, style = R1.body, color = R1.Ink)
             Spacer(Modifier.size(12.dp))
             Row {
@@ -429,7 +437,7 @@ internal fun LovelaceConfirmOverlay(
                         .border(1.dp, R1.Hairline, R1.ShapeRound)
                         .r1Pressable(onClick = { deferred.complete(false) })
                         .padding(horizontal = 14.dp, vertical = 8.dp),
-                ) { Text("CANCEL", style = R1.labelMicro, color = R1.InkSoft) }
+                ) { Text(confirmation.dismissText ?: "CANCEL", style = R1.labelMicro, color = R1.InkSoft) }
                 Spacer(Modifier.size(8.dp))
                 Box(
                     modifier = Modifier
@@ -438,7 +446,7 @@ internal fun LovelaceConfirmOverlay(
                         .border(1.dp, accent.copy(alpha = 0.7f), R1.ShapeRound)
                         .r1Pressable(onClick = { deferred.complete(true) })
                         .padding(horizontal = 14.dp, vertical = 8.dp),
-                ) { Text("CONFIRM", style = R1.labelMicro, color = accent) }
+                ) { Text(confirmation.confirmText ?: "CONFIRM", style = R1.labelMicro, color = accent) }
             }
         }
     }

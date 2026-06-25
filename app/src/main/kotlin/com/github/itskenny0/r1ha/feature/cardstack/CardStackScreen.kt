@@ -384,7 +384,7 @@ fun CardStackScreen(
     // Pending `confirmation:` gate for a Lovelace tap action; the dispatch
     // coroutine suspends on the deferred until the overlay resolves it.
     val lovelaceConfirm = androidx.compose.runtime.remember {
-        androidx.compose.runtime.mutableStateOf<Pair<String, kotlinx.coroutines.CompletableDeferred<Boolean>>?>(null)
+        androidx.compose.runtime.mutableStateOf<Pair<com.github.itskenny0.r1ha.core.lovelace.ActionConfirmation, kotlinx.coroutines.CompletableDeferred<Boolean>>?>(null)
     }
     /** Quick-actions sheet visibility — opened by a long-press on the chrome
      *  hamburger. Holds 'all off on this page' as the only action today;

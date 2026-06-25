@@ -39,7 +39,12 @@ internal val HA_SYSTEM_PANELS: Set<String> = setOf(
  *  - `/<dashboard>/<view>` -> view in the named dashboard
  */
 fun resolveNavigateTarget(navPath: String, currentDashboard: String?): NavigateTarget {
-    val segments = navPath.trim().trim('/').split('/').filter { it.isNotEmpty() }
+    // Strip any query string / fragment before segmenting: HA pushes the raw path
+    // verbatim, so a navigation_path like "/lovelace/0?foo=bar" or
+    // "history?entity_id=x" must resolve on its path part, not carry the query
+    // into a view name (which would dead-end).
+    val clean = navPath.trim().substringBefore('?').substringBefore('#')
+    val segments = clean.trim('/').split('/').filter { it.isNotEmpty() }
     if (segments.isEmpty()) return NavigateTarget.Lovelace
     if (segments.first() in HA_SYSTEM_PANELS) return NavigateTarget.Lovelace
     val view = segments.last()

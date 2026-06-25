@@ -408,7 +408,7 @@ fun DashboardViewScreen(
                             // A `navigate` tap (cards or badges) targets another view
                             // in the same dashboard; route it to the view opener.
                             onNavigate = { path -> onOpenView(path) },
-                            onOpenUrl = { url -> launchUrl(context, url) },
+                            onOpenUrl = { url -> launchUrl(context, url, serverUrl) },
                             onMoreInfo = handleMoreInfo,
                             // Open the native Assist screen. Wired distinctly from
                             // onNavigate so an `action: assist` doesn't get treated
@@ -1264,17 +1264,25 @@ private fun originalIndexFor(
  * rather than crashing, and a device with no browser activity surfaces
  * the same friendly message instead of throwing ActivityNotFound.
  */
-private fun launchUrl(context: android.content.Context, url: String) {
+private fun launchUrl(context: android.content.Context, url: String, serverUrl: String?) {
     val trimmed = url.trim()
     if (trimmed.isEmpty()) {
         com.github.itskenny0.r1ha.core.util.Toaster.error("No link to open")
         return
     }
+    // HA's url action opens url_path in the browser, which resolves a relative
+    // path (e.g. /local/foo.html, /api/...) against the HA origin. Mirror that so
+    // a leading-slash url_path opens the HA-hosted resource rather than failing.
+    val resolved = if (trimmed.startsWith("/") && !serverUrl.isNullOrBlank()) {
+        serverUrl.trimEnd('/') + trimmed
+    } else {
+        trimmed
+    }
     runCatching {
         context.startActivity(
             android.content.Intent(
                 android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse(trimmed),
+                android.net.Uri.parse(resolved),
             ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }.onFailure {
