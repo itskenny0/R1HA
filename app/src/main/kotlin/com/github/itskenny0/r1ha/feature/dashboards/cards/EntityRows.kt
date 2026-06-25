@@ -469,9 +469,11 @@ internal fun InputTextEntityRow(
     val commit = {
         val matches = pattern?.let { runCatching { Regex(it).matches(text) }.getOrDefault(true) } ?: true
         if (text.length in minLen..maxLen && matches && text != state.rawState) {
+            // input_text uses input_text.set_value; the standalone text domain
+            // uses text.set_value. Both take a `value`.
             onAction(
                 LovelaceAction.CallService(
-                    service = "input_text.set_value",
+                    service = "${domainOf(row.entityId)}.set_value",
                     entityId = row.entityId,
                     data = buildJsonObject { put("value", JsonPrimitive(text)) },
                 ),
@@ -512,25 +514,37 @@ internal fun InputDatetimeEntityRow(
         EntityRowScaffold(row, state, accent, onAction, stateColor)
         return
     }
-    val hasDate = (state.attributesJson?.get("has_date") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
-    val hasTime = (state.attributesJson?.get("has_time") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
+    val domain = domainOf(row.entityId)
+    // input_datetime advertises has_date / has_time; the dedicated date / time /
+    // datetime domains imply them by domain.
+    val hasDate = when (domain) {
+        "date", "datetime" -> true
+        "time" -> false
+        else -> (state.attributesJson?.get("has_date") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
+    }
+    val hasTime = when (domain) {
+        "time", "datetime" -> true
+        "date" -> false
+        else -> (state.attributesJson?.get("has_time") as? JsonPrimitive)?.content?.toBooleanStrictOrNull() == true
+    }
     val context = LocalContext.current
-    val raw = state.rawState.orEmpty()
+    // Normalise the datetime domain's ISO state ("YYYY-MM-DDThh:mm:ss+oo:oo") to
+    // the space-separated form the date/time split below expects.
+    val raw = state.rawState.orEmpty().replace('T', ' ').substringBefore('+').substringBefore('.').trim()
+    val emit: (String?, String?) -> Unit = { date, time ->
+        onAction(setDateTimeRowAction(domain, row.entityId, date, time, hasDate, hasTime, raw))
+    }
     EntityRowScaffold(row, state, accent, onAction, stateColor) {
         if (hasDate) {
             val datePart = if (hasTime) raw.substringBefore(' ') else raw
             RowActionButton(label = datePart.ifBlank { "DATE" }, accent = accent, enabled = state.isAvailable) {
-                showDatePicker(context, datePart) { picked ->
-                    onAction(setInputDatetime(row.entityId, date = picked, time = if (hasTime) raw.substringAfter(' ', "") else null))
-                }
+                showDatePicker(context, datePart) { picked -> emit(picked, null) }
             }
         }
         if (hasTime) {
             val timePart = if (hasDate) raw.substringAfter(' ', "") else raw
             RowActionButton(label = timePart.ifBlank { "TIME" }, accent = accent, enabled = state.isAvailable) {
-                showTimePicker(context, timePart) { picked ->
-                    onAction(setInputDatetime(row.entityId, date = if (hasDate) raw.substringBefore(' ') else null, time = picked))
-                }
+                showTimePicker(context, timePart) { picked -> emit(null, picked) }
             }
         }
     }
@@ -728,6 +742,43 @@ private fun setInputDatetime(entityId: String, date: String?, time: String?): Lo
             time?.takeUnless { it.isBlank() }?.let { put("time", JsonPrimitive(it)) }
         },
     )
+
+/**
+ * The set call for the picker row, routed by domain: the standalone date / time
+ * domains take <domain>.set_value; datetime takes a combined `datetime` value
+ * (preserving the un-edited half from [raw]); input_datetime keeps set_datetime
+ * with only the edited part.
+ */
+private fun setDateTimeRowAction(
+    domain: String,
+    entityId: String,
+    date: String?,
+    time: String?,
+    hasDate: Boolean,
+    hasTime: Boolean,
+    raw: String,
+): LovelaceAction.CallService = when (domain) {
+    "date" -> LovelaceAction.CallService(
+        service = "date.set_value",
+        entityId = entityId,
+        data = buildJsonObject { put("date", JsonPrimitive(date ?: raw)) },
+    )
+    "time" -> LovelaceAction.CallService(
+        service = "time.set_value",
+        entityId = entityId,
+        data = buildJsonObject { put("time", JsonPrimitive(time ?: raw)) },
+    )
+    "datetime" -> {
+        val datePart = date ?: raw.substringBefore(' ')
+        val timePart = time ?: raw.substringAfter(' ', "")
+        LovelaceAction.CallService(
+            service = "datetime.set_value",
+            entityId = entityId,
+            data = buildJsonObject { put("datetime", JsonPrimitive("$datePart $timePart".trim())) },
+        )
+    }
+    else -> setInputDatetime(entityId, date = date, time = time)
+}
 
 private fun roundStep(value: Double): Double = Math.round(value * 1000.0) / 1000.0
 

@@ -42,10 +42,13 @@ internal fun rowKindFor(entityId: String): RowKind = when (domainOf(entityId)) {
     "cover" -> RowKind.Cover
     "group" -> RowKind.Group
     "humidifier" -> RowKind.Humidifier
-    "input_datetime" -> RowKind.InputDatetime
+    // input_datetime and the standalone date / time / datetime entity domains
+    // all use the picker row; input_text and text use the text-field row. The
+    // row composables pick the right service from the entity's own domain.
+    "input_datetime", "date", "time", "datetime" -> RowKind.InputDatetime
     "input_number" -> RowKind.InputNumber
     "input_select" -> RowKind.InputSelect
-    "input_text" -> RowKind.InputText
+    "input_text", "text" -> RowKind.InputText
     "lock" -> RowKind.Lock
     "media_player" -> RowKind.MediaPlayer
     "number" -> RowKind.Number
