@@ -23,8 +23,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.EntityState
+import com.github.itskenny0.r1ha.core.lovelace.LovelaceAction
 import com.github.itskenny0.r1ha.core.lovelace.LovelaceCard
 import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
 
@@ -63,6 +65,7 @@ fun MapCard(
     card: LovelaceCard.Map,
     stateMap: EntityStates,
     modifier: Modifier = Modifier,
+    onAction: (LovelaceAction) -> Unit = {},
 ) {
     val repo = com.github.itskenny0.r1ha.core.theme.LocalHaRepository.current
     // show_all / geo_location_sources / fit_zones need the full entity set, which
@@ -206,8 +209,23 @@ fun MapCard(
                 )
                 Spacer(Modifier.height(8.dp))
                 located.forEach { p ->
+                    // HA's entity markers open more-info on tap; the R1 legend row
+                    // is the touch target for that (canvas hit-testing is coarse).
+                    val rowMod = Modifier
+                        .fillMaxWidth()
+                        .let {
+                            if (p.entityId.isNotBlank()) {
+                                it.r1Pressable(
+                                    onClick = { onAction(LovelaceAction.Builtin("more-info", p.entityId)) },
+                                    contentDescription = p.label,
+                                )
+                            } else {
+                                it
+                            }
+                        }
+                        .padding(vertical = 3.dp)
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        modifier = rowMod,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(

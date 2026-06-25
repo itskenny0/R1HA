@@ -19,7 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.lovelace.CardActions
@@ -166,7 +168,12 @@ private fun ForecastStrip(
 ) {
     val shown = entries.take(slots.coerceIn(1, 8))
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        // HA suppresses the card's tap_action when the touch lands on the
+        // forecast strip (_isForecastInteraction). Consume taps here so a poke
+        // at a forecast column doesn't fire the card's more-info.
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) { detectTapGestures { } },
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         shown.forEachIndexed { i, entry ->

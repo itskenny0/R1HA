@@ -127,7 +127,9 @@ fun AreaCard(
                     name = resolveName(row.name, state, row.entityId),
                     state = state,
                     entityId = row.entityId,
-                    onAction = { onAction(defaultTapAction(row.entityId)) },
+                    // Honour a per-row tap_action when configured, falling back to
+                    // the domain default (HA's handleAction default for the row).
+                    onAction = { onAction(row.tapAction?.boundTo(row.entityId) ?: defaultTapAction(row.entityId)) },
                 )
             }
         } else if (members.states.isNotEmpty() && display != "camera" && display != "picture") {

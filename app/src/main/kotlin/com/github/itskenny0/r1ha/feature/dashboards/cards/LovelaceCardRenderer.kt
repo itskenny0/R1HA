@@ -99,7 +99,7 @@ private fun LovelaceCardContent(
         is LovelaceCard.Area -> AreaCard(card, stateMap, onAction, modifier)
         is LovelaceCard.HistoryGraph -> HistoryGraphCard(card, stateMap, onAction, modifier)
         is LovelaceCard.AlarmPanel -> AlarmPanelCard(card, stateMap, onAction, modifier)
-        is LovelaceCard.Map -> MapCard(card, stateMap, modifier)
+        is LovelaceCard.Map -> MapCard(card, stateMap, modifier, onAction)
         is LovelaceCard.Thermostat -> ThermostatCard(card, stateMap, onAction, modifier)
         is LovelaceCard.MediaControl -> MediaControlCard(card, stateMap, onAction, modifier)
         is LovelaceCard.Humidifier -> HumidifierCard(card, stateMap, onAction, modifier)
