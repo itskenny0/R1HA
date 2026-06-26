@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -122,7 +123,16 @@ internal data class CardEditorForm(
     val icon: String = "",
     /** Real config-key -> value (HIDE-sense already resolved). Driven by [cardTogglesFor]. */
     val toggles: Map<String, Boolean> = emptyMap(),
+    /** Real config-key -> raw value for the generic field schema ([cardFieldsFor]):
+     *  text/number(as text)/enum/colour/icon as string primitives, bools as
+     *  boolean primitives, actions as objects. Emitted by [emitCardField]. */
+    val values: Map<String, JsonElement> = emptyMap(),
 )
+
+/** True when [type]'s primary label is edited via the engine `name` field (so the
+ *  hand-rendered TITLE field is suppressed and `title` is not owned here). */
+internal fun typeOwnsNameField(type: String): Boolean =
+    cardFieldsFor(type).any { it.key == "name" }
 
 /** The config keys the form owns (re-emits) for this card type. */
 private fun editedKeysFor(type: String): Set<String> = buildSet {
@@ -131,7 +141,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
         // has no `title:` key, so a stray one passes through untouched).
         "heading" -> add("heading")
         "button" -> Unit
-        else -> add("title")
+        // Name-primary cards (tile, light, gauge…) label via the engine `name`
+        // field; they have no `title:` key, so leave a stray one to pass through.
+        else -> if (!typeOwnsNameField(type)) add("title")
     }
     if (type in SINGLE_ENTITY_TYPES) add("entity")
     if (type == "iframe") {
@@ -145,6 +157,7 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
         add("icon")
     }
     cardTogglesFor(type).forEach { add(it.key) }
+    cardFieldsFor(type).forEach { add(it.key) }
 }
 
 /**
@@ -170,7 +183,7 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
         when (type) {
             "heading" -> putIfSet("heading", form.heading)
             "button" -> Unit
-            else -> putIfSet("title", form.title)
+            else -> if (!typeOwnsNameField(type)) putIfSet("title", form.title)
         }
         if (type in SINGLE_ENTITY_TYPES) putIfSet("entity", form.entity)
         if (type == "iframe") {
@@ -189,6 +202,19 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
         for (t in cardTogglesFor(type)) {
             val v = form.toggles[t.key] ?: t.default
             if (v != t.default || base.containsKey(t.key)) put(t.key, JsonPrimitive(v))
+        }
+        // Generic schema fields (name, colour, min/max, actions…). A field key
+        // the form actually LOADED (present in `values`, even as a cleared blank)
+        // is re-emitted by its kind rule; a key the form never modelled passes
+        // through verbatim from base, so an editor instance that didn't seed a
+        // field (or a programmatic form) never silently drops a stored
+        // tap_action / hold_action / colour.
+        for (f in cardFieldsFor(type)) {
+            if (form.values.containsKey(f.key)) {
+                emitCardField(this, base, f, form.values[f.key])
+            } else {
+                base[f.key]?.let { put(f.key, it) }
+            }
         }
     }
 }

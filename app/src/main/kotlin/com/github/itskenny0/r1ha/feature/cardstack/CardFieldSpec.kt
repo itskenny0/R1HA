@@ -1,0 +1,360 @@
+package com.github.itskenny0.r1ha.feature.cardstack
+
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
+
+/**
+ * Declarative field schema for the structured card editor ([CardMiniEditor]),
+ * the generalisation of the boolean-only [CardToggle] table to the full set of
+ * scalar / enum / entity / action options a card type accepts.
+ *
+ * Together [cardFieldsFor] (here) and [cardTogglesFor] ([CardToggleSpec]) are the
+ * single source of truth for what the editor exposes per type:
+ *  - [cardTogglesFor] owns the SHOW/HIDE visibility chips (show_name, hide_state…);
+ *  - [cardFieldsFor] owns everything else (name, colour, min/max, actions…).
+ * The two key sets, plus the editor's hand-rendered primary fields (title /
+ * entity / rows / url / content), are disjoint per type so no key is emitted
+ * twice (asserted by CardFieldSpecTest). Anything modelled by neither passes
+ * through verbatim via [buildStructuredCard].
+ *
+ * Every key here is one the app's Lovelace parser ([LovelaceParser]) actually
+ * reads, so the visual control maps to real rendered behaviour rather than a
+ * dead YAML key.
+ */
+
+/** A visual grouping header the editor renders the fields under, in this order. */
+internal object FieldSection {
+    const val BASICS = "BASICS"
+    const val APPEARANCE = "APPEARANCE"
+    const val ACTIONS = "ACTIONS"
+    const val ADVANCED = "ADVANCED"
+}
+
+/** One editable, non-boolean-visibility option of a card type. */
+internal sealed interface CardField {
+    /** Real config key (e.g. "color", "min", "tap_action"). */
+    val key: String
+
+    /** Short all-caps control label. */
+    val label: String
+
+    /** Grouping header ([FieldSection]). */
+    val section: String
+}
+
+/** Free text. [monospace] for ids / CSS lengths; [placeholder] hints the format. */
+internal data class TextFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.BASICS,
+    val monospace: Boolean = false,
+    val placeholder: String? = null,
+) : CardField
+
+/** A numeric value. Emitted as a real JSON number. [integer] rejects decimals. */
+internal data class NumberFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.APPEARANCE,
+    val integer: Boolean = false,
+    val placeholder: String? = null,
+) : CardField
+
+/** One choice from a fixed list, rendered as segmented chips. The empty-value
+ *  option (when [allowUnset]) clears the key back to the card's own default. */
+internal data class EnumFieldSpec(
+    override val key: String,
+    override val label: String,
+    val options: List<EnumOption>,
+    override val section: String = FieldSection.APPEARANCE,
+    /** The key's value when absent; used to keep configs clean (a choice equal to
+     *  [default] that was not already present is not emitted). Null = no default. */
+    val default: String? = null,
+    val allowUnset: Boolean = true,
+) : CardField
+
+internal data class EnumOption(val value: String, val label: String)
+
+/** A non-visibility boolean (vertical layout, logarithmic scale…). Distinct from
+ *  the SHOW/HIDE chips in [cardTogglesFor], which are visibility-specific. */
+internal data class BoolFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.APPEARANCE,
+    val default: Boolean = false,
+) : CardField
+
+/** A single entity id, rendered with the entity picker. [domains] filters the
+ *  picker when non-empty (e.g. only `light.` entities). */
+internal data class EntityFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.BASICS,
+    val domains: List<String> = emptyList(),
+) : CardField
+
+/** An MDI icon name (`mdi:lightbulb`). Rendered as a monospace text field with a
+ *  glyph preview; a full visual picker is a later bespoke pass. */
+internal data class IconFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.BASICS,
+) : CardField
+
+/** A colour: an HA named theme colour or `#rrggbb`. Rendered with named-colour
+ *  swatch quick-picks plus a hex/name text field. */
+internal data class ColorFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.APPEARANCE,
+) : CardField
+
+/** A nested HA action object (tap_action / hold_action / …). Rendered by the
+ *  bespoke [CardActionEditor]; value is the action [JsonObject] or absent. */
+internal data class ActionFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.ACTIONS,
+) : CardField
+
+/** HA's named theme colours offered as swatches on a [ColorFieldSpec]. The hex
+ *  values mirror HA's `--*-color` CSS variables closely enough for a preview. */
+internal val HA_NAMED_COLORS: List<Pair<String, Long>> = listOf(
+    "primary" to 0xFF03A9F4, "accent" to 0xFFFF9800, "red" to 0xFFF44336,
+    "pink" to 0xFFE91E63, "purple" to 0xFF926BC7, "deep-purple" to 0xFF6E41AB,
+    "indigo" to 0xFF3F51B5, "blue" to 0xFF2196F3, "light-blue" to 0xFF03A9F4,
+    "cyan" to 0xFF00BCD4, "teal" to 0xFF009688, "green" to 0xFF4CAF50,
+    "light-green" to 0xFF8BC34A, "lime" to 0xFFCDDC39, "yellow" to 0xFFFFEB3B,
+    "amber" to 0xFFFFC107, "orange" to 0xFFFF9800, "deep-orange" to 0xFFFF5722,
+    "brown" to 0xFF795548, "grey" to 0xFF9E9E9E, "blue-grey" to 0xFF607D8B,
+    "black" to 0xFF000000, "white" to 0xFFFFFFFF, "disabled" to 0xFFBDBDBD,
+)
+
+/**
+ * The non-visibility option fields for [type]. Empty == no extra fields section.
+ *
+ * Disjoint from [cardTogglesFor] and from the editor's hand-rendered primary
+ * fields (title, entity, button name/icon, iframe url/aspect, markdown content,
+ * entity rows) so each key has exactly one emit path.
+ */
+internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
+    "button" -> listOf(
+        // name + icon are hand-rendered primaries for the button card; only the
+        // extra options live here (keep this list disjoint from those keys).
+        ColorFieldSpec("color", "COLOUR"),
+        TextFieldSpec("icon_height", "ICON HEIGHT", FieldSection.APPEARANCE, monospace = true, placeholder = "48px / 2.5em"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "tile" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        IconFieldSpec("icon", "ICON"),
+        ColorFieldSpec("color", "COLOUR"),
+        BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
+        TextFieldSpec("state_content", "STATE CONTENT", FieldSection.APPEARANCE, placeholder = "state, last_changed…"),
+        EnumFieldSpec(
+            "features_position", "FEATURES",
+            options = listOf(EnumOption("bottom", "BOTTOM"), EnumOption("inline", "INLINE")),
+            default = "bottom",
+        ),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+        ActionFieldSpec("icon_tap_action", "ICON TAP", FieldSection.ADVANCED),
+        ActionFieldSpec("icon_hold_action", "ICON HOLD", FieldSection.ADVANCED),
+        ActionFieldSpec("icon_double_tap_action", "ICON DBL TAP", FieldSection.ADVANCED),
+    )
+    "light" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        IconFieldSpec("icon", "ICON"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "gauge" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("unit", "UNIT", FieldSection.APPEARANCE),
+        NumberFieldSpec("min", "MIN", FieldSection.APPEARANCE),
+        NumberFieldSpec("max", "MAX", FieldSection.APPEARANCE),
+        TextFieldSpec("attribute", "ATTRIBUTE", FieldSection.ADVANCED, placeholder = "current_temperature"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "sensor" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        IconFieldSpec("icon", "ICON"),
+        TextFieldSpec("unit", "UNIT", FieldSection.APPEARANCE),
+        EnumFieldSpec(
+            "graph", "GRAPH",
+            options = listOf(EnumOption("none", "NONE"), EnumOption("line", "LINE")),
+            default = "none",
+        ),
+        NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
+        EnumFieldSpec(
+            "detail", "DETAIL",
+            options = listOf(EnumOption("1", "1"), EnumOption("2", "2")),
+            default = "1",
+        ),
+        TextFieldSpec("attribute", "ATTRIBUTE", FieldSection.ADVANCED),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "thermostat" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "humidifier" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "weather-forecast" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        EnumFieldSpec(
+            "forecast_type", "FORECAST",
+            options = listOf(
+                EnumOption("daily", "DAILY"),
+                EnumOption("hourly", "HOURLY"),
+                EnumOption("twice_daily", "TWICE DAILY"),
+            ),
+            default = "daily",
+        ),
+        TextFieldSpec("secondary_info_attribute", "SECONDARY", FieldSection.APPEARANCE, placeholder = "humidity / wind_speed"),
+        BoolFieldSpec("round_temperature", "ROUND TEMP", FieldSection.APPEARANCE, default = false),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "entities" -> listOf(
+        IconFieldSpec("icon", "ICON"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "glance" -> listOf(
+        NumberFieldSpec("columns", "COLUMNS", FieldSection.APPEARANCE, integer = true),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "history-graph" -> listOf(
+        NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
+        NumberFieldSpec("refresh_interval", "REFRESH S", FieldSection.ADVANCED, integer = true),
+        BoolFieldSpec("logarithmic_scale", "LOG SCALE", FieldSection.APPEARANCE, default = false),
+        BoolFieldSpec("split_device_classes", "SPLIT CLASSES", FieldSection.APPEARANCE, default = false),
+        NumberFieldSpec("min_y_axis", "MIN Y", FieldSection.ADVANCED),
+        NumberFieldSpec("max_y_axis", "MAX Y", FieldSection.ADVANCED),
+    )
+    else -> emptyList()
+}
+
+/** Ordered section headers a type's fields fall under, for grouped rendering. */
+internal val FIELD_SECTION_ORDER = listOf(
+    FieldSection.BASICS, FieldSection.APPEARANCE, FieldSection.ACTIONS, FieldSection.ADVANCED,
+)
+
+/**
+ * Seed the editor's generic-field value map from a parsed [base] config: for each
+ * field of [type], copy the raw config value through when present so the controls
+ * show the stored config and round-trip losslessly. Absent keys are simply not
+ * in the map (the field renders empty / at its default).
+ */
+internal fun seedFieldValues(base: JsonObject?, type: String): Map<String, JsonElement> {
+    if (base == null) return emptyMap()
+    val out = LinkedHashMap<String, JsonElement>()
+    for (f in cardFieldsFor(type)) {
+        val v = base[f.key] ?: continue
+        out[f.key] = v
+    }
+    return out
+}
+
+/** True when [v] is "unset" for emit purposes: absent, JSON null, or a blank string. */
+private fun isUnset(v: JsonElement?): Boolean = when (v) {
+    null, JsonNull -> true
+    is JsonPrimitive -> v.isString && v.content.isBlank()
+    else -> false
+}
+
+/**
+ * Emit one generic field into the card builder, applying the same keep-it-clean
+ * rule the toggles use: a value is written when it is set AND (it deviates from
+ * the field's own default OR the key was already present in [base]); an unset
+ * value drops the key. Number fields coerce their stored text to a real JSON
+ * number; an unparseable number drops the key rather than writing a bad type.
+ */
+internal fun emitCardField(
+    builder: kotlinx.serialization.json.JsonObjectBuilder,
+    base: JsonObject,
+    field: CardField,
+    value: JsonElement?,
+) {
+    if (isUnset(value)) return
+    val v = value ?: return
+    val present = base.containsKey(field.key)
+    when (field) {
+        is NumberFieldSpec -> {
+            val text = (value as? JsonPrimitive)?.content ?: return
+            val num: JsonElement = if (field.integer) {
+                text.toLongOrNull()?.let { JsonPrimitive(it) } ?: return
+            } else {
+                val d = text.toDoubleOrNull() ?: return
+                // Emit a whole value as an int (0, not 0.0) so configs stay clean,
+                // matching how HA serialises gauge min/max and the like.
+                if (d == d.toLong().toDouble()) JsonPrimitive(d.toLong()) else JsonPrimitive(d)
+            }
+            builder.put(field.key, num)
+        }
+        is BoolFieldSpec -> {
+            val b = (value as? JsonPrimitive)?.booleanOrNull ?: return
+            if (b != field.default || present) builder.put(field.key, JsonPrimitive(b))
+        }
+        is EnumFieldSpec -> {
+            val s = (value as? JsonPrimitive)?.content ?: return
+            if (s != field.default || present) builder.put(field.key, JsonPrimitive(s))
+        }
+        is ActionFieldSpec -> builder.put(field.key, v)
+        is TextFieldSpec, is EntityFieldSpec, is IconFieldSpec, is ColorFieldSpec -> {
+            builder.put(field.key, v)
+        }
+    }
+}
+
+/** Coerce a stored number field value to the text the editor displays. */
+internal fun numberFieldText(v: JsonElement?): String = when (v) {
+    null, JsonNull -> ""
+    is JsonPrimitive -> {
+        // Show 5 not 5.0 for whole doubles so the field reads cleanly.
+        val d = v.doubleOrNull
+        when {
+            !v.isString && d != null && d == d.toLong().toDouble() -> d.toLong().toString()
+            else -> v.content
+        }
+    }
+    else -> ""
+}
+
+/** Read a stored string-ish field value as plain text for a control. */
+internal fun stringFieldText(v: JsonElement?): String = when (v) {
+    null, JsonNull -> ""
+    is JsonPrimitive -> v.content
+    else -> ""
+}
+
+/** Read a stored bool field value, falling back to [default]. */
+internal fun boolFieldValue(v: JsonElement?, default: Boolean): Boolean =
+    (v as? JsonPrimitive)?.booleanOrNull ?: default
+
+/** Read a stored action field value as its [JsonObject], or null when unset. */
+internal fun actionFieldObject(v: JsonElement?): JsonObject? = v as? JsonObject
+
+/** Read a stored enum value, or [default] when unset. */
+internal fun enumFieldValue(v: JsonElement?, default: String?): String? =
+    (v as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: default

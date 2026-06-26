@@ -127,16 +127,39 @@ class CardStructuredEditTest {
     }
 
     @Test
-    fun titleAppliesToNonButtonTypes() {
+    fun titleAppliesToTitleCards() {
+        // entities is a title-bearing card (not name-primary), so the form owns title.
         val base = buildJsonObject {
-            put("type", "tile")
-            put("entity", "light.kitchen")
+            put("type", "entities")
+            put("entities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("light.kitchen"))))
         }
         val edited = buildStructuredCard(
             base,
-            CardEditorForm(type = "tile", title = "Kitchen", entity = "light.kitchen"),
+            CardEditorForm(type = "entities", title = "Kitchen", rows = listOf(CardEntityRow("light.kitchen"))),
         )
         assertThat(edited["title"]).isEqualTo(JsonPrimitive("Kitchen"))
+    }
+
+    @Test
+    fun tileLabelsViaNameNotTitle() {
+        // tile is name-primary: it carries `name`, not `title`. The form must not
+        // own `title` for it (a stray one passes through), and `name` comes from
+        // the generic field engine.
+        val base = buildJsonObject {
+            put("type", "tile")
+            put("entity", "light.kitchen")
+            put("title", "legacy")
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "tile",
+                entity = "light.kitchen",
+                values = mapOf("name" to JsonPrimitive("Kitchen")),
+            ),
+        )
+        assertThat(edited["name"]).isEqualTo(JsonPrimitive("Kitchen"))
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("legacy"))
         assertThat(edited["entity"]).isEqualTo(JsonPrimitive("light.kitchen"))
     }
 
