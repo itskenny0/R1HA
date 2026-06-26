@@ -20,6 +20,7 @@ class CardFieldSpecTest {
     private val commonTypes = listOf(
         "button", "tile", "light", "gauge", "sensor", "thermostat",
         "humidifier", "weather-forecast", "entities", "glance", "history-graph",
+        "picture-entity", "media-control", "alarm-panel", "statistic",
     )
 
     /** The keys the editor hand-renders as primary controls for a type (not via
@@ -271,6 +272,40 @@ class CardFieldSpecTest {
             assertThat((obj["type"] as JsonPrimitive).content).isEqualTo(type)
             assertThat(featureRowLabel(obj)).isEqualTo(label)
         }
+    }
+
+    @Test
+    fun listFieldEmitsArrayAndRoundTrips() {
+        val base = buildJsonObject { put("type", "tile"); put("entity", "light.k") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "tile", entity = "light.k",
+                values = mapOf("state_content" to JsonPrimitive("state, last_changed")),
+            ),
+        )
+        val arr = edited["state_content"] as kotlinx.serialization.json.JsonArray
+        assertThat(arr).containsExactly(JsonPrimitive("state"), JsonPrimitive("last_changed")).inOrder()
+
+        // Seeding from a stored array yields the joined editable text.
+        val seeded = seedFieldValues(
+            buildJsonObject {
+                put("type", "tile"); put("entity", "light.k")
+                put("state_content", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("state"), JsonPrimitive("last_changed"))))
+            },
+            "tile",
+        )
+        assertThat(listFieldText(seeded["state_content"])).isEqualTo("state, last_changed")
+
+        // Blank clears the key.
+        val cleared = buildStructuredCard(
+            buildJsonObject {
+                put("type", "tile"); put("entity", "light.k")
+                put("state_content", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("state"))))
+            },
+            CardEditorForm(type = "tile", entity = "light.k", values = mapOf("state_content" to JsonPrimitive(""))),
+        )
+        assertThat(cleared.containsKey("state_content")).isFalse()
     }
 
     @Test

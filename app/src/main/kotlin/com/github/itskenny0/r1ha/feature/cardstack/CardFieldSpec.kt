@@ -80,6 +80,17 @@ internal data class EnumFieldSpec(
 
 internal data class EnumOption(val value: String, val label: String)
 
+/** A comma/space-separated list of strings, emitted as a real JSON array (the
+ *  shape the parser reads for `state_content`, alarm `states`, mode lists…). The
+ *  stored value is the raw editing TEXT; it is split to an array only on emit, so
+ *  typing a separator never fights a re-joined display. */
+internal data class ListFieldSpec(
+    override val key: String,
+    override val label: String,
+    override val section: String = FieldSection.APPEARANCE,
+    val placeholder: String? = null,
+) : CardField
+
 /** A non-visibility boolean (vertical layout, logarithmic scale…). Distinct from
  *  the SHOW/HIDE chips in [cardTogglesFor], which are visibility-specific. */
 internal data class BoolFieldSpec(
@@ -170,7 +181,7 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         IconFieldSpec("icon", "ICON"),
         ColorFieldSpec("color", "COLOUR"),
         BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
-        TextFieldSpec("state_content", "STATE CONTENT", FieldSection.APPEARANCE, placeholder = "state, last_changed…"),
+        ListFieldSpec("state_content", "STATE CONTENT", FieldSection.APPEARANCE, placeholder = "state, last_changed…"),
         EnumFieldSpec(
             "features_position", "FEATURES POSITION",
             options = listOf(EnumOption("bottom", "BOTTOM"), EnumOption("inline", "INLINE")),
@@ -262,6 +273,37 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         NumberFieldSpec("columns", "COLUMNS", FieldSection.APPEARANCE, integer = true),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
     )
+    "picture-entity" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("image", "IMAGE URL", FieldSection.APPEARANCE, monospace = true),
+        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.APPEARANCE, monospace = true),
+        TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "media-control" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "alarm-panel" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        ListFieldSpec("states", "ARM STATES", FieldSection.APPEARANCE, placeholder = "arm_home, arm_away…"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "statistic" -> listOf(
+        TextFieldSpec("name", "NAME"),
+        IconFieldSpec("icon", "ICON"),
+        EnumFieldSpec(
+            "stat_type", "STAT",
+            options = listOf(
+                EnumOption("mean", "MEAN"), EnumOption("min", "MIN"), EnumOption("max", "MAX"),
+                EnumOption("change", "CHANGE"), EnumOption("sum", "SUM"), EnumOption("state", "STATE"),
+            ),
+        ),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
     "history-graph" -> listOf(
         NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
         NumberFieldSpec("refresh_interval", "REFRESH S", FieldSection.ADVANCED, integer = true),
@@ -289,9 +331,31 @@ internal fun seedFieldValues(base: JsonObject?, type: String): Map<String, JsonE
     val out = LinkedHashMap<String, JsonElement>()
     for (f in cardFieldsFor(type)) {
         val v = base[f.key] ?: continue
-        out[f.key] = v
+        // A list field edits as text; if the config stored an array, join it to
+        // the editable comma form so the control shows it and round-trips.
+        out[f.key] = if (f is ListFieldSpec && v is JsonArray) JsonPrimitive(listJoin(v)) else v
     }
     return out
+}
+
+/** Join a JSON string array to the editor's comma-separated text. */
+internal fun listJoin(arr: JsonArray): String =
+    arr.mapNotNull { (it as? JsonPrimitive)?.content }.joinToString(", ")
+
+/** Split the editor's comma/space text into a JSON string array (blank -> empty). */
+internal fun listSplit(text: String): JsonArray =
+    JsonArray(
+        text.split(',', '\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { JsonPrimitive(it) },
+    )
+
+/** Read a stored list field value as editable text (array -> joined, string -> as-is). */
+internal fun listFieldText(v: JsonElement?): String = when (v) {
+    is JsonArray -> listJoin(v)
+    is JsonPrimitive -> v.content
+    else -> ""
 }
 
 /** True when [v] is "unset" for emit purposes: absent, JSON null, or a blank string. */
@@ -340,6 +404,11 @@ internal fun emitCardField(
         }
         is ActionFieldSpec -> builder.put(field.key, v)
         is BespokeFieldSpec -> builder.put(field.key, v)
+        is ListFieldSpec -> {
+            val text = (v as? JsonPrimitive)?.content ?: (v as? JsonArray)?.let { listJoin(it) } ?: return
+            val arr = listSplit(text)
+            if (arr.isNotEmpty()) builder.put(field.key, arr)
+        }
         is TextFieldSpec, is EntityFieldSpec, is IconFieldSpec, is ColorFieldSpec -> {
             builder.put(field.key, v)
         }

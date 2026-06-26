@@ -1492,6 +1492,12 @@ private fun CardFieldControl(
             onChange = { values[field.key] = JsonPrimitive(it) },
             monospace = true,
         )
+        is ListFieldSpec -> EditorField(
+            label = field.label,
+            value = listFieldText(raw),
+            onChange = { values[field.key] = JsonPrimitive(it) },
+            monospace = true,
+        )
         is NumberFieldSpec -> EditorField(
             label = field.label,
             value = numberFieldText(raw),
