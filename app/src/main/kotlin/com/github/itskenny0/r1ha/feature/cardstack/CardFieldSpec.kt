@@ -1,5 +1,6 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -121,6 +122,18 @@ internal data class ActionFieldSpec(
     override val section: String = FieldSection.ACTIONS,
 ) : CardField
 
+/** A complex value (HA card-features array, gauge severity object, gauge segments
+ *  array) edited by a dedicated bespoke sub-sheet. The stored value IS the JSON to
+ *  emit verbatim; the [kind] picks which editor opens. */
+internal data class BespokeFieldSpec(
+    override val key: String,
+    override val label: String,
+    val kind: BespokeKind,
+    override val section: String = FieldSection.APPEARANCE,
+) : CardField
+
+internal enum class BespokeKind { FEATURES, SEVERITY, SEGMENTS }
+
 /** HA's named theme colours offered as swatches on a [ColorFieldSpec]. The hex
  *  values mirror HA's `--*-color` CSS variables closely enough for a preview. */
 internal val HA_NAMED_COLORS: List<Pair<String, Long>> = listOf(
@@ -159,10 +172,11 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
         TextFieldSpec("state_content", "STATE CONTENT", FieldSection.APPEARANCE, placeholder = "state, last_changed…"),
         EnumFieldSpec(
-            "features_position", "FEATURES",
+            "features_position", "FEATURES POSITION",
             options = listOf(EnumOption("bottom", "BOTTOM"), EnumOption("inline", "INLINE")),
             default = "bottom",
         ),
+        BespokeFieldSpec("features", "FEATURES", BespokeKind.FEATURES),
         ActionFieldSpec("tap_action", "TAP"),
         ActionFieldSpec("hold_action", "HOLD"),
         ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
@@ -185,6 +199,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         NumberFieldSpec("max", "MAX", FieldSection.APPEARANCE),
         TextFieldSpec("attribute", "ATTRIBUTE", FieldSection.ADVANCED, placeholder = "current_temperature"),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        BespokeFieldSpec("severity", "SEVERITY BANDS", BespokeKind.SEVERITY),
+        BespokeFieldSpec("segments", "SEGMENTS", BespokeKind.SEGMENTS),
         ActionFieldSpec("tap_action", "TAP"),
         ActionFieldSpec("hold_action", "HOLD"),
         ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
@@ -212,10 +228,12 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "thermostat" -> listOf(
         TextFieldSpec("name", "NAME"),
+        BespokeFieldSpec("features", "FEATURES", BespokeKind.FEATURES),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
     )
     "humidifier" -> listOf(
         TextFieldSpec("name", "NAME"),
+        BespokeFieldSpec("features", "FEATURES", BespokeKind.FEATURES),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
     )
     "weather-forecast" -> listOf(
@@ -321,6 +339,7 @@ internal fun emitCardField(
             if (s != field.default || present) builder.put(field.key, JsonPrimitive(s))
         }
         is ActionFieldSpec -> builder.put(field.key, v)
+        is BespokeFieldSpec -> builder.put(field.key, v)
         is TextFieldSpec, is EntityFieldSpec, is IconFieldSpec, is ColorFieldSpec -> {
             builder.put(field.key, v)
         }
@@ -358,3 +377,122 @@ internal fun actionFieldObject(v: JsonElement?): JsonObject? = v as? JsonObject
 /** Read a stored enum value, or [default] when unset. */
 internal fun enumFieldValue(v: JsonElement?, default: String?): String? =
     (v as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: default
+
+// ── Bespoke: card-features ──────────────────────────────────────────────────
+
+/**
+ * The HA card-feature types the features editor can add, as (type, label). Every
+ * type the app's [parseTileFeatures] understands is offered; an entity that does
+ * not support a feature simply renders nothing for it (HA's own behaviour), so
+ * the catalogue is not domain-filtered here.
+ */
+internal val FEATURE_CATALOG: List<Pair<String, String>> = listOf(
+    "toggle" to "Toggle",
+    "light-brightness" to "Light brightness",
+    "light-color-temp" to "Light colour temp",
+    "cover-open-close" to "Cover open/close",
+    "cover-position" to "Cover position",
+    "cover-tilt" to "Cover tilt",
+    "cover-tilt-position" to "Cover tilt position",
+    "fan-speed" to "Fan speed",
+    "fan-preset-modes" to "Fan preset modes",
+    "fan-oscillate" to "Fan oscillate",
+    "fan-direction" to "Fan direction",
+    "climate-hvac-modes" to "Climate HVAC modes",
+    "climate-preset-modes" to "Climate preset modes",
+    "climate-fan-modes" to "Climate fan modes",
+    "climate-swing-modes" to "Climate swing modes",
+    "target-temperature" to "Target temperature",
+    "target-humidity" to "Target humidity",
+    "humidifier-modes" to "Humidifier modes",
+    "humidifier-toggle" to "Humidifier toggle",
+    "alarm-modes" to "Alarm modes",
+    "lock-commands" to "Lock commands",
+    "lock-open-door" to "Lock open door",
+    "valve-open-close" to "Valve open/close",
+    "valve-position" to "Valve position",
+    "select-options" to "Select options",
+    "numeric-input" to "Numeric input",
+    "water-heater-operation-modes" to "Water-heater modes",
+    "vacuum-commands" to "Vacuum commands",
+    "lawn-mower-commands" to "Lawn-mower commands",
+    "update-actions" to "Update actions",
+    "counter-actions" to "Counter actions",
+    "date-set" to "Date set",
+    "media-player-playback" to "Media playback",
+    "media-player-volume-slider" to "Media volume slider",
+)
+
+/** Parse a stored `features` value into its raw object list (lossless). */
+internal fun parseFeatureObjects(value: JsonElement?): List<JsonObject> =
+    (value as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
+
+/** A fresh feature object for a newly-added [type]. Only the `type` key is set;
+ *  the parser supplies sensible defaults for the rest, and the per-feature raw
+ *  editor lets the user add options. */
+internal fun newFeatureObject(type: String): JsonObject =
+    JsonObject(mapOf("type" to JsonPrimitive(type)))
+
+/** Human label for a feature row: the catalogue name, else the prettified type. */
+internal fun featureRowLabel(obj: JsonObject): String {
+    val type = (obj["type"] as? JsonPrimitive)?.content.orEmpty()
+    return FEATURE_CATALOG.firstOrNull { it.first == type }?.second
+        ?: type.replace('-', ' ').replaceFirstChar { it.uppercase() }.ifBlank { "Feature" }
+}
+
+/** Emit a features list back to a JSON array, or null when empty (clears the key). */
+internal fun buildFeaturesArray(features: List<JsonObject>): JsonArray? =
+    if (features.isEmpty()) null else JsonArray(features)
+
+// ── Bespoke: gauge severity + segments ──────────────────────────────────────
+
+/** Build a gauge `severity` object from green/yellow/red threshold text; null
+ *  when every field is blank (clears the key). Blank individual fields are
+ *  omitted so a partial severity round-trips. */
+internal fun buildSeverity(green: String, yellow: String, red: String): JsonObject? {
+    val m = LinkedHashMap<String, JsonElement>()
+    green.trim().toDoubleOrNull()?.let { m["green"] = numberPrimitive(it) }
+    yellow.trim().toDoubleOrNull()?.let { m["yellow"] = numberPrimitive(it) }
+    red.trim().toDoubleOrNull()?.let { m["red"] = numberPrimitive(it) }
+    return if (m.isEmpty()) null else JsonObject(m)
+}
+
+/** A JSON number that prints a whole value as an int (0, not 0.0), like HA does. */
+private fun numberPrimitive(d: Double): JsonPrimitive =
+    if (d == d.toLong().toDouble()) JsonPrimitive(d.toLong()) else JsonPrimitive(d)
+
+/** One editable segment row: from-threshold text, colour, optional label. */
+internal data class SegmentRow(val from: String, val color: String, val label: String = "")
+
+/** Build a gauge `segments` array from rows; rows with a non-numeric `from` or a
+ *  blank colour are dropped. Null when nothing valid remains (clears the key). */
+internal fun buildSegments(rows: List<SegmentRow>): JsonArray? {
+    val out = rows.mapNotNull { row ->
+        val from = row.from.trim().toDoubleOrNull() ?: return@mapNotNull null
+        if (row.color.isBlank()) return@mapNotNull null
+        val m = LinkedHashMap<String, JsonElement>()
+        m["from"] = numberPrimitive(from)
+        m["color"] = JsonPrimitive(row.color.trim())
+        row.label.trim().takeIf { it.isNotEmpty() }?.let { m["label"] = JsonPrimitive(it) }
+        JsonObject(m)
+    }
+    return if (out.isEmpty()) null else JsonArray(out)
+}
+
+/** Parse a stored `severity` object to (green, yellow, red) display text. */
+internal fun parseSeverityText(value: JsonElement?): Triple<String, String, String> {
+    val o = value as? JsonObject ?: return Triple("", "", "")
+    fun f(k: String) = (o[k] as? JsonPrimitive)?.let { numberFieldText(it) }.orEmpty()
+    return Triple(f("green"), f("yellow"), f("red"))
+}
+
+/** Parse a stored `segments` array to editable rows. */
+internal fun parseSegmentRows(value: JsonElement?): List<SegmentRow> =
+    (value as? JsonArray).orEmpty().mapNotNull { el ->
+        val o = el as? JsonObject ?: return@mapNotNull null
+        SegmentRow(
+            from = (o["from"] as? JsonPrimitive)?.let { numberFieldText(it) }.orEmpty(),
+            color = (o["color"] as? JsonPrimitive)?.content.orEmpty(),
+            label = (o["label"] as? JsonPrimitive)?.content.orEmpty(),
+        )
+    }

@@ -189,6 +189,91 @@ class CardFieldSpecTest {
     }
 
     @Test
+    fun bespokeFeaturesRoundTripAndClear() {
+        val base = buildJsonObject { put("type", "tile"); put("entity", "light.k") }
+        val features = kotlinx.serialization.json.JsonArray(
+            listOf(
+                buildJsonObject { put("type", "light-brightness") },
+                buildJsonObject { put("type", "toggle") },
+            ),
+        )
+        val withFeatures = buildStructuredCard(
+            base,
+            CardEditorForm(type = "tile", entity = "light.k", values = mapOf("features" to features)),
+        )
+        assertThat(withFeatures["features"]).isEqualTo(features)
+
+        // Clearing via JsonNull drops the key even though base had it.
+        val cleared = buildStructuredCard(
+            buildJsonObject { put("type", "tile"); put("entity", "light.k"); put("features", features) },
+            CardEditorForm(
+                type = "tile", entity = "light.k",
+                values = mapOf("features" to kotlinx.serialization.json.JsonNull),
+            ),
+        )
+        assertThat(cleared.containsKey("features")).isFalse()
+    }
+
+    @Test
+    fun actionClearViaJsonNullDropsStoredAction() {
+        // The clearing-semantics fix: a stored tap_action explicitly cleared in the
+        // editor (JsonNull) must drop, not fall back to the base value.
+        val base = buildJsonObject {
+            put("type", "button")
+            put("name", "TV")
+            putJsonObject("tap_action") { put("action", "toggle") }
+        }
+        val cleared = buildStructuredCard(
+            base,
+            CardEditorForm(type = "button", name = "TV", values = mapOf("tap_action" to kotlinx.serialization.json.JsonNull)),
+        )
+        assertThat(cleared.containsKey("tap_action")).isFalse()
+    }
+
+    @Test
+    fun severityBuildsPartialAndParsesBack() {
+        assertThat(buildSeverity("", "", "")).isNull()
+        val sev = buildSeverity("0", "50", "")
+        assertThat(sev).isNotNull()
+        assertThat(sev!!["green"]).isEqualTo(JsonPrimitive(0L))
+        assertThat(sev["yellow"]).isEqualTo(JsonPrimitive(50L))
+        assertThat(sev.containsKey("red")).isFalse()
+        val (g, y, r) = parseSeverityText(sev)
+        assertThat(g).isEqualTo("0")
+        assertThat(y).isEqualTo("50")
+        assertThat(r).isEqualTo("")
+    }
+
+    @Test
+    fun segmentsBuildDropsInvalidRows() {
+        val rows = listOf(
+            SegmentRow(from = "0", color = "green", label = "Low"),
+            SegmentRow(from = "bad", color = "red"),     // non-numeric from -> dropped
+            SegmentRow(from = "50", color = ""),         // blank colour -> dropped
+            SegmentRow(from = "75", color = "red"),
+        )
+        val arr = buildSegments(rows)
+        assertThat(arr).isNotNull()
+        assertThat(arr!!.size).isEqualTo(2)
+        val first = arr[0] as JsonObject
+        assertThat(first["from"]).isEqualTo(JsonPrimitive(0L))
+        assertThat(first["color"]).isEqualTo(JsonPrimitive("green"))
+        assertThat(first["label"]).isEqualTo(JsonPrimitive("Low"))
+        assertThat(buildSegments(emptyList())).isNull()
+    }
+
+    @Test
+    fun featureCatalogTypesAreParseable() {
+        // Every catalogue type produces a feature object with that type, and the
+        // row label resolves to the catalogue's display name.
+        FEATURE_CATALOG.forEach { (type, label) ->
+            val obj = newFeatureObject(type)
+            assertThat((obj["type"] as JsonPrimitive).content).isEqualTo(type)
+            assertThat(featureRowLabel(obj)).isEqualTo(label)
+        }
+    }
+
+    @Test
     fun foreignKeysStillPassThroughWithFields() {
         val base = buildJsonObject {
             put("type", "tile")

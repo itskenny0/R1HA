@@ -53,6 +53,7 @@ import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -810,6 +811,8 @@ internal fun CardMiniEditor(
     }
     // Which action field (tap_action/…) the bespoke action editor is open for.
     var actionEditorFor by remember { mutableStateOf<String?>(null) }
+    // Which complex field (features/severity/segments) the bespoke editor is open for.
+    var bespokeEditorFor by remember { mutableStateOf<BespokeFieldSpec?>(null) }
     // Raw JSON text (the escape hatch); kept in sync from the structured side
     // only when the user switches modes, so typing in one mode never fights
     // the other.
@@ -1112,6 +1115,7 @@ internal fun CardMiniEditor(
                     values = fieldValues,
                     onPickEntity = { key -> entityPickerFor = EntityPickTarget.Field(key) },
                     onEditAction = { key -> actionEditorFor = key },
+                    onEditBespoke = { field -> bespokeEditorFor = field },
                 )
                 if (!structuredCapable) {
                     Text(
@@ -1161,11 +1165,41 @@ internal fun CardMiniEditor(
             label = cardFieldsFor(type).firstOrNull { it.key == actionKey }?.label ?: "ACTION",
             initial = actionFieldObject(fieldValues[actionKey]),
             onSave = { obj ->
-                if (obj == null) fieldValues.remove(actionKey) else fieldValues[actionKey] = obj
+                // JsonNull (not remove) so the build loop sees the key as LOADED
+                // and drops it, instead of falling back to the base value (which
+                // would silently undo a clear of a stored action).
+                fieldValues[actionKey] = obj ?: JsonNull
                 actionEditorFor = null
             },
             onDismiss = { actionEditorFor = null },
         )
+    }
+
+    val bespoke = bespokeEditorFor
+    if (bespoke != null) {
+        val onSaveValue: (JsonElement?) -> Unit = { value ->
+            // JsonNull clears (same loaded-but-unset contract as the action editor).
+            fieldValues[bespoke.key] = value ?: JsonNull
+            bespokeEditorFor = null
+        }
+        val onDismiss = { bespokeEditorFor = null }
+        when (bespoke.kind) {
+            BespokeKind.FEATURES -> CardFeaturesEditor(
+                initial = fieldValues[bespoke.key],
+                onSave = onSaveValue,
+                onDismiss = onDismiss,
+            )
+            BespokeKind.SEVERITY -> GaugeSeverityEditor(
+                initial = fieldValues[bespoke.key],
+                onSave = onSaveValue,
+                onDismiss = onDismiss,
+            )
+            BespokeKind.SEGMENTS -> GaugeSegmentsEditor(
+                initial = fieldValues[bespoke.key],
+                onSave = onSaveValue,
+                onDismiss = onDismiss,
+            )
+        }
     }
 }
 
@@ -1419,6 +1453,7 @@ private fun CardFieldsSection(
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
     onPickEntity: (String) -> Unit,
     onEditAction: (String) -> Unit,
+    onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
     val fields = cardFieldsFor(type)
     if (fields.isEmpty()) return
@@ -1429,7 +1464,7 @@ private fun CardFieldsSection(
         Text(text = section, style = R1.labelMicro, color = R1.InkSoft)
         Spacer(Modifier.height(6.dp))
         inSection.forEach { field ->
-            CardFieldControl(field, values, onPickEntity, onEditAction)
+            CardFieldControl(field, values, onPickEntity, onEditAction, onEditBespoke)
             Spacer(Modifier.height(8.dp))
         }
     }
@@ -1441,6 +1476,7 @@ private fun CardFieldControl(
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
     onPickEntity: (String) -> Unit,
     onEditAction: (String) -> Unit,
+    onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
     val raw = values[field.key]
     when (field) {
@@ -1505,31 +1541,61 @@ private fun CardFieldControl(
             Spacer(Modifier.height(4.dp))
             EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field.key) })
         }
-        is ActionFieldSpec -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(R1.ShapeS)
-                    .background(R1.SurfaceMuted)
-                    .border(1.dp, R1.Hairline, R1.ShapeS)
-                    .r1Pressable(onClick = { onEditAction(field.key) })
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
-                        Text(
-                            text = actionSummary(actionFieldObject(raw)),
-                            style = R1.body,
-                            color = R1.Ink,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Text(text = "EDIT ›", style = R1.labelMicro, color = R1.AccentWarm)
-                }
+        is ActionFieldSpec -> EditSummaryRow(
+            label = field.label,
+            summary = actionSummary(actionFieldObject(raw)),
+            onClick = { onEditAction(field.key) },
+        )
+        is BespokeFieldSpec -> EditSummaryRow(
+            label = field.label,
+            summary = bespokeSummary(field.kind, raw),
+            onClick = { onEditBespoke(field) },
+        )
+    }
+}
+
+/** A tappable "label / current-value / EDIT ›" row, shared by the action and
+ *  bespoke (features / severity / segments) sub-editors. */
+@Composable
+private fun EditSummaryRow(label: String, summary: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(R1.ShapeS)
+            .background(R1.SurfaceMuted)
+            .border(1.dp, R1.Hairline, R1.ShapeS)
+            .r1Pressable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = label, style = R1.labelMicro, color = R1.InkSoft)
+                Text(
+                    text = summary,
+                    style = R1.body,
+                    color = R1.Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+            Text(text = "EDIT ›", style = R1.labelMicro, color = R1.AccentWarm)
         }
+    }
+}
+
+/** One-line summary of a bespoke field's current value for its [EditSummaryRow]. */
+private fun bespokeSummary(kind: BespokeKind, raw: JsonElement?): String = when (kind) {
+    BespokeKind.FEATURES -> {
+        val n = parseFeatureObjects(raw).size
+        if (n == 0) "NONE" else "$n FEATURE${if (n == 1) "" else "S"}"
+    }
+    BespokeKind.SEVERITY -> {
+        val (g, y, r) = parseSeverityText(raw)
+        if (g.isBlank() && y.isBlank() && r.isBlank()) "NONE" else "G $g · Y $y · R $r"
+    }
+    BespokeKind.SEGMENTS -> {
+        val n = parseSegmentRows(raw).size
+        if (n == 0) "NONE" else "$n BAND${if (n == 1) "" else "S"}"
     }
 }
 
@@ -1746,5 +1812,230 @@ private fun CardActionEditor(
                 SheetButton(label = "SAVE", accent = true, onClick = { onSave(build()) })
             }
         }
+    }
+}
+
+/** Shared modal scaffold for the bespoke sub-editors (features / severity /
+ *  segments): the dim backdrop, centred surface, title and CANCEL/SAVE row. */
+@Composable
+private fun BespokeEditorScaffold(
+    title: String,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+    body: @Composable () -> Unit,
+) {
+    androidx.activity.compose.BackHandler(onBack = onCancel)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.96f))
+            .r1Pressable(onClick = onCancel, hapticOnClick = false)
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 18.dp)
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(text = title, style = R1.sectionHeader, color = R1.AccentWarm)
+            Spacer(Modifier.height(10.dp))
+            body()
+            Spacer(Modifier.height(14.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                SheetButton(label = "CANCEL", accent = false, onClick = onCancel)
+                Spacer(Modifier.width(8.dp))
+                SheetButton(label = "SAVE", accent = true, onClick = onSave)
+            }
+        }
+    }
+}
+
+/**
+ * Editor for a card's `features:` array. Lists the configured features, lets the
+ * user add (from the catalogue), remove, reorder, and edit each feature's full
+ * options as JSON (so every HA feature option is reachable), then writes the
+ * array back. Saving an empty list clears the key.
+ */
+@Composable
+private fun CardFeaturesEditor(
+    initial: JsonElement?,
+    onSave: (JsonElement?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val features = remember {
+        androidx.compose.runtime.mutableStateListOf<JsonObject>().apply {
+            addAll(parseFeatureObjects(initial))
+        }
+    }
+    var addOpen by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(-1) }
+
+    BespokeEditorScaffold(
+        title = "FEATURES",
+        onCancel = onDismiss,
+        onSave = { onSave(buildFeaturesArray(features.toList())) },
+    ) {
+        features.forEachIndexed { idx, feat ->
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(R1.ShapeS)
+                            .r1Pressable(onClick = { expanded = if (expanded == idx) -1 else idx })
+                            .padding(vertical = 4.dp),
+                    ) {
+                        Text(text = featureRowLabel(feat), style = R1.body, color = R1.Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    // Reorder up/down + remove.
+                    if (idx > 0) {
+                        Box(
+                            modifier = Modifier.clip(R1.ShapeS)
+                                .r1Pressable(onClick = {
+                                    val tmp = features[idx - 1]; features[idx - 1] = features[idx]; features[idx] = tmp
+                                    expanded = -1
+                                })
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                        ) { Text("↑", style = R1.body, color = R1.InkSoft) }
+                    }
+                    if (idx < features.lastIndex) {
+                        Box(
+                            modifier = Modifier.clip(R1.ShapeS)
+                                .r1Pressable(onClick = {
+                                    val tmp = features[idx + 1]; features[idx + 1] = features[idx]; features[idx] = tmp
+                                    expanded = -1
+                                })
+                                .padding(horizontal = 6.dp, vertical = 6.dp),
+                        ) { Text("↓", style = R1.body, color = R1.InkSoft) }
+                    }
+                    Box(
+                        modifier = Modifier.clip(R1.ShapeS)
+                            .r1Pressable(onClick = {
+                                features.removeAt(idx)
+                                expanded = -1
+                            })
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) { Text("✕", style = R1.labelMicro, color = R1.StatusRed) }
+                }
+                if (expanded == idx) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(text = "OPTIONS (JSON)", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.height(4.dp))
+                    var text by remember(idx, feat) {
+                        mutableStateOf(LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), feat))
+                    }
+                    val parsed = runCatching { LOVELACE_EDIT_JSON.parseToJsonElement(text) as? JsonObject }.getOrNull()
+                    com.github.itskenny0.r1ha.ui.components.R1TextField(
+                        value = text,
+                        onValueChange = {
+                            text = it
+                            runCatching { LOVELACE_EDIT_JSON.parseToJsonElement(it) as? JsonObject }
+                                .getOrNull()?.let { obj -> features[idx] = obj }
+                        },
+                        placeholder = "{ \"type\": \"...\" }",
+                        monospace = true,
+                        isError = parsed == null,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        SheetButton(label = if (addOpen) "CLOSE CATALOGUE" else "+ ADD FEATURE", accent = true, onClick = { addOpen = !addOpen })
+        if (addOpen) {
+            Spacer(Modifier.height(6.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FEATURE_CATALOG.forEach { (type, lbl) ->
+                    EditorToggleChip(
+                        label = lbl.uppercase(),
+                        selected = false,
+                        onClick = {
+                            features.add(newFeatureObject(type))
+                            addOpen = false
+                            expanded = features.lastIndex
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Editor for a gauge `severity:` object: green/yellow/red thresholds. Saving with
+ *  every field blank clears the key (HA falls back to a single fill / segments). */
+@Composable
+private fun GaugeSeverityEditor(
+    initial: JsonElement?,
+    onSave: (JsonElement?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val (g0, y0, r0) = remember(initial) { parseSeverityText(initial) }
+    var green by remember { mutableStateOf(g0) }
+    var yellow by remember { mutableStateOf(y0) }
+    var red by remember { mutableStateOf(r0) }
+    BespokeEditorScaffold(
+        title = "SEVERITY BANDS",
+        onCancel = onDismiss,
+        onSave = { onSave(buildSeverity(green, yellow, red)) },
+    ) {
+        Text(
+            text = "Threshold where each colour starts. Leave all blank to clear.",
+            style = R1.labelMicro,
+            color = R1.InkMuted,
+        )
+        Spacer(Modifier.height(8.dp))
+        EditorField(label = "GREEN FROM", value = green, onChange = { green = it }, monospace = true)
+        Spacer(Modifier.height(8.dp))
+        EditorField(label = "YELLOW FROM", value = yellow, onChange = { yellow = it }, monospace = true)
+        Spacer(Modifier.height(8.dp))
+        EditorField(label = "RED FROM", value = red, onChange = { red = it }, monospace = true)
+    }
+}
+
+/** Editor for a gauge `segments:` array: ordered colour bands (from + colour +
+ *  optional label). Saving with no valid rows clears the key. */
+@Composable
+private fun GaugeSegmentsEditor(
+    initial: JsonElement?,
+    onSave: (JsonElement?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val rows = remember {
+        androidx.compose.runtime.mutableStateListOf<SegmentRow>().apply { addAll(parseSegmentRows(initial)) }
+    }
+    BespokeEditorScaffold(
+        title = "SEGMENTS",
+        onCancel = onDismiss,
+        onSave = { onSave(buildSegments(rows.toList())) },
+    ) {
+        rows.forEachIndexed { idx, row ->
+            Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "BAND ${idx + 1}", style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+                    Box(
+                        modifier = Modifier.clip(R1.ShapeS)
+                            .r1Pressable(onClick = { rows.removeAt(idx) })
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) { Text("✕", style = R1.labelMicro, color = R1.StatusRed) }
+                }
+                Spacer(Modifier.height(4.dp))
+                EditorField(label = "FROM", value = row.from, onChange = { rows[idx] = row.copy(from = it) }, monospace = true)
+                Spacer(Modifier.height(4.dp))
+                EditorField(label = "COLOUR", value = row.color, onChange = { rows[idx] = row.copy(color = it) }, monospace = true)
+                Spacer(Modifier.height(4.dp))
+                EditorField(label = "LABEL (OPTIONAL)", value = row.label, onChange = { rows[idx] = row.copy(label = it) })
+            }
+        }
+        SheetButton(label = "+ ADD BAND", accent = true, onClick = { rows.add(SegmentRow(from = "", color = "")) })
     }
 }
