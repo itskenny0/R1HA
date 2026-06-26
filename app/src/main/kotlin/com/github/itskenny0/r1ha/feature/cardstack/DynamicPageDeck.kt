@@ -732,6 +732,10 @@ internal fun DynamicPageDeck(
                                         // FULLSCREEN's call site keeps the
                                         // default fill.
                                         fillSlot = false,
+                                        // The wheel-focused slot is the focused card:
+                                        // it gets the glance strip (secondary-info +
+                                        // inline quick controls).
+                                        focused = isFocusedSlot,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }

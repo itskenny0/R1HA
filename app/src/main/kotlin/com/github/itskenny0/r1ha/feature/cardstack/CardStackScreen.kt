@@ -2765,6 +2765,9 @@ private fun PageDeck(
                         else -> null
                     },
                     lightWheelMode = pageLightMode,
+                    // The centred (non-peek) card is the focused one: it gets the
+                    // glance strip (secondary-info + inline quick controls).
+                    focused = !isPeekNeighbour,
                     modifier = slotModifier,
                 )
                 }

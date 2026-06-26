@@ -403,7 +403,14 @@ fun SensorCard(
             androidx.compose.runtime.mutableStateOf(false)
         }
         val textHistoryLength = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.textHistoryLength
-        if (repo != null) {
+        // Latest state numeric? Then it's a line chart; otherwise list of changes.
+        val latestIsNumeric = state.rawState?.toDoubleOrNull()?.isFinite() == true
+        // The numeric face chart IS the "face sparkline" the deck-wide toggle controls;
+        // turning it off skips the chart (and its history fetch). The text change-list
+        // for non-numeric sensors is unaffected.
+        val showFaceChart = com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.showFaceSparkline
+        val showHistoryBlock = !latestIsNumeric || showFaceChart
+        if (showHistoryBlock && repo != null) {
             androidx.compose.runtime.LaunchedEffect(state.id.value) {
                 // Sleep 1.5s — if the user swipes off the card in that
                 // window, LaunchedEffect cancels and we skip the fetch
@@ -414,36 +421,36 @@ fun SensorCard(
                     .onSuccess { historyState.value = it }
             }
         }
-        // Latest state numeric? Then it's a line chart; otherwise list of changes.
-        val latestIsNumeric = state.rawState?.toDoubleOrNull()?.isFinite() == true
-        if (!dwellElapsed.value) {
-            // Placeholder strip while the dwell timer is running. Same
-            // approximate height as the real chart so the card layout
-            // doesn't shift when the chart populates.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = "—",
-                    style = R1.labelMicro,
-                    color = ink.muted,
+        if (showHistoryBlock) {
+            if (!dwellElapsed.value) {
+                // Placeholder strip while the dwell timer is running. Same
+                // approximate height as the real chart so the card layout
+                // doesn't shift when the chart populates.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "—",
+                        style = R1.labelMicro,
+                        color = ink.muted,
+                    )
+                }
+            } else if (latestIsNumeric) {
+                SensorHistoryChart(
+                    points = historyState.value,
+                    accent = accent,
+                    unit = state.unit,
+                )
+            } else {
+                SensorHistoryList(
+                    points = historyState.value,
+                    accent = accent,
+                    maxEntries = textHistoryLength,
                 )
             }
-        } else if (latestIsNumeric) {
-            SensorHistoryChart(
-                points = historyState.value,
-                accent = accent,
-                unit = state.unit,
-            )
-        } else {
-            SensorHistoryList(
-                points = historyState.value,
-                accent = accent,
-                maxEntries = textHistoryLength,
-            )
         }
 
         // Fill mode floats the footer hint to the slot bottom; wrap mode
