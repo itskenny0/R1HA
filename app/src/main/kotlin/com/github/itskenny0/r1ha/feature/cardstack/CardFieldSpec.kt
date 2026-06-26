@@ -319,6 +319,35 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         TextFieldSpec("time_format", "TIME FORMAT", FieldSection.ADVANCED, placeholder = "24 / 12"),
         TextFieldSpec("time_zone", "TIME ZONE", FieldSection.ADVANCED, placeholder = "Europe/Berlin"),
     )
+    "map" -> listOf(
+        NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
+        EnumFieldSpec(
+            "label_mode", "LABELS",
+            options = listOf(EnumOption("name", "NAME"), EnumOption("state", "STATE"), EnumOption("attribute", "ATTRIBUTE")),
+        ),
+        TextFieldSpec("attribute", "ATTRIBUTE", FieldSection.ADVANCED),
+        BoolFieldSpec("show_all", "SHOW ALL", FieldSection.APPEARANCE, default = false),
+        BoolFieldSpec("fit_zones", "FIT ZONES", FieldSection.APPEARANCE, default = false),
+        BoolFieldSpec("cluster", "CLUSTER", FieldSection.APPEARANCE, default = true),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "logbook" -> listOf(
+        NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
+        ListFieldSpec("state_filter", "STATE FILTER", FieldSection.APPEARANCE, placeholder = "on, off…"),
+        TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+    )
+    "calendar" -> listOf(
+        EnumFieldSpec(
+            "initial_view", "VIEW",
+            options = listOf(
+                EnumOption("dayGridMonth", "MONTH"),
+                EnumOption("dayGridDay", "DAY"),
+                EnumOption("listWeek", "LIST"),
+            ),
+            default = "dayGridMonth",
+        ),
+        BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
+    )
     "picture" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
         TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),

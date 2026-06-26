@@ -21,7 +21,7 @@ class CardFieldSpecTest {
         "button", "tile", "light", "gauge", "sensor", "thermostat",
         "humidifier", "weather-forecast", "entities", "glance", "history-graph",
         "picture-entity", "media-control", "alarm-panel", "statistic",
-        "clock", "picture",
+        "clock", "picture", "map", "logbook", "calendar",
     )
 
     /** The keys the editor hand-renders as primary controls for a type (not via
@@ -340,6 +340,30 @@ class CardFieldSpecTest {
         )
         assertThat(edited["title"]).isEqualTo(JsonPrimitive("Hall"))
         assertThat(edited["clock_style"]).isEqualTo(JsonPrimitive("analog"))
+    }
+
+    @Test
+    fun entityListCardsKeepTheirEntitiesArrayWhileEditingOptions() {
+        // map/logbook/calendar are form-editable for their options, but their
+        // entities array is not form-owned and must survive verbatim.
+        val entities = kotlinx.serialization.json.JsonArray(
+            listOf(JsonPrimitive("device_tracker.phone"), JsonPrimitive("person.me")),
+        )
+        val base = buildJsonObject {
+            put("type", "map")
+            put("entities", entities)
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "map", title = "Where",
+                values = mapOf("hours_to_show" to JsonPrimitive("12"), "cluster" to JsonPrimitive(false)),
+            ),
+        )
+        assertThat(edited["entities"]).isEqualTo(entities)
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("Where"))
+        assertThat(edited["hours_to_show"]).isEqualTo(JsonPrimitive(12L))
+        assertThat(edited["cluster"]).isEqualTo(JsonPrimitive(false))
     }
 
     @Test
