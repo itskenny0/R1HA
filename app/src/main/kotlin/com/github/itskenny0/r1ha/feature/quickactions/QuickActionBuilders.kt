@@ -6,11 +6,13 @@ import com.github.itskenny0.r1ha.core.ha.EntityState
  * Ordered registry of per-domain quick-action providers. [buildQuickActions] scans this
  * list and the first builder whose [QuickActionBuilder.supports] claims the entity wins.
  *
- * Domain builders (light/climate/media; cover/fan/lock/vacuum/...) are appended here by
- * later tasks. Until then the list is empty and every entity falls through to
- * [GenericQuickActions].
+ * Domain builders are registered here: light/climate/media first, then the remaining
+ * controllable domains (cover/fan/lock/vacuum/remote/siren/valve/water_heater/humidifier).
+ * Any entity no builder claims falls through to [GenericQuickActions] (no chips, manage
+ * row only).
  */
-internal val DOMAIN_QUICK_ACTION_BUILDERS: List<QuickActionBuilder> = emptyList()
+internal val DOMAIN_QUICK_ACTION_BUILDERS: List<QuickActionBuilder> =
+    lightClimateMediaQuickActionBuilders + extraDomainQuickActionBuilders
 
 /**
  * Fallback builder for any entity no domain builder claims. It returns no groups: the

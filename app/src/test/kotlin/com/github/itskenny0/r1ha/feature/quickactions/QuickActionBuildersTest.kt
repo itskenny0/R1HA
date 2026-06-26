@@ -28,11 +28,17 @@ class QuickActionBuildersTest {
         dismiss = {},
     )
 
-    @Test fun `with no domain builders every entity falls through to generic with no groups`() {
-        // DOMAIN_QUICK_ACTION_BUILDERS ships empty until the per-domain content tasks land,
-        // so resolution always hits GenericQuickActions, which carries no chips.
-        assertThat(DOMAIN_QUICK_ACTION_BUILDERS).isEmpty()
-        assertThat(buildQuickActions(ctxFor(sampleState()))).isEmpty()
+    @Test fun `an unclaimed domain falls through to generic with no groups`() {
+        // Domain builders are registered, but none claims a plain sensor, so resolution
+        // falls through to GenericQuickActions, which carries no chips.
+        assertThat(DOMAIN_QUICK_ACTION_BUILDERS).isNotEmpty()
+        assertThat(buildQuickActions(ctxFor(sampleState("sensor.outside_temp")))).isEmpty()
+    }
+
+    @Test fun `a controllable domain is claimed by a registered builder`() {
+        // A light is claimed by a domain builder, so buildQuickActions returns its groups
+        // rather than the empty generic fallback.
+        assertThat(buildQuickActions(ctxFor(sampleState("light.kitchen")))).isNotEmpty()
     }
 
     @Test fun `generic builder claims every entity and emits nothing`() {
