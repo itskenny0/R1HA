@@ -134,6 +134,16 @@ internal data class CardEditorForm(
 internal fun typeOwnsNameField(type: String): Boolean =
     cardFieldsFor(type).any { it.key == "name" }
 
+/** Types with NO label key at all (neither `title` nor `name`): the editor shows
+ *  no primary label field and never owns `title` for them, so a stray one passes
+ *  through. */
+internal val NO_TITLE_TYPES = setOf("picture")
+
+/** True when the editor should render and own a `title` field for [type]. */
+internal fun typeUsesTitle(type: String): Boolean =
+    !typeOwnsNameField(type) && type !in NO_TITLE_TYPES &&
+        type != "button" && type != "heading"
+
 /** The config keys the form owns (re-emits) for this card type. */
 private fun editedKeysFor(type: String): Set<String> = buildSet {
     when (type) {
@@ -142,8 +152,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
         "heading" -> add("heading")
         "button" -> Unit
         // Name-primary cards (tile, light, gauge…) label via the engine `name`
-        // field; they have no `title:` key, so leave a stray one to pass through.
-        else -> if (!typeOwnsNameField(type)) add("title")
+        // field; label-less cards (picture) have no label key at all. Either way
+        // leave a stray `title` to pass through untouched.
+        else -> if (typeUsesTitle(type)) add("title")
     }
     if (type in SINGLE_ENTITY_TYPES) add("entity")
     if (type == "iframe") {
@@ -183,7 +194,7 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
         when (type) {
             "heading" -> putIfSet("heading", form.heading)
             "button" -> Unit
-            else -> if (!typeOwnsNameField(type)) putIfSet("title", form.title)
+            else -> if (typeUsesTitle(type)) putIfSet("title", form.title)
         }
         if (type in SINGLE_ENTITY_TYPES) putIfSet("entity", form.entity)
         if (type == "iframe") {

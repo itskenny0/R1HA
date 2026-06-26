@@ -771,7 +771,10 @@ internal fun CardMiniEditor(
     val structuredCapable = remember(initialObj, type) {
         initialObj != null && (
             type in SINGLE_ENTITY_TYPES || type in MULTI_ENTITY_TYPES ||
-                type == "iframe" || type == "markdown" || type == "heading"
+                type == "iframe" || type == "markdown" || type == "heading" ||
+                // Any type with a field schema is form-editable, even with no
+                // entity (clock, picture): it renders its generic fields section.
+                cardFieldsFor(type).isNotEmpty()
             )
     }
     // Invalid blobs (repair path) and structural types start in JSON mode.
@@ -959,9 +962,10 @@ internal fun CardMiniEditor(
                     // edited a key the renderer never reads).
                     type == "heading" -> EditorField(label = "HEADING", value = heading, onChange = { heading = it })
                     type == "button" -> EditorField(label = "NAME", value = name, onChange = { name = it })
-                    // Name-primary cards (tile, light, gauge…) label via the
-                    // engine NAME field rendered below; no stray TITLE here.
-                    typeOwnsNameField(type) -> Unit
+                    // Name-primary cards (tile, light, gauge…) label via the engine
+                    // NAME field below; label-less cards (picture) show no label
+                    // field at all. Only title-using cards render TITLE here.
+                    !typeUsesTitle(type) -> Unit
                     else -> EditorField(label = "TITLE", value = title, onChange = { title = it })
                 }
                 if (type == "button") {
