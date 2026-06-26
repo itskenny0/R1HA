@@ -500,6 +500,38 @@ private fun LayoutSubscreen(
         onChange = { onChange(override.copy(moreInfoEnabled = it)) },
     )
 
+    SectionHeader("GLANCE & GESTURES")
+    Text(
+        text = "Per-card glance data and gestures. INHERIT follows the deck-wide defaults in Settings, Card surfaces.",
+        style = R1.body,
+        color = R1.InkMuted,
+    )
+    Spacer(Modifier.height(R1.space.s))
+    TristateRow(
+        label = "Face sparkline",
+        value = override.sparkline,
+        onChange = { onChange(override.copy(sparkline = it)) },
+    )
+    Spacer(Modifier.height(R1.space.s))
+    TristateRow(
+        label = "Inline face controls",
+        value = override.faceControls,
+        onChange = { onChange(override.copy(faceControls = it)) },
+    )
+    Spacer(Modifier.height(R1.space.s))
+    TristateRow(
+        label = "Double-tap opens details",
+        value = override.doubleTapMoreInfo,
+        onChange = { onChange(override.copy(doubleTapMoreInfo = it)) },
+    )
+    Spacer(Modifier.height(R1.space.s))
+    Text(text = "Secondary info line", style = R1.labelMicro, color = R1.InkSoft)
+    Spacer(Modifier.height(R1.space.xs))
+    SecondaryInfoOverridePicker(
+        selected = override.secondaryInfo,
+        onSelect = { onChange(override.copy(secondaryInfo = it)) },
+    )
+
     SectionHeader("TEXT SIZE")
     Text(
         text = "Absolute size for the big readout on this card. Smaller sizes help sensors with long text values (RSS headlines, verbose enum states) fit without truncation.",
@@ -536,6 +568,10 @@ private fun LayoutSubscreen(
                     moreInfoEnabled = null,
                     textSizeSp = null,
                     maxDecimalPlaces = null,
+                    sparkline = null,
+                    faceControls = null,
+                    doubleTapMoreInfo = null,
+                    secondaryInfo = null,
                 )
             )
         },
@@ -1712,6 +1748,56 @@ private fun SectionHeader(title: String) {
     Spacer(Modifier.height(R1.space.xxs))
     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(R1.Hairline))
     Spacer(Modifier.height(R1.space.s))
+}
+
+/**
+ * Per-card secondary-info picker: a horizontally-scrollable chip row of INHERIT
+ * (null, follow the deck-wide default) plus every [SecondaryInfo] option. Scrolls
+ * rather than wraps so it stays a single line on the narrow customize sheet.
+ */
+@Composable
+private fun SecondaryInfoOverridePicker(
+    selected: com.github.itskenny0.r1ha.core.prefs.SecondaryInfo?,
+    onSelect: (com.github.itskenny0.r1ha.core.prefs.SecondaryInfo?) -> Unit,
+) {
+    val options: List<Pair<String, com.github.itskenny0.r1ha.core.prefs.SecondaryInfo?>> = listOf(
+        "INHERIT" to null,
+        "NONE" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.NONE,
+        "CHANGED" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.LAST_CHANGED,
+        "TRIGGERED" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.LAST_TRIGGERED,
+        "CHANGED BY" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.CHANGED_BY,
+        "BATTERY" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.BATTERY,
+        "PLAYING" to com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.MEDIA,
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(R1.space.xs),
+    ) {
+        options.forEach { (label, value) ->
+            val isSelected = value == selected
+            Box(
+                modifier = Modifier
+                    .clip(R1.ShapeS)
+                    .background(if (isSelected) R1.AccentWarm else R1.SurfaceMuted)
+                    .border(
+                        1.dp,
+                        if (isSelected) R1.AccentWarm else R1.Hairline,
+                        R1.ShapeS,
+                    )
+                    .r1Pressable({ onSelect(value) })
+                    .padding(horizontal = R1.space.s, vertical = R1.space.s),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    style = R1.labelMicro,
+                    color = if (isSelected) R1.Bg else R1.InkSoft,
+                )
+            }
+        }
+    }
 }
 
 /**
