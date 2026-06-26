@@ -348,6 +348,47 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         ),
         BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
     )
+    "shortcut" -> listOf(
+        TextFieldSpec("label", "LABEL"),
+        TextFieldSpec("name", "NAME (LEGACY)"),
+        IconFieldSpec("icon", "ICON"),
+        ColorFieldSpec("color", "COLOUR"),
+        TextFieldSpec("description", "DESCRIPTION", FieldSection.APPEARANCE),
+        BoolFieldSpec("vertical", "VERTICAL", FieldSection.APPEARANCE, default = false),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "area" -> listOf(
+        TextFieldSpec("area", "AREA ID", FieldSection.BASICS, monospace = true, placeholder = "living_room"),
+        TextFieldSpec("name", "NAME"),
+        TextFieldSpec("image", "IMAGE URL", FieldSection.APPEARANCE, monospace = true),
+        TextFieldSpec("navigation_path", "NAVIGATE TO", FieldSection.APPEARANCE, monospace = true),
+        EnumFieldSpec(
+            "display_type", "DISPLAY",
+            options = listOf(EnumOption("compact", "COMPACT"), EnumOption("icon", "ICON"), EnumOption("camera", "CAMERA")),
+        ),
+        ListFieldSpec("sensor_classes", "SENSOR CLASSES", FieldSection.ADVANCED, placeholder = "temperature, humidity…"),
+        ListFieldSpec("alert_classes", "ALERT CLASSES", FieldSection.ADVANCED, placeholder = "motion, door…"),
+        BoolFieldSpec("show_camera", "SHOW CAMERA", FieldSection.APPEARANCE, default = false),
+    )
+    "statistics-graph" -> listOf(
+        ListFieldSpec("stat_types", "STAT TYPES", FieldSection.APPEARANCE, placeholder = "mean, min, max…"),
+        EnumFieldSpec(
+            "period", "PERIOD",
+            options = listOf(
+                EnumOption("5minute", "5 MIN"), EnumOption("hour", "HOUR"),
+                EnumOption("day", "DAY"), EnumOption("week", "WEEK"), EnumOption("month", "MONTH"),
+            ),
+            default = "hour",
+        ),
+        EnumFieldSpec(
+            "chart_type", "CHART",
+            options = listOf(EnumOption("line", "LINE"), EnumOption("bar", "BAR")),
+            default = "line",
+        ),
+        NumberFieldSpec("days_to_show", "DAYS", FieldSection.APPEARANCE, integer = true),
+    )
     "picture" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
         TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
