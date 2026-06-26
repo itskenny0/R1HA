@@ -548,8 +548,9 @@ fun EntityCard(
         // ── Status badges ───────────────────────────────────────────────────────────
         // Battery / charging / unavailable / update glance badges in the top-end corner.
         // Each renders only when its backing attribute is present, so most cards show
-        // nothing here. Gated by the deck-wide toggle.
-        if (baseUi.showStatusBadges) {
+        // nothing here. Gated by the deck-wide toggle and to fillSlot (fullscreen deck):
+        // a content-height dynamic card has no spare corner for an overlay.
+        if (baseUi.showStatusBadges && fillSlot) {
             StatusBadges(
                 state = state,
                 modifier = Modifier
@@ -558,11 +559,15 @@ fun EntityCard(
             )
         }
         // ── Focused glance strip ────────────────────────────────────────────────────
-        // On the focused card only: the secondary-info line and the inline quick-control
-        // row, bottom-anchored and inset to clear a right-edge value bar. Peeking
-        // neighbours stay clean. Each half self-gates (the control row is empty for
-        // read-only domains; the secondary line is empty when its source is absent).
-        if (focused && state.isAvailable) {
+        // On the focused, full-slot card only: the secondary-info line and the inline
+        // quick-control row, bottom-anchored and inset to clear a right-edge value bar.
+        // Gated to fillSlot (the fullscreen deck, the R1's default) because there the
+        // card fills its slot and the strip sits in the free space below the content; on
+        // the content-height dynamic deck the card wraps its content, so a bottom overlay
+        // would sit on top of it. Peeking neighbours stay clean. Each half self-gates (the
+        // control row is empty for read-only domains; the secondary line is empty when its
+        // source is absent).
+        if (focused && fillSlot && state.isAvailable) {
             val secondaryKind = perCardOverride.resolvedSecondaryInfo(baseUi.secondaryInfoDefault)
             val showFaceControls = perCardOverride.resolvedFaceControls(baseUi.faceQuickControls)
             androidx.compose.foundation.layout.Column(
