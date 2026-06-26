@@ -62,6 +62,9 @@ class MainActivity : ComponentActivity() {
         R1Log.i("MainActivity.onCreate", "data=${intent?.data}")
 
         graph = (application as App).graph
+        // Seed the interaction clock so a fresh launch is treated as "just
+        // interacted" and the ambient idle face does not appear on cold start.
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
 
         // Tell the window manager we support all orientations BEFORE setContent / setContentView
         // so the system sizes the window correctly from frame 0. If we wait until a LaunchedEffect
@@ -218,15 +221,10 @@ class MainActivity : ComponentActivity() {
                 while (true) {
                     val now = java.time.LocalTime.now()
                     val hour = now.hour
-                    val night = if (!settings.autoThemeEnabled) false
-                    else if (settings.nightStartHour == settings.nightEndHour) false
-                    else if (settings.nightStartHour < settings.nightEndHour) {
-                        hour in settings.nightStartHour until settings.nightEndHour
-                    } else {
-                        // Wrap-around window — e.g. 22 → 06 — night is "outside
-                        // the day window."
-                        hour >= settings.nightStartHour || hour < settings.nightEndHour
-                    }
+                    val night = settings.autoThemeEnabled &&
+                        com.github.itskenny0.r1ha.core.ambient.AmbientLogic.isNightWindow(
+                            hour, settings.nightStartHour, settings.nightEndHour,
+                        )
                     value = if (night) settings.nightTheme else settings.theme
                     // Sleep until the top of the next minute so the crossover
                     // happens precisely at the configured boundary instead of
@@ -657,6 +655,27 @@ class MainActivity : ComponentActivity() {
                         // toasts always pop at the device's true screen
                         // edges, not the centred column's edges.
                         ToastHost()
+                        // Ambient screensaver overlay: topmost sibling so it
+                        // covers every screen. Reads the live ambient settings;
+                        // writes the synchronous idle mirror the key dispatch
+                        // consults to swallow waking key presses.
+                        androidx.compose.runtime.LaunchedEffect(settings.ambient.consumeWakeEvent) {
+                            graph.ambientConsumeWakeEvent = settings.ambient.consumeWakeEvent
+                        }
+                        com.github.itskenny0.r1ha.feature.ambient.AmbientOverlay(
+                            ambient = settings.ambient,
+                            currentRoute = navController
+                                .currentBackStackEntryAsState().value?.destination?.route,
+                            nightStartHour = settings.nightStartHour,
+                            nightEndHour = settings.nightEndHour,
+                            powerAmberW = settings.dashboard.powerAmberThresholdW,
+                            powerRedW = settings.dashboard.powerRedThresholdW,
+                            refreshIntervalSec = settings.dashboard.refreshIntervalSec,
+                            fetchSummary = {
+                                graph.ambientSummaryUseCase.fetch(graph.settings.settings.first())
+                            },
+                            onIdleChanged = { idleNow -> graph.ambientIsIdle = idleNow },
+                        )
                     }
                 }
             }
@@ -730,6 +749,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Every touch / key / trackball event the framework dispatches to us bumps
+     * the ambient interaction clock, which wakes the idle face and resets the
+     * idle countdown. Touch is covered here; keys / wheel are additionally
+     * marked in [dispatchKeyEvent] because the consume-paths there do not call
+     * super (which is what normally invokes this).
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
+    }
+
     private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme != "r1ha" || data.host != "auth-callback") return
@@ -780,6 +811,14 @@ class MainActivity : ComponentActivity() {
         if (isDown && event.repeatCount == 0 &&
             com.github.itskenny0.r1ha.core.input.KeyCaptureBus.tryCapture(event.keyCode)
         ) {
+            return true
+        }
+        // Ambient screensaver: a hardware key is interaction. Mark it (wakes the
+        // idle face + resets the idle countdown). When the idle face is showing,
+        // swallow this one event so the waking press does not also scroll / fire
+        // a binding, unless the user opted to let wake events pass through.
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
+        if (graph.ambientIsIdle && graph.ambientConsumeWakeEvent) {
             return true
         }
         // Software-keyboard events NEVER trigger bindings. The user's

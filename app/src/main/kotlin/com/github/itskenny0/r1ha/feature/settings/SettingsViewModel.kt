@@ -270,6 +270,11 @@ class SettingsViewModel(
     fun updateLogShipping(transform: (com.github.itskenny0.r1ha.core.prefs.LogShippingSettings) -> com.github.itskenny0.r1ha.core.prefs.LogShippingSettings) =
         update { it.copy(logShipping = transform(it.logShipping)) }
 
+    /** Generic mutator for the ambient display settings. Used by the AMBIENT
+     *  DISPLAY section in SettingsScreen. */
+    fun updateAmbient(transform: (com.github.itskenny0.r1ha.core.prefs.AmbientSettings) -> com.github.itskenny0.r1ha.core.prefs.AmbientSettings) =
+        update { it.copy(ambient = transform(it.ambient)) }
+
     // ── Appearance ──────────────────────────────────────────────────────────
 
     fun setTheme(themeId: ThemeId) = update { it.copy(theme = themeId) }
@@ -370,6 +375,8 @@ class SettingsViewModel(
                         s.copy(theme = defaults.theme)
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS ->
                         s.copy(integrations = defaults.integrations)
+                    com.github.itskenny0.r1ha.core.prefs.SettingCategory.AMBIENT ->
+                        s.copy(ambient = defaults.ambient)
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.SERVER,
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.DASHBOARD,
                     -> s // server has its own sign-out path; dashboard lives in pages which we preserve.

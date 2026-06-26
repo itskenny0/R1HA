@@ -61,6 +61,9 @@ enum class SettingsNode(
     // ── Advanced / Developer ──────────────────────────────────────────────
     ADVANCED(ROOT, "Advanced"),
 
+    // ── Ambient display ───────────────────────────────────────────────────
+    AMBIENT(ROOT, "Ambient display"),
+
     // ── Browse ────────────────────────────────────────────────────────────
     BROWSE(ROOT, "Browse"),
     BROWSE_TODAY(BROWSE, "Today"),
@@ -177,6 +180,7 @@ fun focusPathForSection(sectionName: String): List<SettingsNode> = when (section
     "APPEARANCE" -> listOf(SettingsNode.ROOT, SettingsNode.APPEARANCE, SettingsNode.APPEARANCE_THEME)
     "INTEGRATIONS" -> listOf(SettingsNode.ROOT, SettingsNode.INTEGRATIONS)
     "DASHBOARD" -> listOf(SettingsNode.ROOT, SettingsNode.DASHBOARD)
+    "AMBIENT DISPLAY" -> listOf(SettingsNode.ROOT, SettingsNode.AMBIENT)
     else -> listOf(SettingsNode.ROOT)
 }
 
