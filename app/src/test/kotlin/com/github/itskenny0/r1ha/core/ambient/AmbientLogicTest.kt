@@ -64,6 +64,31 @@ class AmbientLogicTest {
         ).isFalse()
     }
 
+    @Test fun `night window start hour is inclusive and same-day end is exclusive`() {
+        // wrap-around 22..6: the start hour itself is night
+        assertThat(AmbientLogic.isNightWindow(22, 22, 6)).isTrue()
+        // same-day 9..17: start inclusive, end exclusive
+        assertThat(AmbientLogic.isNightWindow(9, 9, 17)).isTrue()
+        assertThat(AmbientLogic.isNightWindow(17, 9, 17)).isFalse()
+    }
+
+    @Test fun `power severity is inclusive at the exact thresholds`() {
+        assertThat(AmbientLogic.powerSeverity(500.0, amberW = 500, redW = 2000))
+            .isEqualTo(AmbientLogic.PowerSeverity.AMBER)
+        assertThat(AmbientLogic.powerSeverity(2000.0, amberW = 500, redW = 2000))
+            .isEqualTo(AmbientLogic.PowerSeverity.RED)
+    }
+
+    @Test fun `card stack focus deep-link is in scope for today plus cardstack`() {
+        assertThat(AmbientLogic.routeInScope(Routes.CARD_STACK_FOCUS, AmbientScope.TODAY_PLUS_CARDSTACK)).isTrue()
+    }
+
+    @Test fun `shouldSuppress suppresses an out-of-scope route`() {
+        assertThat(
+            AmbientLogic.shouldSuppress(Routes.SETTINGS, AmbientScope.TODAY_ONLY, imeVisible = false, suppressOverCamera = false),
+        ).isTrue()
+    }
+
     @Test fun `power severity crosses amber and red thresholds`() {
         assertThat(AmbientLogic.powerSeverity(100.0, amberW = 500, redW = 2000))
             .isEqualTo(AmbientLogic.PowerSeverity.NORMAL)

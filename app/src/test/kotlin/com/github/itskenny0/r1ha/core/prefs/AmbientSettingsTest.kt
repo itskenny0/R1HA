@@ -13,6 +13,13 @@ class AmbientSettingsTest {
         assertThat(s.ambient.scope).isEqualTo(AmbientScope.ANYWHERE)
     }
 
+    @Test fun `ambient brightness defaults are 40 percent day and 6 percent night`() {
+        val s = AppSettings()
+        assertThat(s.ambient.dayBrightnessPct).isEqualTo(40)
+        assertThat(s.ambient.nightBrightnessPct).isEqualTo(6)
+        assertThat(s.ambient.nightDimEnabled).isTrue()
+    }
+
     @Test fun `AMBIENT sync category copies the ambient block from source`() {
         val local = AppSettings(ambient = AmbientSettings(enabled = true, dayBrightnessPct = 33))
         val remote = AppSettings(ambient = AmbientSettings(enabled = false, dayBrightnessPct = 99))

@@ -2380,7 +2380,7 @@ private fun LazyListScope.ambientRoot(s: AppSettings, vm: SettingsViewModel) {
     item {
         SwitchRow(
             label = "Subtle anti burn-in drift",
-            subtitle = "Slowly shifts the glance panel position to reduce OLED pixel wear",
+            subtitle = "Slowly shifts the glance panel position to reduce pixel wear and burn-in",
             checked = s.ambient.pixelDriftEnabled,
             onCheckedChange = { v -> vm.updateAmbient { it.copy(pixelDriftEnabled = v) } },
         )
