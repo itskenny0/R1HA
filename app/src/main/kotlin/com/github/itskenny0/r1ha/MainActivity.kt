@@ -62,6 +62,9 @@ class MainActivity : ComponentActivity() {
         R1Log.i("MainActivity.onCreate", "data=${intent?.data}")
 
         graph = (application as App).graph
+        // Seed the interaction clock so a fresh launch is treated as "just
+        // interacted" and the ambient idle face does not appear on cold start.
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
 
         // Tell the window manager we support all orientations BEFORE setContent / setContentView
         // so the system sizes the window correctly from frame 0. If we wait until a LaunchedEffect
@@ -730,6 +733,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Every touch / key / trackball event the framework dispatches to us bumps
+     * the ambient interaction clock, which wakes the idle face and resets the
+     * idle countdown. Touch is covered here; keys / wheel are additionally
+     * marked in [dispatchKeyEvent] because the consume-paths there do not call
+     * super (which is what normally invokes this).
+     */
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
+    }
+
     private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme != "r1ha" || data.host != "auth-callback") return
@@ -780,6 +795,14 @@ class MainActivity : ComponentActivity() {
         if (isDown && event.repeatCount == 0 &&
             com.github.itskenny0.r1ha.core.input.KeyCaptureBus.tryCapture(event.keyCode)
         ) {
+            return true
+        }
+        // Ambient screensaver: a hardware key is interaction. Mark it (wakes the
+        // idle face + resets the idle countdown). When the idle face is showing,
+        // swallow this one event so the waking press does not also scroll / fire
+        // a binding, unless the user opted to let wake events pass through.
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
+        if (graph.ambientIsIdle && graph.ambientConsumeWakeEvent) {
             return true
         }
         // Software-keyboard events NEVER trigger bindings. The user's

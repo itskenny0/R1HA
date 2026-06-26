@@ -326,4 +326,21 @@ class AppGraph(context: Context) {
      */
     @Volatile
     var currentNavRoute: String? = null
+
+    /**
+     * Whether the ambient idle face is currently showing. Written by
+     * [com.github.itskenny0.r1ha.feature.ambient.AmbientOverlay] and read
+     * synchronously from `MainActivity.dispatchKeyEvent` so a hardware key that
+     * wakes the screen can be swallowed (not also fire a binding / scroll).
+     */
+    @Volatile
+    var ambientIsIdle: Boolean = false
+
+    /**
+     * Mirror of [com.github.itskenny0.r1ha.core.prefs.AmbientSettings.consumeWakeEvent],
+     * kept current by a collector in `MainActivity`. Read synchronously from
+     * `dispatchKeyEvent` to decide whether to swallow the waking key.
+     */
+    @Volatile
+    var ambientConsumeWakeEvent: Boolean = true
 }
