@@ -526,10 +526,12 @@ data class UiOptions(
      */
     val doubleTapMoreInfoDefault: Boolean = false,
     /**
-     * Action fired on a long-press of the hardware side button, stored as a
-     * [com.github.itskenny0.r1ha.core.input.KeyAction] enum name. Null = the
-     * built-in default (open the jump-to-card sheet). Device-flavoured input,
-     * but harmless to sync; resolved to a KeyAction at dispatch time.
+     * Opt-in hardware long-press shortcut, stored as a
+     * [com.github.itskenny0.r1ha.core.input.KeyAction] enum name. Null (the default)
+     * = off: hardware keys keep their plain fire-on-down behaviour. When set, a long
+     * hold of a bound non-wheel key (the wheel press by default, or any key the user
+     * binds) fires this action while a normal press still does the key's usual
+     * action. Resolved to a KeyAction at dispatch time; an unknown name decodes to off.
      */
     val hardwareLongPressTarget: String? = null,
 )

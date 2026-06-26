@@ -128,6 +128,8 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(secondaryInfoDefault = kind)) }
     fun setDoubleTapMoreInfoDefault(enabled: Boolean) =
         update { it.copy(ui = it.ui.copy(doubleTapMoreInfoDefault = enabled)) }
+    fun setHardwareLongPressTarget(action: com.github.itskenny0.r1ha.core.input.KeyAction?) =
+        update { it.copy(ui = it.ui.copy(hardwareLongPressTarget = action?.name)) }
 
     /** Toggle a chrome-row button's visibility. The persistence layer force-
      *  enables GEAR regardless of what's passed here (so a hostile manual edit

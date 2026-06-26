@@ -274,6 +274,23 @@ class App : Application() {
                         com.github.itskenny0.r1ha.core.input.KeyBindings(resolved)
                 }
         }
+        // Mirror the opt-in hardware long-press shortcut into a volatile field for the
+        // same synchronous dispatch path. Stored as a KeyAction name; an unknown / blank
+        // value (and the default) resolves to null = feature off.
+        appScope.launch {
+            graph.settings.settings
+                .map { it.ui.hardwareLongPressTarget }
+                .distinctUntilChanged()
+                .collect { name ->
+                    graph.latestHardwareLongPressTarget = name
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let {
+                            runCatching {
+                                com.github.itskenny0.r1ha.core.input.KeyAction.valueOf(it)
+                            }.getOrNull()
+                        }
+                }
+        }
         // Connection-hardening: recompute the effective breaker / polling tuning on every
         // ConnectionSettings change and push it into the shared breaker + the volatile the
         // OkHttp gate and the camera/image clients read. Distinct on the struct so unrelated

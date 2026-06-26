@@ -1489,7 +1489,98 @@ private fun LazyListScope.appearanceCards(
             )
         }
     }
+    item {
+        val hwLpDialog = remember { mutableStateOf(false) }
+        val current = hardwareLongPressActionFromName(s.ui.hardwareLongPressTarget)
+        NavRow(
+            label = "Hardware button long-press",
+            value = hardwareLongPressLabel(current),
+            onClick = { hwLpDialog.value = true },
+        )
+        if (hwLpDialog.value) {
+            HardwareLongPressPickerDialog(
+                current = current,
+                onPick = { vm.setHardwareLongPressTarget(it); hwLpDialog.value = false },
+                onDismiss = { hwLpDialog.value = false },
+            )
+        }
+    }
     item { CategoryResetRow(label = "RESET CARD UI", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.CARD_UI, vm = vm) }
+}
+
+/** Global-shortcut actions offered for the hardware long-press. Limited to the
+ *  "jump somewhere / do something app-wide" actions; nav actions (wheel, paging,
+ *  toggle, back) stay short-press only. */
+private val HARDWARE_LONG_PRESS_TARGETS = listOf(
+    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_SEARCH,
+    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_ASSIST,
+    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_DASHBOARD,
+    com.github.itskenny0.r1ha.core.input.KeyAction.OPEN_SETTINGS,
+    com.github.itskenny0.r1ha.core.input.KeyAction.RECONNECT,
+    com.github.itskenny0.r1ha.core.input.KeyAction.REFRESH,
+)
+
+/** Resolve the stored long-press target name to a [KeyAction], or null (off). */
+private fun hardwareLongPressActionFromName(name: String?): com.github.itskenny0.r1ha.core.input.KeyAction? =
+    name?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { com.github.itskenny0.r1ha.core.input.KeyAction.valueOf(it) }.getOrNull() }
+        ?.takeIf { it in HARDWARE_LONG_PRESS_TARGETS }
+
+/** Label for the hardware long-press picker / row. Null = the feature is off. */
+private fun hardwareLongPressLabel(action: com.github.itskenny0.r1ha.core.input.KeyAction?): String =
+    action?.displayLabel ?: "Off"
+
+/** Single-select dialog for the hardware long-press shortcut (Off + the global actions). */
+@Composable
+private fun HardwareLongPressPickerDialog(
+    current: com.github.itskenny0.r1ha.core.input.KeyAction?,
+    onPick: (com.github.itskenny0.r1ha.core.input.KeyAction?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = R1.Bg,
+        title = { Text(text = "LONG-PRESS SHORTCUT", style = R1.sectionHeader, color = R1.Ink) },
+        text = {
+            Column {
+                Text(
+                    text = "Hold a hardware button (the wheel press, or any key you bind) to run " +
+                        "this shortcut. A normal press still does the button's usual action.",
+                    style = R1.labelMicro,
+                    color = R1.InkMuted,
+                )
+                Spacer(Modifier.height(R1.space.s))
+                val rows: List<Pair<String, com.github.itskenny0.r1ha.core.input.KeyAction?>> =
+                    listOf("Off" to null) + HARDWARE_LONG_PRESS_TARGETS.map { it.displayLabel to it }
+                for ((label, action) in rows) {
+                    val selected = action == current
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(R1.ShapeS)
+                            .background(if (selected) R1.AccentWarm.copy(alpha = 0.2f) else R1.Bg)
+                            .border(
+                                1.dp,
+                                if (selected) R1.AccentWarm else R1.Hairline,
+                                R1.ShapeS,
+                            )
+                            .r1Pressable(onClick = { onPick(action) })
+                            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+                    ) {
+                        Text(
+                            text = label,
+                            style = R1.body,
+                            color = if (selected) R1.AccentWarm else R1.Ink,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            com.github.itskenny0.r1ha.ui.components.R1Button(text = "CLOSE", onClick = onDismiss)
+        },
+    )
 }
 
 /** Human label for a [SecondaryInfo] option, used by the settings picker. */
