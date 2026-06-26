@@ -221,15 +221,10 @@ class MainActivity : ComponentActivity() {
                 while (true) {
                     val now = java.time.LocalTime.now()
                     val hour = now.hour
-                    val night = if (!settings.autoThemeEnabled) false
-                    else if (settings.nightStartHour == settings.nightEndHour) false
-                    else if (settings.nightStartHour < settings.nightEndHour) {
-                        hour in settings.nightStartHour until settings.nightEndHour
-                    } else {
-                        // Wrap-around window — e.g. 22 → 06 — night is "outside
-                        // the day window."
-                        hour >= settings.nightStartHour || hour < settings.nightEndHour
-                    }
+                    val night = settings.autoThemeEnabled &&
+                        com.github.itskenny0.r1ha.core.ambient.AmbientLogic.isNightWindow(
+                            hour, settings.nightStartHour, settings.nightEndHour,
+                        )
                     value = if (night) settings.nightTheme else settings.theme
                     // Sleep until the top of the next minute so the crossover
                     // happens precisely at the configured boundary instead of
@@ -660,6 +655,27 @@ class MainActivity : ComponentActivity() {
                         // toasts always pop at the device's true screen
                         // edges, not the centred column's edges.
                         ToastHost()
+                        // Ambient screensaver overlay: topmost sibling so it
+                        // covers every screen. Reads the live ambient settings;
+                        // writes the synchronous idle mirror the key dispatch
+                        // consults to swallow waking key presses.
+                        androidx.compose.runtime.LaunchedEffect(settings.ambient.consumeWakeEvent) {
+                            graph.ambientConsumeWakeEvent = settings.ambient.consumeWakeEvent
+                        }
+                        com.github.itskenny0.r1ha.feature.ambient.AmbientOverlay(
+                            ambient = settings.ambient,
+                            currentRoute = navController
+                                .currentBackStackEntryAsState().value?.destination?.route,
+                            nightStartHour = settings.nightStartHour,
+                            nightEndHour = settings.nightEndHour,
+                            powerAmberW = settings.dashboard.powerAmberThresholdW,
+                            powerRedW = settings.dashboard.powerRedThresholdW,
+                            refreshIntervalSec = settings.dashboard.refreshIntervalSec,
+                            fetchSummary = {
+                                graph.ambientSummaryUseCase.fetch(graph.settings.settings.first())
+                            },
+                            onIdleChanged = { idleNow -> graph.ambientIsIdle = idleNow },
+                        )
                     }
                 }
             }
