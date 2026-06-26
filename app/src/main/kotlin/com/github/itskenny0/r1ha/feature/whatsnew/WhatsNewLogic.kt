@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "The card editor now opens as a form for clock, picture, map, logbook and calendar cards too.",
-    "Map, logbook and calendar options such as zoom hours, filters and view are editable without YAML.",
-    "Picture cards get image, camera and tap action fields in the form.",
+    "The form editor now covers shortcut, area, statistics graph and the picture family of cards.",
+    "Area cards expose their id, image, navigation, display type and sensor classes in the form.",
+    "Statistics graph cards let you pick stat types, period and chart type without YAML.",
 )
