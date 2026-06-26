@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Entities cards now let you set a header or footer (graph, picture or buttons) in the form.",
     "Pick camera and image entities from the entity list instead of typing their ids.",
     "Card features now have friendly controls for volume step, mute, update backup and more.",
-    "History graph cards now edit cleanly in the form alongside the rest of the card types.",
 )
