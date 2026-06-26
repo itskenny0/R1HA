@@ -21,6 +21,7 @@ class CardFieldSpecTest {
         "button", "tile", "light", "gauge", "sensor", "thermostat",
         "humidifier", "weather-forecast", "entities", "glance", "history-graph",
         "picture-entity", "media-control", "alarm-panel", "statistic",
+        "clock", "picture",
     )
 
     /** The keys the editor hand-renders as primary controls for a type (not via
@@ -29,8 +30,8 @@ class CardFieldSpecTest {
         when {
             type == "heading" -> add("heading")
             type == "button" -> { add("name"); add("icon") }
-            typeOwnsNameField(type) -> Unit // name via the engine field
-            else -> add("title")
+            typeUsesTitle(type) -> add("title")
+            else -> Unit // name-primary (engine field) or label-less (picture)
         }
         if (type in SINGLE_ENTITY_TYPES) add("entity")
         if (type == "iframe") { add("url"); add("aspect_ratio") }
@@ -306,6 +307,39 @@ class CardFieldSpecTest {
             CardEditorForm(type = "tile", entity = "light.k", values = mapOf("state_content" to JsonPrimitive(""))),
         )
         assertThat(cleared.containsKey("state_content")).isFalse()
+    }
+
+    @Test
+    fun pictureIsLabelLessAndKeepsStrayTitle() {
+        // picture has no label key: a stray title passes through, and image fields
+        // round-trip.
+        val base = buildJsonObject {
+            put("type", "picture")
+            put("image", "/local/a.png")
+            put("title", "legacy")
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "picture", title = "ignored", values = mapOf("image" to JsonPrimitive("/local/b.png"))),
+        )
+        assertThat(edited["image"]).isEqualTo(JsonPrimitive("/local/b.png"))
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("legacy"))
+        assertThat(typeUsesTitle("picture")).isFalse()
+    }
+
+    @Test
+    fun clockUsesTitleAndEmitsStyle() {
+        assertThat(typeUsesTitle("clock")).isTrue()
+        val base = buildJsonObject { put("type", "clock") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "clock", title = "Hall",
+                values = mapOf("clock_style" to JsonPrimitive("analog")),
+            ),
+        )
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("Hall"))
+        assertThat(edited["clock_style"]).isEqualTo(JsonPrimitive("analog"))
     }
 
     @Test

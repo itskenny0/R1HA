@@ -304,6 +304,30 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         ),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
     )
+    "clock" -> listOf(
+        EnumFieldSpec(
+            "clock_style", "STYLE",
+            options = listOf(EnumOption("digital", "DIGITAL"), EnumOption("analog", "ANALOG")),
+            default = "digital",
+        ),
+        EnumFieldSpec(
+            "clock_size", "SIZE",
+            options = listOf(EnumOption("small", "SMALL"), EnumOption("medium", "MEDIUM"), EnumOption("large", "LARGE")),
+        ),
+        BoolFieldSpec("show_seconds", "SECONDS", FieldSection.APPEARANCE, default = false),
+        BoolFieldSpec("no_background", "NO BACKGROUND", FieldSection.APPEARANCE, default = false),
+        TextFieldSpec("time_format", "TIME FORMAT", FieldSection.ADVANCED, placeholder = "24 / 12"),
+        TextFieldSpec("time_zone", "TIME ZONE", FieldSection.ADVANCED, placeholder = "Europe/Berlin"),
+    )
+    "picture" -> listOf(
+        TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
     "history-graph" -> listOf(
         NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
         NumberFieldSpec("refresh_interval", "REFRESH S", FieldSection.ADVANCED, integer = true),
