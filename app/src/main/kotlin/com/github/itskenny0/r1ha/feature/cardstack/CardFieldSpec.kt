@@ -660,6 +660,38 @@ internal fun setFeatureList(feature: JsonObject, key: String, text: String): Jso
 internal fun featureListText(feature: JsonObject, key: String): String =
     (feature[key] as? JsonArray)?.let { listJoin(it) }.orEmpty()
 
+/** Set (or clear, on null) any scalar key on a feature object, keeping the rest. */
+internal fun withFeatureKey(feature: JsonObject, key: String, value: JsonElement?): JsonObject {
+    val m = LinkedHashMap<String, JsonElement>(feature)
+    if (value == null) m.remove(key) else m[key] = value
+    return JsonObject(m)
+}
+
+/** The friendly scalar (non-list) options a feature type exposes beyond raw JSON. */
+internal data class FeatureScalar(val key: String, val label: String, val kind: FeatureScalarKind)
+internal enum class FeatureScalarKind { BOOL, INT, BACKUP, DROPDOWN_STYLE, TEXT }
+
+/** Scalar options for [type] rendered as friendly controls in the features editor. */
+internal fun featureScalars(type: String): List<FeatureScalar> = when (type) {
+    "media-player-volume-buttons" -> listOf(
+        FeatureScalar("step", "STEP", FeatureScalarKind.INT),
+        FeatureScalar("show_mute_button", "MUTE BUTTON", FeatureScalarKind.BOOL),
+    )
+    "media-player-volume-slider" -> listOf(
+        FeatureScalar("show_mute_button", "MUTE BUTTON", FeatureScalarKind.BOOL),
+    )
+    "update-actions" -> listOf(
+        FeatureScalar("backup", "BACKUP", FeatureScalarKind.BACKUP),
+    )
+    "select-options" -> listOf(
+        FeatureScalar("style", "DROPDOWN", FeatureScalarKind.DROPDOWN_STYLE),
+    )
+    "button" -> listOf(
+        FeatureScalar("action_name", "ACTION NAME", FeatureScalarKind.TEXT),
+    )
+    else -> emptyList()
+}
+
 // ── Bespoke: gauge severity + segments ──────────────────────────────────────
 
 /** Build a gauge `severity` object from green/yellow/red threshold text; null
