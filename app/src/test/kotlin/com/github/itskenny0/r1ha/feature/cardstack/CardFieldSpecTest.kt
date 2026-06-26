@@ -266,6 +266,24 @@ class CardFieldSpecTest {
     }
 
     @Test
+    fun featureListEditingSetsAndClearsTheListKey() {
+        val base = buildJsonObject { put("type", "climate-hvac-modes") }
+        assertThat(featureListKey("climate-hvac-modes")).isEqualTo("hvac_modes")
+        assertThat(featureListKey("toggle")).isNull()
+
+        val withModes = setFeatureList(base, "hvac_modes", "heat, cool")
+        val arr = withModes["hvac_modes"] as kotlinx.serialization.json.JsonArray
+        assertThat(arr).containsExactly(JsonPrimitive("heat"), JsonPrimitive("cool")).inOrder()
+        assertThat((withModes["type"] as JsonPrimitive).content).isEqualTo("climate-hvac-modes")
+        assertThat(featureListText(withModes, "hvac_modes")).isEqualTo("heat, cool")
+
+        // Blank clears the list key but keeps the rest of the feature object.
+        val cleared = setFeatureList(withModes, "hvac_modes", "")
+        assertThat(cleared.containsKey("hvac_modes")).isFalse()
+        assertThat((cleared["type"] as JsonPrimitive).content).isEqualTo("climate-hvac-modes")
+    }
+
+    @Test
     fun featureCatalogTypesAreParseable() {
         // Every catalogue type produces a feature object with that type, and the
         // row label resolves to the catalogue's display name.

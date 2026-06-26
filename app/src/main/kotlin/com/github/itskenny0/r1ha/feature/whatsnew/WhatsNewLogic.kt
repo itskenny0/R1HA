@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Card features with a mode or command list, like climate or alarm modes, now edit as a simple list.",
     "The form editor now covers shortcut, area, statistics graph and the picture family of cards.",
     "Area cards expose their id, image, navigation, display type and sensor classes in the form.",
-    "Statistics graph cards let you pick stat types, period and chart type without YAML.",
 )
