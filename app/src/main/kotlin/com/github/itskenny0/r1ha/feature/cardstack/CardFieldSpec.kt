@@ -276,7 +276,7 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     "picture-entity" -> listOf(
         TextFieldSpec("name", "NAME"),
         TextFieldSpec("image", "IMAGE URL", FieldSection.APPEARANCE, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.APPEARANCE, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.APPEARANCE, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
         ActionFieldSpec("tap_action", "TAP"),
@@ -391,8 +391,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, domains = listOf("camera", "image", "person")),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         ActionFieldSpec("tap_action", "TAP"),
         ActionFieldSpec("hold_action", "HOLD"),
@@ -400,7 +400,7 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture-glance" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         BoolFieldSpec("show_state", "SHOW STATE", FieldSection.APPEARANCE, default = false),
         ActionFieldSpec("tap_action", "TAP"),
@@ -409,8 +409,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture-elements" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
+        EntityFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, domains = listOf("camera", "image", "person")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         TextFieldSpec("camera_view", "CAMERA VIEW", FieldSection.ADVANCED, placeholder = "auto / live"),
     )

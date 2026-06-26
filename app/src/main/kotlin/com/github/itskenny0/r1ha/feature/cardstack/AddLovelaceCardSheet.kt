@@ -1117,7 +1117,7 @@ internal fun CardMiniEditor(
                 CardFieldsSection(
                     type = type,
                     values = fieldValues,
-                    onPickEntity = { key -> entityPickerFor = EntityPickTarget.Field(key) },
+                    onPickEntity = { f -> entityPickerFor = EntityPickTarget.Field(f.key, f.domains) },
                     onEditAction = { key -> actionEditorFor = key },
                     onEditBespoke = { field -> bespokeEditorFor = field },
                 )
@@ -1159,6 +1159,7 @@ internal fun CardMiniEditor(
                 }
                 entityPickerFor = null
             },
+            domains = (pickTarget as? EntityPickTarget.Field)?.domains.orEmpty(),
             onDismiss = { entityPickerFor = null },
         )
     }
@@ -1211,9 +1212,10 @@ private sealed interface EntityPickTarget {
     object Single : EntityPickTarget
     object Multi : EntityPickTarget
 
-    /** Bind the picked entity into a generic schema field (e.g. a map/area card's
-     *  `entity:` when modelled as an [EntityFieldSpec]). */
-    data class Field(val key: String) : EntityPickTarget
+    /** Bind the picked entity into a generic schema field modelled as an
+     *  [EntityFieldSpec]; [domains] scopes the picker (e.g. camera for a
+     *  camera_image field). */
+    data class Field(val key: String, val domains: List<String> = emptyList()) : EntityPickTarget
 }
 
 private fun JsonObject?.str(key: String): String =
@@ -1291,6 +1293,9 @@ private fun EntityPickerOverlay(
     haRepository: HaRepository,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** When non-empty, only entities whose domain is in this set are listed (e.g.
+     *  ["camera"] for a camera_image field). Empty = all entities. */
+    domains: List<String> = emptyList(),
 ) {
     var query by remember { mutableStateOf("") }
     val all by androidx.compose.runtime.produceState<List<com.github.itskenny0.r1ha.core.ha.EntityState>?>(
@@ -1332,7 +1337,10 @@ private fun EntityPickerOverlay(
                 LoadingOrError(null)
             } else {
                 val q = query.trim().lowercase()
-                val filtered = if (q.isBlank()) entities else entities.filter {
+                val domainScoped = if (domains.isEmpty()) entities else entities.filter {
+                    it.id.value.substringBefore('.') in domains
+                }
+                val filtered = if (q.isBlank()) domainScoped else domainScoped.filter {
                     it.friendlyName.lowercase().contains(q) || it.id.value.lowercase().contains(q)
                 }
                 LazyColumn(
@@ -1455,7 +1463,7 @@ private fun RowOptionsEditor(
 private fun CardFieldsSection(
     type: String,
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
-    onPickEntity: (String) -> Unit,
+    onPickEntity: (EntityFieldSpec) -> Unit,
     onEditAction: (String) -> Unit,
     onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
@@ -1478,7 +1486,7 @@ private fun CardFieldsSection(
 private fun CardFieldControl(
     field: CardField,
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
-    onPickEntity: (String) -> Unit,
+    onPickEntity: (EntityFieldSpec) -> Unit,
     onEditAction: (String) -> Unit,
     onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
@@ -1556,7 +1564,7 @@ private fun CardFieldControl(
         is EntityFieldSpec -> {
             Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
             Spacer(Modifier.height(4.dp))
-            EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field.key) })
+            EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field) })
         }
         is ActionFieldSpec -> EditSummaryRow(
             label = field.label,
