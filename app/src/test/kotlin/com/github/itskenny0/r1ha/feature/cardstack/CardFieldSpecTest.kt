@@ -22,7 +22,7 @@ class CardFieldSpecTest {
         "humidifier", "weather-forecast", "entities", "glance", "history-graph",
         "picture-entity", "media-control", "alarm-panel", "statistic",
         "clock", "picture", "map", "logbook", "calendar",
-        "shortcut", "area", "statistics-graph",
+        "shortcut", "area", "statistics-graph", "picture-glance", "picture-elements",
     )
 
     /** The keys the editor hand-renders as primary controls for a type (not via

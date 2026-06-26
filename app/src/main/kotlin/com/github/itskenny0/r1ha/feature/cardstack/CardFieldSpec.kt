@@ -398,6 +398,22 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
         ActionFieldSpec("hold_action", "HOLD"),
         ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
     )
+    "picture-glance" -> listOf(
+        TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
+        BoolFieldSpec("show_state", "SHOW STATE", FieldSection.APPEARANCE, default = false),
+        ActionFieldSpec("tap_action", "TAP"),
+        ActionFieldSpec("hold_action", "HOLD"),
+        ActionFieldSpec("double_tap_action", "DOUBLE TAP"),
+    )
+    "picture-elements" -> listOf(
+        TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
+        TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
+        TextFieldSpec("camera_view", "CAMERA VIEW", FieldSection.ADVANCED, placeholder = "auto / live"),
+    )
     "history-graph" -> listOf(
         NumberFieldSpec("hours_to_show", "HOURS", FieldSection.APPEARANCE, integer = true),
         NumberFieldSpec("refresh_interval", "REFRESH S", FieldSection.ADVANCED, integer = true),
