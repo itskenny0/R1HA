@@ -608,6 +608,9 @@ internal fun DynamicPageDeck(
                 val isFocusedSlot = idx == settledFocus.intValue
                 val longPressTarget = entityCard
                     ?.let { appSettings.entityOverrides[it.id.value]?.longPressTarget }
+                // Quick Sheet opener for this card's long-press (default when no
+                // scene/script long-press target is configured).
+                val dynOpenQuickActions = com.github.itskenny0.r1ha.core.theme.LocalOpenQuickActions.current
                 val itemLightMode = entityCard?.let { lightWheelModes[it.id] }
                 // Manual target affordance: a tap on this card's TITLE focuses it
                 // and scrolls it to its snap line. Tall cards (a media card fills
@@ -705,11 +708,22 @@ internal fun DynamicPageDeck(
                                             if (isActive) vm.setCurrentIndex(idx)
                                             vm.setSwitchOn(on)
                                         },
-                                        onLongPress = longPressTarget?.let { target ->
-                                            {
-                                                if (isActive) vm.setCurrentIndex(idx)
-                                                vm.fireLongPress(target)
+                                        onLongPress = when {
+                                            // A configured scene/script long-press target wins.
+                                            longPressTarget != null -> {
+                                                {
+                                                    if (isActive) vm.setCurrentIndex(idx)
+                                                    vm.fireLongPress(longPressTarget)
+                                                }
                                             }
+                                            // Otherwise long-press opens the Quick Sheet.
+                                            entityCard != null && dynOpenQuickActions != null -> {
+                                                {
+                                                    if (isActive) vm.setCurrentIndex(idx)
+                                                    dynOpenQuickActions(entityCard)
+                                                }
+                                            }
+                                            else -> null
                                         },
                                         lightWheelMode = itemLightMode,
                                         // Content-height path: no vertical fill,
@@ -718,6 +732,10 @@ internal fun DynamicPageDeck(
                                         // FULLSCREEN's call site keeps the
                                         // default fill.
                                         fillSlot = false,
+                                        // The wheel-focused slot is the focused card:
+                                        // it gets the glance strip (secondary-info +
+                                        // inline quick controls).
+                                        focused = isFocusedSlot,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }

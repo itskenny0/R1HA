@@ -49,7 +49,8 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Entities cards now let you set a header or footer (graph, picture or buttons) in the form.",
-    "Pick camera and image entities from the entity list instead of typing their ids.",
-    "Card features now have friendly controls for volume step, mute, update backup and more.",
+    "Long-press any card for the new Quick Sheet: top domain controls plus more info, history, customize and move.",
+    "Card faces now show battery, charging, offline and update badges in the corner.",
+    "The focused card gains an inline quick-control row: presets, transport, open and close, tapped right there.",
+    "New secondary info line on cards, plus an opt-in double-tap to open details (Settings, Card surfaces).",
 )

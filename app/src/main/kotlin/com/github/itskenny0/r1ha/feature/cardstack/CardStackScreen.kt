@@ -279,6 +279,14 @@ fun CardStackScreen(
     val moreInfoEntityId = androidx.compose.runtime.remember {
         androidx.compose.runtime.mutableStateOf<String?>(null)
     }
+    // Entity whose long-press Quick Sheet is open (null = closed). Holds the live
+    // EntityState (not just the id) so the sheet can build domain quick-actions
+    // without a second lookup. Opened from a card's long-press (when no scene/script
+    // long-press override is set) and from the jump-sheet's entity rows; it replaces
+    // the old CardContextMenu, carrying the same manage actions plus domain controls.
+    val quickSheetState = androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<com.github.itskenny0.r1ha.core.ha.EntityState?>(null)
+    }
     // ── Pinned Lovelace cards ───────────────────────────────────────────────────
     // Pinned cards render as first-class slots inside every page's mixed deck
     // (see CardStackUiState.deckByPage). Their entity references are unioned
@@ -925,6 +933,10 @@ fun CardStackScreen(
         com.github.itskenny0.r1ha.core.theme.LocalOnSetEntityPercent provides onSetEntityPercent,
         com.github.itskenny0.r1ha.core.theme.LocalOnEntityCall provides onEntityCall,
         com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo provides onCardMoreInfo,
+        // Long-press Quick Sheet opener: the decks wire it to a card's long-press
+        // (when no scene/script long-press override is set, which still wins).
+        com.github.itskenny0.r1ha.core.theme.LocalOpenQuickActions provides
+            { st: com.github.itskenny0.r1ha.core.ha.EntityState -> quickSheetState.value = st },
         // Lovelace condition context for the deck slots (see the wiring above).
         com.github.itskenny0.r1ha.feature.dashboards.cards.LocalLovelaceCurrentUserId
             provides lovelaceCurrentUserId,
@@ -1898,16 +1910,15 @@ fun CardStackScreen(
         // virtual page that maps to the chosen index (relative to current page) so
         // the wrap-around scroll stays seamless; in finite mode we just animate to
         // that page directly.
-        // Per-row context menu opened by long-pressing a JumpRow. Holds the index
-        // of the card whose menu is open; null = closed. Lifted to screen scope
-        // so the menu can render above the JumpToCardSheet itself (matches the
-        // pattern used by [tabManagementForId]).
-        val cardContextMenuIdx = androidx.compose.runtime.remember {
-            androidx.compose.runtime.mutableStateOf<Int?>(null)
-        }
+        // Long-pressing a JumpRow's entity opens the same Quick Sheet a card-face
+        // long-press does (quickSheetState, hoisted to screen scope above); Lovelace
+        // rows open their own edit/remove menu. The old per-row CardContextMenu was
+        // retired in favour of the Quick Sheet, which carries the same manage actions
+        // (move / more-info / customize / history / open-in-HA / remove) plus domain
+        // quick-actions.
         // moreInfoEntityId is hoisted to screen scope above (so the wheel
-        // handler can both gate on and open it). Opened from the card context
-        // menu's MORE INFO action and from a wheel-spin on a read-only card.
+        // handler can both gate on and open it). Opened from the Quick Sheet's
+        // MORE INFO action and from a wheel-spin on a read-only card.
         if (jumpPickerOpen.value && deck.size > 1) {
             JumpToCardSheet(
                 items = deck,
@@ -1923,12 +1934,11 @@ fun CardStackScreen(
                 },
                 onReorder = { from, to -> vm.reorderDeckItem(from, to) },
                 onOpenMenu = { idx ->
-                    // Entity rows open the entity context menu; Lovelace rows
-                    // open the card's edit / remove menu. Same '…' affordance,
-                    // item-appropriate actions.
+                    // Entity rows open the Quick Sheet; Lovelace rows open the card's
+                    // edit / remove menu. Same '…' affordance, item-appropriate actions.
                     when (val item = deck.getOrNull(idx)) {
                         is DeckItem.Card -> lovelaceMenuFor.value = item
-                        is DeckItem.Entity -> cardContextMenuIdx.value = idx
+                        is DeckItem.Entity -> quickSheetState.value = item.state
                         null -> Unit
                     }
                 },
@@ -1936,57 +1946,55 @@ fun CardStackScreen(
             )
         }
 
-        // Context menu on the long-pressed JumpRow. Surfaces page-move actions
-        // and a duplicate of the remove affordance in a focused modal. Hidden
-        // when there's only one page (nowhere to move to AND remove already on
-        // the row) so the long-press is a no-op rather than opening an empty
-        // sheet.
-        val ctxIdx = cardContextMenuIdx.value
-        if (ctxIdx != null) {
-            val ctxCard = (deck.getOrNull(ctxIdx) as? DeckItem.Entity)?.state
-            if (ctxCard == null) {
-                cardContextMenuIdx.value = null
-            } else {
-                val ctxContext = androidx.compose.ui.platform.LocalContext.current
-                CardContextMenu(
-                    entityName = ctxCard.friendlyName,
-                    entityId = ctxCard.id.value,
+        // ── Long-press Quick Sheet ──────────────────────────────────────────────────
+        // Domain quick-actions for the long-pressed card plus the full "manage this
+        // card" row (move / more-info / customize / history / open-in-HA / remove).
+        // Replaces the old CardContextMenu; reached from a card-face long-press and
+        // the jump-sheet's entity rows. Rendered at the outer screen Box so it covers
+        // the chrome, matching the other overlays.
+        val quickCard = quickSheetState.value
+        if (quickCard != null) {
+            val quickContext = androidx.compose.ui.platform.LocalContext.current
+            val quickId = quickCard.id.value
+            val quickOverride = appSettings.entityOverrides[quickId]
+                ?: com.github.itskenny0.r1ha.core.prefs.EntityOverride.NONE
+            val dismissQuick = { quickSheetState.value = null }
+            val moreInfoEffective = (appSettings.entityOverrides[quickId]?.moreInfoEnabled
+                ?: appSettings.ui.moreInfoEnabledDefault)
+            com.github.itskenny0.r1ha.feature.quickactions.QuickActionSheet(
+                state = quickCard,
+                override = quickOverride,
+                manage = com.github.itskenny0.r1ha.feature.quickactions.QuickSheetManageActions(
+                    moreInfo = if (moreInfoEffective) {
+                        { moreInfoEntityId.value = quickId; dismissQuick() }
+                    } else null,
+                    customize = { customizingId.value = quickId; dismissQuick() },
+                    history = { onOpenHistory(quickId); dismissQuick() },
                     pages = appSettings.pages,
                     sourcePageId = appSettings.activePageId,
-                    haServerUrl = appSettings.server?.url,
                     onMove = { targetPageId ->
-                        vm.moveFavoriteToPage(ctxCard.id.value, targetPageId)
-                        cardContextMenuIdx.value = null
+                        vm.moveFavoriteToPage(quickId, targetPageId); dismissQuick()
                     },
-                    onRemove = {
-                        vm.removeFavorite(ctxCard.id.value)
-                        cardContextMenuIdx.value = null
-                    },
+                    openInHaUrl = appSettings.server?.url
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { "${it.trimEnd('/')}/history?entity_id=$quickId" },
                     onOpenInHa = { url ->
                         runCatching {
-                            ctxContext.startActivity(
+                            quickContext.startActivity(
                                 android.content.Intent(
                                     android.content.Intent.ACTION_VIEW,
                                     android.net.Uri.parse(url),
                                 ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                         }
-                        cardContextMenuIdx.value = null
+                        dismissQuick()
                     },
-                    onMoreInfo = run {
-                        // Effective per-entity flag = override ?: global default.
-                        val effective = appSettings.entityOverrides[ctxCard.id.value]?.moreInfoEnabled
-                            ?: appSettings.ui.moreInfoEnabledDefault
-                        if (effective) {
-                            {
-                                moreInfoEntityId.value = ctxCard.id.value
-                                cardContextMenuIdx.value = null
-                            }
-                        } else null
-                    },
-                    onDismiss = { cardContextMenuIdx.value = null },
-                )
-            }
+                    onRemove = { vm.removeFavorite(quickId); dismissQuick() },
+                ),
+                onDismiss = dismissQuick,
+                wheelInput = wheelInput,
+                settings = settings,
+            )
         }
 
         // ── Lovelace tap-action confirmation gate ───────────────────────────────────
@@ -2666,6 +2674,9 @@ private fun PageDeck(
                 val entityCard = (item as? DeckItem.Entity)?.state
                 val longPressTarget = entityCard
                     ?.let { appSettings.entityOverrides[it.id.value]?.longPressTarget }
+                // Quick Sheet opener for this card's long-press (default when no
+                // scene/script long-press target is configured).
+                val pageOpenQuickActions = com.github.itskenny0.r1ha.core.theme.LocalOpenQuickActions.current
                 val pageLightMode = entityCard?.let { lightWheelModes[it.id] }
                 // In peek mode a non-centred page is a peeking neighbour: its
                 // controls are inert and a tap navigates to it instead of
@@ -2744,9 +2755,19 @@ private fun PageDeck(
                     onSetOn = { on -> vm.setSwitchOn(on) },
                     // Suppress the long-press action on peek neighbours so a hold
                     // on a half-visible card can't fire its long-press target.
-                    onLongPress = if (isPeekNeighbour) null
-                        else longPressTarget?.let { target -> { vm.fireLongPress(target) } },
+                    onLongPress = when {
+                        isPeekNeighbour -> null
+                        // A configured scene/script long-press target wins.
+                        longPressTarget != null -> { { vm.fireLongPress(longPressTarget) } }
+                        // Otherwise long-press opens the Quick Sheet for this card.
+                        entityCard != null && pageOpenQuickActions != null ->
+                            { { pageOpenQuickActions(entityCard) } }
+                        else -> null
+                    },
                     lightWheelMode = pageLightMode,
+                    // The centred (non-peek) card is the focused one: it gets the
+                    // glance strip (secondary-info + inline quick controls).
+                    focused = !isPeekNeighbour,
                     modifier = slotModifier,
                 )
                 }
@@ -3639,165 +3660,6 @@ private fun TabManageDialog(
                     )
                 }
             }
-        }
-    }
-}
-
-/**
- * Per-card context menu opened by long-pressing a JumpRow. Currently surfaces
- * page-move actions ("Move to PAGE_NAME" once per page other than the source)
- * plus a duplicate REMOVE so the menu is the canonical 'do something to this
- * card' surface. Dismisses on backdrop tap or BackHandler.
- *
- * Visual styling mirrors [TabManageDialog]: dim full-screen backdrop, sharp
- * 2 dp inner panel with hairline border, warm-accent section header, monospace
- * entity_id reminder beneath the friendly name. Keeps the modal language
- * consistent across the dashboard.
- */
-@Composable
-private fun CardContextMenu(
-    entityName: String,
-    entityId: String,
-    pages: List<com.github.itskenny0.r1ha.core.prefs.FavoritePage>,
-    sourcePageId: String,
-    /** HA server URL — used to build the deep-link for the 'Open in HA' button.
-     *  Null when the user isn't signed in (the button is then hidden). */
-    haServerUrl: String?,
-    onMove: (targetPageId: String) -> Unit,
-    onRemove: () -> Unit,
-    onOpenInHa: (url: String) -> Unit,
-    /** Open the in-app ultra-detail more-info sheet for this card's entity.
-     *  Null when the effective per-entity `moreInfoEnabled` resolves to false
-     *  (or settings haven't loaded); the button is then hidden. */
-    onMoreInfo: (() -> Unit)? = null,
-    onDismiss: () -> Unit,
-) {
-    androidx.activity.compose.BackHandler(onBack = onDismiss)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(R1.Bg.copy(alpha = 0.92f))
-            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
-            .systemBarsPadding(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            modifier = Modifier
-                .widthIn(max = 560.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
-                .clip(R1.ShapeS)
-                .background(R1.Surface)
-                .border(1.dp, R1.Hairline, R1.ShapeS)
-                .r1Pressable(onClick = {}, hapticOnClick = false)
-                .padding(16.dp)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
-        ) {
-            Text(text = "CARD ACTIONS", style = R1.sectionHeader, color = R1.AccentWarm)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = entityName,
-                style = R1.body,
-                color = R1.Ink,
-                maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            Text(
-                text = entityId,
-                style = R1.labelMicro.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                color = R1.InkMuted,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
-            // Move-to-page entries. Filtered to pages OTHER than the source so
-            // we never offer a self-move. When there's only one page total,
-            // this section collapses to a 'no other pages' affordance pointing
-            // at the '+' chip so the user discovers the page-creation route.
-            //
-            // Rendered as a wrapping FlowRow of compact chips rather than
-            // one full-width R1Button per page — users with 8+ pages were
-            // seeing the modal fill the whole screen with MOVE TO buttons.
-            // Each chip sizes to its text + a small horizontal padding,
-            // wrapping onto multiple rows only when the page count actually
-            // requires it. Active accent border so each chip reads as
-            // tappable; same labelMicro text style as the page chips on
-            // the main tab strip for visual consistency.
-            val targetPages = pages.filter { it.id != sourcePageId }
-            Spacer(Modifier.height(14.dp))
-            Text(text = "MOVE TO", style = R1.labelMicro, color = R1.InkSoft)
-            Spacer(Modifier.height(6.dp))
-            if (targetPages.isEmpty()) {
-                Text(
-                    text = "No other pages yet. Add one with the '+' chip on the tab strip.",
-                    style = R1.body,
-                    color = R1.InkMuted,
-                )
-            } else {
-                androidx.compose.foundation.layout.FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    for (p in targetPages) {
-                        Box(
-                            modifier = Modifier
-                                .clip(R1.ShapeS)
-                                .border(1.dp, R1.AccentWarm, R1.ShapeS)
-                                .r1Pressable(onClick = { onMove(p.id) })
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                        ) {
-                            Text(
-                                text = p.name.uppercase(),
-                                style = R1.labelMicro,
-                                color = R1.AccentWarm,
-                            )
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            // Ultra-detail more-info — opens the in-app attribute / history
-            // sheet for this entity. Hidden when the effective per-entity
-            // moreInfoEnabled resolved to false (onMoreInfo is then null).
-            if (onMoreInfo != null) {
-                R1Button(
-                    text = "MORE INFO",
-                    onClick = onMoreInfo,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            // Open in HA — deep-link to the entity's history page in the HA
-            // web UI. Useful when the user wants to see HA's full sensor
-            // history / device controls / configure automations. Hidden
-            // when the user isn't signed in.
-            if (!haServerUrl.isNullOrBlank()) {
-                val url = "${haServerUrl.trimEnd('/')}/history?entity_id=$entityId"
-                R1Button(
-                    text = "OPEN IN HA",
-                    onClick = { onOpenInHa(url) },
-                    modifier = Modifier.fillMaxWidth(),
-                    variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
-                )
-                Spacer(Modifier.height(8.dp))
-            }
-            // Remove from this page — same destructive action surfaced via the
-            // inline '✕' chip. Duplicated here so the long-press menu is a
-            // complete 'manage this card' surface; a user who long-pressed
-            // expecting to remove (and missed that the inline chip existed)
-            // still finds the affordance.
-            R1Button(
-                text = "REMOVE FROM PAGE",
-                onClick = onRemove,
-                modifier = Modifier.fillMaxWidth(),
-                accent = R1.StatusRed,
-            )
-            Spacer(Modifier.height(8.dp))
-            R1Button(
-                text = stringResource(R.string.dialog_cancel),
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                variant = com.github.itskenny0.r1ha.ui.components.R1ButtonVariant.Outlined,
-            )
         }
     }
 }

@@ -119,6 +119,14 @@ fun Modifier.r1RowPressable(
     pressedScale: Float = 0.97f,
     pressedAlpha: Float = 0.78f,
     contentDescription: String? = null,
+    /**
+     * Optional double-tap handler. Null (the default) keeps the cheaper
+     * single-tap path with no double-tap disambiguation delay; passing a handler
+     * makes [detectTapGestures] wait out the double-tap timeout before firing
+     * [onTap], so wire it only when a card has opted in (e.g. double-tap to open
+     * more-info).
+     */
+    onDoubleTap: (() -> Unit)? = null,
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -146,8 +154,14 @@ fun Modifier.r1RowPressable(
             scaleY = scale
             this.alpha = alpha
         }
-        .pointerInput(onTap, onLongPress) {
+        .pointerInput(onTap, onLongPress, onDoubleTap) {
             detectTapGestures(
+                onDoubleTap = onDoubleTap?.let { handler ->
+                    {
+                        haptic.tick(view)
+                        handler()
+                    }
+                },
                 onPress = { offset ->
                     // Drive the MutableInteractionSource manually so the press-state spring
                     // animates while the user is holding. tryAwaitRelease returns true on a

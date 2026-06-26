@@ -411,4 +411,77 @@ class EntityOverrideCodecTest {
         assertThat(o!!.actionOnTap).isNull()
         assertThat(o.actionOnWheelPress).isNull()
     }
+
+    @Test fun `glance face affordance overrides round-trip via slots 22 through 25`() {
+        val map = mapOf(
+            "sensor.power" to EntityOverride(
+                sparkline = true,
+                secondaryInfo = SecondaryInfo.BATTERY,
+                faceControls = false,
+                doubleTapMoreInfo = true,
+            ),
+        )
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val parts = encoded.substringAfter('=').split('|')
+        // Slot 22 = sparkline ('1'), 23 = secondaryInfo ('y' = BATTERY),
+        // 24 = faceControls ('0'), 25 = doubleTapMoreInfo ('1').
+        assertThat(parts.getOrNull(22)).isEqualTo("1")
+        assertThat(parts.getOrNull(23)).isEqualTo("y")
+        assertThat(parts.getOrNull(24)).isEqualTo("0")
+        assertThat(parts.getOrNull(25)).isEqualTo("1")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded).isEqualTo(map)
+    }
+
+    @Test fun `null glance affordances encode as inherit and round-trip as null`() {
+        val map = mapOf("light.kitchen" to EntityOverride(showOnOffPill = true))
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        val parts = encoded.substringAfter('=').split('|')
+        assertThat(parts.getOrNull(22)).isEqualTo("?")
+        assertThat(parts.getOrNull(23)).isEqualTo("?")
+        assertThat(parts.getOrNull(24)).isEqualTo("?")
+        assertThat(parts.getOrNull(25)).isEqualTo("?")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        val o = decoded["light.kitchen"]
+        assertThat(o?.sparkline).isNull()
+        assertThat(o?.secondaryInfo).isNull()
+        assertThat(o?.faceControls).isNull()
+        assertThat(o?.doubleTapMoreInfo).isNull()
+    }
+
+    @Test fun `explicit SecondaryInfo NONE override is distinct from inherit`() {
+        // NONE ('0') means "hide the line on this card"; inherit is "?". The two
+        // must not collapse, or a user who hid the line on one card would lose it.
+        val map = mapOf("light.kitchen" to EntityOverride(secondaryInfo = SecondaryInfo.NONE))
+        val encoded = encodeEntityOverrides_visibleForTesting(map)
+        assertThat(encoded.substringAfter('=').split('|').getOrNull(23)).isEqualTo("0")
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.secondaryInfo).isEqualTo(SecondaryInfo.NONE)
+    }
+
+    @Test fun `older save without slots 22 through 25 decodes glance fields as null`() {
+        // A 22-slot save (last field favourite positions) predating the glance
+        // affordances. The new fields must land as null / inherit so the user's
+        // existing customizations are preserved.
+        val legacy = "light.kitchen=28|1|0|scene.foo|2|" + 0xFFF36F21.toInt() +
+            "|2700|F||1|?|?|||?||T|F|R|1|255,128|50,100"
+        val decoded = decodeEntityOverrides_visibleForTesting(legacy)
+        val o = decoded["light.kitchen"]
+        assertThat(o).isNotNull()
+        assertThat(o!!.textSizeSp).isEqualTo(28)
+        assertThat(o.favoriteColors).isEqualTo(listOf(255, 128))
+        assertThat(o.favoritePositions).isEqualTo(listOf(50, 100))
+        assertThat(o.sparkline).isNull()
+        assertThat(o.secondaryInfo).isNull()
+        assertThat(o.faceControls).isNull()
+        assertThat(o.doubleTapMoreInfo).isNull()
+    }
+
+    @Test fun `decoder ignores unknown SecondaryInfo codes`() {
+        // A future build shipping a new SecondaryInfo code (e.g. 'Z') in slot 23
+        // must decode as inherit (null) on older builds rather than throwing.
+        val encoded = "light.kitchen=?|?|?||?|?|?||?|?|?||?||?||?|?|?|?|||1|Z|?|?"
+        val decoded = decodeEntityOverrides_visibleForTesting(encoded)
+        assertThat(decoded["light.kitchen"]?.secondaryInfo).isNull()
+    }
 }

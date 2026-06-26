@@ -60,6 +60,13 @@ fun EntityCard(
      * children and every control stays visible.)
      */
     fillSlot: Boolean = true,
+    /**
+     * True when this card is the deck's focused / centred card. Gates the
+     * focused-only glance strip (secondary-info line + inline quick controls) so
+     * peeking neighbours stay uncluttered. Status badges render regardless of
+     * focus (they only appear when a backing attribute is present).
+     */
+    focused: Boolean = false,
 ) {
     val theme = LocalR1Theme.current
     val glyph = when (state.id.domain) {
@@ -228,12 +235,29 @@ fun EntityCard(
     // sensor history overlay from any domain) will plug into the same
     // hook from the screen layer as the routing surface evolves.
     val tapActionOverride = perCardOverridePulledEarly?.actionOnTap
+    // Opt-in double-tap to open more-info. Off by default (it adds a tap
+    // disambiguation delay to every single tap). The handler is null unless the
+    // card opted in AND a more-info opener is available, so the cheaper no-double-tap
+    // path is kept whenever the gesture couldn't do anything anyway.
+    val doubleTapMoreInfoEnabled = perCardOverridePulledEarly?.doubleTapMoreInfo
+        ?: com.github.itskenny0.r1ha.core.theme.LocalUiOptions.current.doubleTapMoreInfoDefault
+    val moreInfoOpener = com.github.itskenny0.r1ha.core.theme.LocalOnCardMoreInfo.current
+    val doubleTapHandler: (() -> Unit)? =
+        if (doubleTapMoreInfoEnabled && moreInfoOpener != null) {
+            { moreInfoOpener(state.id) }
+        } else {
+            null
+        }
     val tapModifier = when {
         tapActionOverride == com.github.itskenny0.r1ha.core.prefs.TapAction.NOOP -> Modifier
         !effectiveTapToToggle || !state.isAvailable -> Modifier
         state.id.domain.isSensor -> Modifier
         hasExplicitActivationButton -> Modifier
-        onLongPress != null -> Modifier.r1RowPressable(onTap = onTapToggle, onLongPress = onLongPress)
+        onLongPress != null -> Modifier.r1RowPressable(
+            onTap = onTapToggle,
+            onLongPress = onLongPress,
+            onDoubleTap = doubleTapHandler,
+        )
         else -> Modifier.r1Pressable(onClick = onTapToggle, hapticOnClick = false)
     }
     // Pull the per-card override out of the CompositionLocal that the screen layer
@@ -520,6 +544,45 @@ fun EntityCard(
                     .align(Alignment.BottomEnd)
                     .padding(end = 8.dp, bottom = 6.dp),
             )
+        }
+        // ── Status badges ───────────────────────────────────────────────────────────
+        // Battery / charging / unavailable / update glance badges in the top-end corner.
+        // Each renders only when its backing attribute is present, so most cards show
+        // nothing here. Gated by the deck-wide toggle and to fillSlot (fullscreen deck):
+        // a content-height dynamic card has no spare corner for an overlay.
+        if (baseUi.showStatusBadges && fillSlot) {
+            StatusBadges(
+                state = state,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 8.dp),
+            )
+        }
+        // ── Focused glance strip ────────────────────────────────────────────────────
+        // On the focused, full-slot card only: the secondary-info line and the inline
+        // quick-control row, bottom-anchored and inset to clear a right-edge value bar.
+        // Gated to fillSlot (the fullscreen deck, the R1's default) because there the
+        // card fills its slot and the strip sits in the free space below the content; on
+        // the content-height dynamic deck the card wraps its content, so a bottom overlay
+        // would sit on top of it. Peeking neighbours stay clean. Each half self-gates (the
+        // control row is empty for read-only domains; the secondary line is empty when its
+        // source is absent).
+        if (focused && fillSlot && state.isAvailable) {
+            val secondaryKind = perCardOverride.resolvedSecondaryInfo(baseUi.secondaryInfoDefault)
+            val showFaceControls = perCardOverride.resolvedFaceControls(baseUi.faceQuickControls)
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(start = 10.dp, end = 28.dp, bottom = 4.dp),
+            ) {
+                if (secondaryKind != com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.NONE) {
+                    SecondaryInfoLine(state = state, kind = secondaryKind)
+                }
+                if (showFaceControls) {
+                    com.github.itskenny0.r1ha.feature.quickactions.FaceQuickControlRow(state = state)
+                }
+            }
         }
     }
     }
