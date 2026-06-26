@@ -50,6 +50,6 @@ fun whatsNewAction(
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
     "Card features with a mode or command list, like climate or alarm modes, now edit as a simple list.",
-    "The form editor now covers shortcut, area, statistics graph and the picture family of cards.",
-    "Area cards expose their id, image, navigation, display type and sensor classes in the form.",
+    "History graph cards now edit cleanly in the form alongside the rest of the card types.",
+    "Editing a card feature's raw options no longer fights your cursor, and an option can be reset to default.",
 )

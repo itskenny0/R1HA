@@ -16,11 +16,15 @@ import kotlinx.serialization.json.buildJsonObject
  * Hoisted out of the composable so the round-trip is unit-testable.
  */
 
-/** Single-entity config key applies to these card types. */
+/** Single-entity config key applies to these card types. history-graph is
+ *  deliberately excluded: the renderer reads `entities:` (a list), not `entity:`,
+ *  so a single-entity picker there would write a dead key and hide the real
+ *  series. It is treated like the other entity-list cards (title + options in the
+ *  form, entities array passed through). */
 internal val SINGLE_ENTITY_TYPES = setOf(
     "tile", "light", "gauge", "button", "sensor", "thermostat", "humidifier",
     "media-control", "alarm-panel", "weather-forecast", "picture-entity",
-    "statistic", "history-graph",
+    "statistic",
 )
 
 /** Multi-entity list (plain `entities:` array) applies to these. */

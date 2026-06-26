@@ -1533,10 +1533,17 @@ private fun CardFieldControl(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 field.options.forEach { opt ->
+                    val isSel = selected == opt.value
                     EditorToggleChip(
                         label = opt.label,
-                        selected = selected == opt.value,
-                        onClick = { values[field.key] = JsonPrimitive(opt.value) },
+                        selected = isSel,
+                        // Re-tapping the selected chip clears the key (JsonNull so
+                        // the build loop drops it) when the field allows unset, so
+                        // an enum can return to the card's own default in-form.
+                        onClick = {
+                            values[field.key] =
+                                if (isSel && field.allowUnset) JsonNull else JsonPrimitive(opt.value)
+                        },
                     )
                 }
             }
@@ -1936,27 +1943,37 @@ private fun CardFeaturesEditor(
                     ) { Text("✕", style = R1.labelMicro, color = R1.StatusRed) }
                 }
                 if (expanded == idx) {
+                    // One text representation of this feature, keyed on idx (NOT on
+                    // the feature object) so it never resets mid-keystroke. Both the
+                    // friendly list field and the raw editor read/write through it;
+                    // features[idx] mirrors the last valid parse. This keeps the two
+                    // controls in sync and the cursor stable while typing.
+                    var text by remember(idx) {
+                        mutableStateOf(LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), feat))
+                    }
+                    val parsedFeat = runCatching { LOVELACE_EDIT_JSON.parseToJsonElement(text) as? JsonObject }.getOrNull()
+                    val featType = (parsedFeat?.get("type") as? JsonPrimitive)?.content
+                        ?: (feat["type"] as? JsonPrimitive)?.content.orEmpty()
+                    val listKey = featureListKey(featType)
                     // Friendly comma field for the common list-option features
                     // (mode pickers, command rows, select options, media controls);
                     // the raw-JSON field below still exposes every other option.
-                    val featType = (feat["type"] as? JsonPrimitive)?.content.orEmpty()
-                    val listKey = featureListKey(featType)
-                    if (listKey != null) {
+                    if (listKey != null && parsedFeat != null) {
                         Spacer(Modifier.height(4.dp))
                         EditorField(
                             label = listKey.uppercase().replace('_', ' '),
-                            value = featureListText(feat, listKey),
-                            onChange = { features[idx] = setFeatureList(feat, listKey, it) },
+                            value = featureListText(parsedFeat, listKey),
+                            onChange = {
+                                val newFeat = setFeatureList(parsedFeat, listKey, it)
+                                text = LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), newFeat)
+                                features[idx] = newFeat
+                            },
                             monospace = true,
                         )
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(text = "OPTIONS (JSON)", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.height(4.dp))
-                    var text by remember(idx, feat) {
-                        mutableStateOf(LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), feat))
-                    }
-                    val parsed = runCatching { LOVELACE_EDIT_JSON.parseToJsonElement(text) as? JsonObject }.getOrNull()
                     com.github.itskenny0.r1ha.ui.components.R1TextField(
                         value = text,
                         onValueChange = {
@@ -1966,7 +1983,7 @@ private fun CardFeaturesEditor(
                         },
                         placeholder = "{ \"type\": \"...\" }",
                         monospace = true,
-                        isError = parsed == null,
+                        isError = parsedFeat == null,
                     )
                 }
             }
