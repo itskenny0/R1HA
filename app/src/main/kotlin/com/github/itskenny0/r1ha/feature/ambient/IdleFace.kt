@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -55,7 +54,7 @@ fun IdleFace(
 
     // Optional slow burn-in-insurance drift (a few dp, ~2 min loop). Cheap and
     // gated; the R1 panel is LCD so this is belt-and-braces.
-    val driftX by produceState(initialValue = 0) {
+    val driftX by produceState(initialValue = 0, key1 = ambient.pixelDriftEnabled) {
         if (!ambient.pixelDriftEnabled) return@produceState
         val steps = listOf(0, 2, 4, 2, 0, -2, -4, -2)
         var i = 0
