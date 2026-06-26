@@ -617,6 +617,9 @@ fun SettingsScreen(
                         onOpenSystemHealth = onOpenSystemHealth,
                     )
 
+                    // ── Ambient display ───────────────────────────────────
+                    SettingsNode.AMBIENT -> item { /* Ambient settings UI — placeholder for Task 2 */ }
+
                     // ── Browse ────────────────────────────────────────────
                     SettingsNode.BROWSE -> browseRoot(push = push)
                     SettingsNode.BROWSE_TODAY -> browseToday(onOpenDashboard, onOpenSearch)
@@ -2523,6 +2526,7 @@ private fun nodeLeadingIcon(node: SettingsNode): androidx.compose.ui.graphics.ve
         SettingsNode.BROWSE, SettingsNode.BROWSE_TODAY, SettingsNode.BROWSE_TALK,
         SettingsNode.BROWSE_STATUS, SettingsNode.BROWSE_POWER,
         -> set.Todo
+        SettingsNode.AMBIENT -> set.Light
         SettingsNode.ROOT -> set.Generic
     }
 }
@@ -2585,6 +2589,7 @@ internal fun sectionNameForCategory(
     com.github.itskenny0.r1ha.core.prefs.SettingCategory.APPEARANCE -> "APPEARANCE"
     com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS -> "INTEGRATIONS"
     com.github.itskenny0.r1ha.core.prefs.SettingCategory.DASHBOARD -> "DASHBOARD"
+    com.github.itskenny0.r1ha.core.prefs.SettingCategory.AMBIENT -> "AMBIENT DISPLAY"
 }
 
 // ── Building blocks ──────────────────────────────────────────────────────────────────────

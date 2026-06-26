@@ -37,6 +37,7 @@ enum class SettingCategory(val label: String) {
     APPEARANCE("Appearance"),
     INTEGRATIONS("Integrations"),
     DASHBOARD("Dashboard"),
+    AMBIENT("Ambient display"),
     // DATA intentionally absent: backup/restore is actions not settings. A
     // test asserts every category is populated, so a drive-by enum addition
     // without a matching entry won't merge.
@@ -889,6 +890,47 @@ val SETTINGS_REGISTRY: List<SettingEntry> = listOf(
             if (it.dashboard.tileOrder == DashboardSettings.DEFAULT_TILE_ORDER) "default"
             else "customised"
         },
+    ),
+    // ── Ambient display ─────────────────────────────────────────────────
+    SettingEntry(
+        id = "ambient.enabled",
+        category = SettingCategory.AMBIENT,
+        label = "Ambient screensaver",
+        description = "Dim to a glance panel when idle, wake on touch (always-on display)",
+        isDefault = { it.ambient.enabled == defaults.ambient.enabled },
+        currentDisplay = { if (it.ambient.enabled) "ON" else "OFF" },
+    ),
+    SettingEntry(
+        id = "ambient.idleTimeoutSec",
+        category = SettingCategory.AMBIENT,
+        label = "Idle timeout",
+        description = "Seconds of no interaction before the idle face appears (0 = never)",
+        isDefault = { it.ambient.idleTimeoutSec == defaults.ambient.idleTimeoutSec },
+        currentDisplay = { "${it.ambient.idleTimeoutSec}s" },
+    ),
+    SettingEntry(
+        id = "ambient.dayBrightnessPct",
+        category = SettingCategory.AMBIENT,
+        label = "Day brightness",
+        description = "Idle screen brightness during the day",
+        isDefault = { it.ambient.dayBrightnessPct == defaults.ambient.dayBrightnessPct },
+        currentDisplay = { "${it.ambient.dayBrightnessPct}%" },
+    ),
+    SettingEntry(
+        id = "ambient.nightBrightnessPct",
+        category = SettingCategory.AMBIENT,
+        label = "Night brightness",
+        description = "Idle screen brightness during the configured night hours",
+        isDefault = { it.ambient.nightBrightnessPct == defaults.ambient.nightBrightnessPct },
+        currentDisplay = { "${it.ambient.nightBrightnessPct}%" },
+    ),
+    SettingEntry(
+        id = "ambient.scope",
+        category = SettingCategory.AMBIENT,
+        label = "Where it appears",
+        description = "Anywhere, only on Today, or Today plus the card stack",
+        isDefault = { it.ambient.scope == defaults.ambient.scope },
+        currentDisplay = { it.ambient.scope.name.lowercase().replace('_', ' ') },
     ),
     // Advanced / power-user toggles (background refresh, NFC scanner, notification
     // mirror, external automation intent) live under About > Dev menu rather than

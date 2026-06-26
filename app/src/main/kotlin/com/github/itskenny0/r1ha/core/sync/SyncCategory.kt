@@ -182,6 +182,13 @@ enum class SyncCategory(val displayLabel: String, val description: String) {
                 ),
             )
         }
+    },
+    AMBIENT(
+        "Ambient display",
+        "Ambient screensaver: enable, timeout, brightness, content toggles",
+    ) {
+        override fun preserve(applied: AppSettings, source: AppSettings): AppSettings =
+            applied.copy(ambient = source.ambient)
     };
 
     /**

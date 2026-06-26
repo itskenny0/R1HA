@@ -779,6 +779,52 @@ enum class DashboardTile(val label: String) {
     INLINE_ALERTS("Inline alert previews"),
 }
 
+/** Hard floor for ambient idle brightness, as a percent. The user-configurable
+ *  day/night brightness is clamped to this so the screen never goes fully black
+ *  (which reads as a dead device). */
+const val AMBIENT_MIN_BRIGHTNESS_PCT = 1
+
+/** Which surfaces the ambient idle face may take over. */
+@kotlinx.serialization.Serializable
+enum class AmbientScope { ANYWHERE, TODAY_ONLY, TODAY_PLUS_CARDSTACK }
+
+/**
+ * Opt-in always-on "ambient" screensaver. After [idleTimeoutSec] of no
+ * interaction (and when [enabled]), the app dims and shows a glance panel; any
+ * interaction wakes it. Everything here is additive with safe defaults and the
+ * feature defaults off, so existing installs are unaffected until the user turns
+ * it on.
+ */
+@Immutable
+@kotlinx.serialization.Serializable
+data class AmbientSettings(
+    val enabled: Boolean = false,
+    /** Seconds of no interaction before the idle face appears. 0 = never. */
+    val idleTimeoutSec: Int = 60,
+    val scope: AmbientScope = AmbientScope.ANYWHERE,
+    /** Idle screen brightness by day, percent (clamped to [AMBIENT_MIN_BRIGHTNESS_PCT]..100). */
+    val dayBrightnessPct: Int = 40,
+    /** Idle screen brightness at night, percent (clamped to [AMBIENT_MIN_BRIGHTNESS_PCT]..100). */
+    val nightBrightnessPct: Int = 6,
+    /** When off, the day brightness is used at all hours (no deeper night dim). */
+    val nightDimEnabled: Boolean = true,
+    val showClock: Boolean = true,
+    val showDate: Boolean = true,
+    val showWeather: Boolean = true,
+    val showFeelsLike: Boolean = true,
+    val showLights: Boolean = true,
+    val showPersons: Boolean = true,
+    val showPower: Boolean = true,
+    val showAlerts: Boolean = true,
+    /** When on, the input that wakes the screen is swallowed so it does not also
+     *  actuate a control underneath. */
+    val consumeWakeEvent: Boolean = true,
+    /** When on, the idle face is suppressed on camera / live-video screens. */
+    val suppressOverCamera: Boolean = false,
+    /** Subtle slow position drift of the idle-face content (cheap burn-in insurance). */
+    val pixelDriftEnabled: Boolean = true,
+)
+
 /** Stable ids for the top-level navigation destinations. Used as the keys in
  *  [NavPanelSettings.hiddenNavItems] so the persisted set is decoupled from the
  *  nav-route string constants. "home" and "settings" are intentionally absent:
@@ -1630,6 +1676,8 @@ data class AppSettings(
     val advanced: AdvancedSettings = AdvancedSettings(),
     /** Per-section dashboard visibility + thresholds. */
     val dashboard: DashboardSettings = DashboardSettings(),
+    /** Opt-in always-on ambient screensaver. */
+    val ambient: AmbientSettings = AmbientSettings(),
     /** Large-screen side navigation panel enable + per-item visibility. */
     val navPanel: NavPanelSettings = NavPanelSettings(),
     /** Per-surface refresh intervals + integration tuning. */

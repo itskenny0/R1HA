@@ -370,6 +370,8 @@ class SettingsViewModel(
                         s.copy(theme = defaults.theme)
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.INTEGRATIONS ->
                         s.copy(integrations = defaults.integrations)
+                    com.github.itskenny0.r1ha.core.prefs.SettingCategory.AMBIENT ->
+                        s.copy(ambient = defaults.ambient)
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.SERVER,
                     com.github.itskenny0.r1ha.core.prefs.SettingCategory.DASHBOARD,
                     -> s // server has its own sign-out path; dashboard lives in pages which we preserve.
