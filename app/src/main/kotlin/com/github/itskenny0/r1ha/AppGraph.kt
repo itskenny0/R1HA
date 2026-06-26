@@ -227,6 +227,12 @@ class AppGraph(context: Context) {
         WheelInput()
     }
 
+    /** Fetches the small data set the ambient idle face renders. Lazy so installs
+     *  that never enable ambient mode never allocate it. */
+    val ambientSummaryUseCase: com.github.itskenny0.r1ha.core.ambient.AmbientSummaryUseCase by lazy {
+        com.github.itskenny0.r1ha.core.ambient.AmbientSummaryUseCase(haRepository)
+    }
+
     /**
      * Remote log shipper. Streams R1Log entries + crashes to a user-configured
      * HTTP endpoint over the SHARED [okHttp] client (so it inherits the app's
