@@ -49,6 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Ambient display (opt-in): dims to a glance panel when idle and wakes on touch. Turn it on in Settings, Ambient display.",
     "Long-press a hardware button to run a shortcut you choose in Settings, Card surfaces.",
     "Long-press any card for the Quick Sheet: top domain controls plus more info, history, customize and move.",
     "Card faces now show battery, charging, offline and update badges, plus inline quick controls.",
