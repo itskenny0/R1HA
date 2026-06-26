@@ -1117,7 +1117,7 @@ internal fun CardMiniEditor(
                 CardFieldsSection(
                     type = type,
                     values = fieldValues,
-                    onPickEntity = { key -> entityPickerFor = EntityPickTarget.Field(key) },
+                    onPickEntity = { f -> entityPickerFor = EntityPickTarget.Field(f.key, f.domains) },
                     onEditAction = { key -> actionEditorFor = key },
                     onEditBespoke = { field -> bespokeEditorFor = field },
                 )
@@ -1159,6 +1159,7 @@ internal fun CardMiniEditor(
                 }
                 entityPickerFor = null
             },
+            domains = (pickTarget as? EntityPickTarget.Field)?.domains.orEmpty(),
             onDismiss = { entityPickerFor = null },
         )
     }
@@ -1211,9 +1212,10 @@ private sealed interface EntityPickTarget {
     object Single : EntityPickTarget
     object Multi : EntityPickTarget
 
-    /** Bind the picked entity into a generic schema field (e.g. a map/area card's
-     *  `entity:` when modelled as an [EntityFieldSpec]). */
-    data class Field(val key: String) : EntityPickTarget
+    /** Bind the picked entity into a generic schema field modelled as an
+     *  [EntityFieldSpec]; [domains] scopes the picker (e.g. camera for a
+     *  camera_image field). */
+    data class Field(val key: String, val domains: List<String> = emptyList()) : EntityPickTarget
 }
 
 private fun JsonObject?.str(key: String): String =
@@ -1291,6 +1293,9 @@ private fun EntityPickerOverlay(
     haRepository: HaRepository,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** When non-empty, only entities whose domain is in this set are listed (e.g.
+     *  ["camera"] for a camera_image field). Empty = all entities. */
+    domains: List<String> = emptyList(),
 ) {
     var query by remember { mutableStateOf("") }
     val all by androidx.compose.runtime.produceState<List<com.github.itskenny0.r1ha.core.ha.EntityState>?>(
@@ -1332,7 +1337,10 @@ private fun EntityPickerOverlay(
                 LoadingOrError(null)
             } else {
                 val q = query.trim().lowercase()
-                val filtered = if (q.isBlank()) entities else entities.filter {
+                val domainScoped = if (domains.isEmpty()) entities else entities.filter {
+                    it.id.value.substringBefore('.') in domains
+                }
+                val filtered = if (q.isBlank()) domainScoped else domainScoped.filter {
                     it.friendlyName.lowercase().contains(q) || it.id.value.lowercase().contains(q)
                 }
                 LazyColumn(
@@ -1455,7 +1463,7 @@ private fun RowOptionsEditor(
 private fun CardFieldsSection(
     type: String,
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
-    onPickEntity: (String) -> Unit,
+    onPickEntity: (EntityFieldSpec) -> Unit,
     onEditAction: (String) -> Unit,
     onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
@@ -1478,7 +1486,7 @@ private fun CardFieldsSection(
 private fun CardFieldControl(
     field: CardField,
     values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
-    onPickEntity: (String) -> Unit,
+    onPickEntity: (EntityFieldSpec) -> Unit,
     onEditAction: (String) -> Unit,
     onEditBespoke: (BespokeFieldSpec) -> Unit,
 ) {
@@ -1556,7 +1564,7 @@ private fun CardFieldControl(
         is EntityFieldSpec -> {
             Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
             Spacer(Modifier.height(4.dp))
-            EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field.key) })
+            EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field) })
         }
         is ActionFieldSpec -> EditSummaryRow(
             label = field.label,
@@ -1958,18 +1966,27 @@ private fun CardFeaturesEditor(
                     // Friendly comma field for the common list-option features
                     // (mode pickers, command rows, select options, media controls);
                     // the raw-JSON field below still exposes every other option.
+                    // Both the friendly list field and the scalar controls below
+                    // recompute the feature object from `text` and write it back to
+                    // `text` + features[idx], so every friendly control and the raw
+                    // editor stay one consistent source.
+                    val applyFeat: (JsonObject) -> Unit = { nf ->
+                        text = LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), nf)
+                        features[idx] = nf
+                    }
                     if (listKey != null && parsedFeat != null) {
                         Spacer(Modifier.height(4.dp))
                         EditorField(
                             label = listKey.uppercase().replace('_', ' '),
                             value = featureListText(parsedFeat, listKey),
-                            onChange = {
-                                val newFeat = setFeatureList(parsedFeat, listKey, it)
-                                text = LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), newFeat)
-                                features[idx] = newFeat
-                            },
+                            onChange = { applyFeat(setFeatureList(parsedFeat, listKey, it)) },
                             monospace = true,
                         )
+                    }
+                    if (parsedFeat != null) {
+                        featureScalars(featType).forEach { sc ->
+                            FeatureScalarControl(sc, parsedFeat) { applyFeat(it) }
+                        }
                     }
                     Spacer(Modifier.height(4.dp))
                     Text(text = "OPTIONS (JSON)", style = R1.labelMicro, color = R1.InkSoft)
@@ -2007,6 +2024,75 @@ private fun CardFeaturesEditor(
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+/** A friendly control for one scalar option of a card feature (volume step/mute,
+ *  update backup, select dropdown style, button action name). Reads from [feature]
+ *  and hands the updated feature object to [onChange]. */
+@Composable
+private fun FeatureScalarControl(
+    scalar: FeatureScalar,
+    feature: JsonObject,
+    onChange: (JsonObject) -> Unit,
+) {
+    Spacer(Modifier.height(4.dp))
+    when (scalar.kind) {
+        FeatureScalarKind.TEXT -> EditorField(
+            label = scalar.label,
+            value = (feature[scalar.key] as? JsonPrimitive)?.content.orEmpty(),
+            onChange = {
+                onChange(withFeatureKey(feature, scalar.key, it.takeIf { t -> t.isNotBlank() }?.let { t -> JsonPrimitive(t) }))
+            },
+        )
+        FeatureScalarKind.INT -> EditorField(
+            label = scalar.label,
+            value = numberFieldText(feature[scalar.key]),
+            onChange = {
+                onChange(withFeatureKey(feature, scalar.key, it.trim().toLongOrNull()?.let { n -> JsonPrimitive(n) }))
+            },
+            monospace = true,
+        )
+        FeatureScalarKind.BOOL -> {
+            // HA defaults show_mute_button to true; reflect that when the key is absent.
+            val cur = (feature[scalar.key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull() ?: true
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = scalar.label, style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+                EditorToggleChip(
+                    label = if (cur) "ON" else "OFF",
+                    selected = cur,
+                    onClick = { onChange(withFeatureKey(feature, scalar.key, JsonPrimitive(!cur))) },
+                )
+            }
+        }
+        FeatureScalarKind.BACKUP -> {
+            val cur = (feature[scalar.key] as? JsonPrimitive)?.content ?: "no"
+            Text(text = scalar.label, style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.height(4.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("no", "yes", "ask").forEach { opt ->
+                    EditorToggleChip(
+                        label = opt.uppercase(),
+                        selected = cur == opt,
+                        onClick = { onChange(withFeatureKey(feature, scalar.key, JsonPrimitive(opt))) },
+                    )
+                }
+            }
+        }
+        FeatureScalarKind.DROPDOWN_STYLE -> {
+            // select-options style: "dropdown" vs the default inline list (key absent).
+            val isDropdown = (feature[scalar.key] as? JsonPrimitive)?.content == "dropdown"
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = scalar.label, style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+                EditorToggleChip(
+                    label = if (isDropdown) "ON" else "OFF",
+                    selected = isDropdown,
+                    onClick = {
+                        onChange(withFeatureKey(feature, scalar.key, if (isDropdown) null else JsonPrimitive("dropdown")))
+                    },
+                )
             }
         }
     }

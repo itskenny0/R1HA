@@ -284,6 +284,19 @@ class CardFieldSpecTest {
     }
 
     @Test
+    fun withFeatureKeySetsAndClearsScalarOptions() {
+        val base = buildJsonObject { put("type", "media-player-volume-buttons") }
+        assertThat(featureScalars("media-player-volume-buttons").map { it.key })
+            .containsExactly("step", "show_mute_button")
+        val withStep = withFeatureKey(base, "step", JsonPrimitive(10L))
+        assertThat(withStep["step"]).isEqualTo(JsonPrimitive(10L))
+        assertThat((withStep["type"] as JsonPrimitive).content).isEqualTo("media-player-volume-buttons")
+        val cleared = withFeatureKey(withStep, "step", null)
+        assertThat(cleared.containsKey("step")).isFalse()
+        assertThat((cleared["type"] as JsonPrimitive).content).isEqualTo("media-player-volume-buttons")
+    }
+
+    @Test
     fun featureCatalogTypesAreParseable() {
         // Every catalogue type produces a feature object with that type, and the
         // row label resolves to the catalogue's display name.

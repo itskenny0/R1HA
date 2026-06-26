@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Card features with a mode or command list, like climate or alarm modes, now edit as a simple list.",
+    "Pick camera and image entities from the entity list instead of typing their ids.",
+    "Card features now have friendly controls for volume step, mute, update backup and more.",
     "History graph cards now edit cleanly in the form alongside the rest of the card types.",
-    "Editing a card feature's raw options no longer fights your cursor, and an option can be reset to default.",
 )

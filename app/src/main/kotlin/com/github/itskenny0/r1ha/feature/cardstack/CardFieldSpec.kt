@@ -276,7 +276,7 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     "picture-entity" -> listOf(
         TextFieldSpec("name", "NAME"),
         TextFieldSpec("image", "IMAGE URL", FieldSection.APPEARANCE, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.APPEARANCE, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.APPEARANCE, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
         ActionFieldSpec("tap_action", "TAP"),
@@ -391,8 +391,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, domains = listOf("camera", "image", "person")),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         ActionFieldSpec("tap_action", "TAP"),
         ActionFieldSpec("hold_action", "HOLD"),
@@ -400,7 +400,7 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture-glance" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         BoolFieldSpec("show_state", "SHOW STATE", FieldSection.APPEARANCE, default = false),
         ActionFieldSpec("tap_action", "TAP"),
@@ -409,8 +409,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     )
     "picture-elements" -> listOf(
         TextFieldSpec("image", "IMAGE URL", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, monospace = true),
-        TextFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, monospace = true),
+        EntityFieldSpec("camera_image", "CAMERA ENTITY", FieldSection.BASICS, domains = listOf("camera")),
+        EntityFieldSpec("image_entity", "IMAGE ENTITY", FieldSection.BASICS, domains = listOf("camera", "image", "person")),
         TextFieldSpec("aspect_ratio", "ASPECT", FieldSection.APPEARANCE, placeholder = "16:9 / 50%"),
         TextFieldSpec("camera_view", "CAMERA VIEW", FieldSection.ADVANCED, placeholder = "auto / live"),
     )
@@ -659,6 +659,38 @@ internal fun setFeatureList(feature: JsonObject, key: String, text: String): Jso
 /** Read a feature's list-option key as editable comma text. */
 internal fun featureListText(feature: JsonObject, key: String): String =
     (feature[key] as? JsonArray)?.let { listJoin(it) }.orEmpty()
+
+/** Set (or clear, on null) any scalar key on a feature object, keeping the rest. */
+internal fun withFeatureKey(feature: JsonObject, key: String, value: JsonElement?): JsonObject {
+    val m = LinkedHashMap<String, JsonElement>(feature)
+    if (value == null) m.remove(key) else m[key] = value
+    return JsonObject(m)
+}
+
+/** The friendly scalar (non-list) options a feature type exposes beyond raw JSON. */
+internal data class FeatureScalar(val key: String, val label: String, val kind: FeatureScalarKind)
+internal enum class FeatureScalarKind { BOOL, INT, BACKUP, DROPDOWN_STYLE, TEXT }
+
+/** Scalar options for [type] rendered as friendly controls in the features editor. */
+internal fun featureScalars(type: String): List<FeatureScalar> = when (type) {
+    "media-player-volume-buttons" -> listOf(
+        FeatureScalar("step", "STEP", FeatureScalarKind.INT),
+        FeatureScalar("show_mute_button", "MUTE BUTTON", FeatureScalarKind.BOOL),
+    )
+    "media-player-volume-slider" -> listOf(
+        FeatureScalar("show_mute_button", "MUTE BUTTON", FeatureScalarKind.BOOL),
+    )
+    "update-actions" -> listOf(
+        FeatureScalar("backup", "BACKUP", FeatureScalarKind.BACKUP),
+    )
+    "select-options" -> listOf(
+        FeatureScalar("style", "DROPDOWN", FeatureScalarKind.DROPDOWN_STYLE),
+    )
+    "button" -> listOf(
+        FeatureScalar("action_name", "ACTION NAME", FeatureScalarKind.TEXT),
+    )
+    else -> emptyList()
+}
 
 // ── Bespoke: gauge severity + segments ──────────────────────────────────────
 
