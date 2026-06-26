@@ -49,6 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Edit a card and you now see the show and hide switches that fit that card type.",
-    "On entities and glance cards you can hide or reveal each row and choose its secondary info.",
+    "Editing a card now lays out its full options: name, colour, icon, ranges, units and graph settings.",
+    "Set what a card does on tap, hold or double tap from the editor, with no YAML to write.",
+    "Card edits cover the show and hide switches and per row secondary info, as before.",
 )
