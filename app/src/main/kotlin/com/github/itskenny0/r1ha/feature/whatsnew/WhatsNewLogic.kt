@@ -49,8 +49,8 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Long-press any card for the new Quick Sheet: top domain controls plus more info, history, customize and move.",
-    "Card faces now show battery, charging, offline and update badges in the corner.",
-    "The focused card gains an inline quick-control row: presets, transport, open and close, tapped right there.",
-    "New secondary info line on cards, plus an opt-in double-tap to open details (Settings, Card surfaces).",
+    "Long-press a hardware button to run a shortcut you choose in Settings, Card surfaces.",
+    "Long-press any card for the Quick Sheet: top domain controls plus more info, history, customize and move.",
+    "Card faces now show battery, charging, offline and update badges, plus inline quick controls.",
+    "New secondary info line on cards, plus an opt-in double-tap to open details.",
 )

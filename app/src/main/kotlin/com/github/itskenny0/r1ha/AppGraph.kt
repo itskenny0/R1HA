@@ -7,6 +7,7 @@ import com.github.itskenny0.r1ha.core.ha.DefaultHaRepository
 import com.github.itskenny0.r1ha.core.ha.HaRepository
 import com.github.itskenny0.r1ha.core.ha.HaWebSocketClient
 import com.github.itskenny0.r1ha.core.ha.TokenRefresher
+import com.github.itskenny0.r1ha.core.input.KeyAction
 import com.github.itskenny0.r1ha.core.input.KeyBindings
 import com.github.itskenny0.r1ha.core.input.WheelInput
 import com.github.itskenny0.r1ha.core.prefs.SettingsRepository
@@ -303,6 +304,16 @@ class AppGraph(context: Context) {
      */
     @Volatile
     var latestBindings: KeyBindings = KeyBindings.DEFAULT
+
+    /**
+     * Resolved hardware long-press shortcut, kept up to date by a collector in
+     * [App.onCreate] (mirrors [latestBindings]). Null = the feature is off (the
+     * default), so the key dispatch keeps its plain fire-on-down behaviour. When
+     * set, a long hold of a bound non-wheel key fires this action instead of the
+     * key's normal short action. Read synchronously from `dispatchKeyEvent`.
+     */
+    @Volatile
+    var latestHardwareLongPressTarget: KeyAction? = null
 
     /**
      * Current top-level navigation route, updated by an

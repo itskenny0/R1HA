@@ -753,6 +753,24 @@ class MainActivity : ComponentActivity() {
     private var lastVolumeRepeatUp: Long = 0L
     private var lastVolumeRepeatDown: Long = 0L
 
+    /** Short-vs-long-press state for the opt-in hardware long-press shortcut. Only
+     *  consulted when the user has chosen a long-press target (otherwise keys keep
+     *  their plain fire-on-down behaviour). */
+    private val hardwareLongPress = com.github.itskenny0.r1ha.core.input.HardwareLongPressTracker()
+
+    /** Fire a bound key's normal (short-press) action, mirroring the [dispatchKeyEvent]
+     *  default path. Used by the long-press tracker when a held key turns out to be a
+     *  quick tap (so the action fires on release instead of on down). */
+    private fun fireShortKeyAction(action: com.github.itskenny0.r1ha.core.input.KeyAction) {
+        when (action) {
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_UP,
+            com.github.itskenny0.r1ha.core.input.KeyAction.WHEEL_DOWN -> Unit
+            com.github.itskenny0.r1ha.core.input.KeyAction.GO_BACK ->
+                onBackPressedDispatcher.onBackPressed()
+            else -> com.github.itskenny0.r1ha.core.input.KeyActionBus.emit(action)
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val isDown = event.action == KeyEvent.ACTION_DOWN
         // Press-to-bind capture takes precedence over everything else. The Settings
@@ -790,6 +808,31 @@ class MainActivity : ComponentActivity() {
         // happens here, eagerly.
         if (isWheelKey && candidate != null) {
             return handleWheelAction(candidate, event, isDown)
+        }
+
+        // Opt-in hardware long-press shortcut. When the user has chosen a long-press
+        // target, a bound non-wheel key is routed through the tracker: a hold fires the
+        // shortcut, a tap still fires the key's normal action (deferred to release).
+        // Wheel keys (handled above) and unbound keys are untouched, and the same
+        // route allowlist as the short-press path below applies. Default (no target)
+        // skips this entirely so existing fire-on-down behaviour is unchanged.
+        val longTarget = graph.latestHardwareLongPressTarget
+        if (longTarget != null && candidate != null &&
+            isBindingAllowedRoute(graph.currentNavRoute)
+        ) {
+            val outcome = if (isDown) {
+                hardwareLongPress.onDown(event.keyCode, event.eventTime, event.repeatCount)
+            } else {
+                hardwareLongPress.onUp(event.keyCode, event.eventTime)
+            }
+            when (outcome) {
+                com.github.itskenny0.r1ha.core.input.HardwareLongPressTracker.Outcome.FIRE_LONG ->
+                    com.github.itskenny0.r1ha.core.input.KeyActionBus.emit(longTarget)
+                com.github.itskenny0.r1ha.core.input.HardwareLongPressTracker.Outcome.FIRE_SHORT ->
+                    fireShortKeyAction(candidate)
+                com.github.itskenny0.r1ha.core.input.HardwareLongPressTracker.Outcome.CONSUME -> Unit
+            }
+            return true
         }
 
         // Non-wheel hardware key with a binding: still gate on the
