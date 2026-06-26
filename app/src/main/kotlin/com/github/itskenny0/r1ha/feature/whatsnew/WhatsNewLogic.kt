@@ -49,7 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Editing a card now lays out its full options: name, colour, icon, ranges, units and graph settings.",
-    "Set what a card does on tap, hold or double tap from the editor, with no YAML to write.",
-    "Card edits cover the show and hide switches and per row secondary info, as before.",
+    "Tile, thermostat and humidifier cards let you add, reorder and fine tune their feature rows in the editor.",
+    "Gauge cards gain a visual editor for severity colours and segment bands.",
+    "More cards are now editable in the form: picture, media, alarm panel and statistic.",
 )
