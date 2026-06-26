@@ -618,7 +618,7 @@ fun SettingsScreen(
                     )
 
                     // ── Ambient display ───────────────────────────────────
-                    SettingsNode.AMBIENT -> item { /* Ambient settings UI — placeholder for Task 2 */ }
+                    SettingsNode.AMBIENT -> ambientRoot(s = s, vm = vm)
 
                     // ── Browse ────────────────────────────────────────────
                     SettingsNode.BROWSE -> browseRoot(push = push)
@@ -710,6 +710,7 @@ private fun LazyListScope.rootCategories(
     item { CategoryRow(node = SettingsNode.INPUT, summary = "Wheel step: ${s.wheel.stepPercent}%", badge = groupBadge(arrayOf("SCROLL WHEEL")), onClick = { push(SettingsNode.INPUT) }) }
     item { CategoryRow(node = SettingsNode.BEHAVIOUR, summary = "Haptics, screen, tiles", badge = groupBadge(arrayOf("BEHAVIOUR")), onClick = { push(SettingsNode.BEHAVIOUR) }) }
     if (!isLegacy) item { CategoryRow(node = SettingsNode.DASHBOARD, summary = "Cards, thresholds, tile order", badge = groupBadge(arrayOf("DASHBOARD")), onClick = { push(SettingsNode.DASHBOARD) }) }
+    item { CategoryRow(node = SettingsNode.AMBIENT, summary = "Idle screensaver, dimming, glance panel", badge = groupBadge(arrayOf("AMBIENT DISPLAY")), onClick = { push(SettingsNode.AMBIENT) }) }
     item { CategoryRow(node = SettingsNode.INTEGRATIONS, summary = "Refresh, cameras, IoT, sync", badge = groupBadge(arrayOf("INTEGRATIONS")), onClick = { push(SettingsNode.INTEGRATIONS) }) }
     item { CategoryRow(node = SettingsNode.ADVANCED, summary = "Dev menu, modified, reset", badge = 0, onClick = { push(SettingsNode.ADVANCED) }) }
     item { CategoryRow(node = SettingsNode.BROWSE, summary = "Dashboard, Assist, Scenes, tools", badge = 0, onClick = { push(SettingsNode.BROWSE) }) }
@@ -2228,6 +2229,162 @@ private fun LazyListScope.advancedRoot(
     item { NavRow(label = "Dev menu", value = "Live logs, fire-event, integrations panel", onClick = onOpenDevMenu) }
     item { NavRow(label = "Modified settings", value = if (modifiedCount > 0) "$modifiedCount changed" else "All at defaults", onClick = onOpenModifiedSettings) }
     item { NavRow(label = "System health", value = "Server config, ping, error log", onClick = onOpenSystemHealth) }
+}
+
+// ── Ambient display ────────────────────────────────────────────────────────────────────────
+
+private fun LazyListScope.ambientRoot(s: AppSettings, vm: SettingsViewModel) {
+    item {
+        SwitchRow(
+            label = "Ambient screensaver",
+            subtitle = "Dim to a glance panel when idle; wake on touch",
+            checked = s.ambient.enabled,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(enabled = v) } },
+        )
+    }
+    item {
+        NumberStepperRow(
+            label = "Idle timeout",
+            subtitle = "Seconds of no interaction before the idle face appears (0 = never)",
+            value = s.ambient.idleTimeoutSec,
+            min = 0,
+            max = 3600,
+            step = 15,
+            suffix = " s",
+            onChange = { v -> vm.updateAmbient { it.copy(idleTimeoutSec = v) } },
+        )
+    }
+    item {
+        LabeledControl(label = "Where it appears") {
+            SegmentedEnumPicker(
+                options = com.github.itskenny0.r1ha.core.prefs.AmbientScope.entries,
+                selected = s.ambient.scope,
+                label = { scope ->
+                    when (scope) {
+                        com.github.itskenny0.r1ha.core.prefs.AmbientScope.ANYWHERE -> "ANYWHERE"
+                        com.github.itskenny0.r1ha.core.prefs.AmbientScope.TODAY_ONLY -> "TODAY"
+                        com.github.itskenny0.r1ha.core.prefs.AmbientScope.TODAY_PLUS_CARDSTACK -> "TODAY + CARDS"
+                    }
+                },
+                onSelect = { v -> vm.updateAmbient { it.copy(scope = v) } },
+            )
+        }
+    }
+    item { SubGroupLabel("BRIGHTNESS") }
+    item {
+        NumberStepperRow(
+            label = "Day brightness",
+            subtitle = "Screen brightness percent while the idle face is active during the day",
+            value = s.ambient.dayBrightnessPct,
+            min = 1,
+            max = 100,
+            step = 5,
+            suffix = " %",
+            onChange = { v -> vm.updateAmbient { it.copy(dayBrightnessPct = v) } },
+        )
+    }
+    item {
+        NumberStepperRow(
+            label = "Night brightness",
+            subtitle = "Screen brightness percent while the idle face is active at night",
+            value = s.ambient.nightBrightnessPct,
+            min = 1,
+            max = 100,
+            step = 5,
+            suffix = " %",
+            onChange = { v -> vm.updateAmbient { it.copy(nightBrightnessPct = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Dim more at night",
+            subtitle = "Use the lower night brightness between your night-theme hours",
+            checked = s.ambient.nightDimEnabled,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(nightDimEnabled = v) } },
+        )
+    }
+    item { SubGroupLabel("GLANCE PANEL CONTENT") }
+    item {
+        SwitchRow(
+            label = "Show clock",
+            checked = s.ambient.showClock,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showClock = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show date",
+            checked = s.ambient.showDate,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showDate = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show weather",
+            checked = s.ambient.showWeather,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showWeather = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show feels-like temperature",
+            checked = s.ambient.showFeelsLike,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showFeelsLike = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show lights summary",
+            checked = s.ambient.showLights,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showLights = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show persons",
+            checked = s.ambient.showPersons,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showPersons = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show power summary",
+            checked = s.ambient.showPower,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showPower = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Show alerts",
+            checked = s.ambient.showAlerts,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(showAlerts = v) } },
+        )
+    }
+    item { SubGroupLabel("INTERACTION") }
+    item {
+        SwitchRow(
+            label = "Wake tap does not also act",
+            subtitle = "The tap that wakes the screen is swallowed rather than passed through to any control underneath",
+            checked = s.ambient.consumeWakeEvent,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(consumeWakeEvent = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Pause over camera screens",
+            subtitle = "Suppress the idle face while a camera or live-video screen is open",
+            checked = s.ambient.suppressOverCamera,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(suppressOverCamera = v) } },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Subtle anti burn-in drift",
+            subtitle = "Slowly shifts the glance panel position to reduce OLED pixel wear",
+            checked = s.ambient.pixelDriftEnabled,
+            onCheckedChange = { v -> vm.updateAmbient { it.copy(pixelDriftEnabled = v) } },
+        )
+    }
 }
 
 // ── Browse ─────────────────────────────────────────────────────────────────────────────────
