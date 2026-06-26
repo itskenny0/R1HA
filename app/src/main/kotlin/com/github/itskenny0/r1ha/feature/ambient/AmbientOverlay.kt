@@ -49,7 +49,9 @@ fun AmbientOverlay(
     // the OS does not sleep the screen out from under the always-on display.
     DisposableEffect(ambient.enabled) {
         if (ambient.enabled) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        onDispose { }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     val imeVisible = WindowInsets.ime.getBottom(density) > 0
