@@ -130,6 +130,13 @@ class SettingsRepository private constructor(
         val uiShowPill = booleanPreferencesKey("ui.show_pill")
         val uiShowArea = booleanPreferencesKey("ui.show_area")
         val uiCardStackIcons = booleanPreferencesKey("ui.card_stack_icons")
+        // Main-view glance / face affordances (2026-06 deep-integration sprint).
+        val uiShowSparkline = booleanPreferencesKey("ui.show_sparkline")
+        val uiShowStatusBadges = booleanPreferencesKey("ui.show_status_badges")
+        val uiFaceQuickControls = booleanPreferencesKey("ui.face_quick_controls")
+        val uiSecondaryInfoDefault = stringPreferencesKey("ui.secondary_info_default")
+        val uiDoubleTapMoreInfo = booleanPreferencesKey("ui.double_tap_more_info")
+        val uiHardwareLongPressTarget = stringPreferencesKey("ui.hw_long_press_target")
         /** Legacy boolean for the position pip — preserved for back-compat
          *  reads only. Writes go to [uiPositionDotLocation] now. true →
          *  TOP_CENTER, false → HIDDEN at the migration site. */
@@ -398,6 +405,14 @@ class SettingsRepository private constructor(
                         ?.let { runCatching { TimestampStyle.valueOf(it) }.getOrNull() }
                         ?: TimestampStyle.RELATIVE,
                     reduceMotion = p[K.uiReduceMotion] ?: false,
+                    showFaceSparkline = p[K.uiShowSparkline] ?: true,
+                    showStatusBadges = p[K.uiShowStatusBadges] ?: true,
+                    faceQuickControls = p[K.uiFaceQuickControls] ?: true,
+                    secondaryInfoDefault = p[K.uiSecondaryInfoDefault]
+                        ?.let { runCatching { SecondaryInfo.valueOf(it) }.getOrNull() }
+                        ?: SecondaryInfo.LAST_CHANGED,
+                    doubleTapMoreInfoDefault = p[K.uiDoubleTapMoreInfo] ?: false,
+                    hardwareLongPressTarget = p[K.uiHardwareLongPressTarget]?.takeIf { it.isNotBlank() },
                 ),
                 behavior = Behavior(
                     haptics = p[K.behaviorHaptics] ?: true,
@@ -649,6 +664,13 @@ class SettingsRepository private constructor(
                 p[K.uiListDensity] = next.ui.listDensity.name
                 p[K.uiTimestampStyle] = next.ui.timestampStyle.name
                 p[K.uiReduceMotion] = next.ui.reduceMotion
+                p[K.uiShowSparkline] = next.ui.showFaceSparkline
+                p[K.uiShowStatusBadges] = next.ui.showStatusBadges
+                p[K.uiFaceQuickControls] = next.ui.faceQuickControls
+                p[K.uiSecondaryInfoDefault] = next.ui.secondaryInfoDefault.name
+                p[K.uiDoubleTapMoreInfo] = next.ui.doubleTapMoreInfoDefault
+                val hwLp = next.ui.hardwareLongPressTarget
+                if (hwLp.isNullOrBlank()) p.remove(K.uiHardwareLongPressTarget) else p[K.uiHardwareLongPressTarget] = hwLp
                 p[K.theme] = next.theme.name
                 p[K.autoThemeEnabled] = next.autoThemeEnabled
                 p[K.nightTheme] = next.nightTheme.name
@@ -1260,7 +1282,14 @@ private fun encodeEntityOverrides(map: Map<String, EntityOverride>): String {
         // cover/valve positions (0..100). Comma-joined; empty = "".
         val favColorsStr = o.favoriteColors.joinToString(",") { it.toString() }
         val favPosStr = o.favoritePositions.joinToString(",") { it.toString() }
-        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr|$moreInfoStr|$favColorsStr|$favPosStr"
+        // Slots 22..25 — main-view glance / face affordances. Tri-state booleans
+        // ("1"/"0"/"?") for sparkline / face-controls / double-tap-more-info;
+        // single-char SecondaryInfo code ("?" = inherit) for the secondary line.
+        val sparkStr = when (o.sparkline) { true -> "1"; false -> "0"; null -> "?" }
+        val secInfoStr = o.secondaryInfo?.code?.toString() ?: "?"
+        val faceCtlStr = when (o.faceControls) { true -> "1"; false -> "0"; null -> "?" }
+        val dblTapStr = when (o.doubleTapMoreInfo) { true -> "1"; false -> "0"; null -> "?" }
+        "$idEnc=$sizeStr|$pillStr|$areaStr|$lpEnc|$decStr|$accStr|$ctStr|$btnsStr|$tapStr|$whStr|$hideStr|$customStr|$pinReqStr|$pinHashStr|$pipStr|$glyphStr|$tapActionStr|$wheelPressStr|$valueBarStr|$moreInfoStr|$favColorsStr|$favPosStr|$sparkStr|$secInfoStr|$faceCtlStr|$dblTapStr"
     }
 }
 
@@ -1368,6 +1397,18 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
             val favPositions = parts.getOrNull(21)?.takeIf { it.isNotBlank() }
                 ?.split(',')?.mapNotNull { it.toIntOrNull()?.coerceIn(0, 100) }
                 ?: emptyList()
+            // Slots 22..25 — main-view glance / face affordances. Tri-state
+            // booleans for sparkline / face-controls / double-tap-more-info;
+            // single-char SecondaryInfo for the secondary line. Older saves
+            // without these slots decode as null (inherit the global) via
+            // getOrNull; unknown SecondaryInfo codes also fall back to inherit.
+            val sparkline = when (parts.getOrNull(22)) { "1" -> true; "0" -> false; else -> null }
+            val secInfoChar = parts.getOrNull(23)?.firstOrNull()
+            val secondaryInfo = secInfoChar?.takeIf { it != '?' }?.let {
+                com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.fromCode(it)
+            }
+            val faceControls = when (parts.getOrNull(24)) { "1" -> true; "0" -> false; else -> null }
+            val doubleTapMoreInfo = when (parts.getOrNull(25)) { "1" -> true; "0" -> false; else -> null }
             id to EntityOverride(
                 textSizeSp = size,
                 showOnOffPill = pill,
@@ -1391,6 +1432,10 @@ private fun decodeEntityOverrides(raw: String?): Map<String, EntityOverride> {
                 moreInfoEnabled = moreInfo,
                 favoriteColors = favColors,
                 favoritePositions = favPositions,
+                sparkline = sparkline,
+                secondaryInfo = secondaryInfo,
+                faceControls = faceControls,
+                doubleTapMoreInfo = doubleTapMoreInfo,
             )
         }.getOrNull()
     }.toMap()

@@ -216,6 +216,35 @@ data class EntityOverride(
      * that position. Empty = no chips shown.
      */
     val favoritePositions: List<Int> = emptyList(),
+    /**
+     * Per-card override for the at-a-glance sparkline drawn on numeric / scalar
+     * card faces. Three-state: null = inherit the global
+     * [UiOptions.showFaceSparkline]; true / false force it on / off for this
+     * card. Useful to silence a noisy spark on a sensor that jitters, or to
+     * force one on a card the global default would skip.
+     */
+    val sparkline: Boolean? = null,
+    /**
+     * Per-card override for the small secondary-info line under the card's main
+     * readout. Null = inherit the global [UiOptions.secondaryInfoDefault]; an
+     * explicit value (including [SecondaryInfo.NONE]) pins this card's secondary
+     * line regardless of the global. See [SecondaryInfo] for the options.
+     */
+    val secondaryInfo: SecondaryInfo? = null,
+    /**
+     * Per-card override for the inline quick-control row surfaced on the focused
+     * card face (climate presets, media transport, cover open/stop/close, etc.).
+     * Three-state: null = inherit the global [UiOptions.faceQuickControls];
+     * true / false force the row on / off for this card.
+     */
+    val faceControls: Boolean? = null,
+    /**
+     * Per-card override for the opt-in "double-tap opens More Info" gesture.
+     * Three-state: null = inherit the global [UiOptions.doubleTapMoreInfoDefault];
+     * true / false force it on / off for this card. A configured Lovelace
+     * `double_tap_action` always wins over this affordance.
+     */
+    val doubleTapMoreInfo: Boolean? = null,
 ) {
     companion object {
         /** Curated CT presets surfaced in the customize dialog. */
@@ -283,6 +312,49 @@ data class EntityOverride(
      */
     fun resolvedWheelEnabled(domainPrefix: String): Boolean =
         wheelEnabled ?: wheelEnabledByDefault(domainPrefix)
+
+    /** Effective face-sparkline flag: per-card override wins, else the global. */
+    fun resolvedSparkline(global: Boolean): Boolean = sparkline ?: global
+
+    /** Effective inline-face-controls flag: per-card override wins, else the global. */
+    fun resolvedFaceControls(global: Boolean): Boolean = faceControls ?: global
+
+    /** Effective double-tap-more-info flag: per-card override wins, else the global. */
+    fun resolvedDoubleTapMoreInfo(global: Boolean): Boolean = doubleTapMoreInfo ?: global
+
+    /** Effective secondary-info kind: per-card override wins, else the global. */
+    fun resolvedSecondaryInfo(global: SecondaryInfo): SecondaryInfo = secondaryInfo ?: global
+}
+
+/**
+ * What the small secondary-info line under a card's main readout shows. Used
+ * both as a global default ([UiOptions.secondaryInfoDefault]) and as a per-card
+ * override ([EntityOverride.secondaryInfo]) — the per-card value wins when
+ * present. [NONE] hides the line; the rest pull a field that may be absent on a
+ * given entity (in which case the line renders nothing for that card).
+ *
+ * Encoded by [code] in the per-card preferences blob to match the single-char
+ * convention the other per-row enums use; the full name is used in the global
+ * [UiOptions.secondaryInfoDefault] slot (it persists as its own key).
+ */
+@kotlinx.serialization.Serializable
+enum class SecondaryInfo(val code: Char) {
+    /** Hide the secondary-info line entirely. */
+    NONE('0'),
+    /** Relative / absolute "last changed" timestamp (per [UiOptions.timestampStyle]). */
+    LAST_CHANGED('c'),
+    /** Automation / script `last_triggered` timestamp. */
+    LAST_TRIGGERED('t'),
+    /** Lock / alarm `changed_by` audit string. */
+    CHANGED_BY('b'),
+    /** Battery percentage from the entity's `battery_level` attribute. */
+    BATTERY('y'),
+    /** Media now-playing line (`media_artist` / `media_title`). */
+    MEDIA('m'),
+    ;
+    companion object {
+        fun fromCode(code: Char): SecondaryInfo? = entries.firstOrNull { it.code == code }
+    }
 }
 
 /**

@@ -492,6 +492,46 @@ data class UiOptions(
      * deliberately quick and most users never notice it.
      */
     val reduceMotion: Boolean = false,
+    /**
+     * Deck-wide default for the at-a-glance sparkline drawn on numeric / scalar
+     * card faces (focused card only). On by default; the spark is skipped under
+     * low-perf mode regardless. Per-card [EntityOverride.sparkline] wins when set.
+     */
+    val showFaceSparkline: Boolean = true,
+    /**
+     * Deck-wide default for the small corner status badges (battery + charging,
+     * low-battery, unavailable, update-available, connectivity) drawn from the
+     * entity's attributes. On by default; badges only render when the backing
+     * attribute is actually present.
+     */
+    val showStatusBadges: Boolean = true,
+    /**
+     * Deck-wide default for the inline quick-control row surfaced on the focused
+     * card face (climate presets, media transport, cover open/stop/close, fan
+     * oscillate, light swatches, lock/unlock). On by default. Per-card
+     * [EntityOverride.faceControls] wins when set.
+     */
+    val faceQuickControls: Boolean = true,
+    /**
+     * Deck-wide default for the secondary-info line under the card readout.
+     * LAST_CHANGED by default. Per-card [EntityOverride.secondaryInfo] wins when
+     * set (including an explicit [SecondaryInfo.NONE] to hide it on one card).
+     */
+    val secondaryInfoDefault: SecondaryInfo = SecondaryInfo.LAST_CHANGED,
+    /**
+     * Deck-wide default for the opt-in "double-tap opens More Info" gesture.
+     * Off by default: enabling it adds a tap-disambiguation delay to single
+     * taps, so it stays opt-in. Per-card [EntityOverride.doubleTapMoreInfo]
+     * wins when set; a configured Lovelace `double_tap_action` always wins.
+     */
+    val doubleTapMoreInfoDefault: Boolean = false,
+    /**
+     * Action fired on a long-press of the hardware side button, stored as a
+     * [com.github.itskenny0.r1ha.core.input.KeyAction] enum name. Null = the
+     * built-in default (open the jump-to-card sheet). Device-flavoured input,
+     * but harmless to sync; resolved to a KeyAction at dispatch time.
+     */
+    val hardwareLongPressTarget: String? = null,
 )
 
 @Immutable

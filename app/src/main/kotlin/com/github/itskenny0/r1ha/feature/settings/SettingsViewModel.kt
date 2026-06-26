@@ -118,6 +118,16 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(timestampStyle = style)) }
     fun setReduceMotion(enabled: Boolean) =
         update { it.copy(ui = it.ui.copy(reduceMotion = enabled)) }
+    fun setShowFaceSparkline(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(showFaceSparkline = enabled)) }
+    fun setShowStatusBadges(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(showStatusBadges = enabled)) }
+    fun setFaceQuickControls(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(faceQuickControls = enabled)) }
+    fun setSecondaryInfoDefault(kind: com.github.itskenny0.r1ha.core.prefs.SecondaryInfo) =
+        update { it.copy(ui = it.ui.copy(secondaryInfoDefault = kind)) }
+    fun setDoubleTapMoreInfoDefault(enabled: Boolean) =
+        update { it.copy(ui = it.ui.copy(doubleTapMoreInfoDefault = enabled)) }
 
     /** Toggle a chrome-row button's visibility. The persistence layer force-
      *  enables GEAR regardless of what's passed here (so a hostile manual edit

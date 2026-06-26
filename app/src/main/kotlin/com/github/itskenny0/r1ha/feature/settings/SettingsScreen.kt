@@ -1435,7 +1435,116 @@ private fun LazyListScope.appearanceCards(
             contentDescription = "Open Chrome buttons",
         )
     }
+    // ── Card surfaces (2026-06 deep-integration sprint) ──────────────────────
+    // Glanceable face data + inline controls + the opt-in double-tap gesture.
+    // Per-card overrides for each live in Customize; these are the deck-wide
+    // defaults.
+    item {
+        SwitchRow(
+            label = "Face sparklines",
+            subtitle = "Draw a compact trend spark on numeric card faces (focused card; " +
+                "skipped in low-performance mode)",
+            checked = s.ui.showFaceSparkline,
+            onCheckedChange = { vm.setShowFaceSparkline(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Status badges",
+            subtitle = "Show battery, charging, unavailable and update badges in the card corner",
+            checked = s.ui.showStatusBadges,
+            onCheckedChange = { vm.setShowStatusBadges(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Inline face controls",
+            subtitle = "Surface the most-used control on the focused card face " +
+                "(climate presets, media transport, cover open/close, fan oscillate, etc.)",
+            checked = s.ui.faceQuickControls,
+            onCheckedChange = { vm.setFaceQuickControls(it) },
+        )
+    }
+    item {
+        SwitchRow(
+            label = "Double-tap opens details",
+            subtitle = "Opt-in: a double-tap on a card opens the more-info sheet. " +
+                "Adds a short delay to single taps, so it stays off by default.",
+            checked = s.ui.doubleTapMoreInfoDefault,
+            onCheckedChange = { vm.setDoubleTapMoreInfoDefault(it) },
+        )
+    }
+    item {
+        val secInfoDialog = remember { mutableStateOf(false) }
+        NavRow(
+            label = "Secondary info line",
+            value = secondaryInfoLabel(s.ui.secondaryInfoDefault),
+            onClick = { secInfoDialog.value = true },
+        )
+        if (secInfoDialog.value) {
+            SecondaryInfoPickerDialog(
+                current = s.ui.secondaryInfoDefault,
+                onPick = { vm.setSecondaryInfoDefault(it); secInfoDialog.value = false },
+                onDismiss = { secInfoDialog.value = false },
+            )
+        }
+    }
     item { CategoryResetRow(label = "RESET CARD UI", category = com.github.itskenny0.r1ha.core.prefs.SettingCategory.CARD_UI, vm = vm) }
+}
+
+/** Human label for a [SecondaryInfo] option, used by the settings picker. */
+private fun secondaryInfoLabel(kind: com.github.itskenny0.r1ha.core.prefs.SecondaryInfo): String =
+    when (kind) {
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.NONE -> "None"
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.LAST_CHANGED -> "Last changed"
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.LAST_TRIGGERED -> "Last triggered"
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.CHANGED_BY -> "Changed by"
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.BATTERY -> "Battery"
+        com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.MEDIA -> "Now playing"
+    }
+
+/** Single-select dialog for the deck-wide secondary-info default. */
+@Composable
+private fun SecondaryInfoPickerDialog(
+    current: com.github.itskenny0.r1ha.core.prefs.SecondaryInfo,
+    onPick: (com.github.itskenny0.r1ha.core.prefs.SecondaryInfo) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = R1.Bg,
+        title = { Text(text = "SECONDARY INFO", style = R1.sectionHeader, color = R1.Ink) },
+        text = {
+            Column {
+                for (kind in com.github.itskenny0.r1ha.core.prefs.SecondaryInfo.entries) {
+                    val selected = kind == current
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .clip(R1.ShapeS)
+                            .background(if (selected) R1.AccentWarm.copy(alpha = 0.2f) else R1.Bg)
+                            .border(
+                                1.dp,
+                                if (selected) R1.AccentWarm else R1.Hairline,
+                                R1.ShapeS,
+                            )
+                            .r1Pressable(onClick = { onPick(kind) })
+                            .padding(horizontal = R1.space.m, vertical = R1.space.m),
+                    ) {
+                        Text(
+                            text = secondaryInfoLabel(kind),
+                            style = R1.body,
+                            color = if (selected) R1.AccentWarm else R1.Ink,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            com.github.itskenny0.r1ha.ui.components.R1Button(text = "CLOSE", onClick = onDismiss)
+        },
+    )
 }
 
 private fun LazyListScope.appearanceValueBar(s: AppSettings, vm: SettingsViewModel) {
