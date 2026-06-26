@@ -386,6 +386,40 @@ class CardFieldSpecTest {
     }
 
     @Test
+    fun historyGraphIsEntityListNotSingleEntity() {
+        // history-graph reads `entities:` (a list), never `entity:`. The form must
+        // not own/write an entity key, and the entities array must pass through.
+        assertThat(SINGLE_ENTITY_TYPES).doesNotContain("history-graph")
+        assertThat(typeUsesTitle("history-graph")).isTrue()
+        val entities = kotlinx.serialization.json.JsonArray(
+            listOf(JsonPrimitive("sensor.a"), JsonPrimitive("sensor.b")),
+        )
+        val base = buildJsonObject { put("type", "history-graph"); put("entities", entities) }
+        // Even if a stray form.entity is supplied, no entity key is emitted.
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "history-graph", title = "Temps", entity = "sensor.c"),
+        )
+        assertThat(edited.containsKey("entity")).isFalse()
+        assertThat(edited["entities"]).isEqualTo(entities)
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("Temps"))
+    }
+
+    @Test
+    fun enumClearViaJsonNullReturnsToDefault() {
+        // Re-tapping a selected enum chip stores JsonNull, which must drop the key.
+        val base = buildJsonObject { put("type", "sensor"); put("entity", "sensor.x"); put("graph", "line") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "sensor", entity = "sensor.x",
+                values = mapOf("graph" to kotlinx.serialization.json.JsonNull),
+            ),
+        )
+        assertThat(edited.containsKey("graph")).isFalse()
+    }
+
+    @Test
     fun foreignKeysStillPassThroughWithFields() {
         val base = buildJsonObject {
             put("type", "tile")
