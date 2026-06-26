@@ -1204,6 +1204,12 @@ internal fun CardMiniEditor(
                 onSave = onSaveValue,
                 onDismiss = onDismiss,
             )
+            BespokeKind.HEADER, BespokeKind.FOOTER -> HeaderFooterEditor(
+                slot = if (bespoke.kind == BespokeKind.HEADER) "HEADER" else "FOOTER",
+                initial = fieldValues[bespoke.key],
+                onSave = onSaveValue,
+                onDismiss = onDismiss,
+            )
         }
     }
 }
@@ -1621,6 +1627,10 @@ private fun bespokeSummary(kind: BespokeKind, raw: JsonElement?): String = when 
     BespokeKind.SEGMENTS -> {
         val n = parseSegmentRows(raw).size
         if (n == 0) "NONE" else "$n BAND${if (n == 1) "" else "S"}"
+    }
+    BespokeKind.HEADER, BespokeKind.FOOTER -> {
+        val t = parseHeaderFooterDraft(raw).type
+        if (t == "none") "NONE" else t.uppercase()
     }
 }
 
@@ -2164,5 +2174,79 @@ private fun GaugeSegmentsEditor(
             }
         }
         SheetButton(label = "+ ADD BAND", accent = true, onClick = { rows.add(SegmentRow(from = "", color = "")) })
+    }
+}
+
+/**
+ * Editor for an entities-card `header:` / `footer:` slot: pick the slot type
+ * (none / graph / picture / buttons) and edit its common options, with every
+ * other key preserved. "None" clears the slot.
+ */
+@Composable
+private fun HeaderFooterEditor(
+    slot: String,
+    initial: JsonElement?,
+    onSave: (JsonElement?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draft by remember { mutableStateOf(parseHeaderFooterDraft(initial)) }
+    BespokeEditorScaffold(
+        title = slot,
+        onCancel = onDismiss,
+        onSave = { onSave(buildHeaderFooter(draft)) },
+    ) {
+        Text(text = "TYPE", style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            listOf("none", "graph", "picture", "buttons").forEach { t ->
+                EditorToggleChip(
+                    label = t.uppercase(),
+                    selected = draft.type == t,
+                    onClick = { draft = draft.copy(type = t) },
+                )
+            }
+        }
+        when (draft.type) {
+            "graph" -> {
+                Spacer(Modifier.height(8.dp))
+                EditorField(label = "ENTITY", value = draft.entity, onChange = { draft = draft.copy(entity = it) }, monospace = true)
+                Spacer(Modifier.height(8.dp))
+                EditorField(label = "HOURS TO SHOW", value = draft.hoursToShow, onChange = { draft = draft.copy(hoursToShow = it) }, monospace = true)
+                Spacer(Modifier.height(8.dp))
+                Text(text = "DETAIL", style = R1.labelMicro, color = R1.InkSoft)
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("1", "2").forEach { d ->
+                        EditorToggleChip(label = d, selected = draft.detail == d, onClick = { draft = draft.copy(detail = d) })
+                    }
+                }
+            }
+            "picture" -> {
+                Spacer(Modifier.height(8.dp))
+                EditorField(label = "IMAGE URL", value = draft.image, onChange = { draft = draft.copy(image = it) }, monospace = true)
+                Spacer(Modifier.height(8.dp))
+                EditorField(label = "ALT TEXT", value = draft.altText, onChange = { draft = draft.copy(altText = it) })
+            }
+            "buttons" -> {
+                Spacer(Modifier.height(8.dp))
+                EditorField(
+                    label = "ENTITIES",
+                    value = draft.buttonEntities,
+                    onChange = { draft = draft.copy(buttonEntities = it) },
+                    monospace = true,
+                )
+                if (draft.passthrough.containsKey("entities")) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "This footer has advanced button entries; they are kept as-is.",
+                        style = R1.labelMicro,
+                        color = R1.InkMuted,
+                    )
+                }
+            }
+        }
     }
 }

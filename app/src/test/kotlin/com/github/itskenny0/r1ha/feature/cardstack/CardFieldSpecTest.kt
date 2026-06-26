@@ -433,6 +433,71 @@ class CardFieldSpecTest {
     }
 
     @Test
+    fun headerFooterGraphRoundTripsWithPassthrough() {
+        val src = buildJsonObject {
+            put("type", "graph")
+            put("entity", "sensor.power")
+            put("hours_to_show", 12)
+            put("detail", 2)
+            putJsonObject("limits") { put("min", 0); put("max", 100) }
+        }
+        val draft = parseHeaderFooterDraft(src)
+        assertThat(draft.type).isEqualTo("graph")
+        assertThat(draft.entity).isEqualTo("sensor.power")
+        assertThat(draft.hoursToShow).isEqualTo("12")
+        assertThat(draft.detail).isEqualTo("2")
+        val rebuilt = buildHeaderFooter(draft)!!
+        assertThat(rebuilt["entity"]).isEqualTo(JsonPrimitive("sensor.power"))
+        assertThat(rebuilt["hours_to_show"]).isEqualTo(JsonPrimitive(12L))
+        assertThat(rebuilt["detail"]).isEqualTo(JsonPrimitive(2L))
+        assertThat(rebuilt["limits"]).isEqualTo(src["limits"]) // passthrough preserved
+    }
+
+    @Test
+    fun headerFooterPicturePreservesTapAction() {
+        val src = buildJsonObject {
+            put("type", "picture")
+            put("image", "/local/banner.png")
+            putJsonObject("tap_action") { put("action", "navigate"); put("navigation_path", "/lovelace/0") }
+        }
+        val rebuilt = buildHeaderFooter(parseHeaderFooterDraft(src))!!
+        assertThat(rebuilt["image"]).isEqualTo(JsonPrimitive("/local/banner.png"))
+        assertThat(rebuilt["tap_action"]).isEqualTo(src["tap_action"])
+    }
+
+    @Test
+    fun headerFooterButtonsStringIdsAreFriendlyObjectsKept() {
+        val stringIds = buildJsonObject {
+            put("type", "buttons")
+            put("entities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("light.a"), JsonPrimitive("switch.b"))))
+        }
+        val d1 = parseHeaderFooterDraft(stringIds)
+        assertThat(d1.buttonEntities).isEqualTo("light.a, switch.b")
+        val arr = buildHeaderFooter(d1)!!["entities"] as kotlinx.serialization.json.JsonArray
+        assertThat(arr).containsExactly(JsonPrimitive("light.a"), JsonPrimitive("switch.b")).inOrder()
+
+        // Object entries (with per-entry config) stay verbatim in passthrough.
+        val objEntries = buildJsonObject {
+            put("type", "buttons")
+            put(
+                "entities",
+                kotlinx.serialization.json.JsonArray(
+                    listOf(buildJsonObject { put("entity", "light.a"); putJsonObject("tap_action") { put("action", "toggle") } }),
+                ),
+            )
+        }
+        val d2 = parseHeaderFooterDraft(objEntries)
+        assertThat(d2.buttonEntities).isEmpty()
+        assertThat(buildHeaderFooter(d2)!!["entities"]).isEqualTo(objEntries["entities"])
+    }
+
+    @Test
+    fun headerFooterNoneClearsTheSlot() {
+        assertThat(buildHeaderFooter(parseHeaderFooterDraft(null))).isNull()
+        assertThat(buildHeaderFooter(HeaderFooterDraft(type = "none"))).isNull()
+    }
+
+    @Test
     fun foreignKeysStillPassThroughWithFields() {
         val base = buildJsonObject {
             put("type", "tile")

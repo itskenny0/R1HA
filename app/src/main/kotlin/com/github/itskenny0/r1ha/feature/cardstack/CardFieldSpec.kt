@@ -143,7 +143,7 @@ internal data class BespokeFieldSpec(
     override val section: String = FieldSection.APPEARANCE,
 ) : CardField
 
-internal enum class BespokeKind { FEATURES, SEVERITY, SEGMENTS }
+internal enum class BespokeKind { FEATURES, SEVERITY, SEGMENTS, HEADER, FOOTER }
 
 /** HA's named theme colours offered as swatches on a [ColorFieldSpec]. The hex
  *  values mirror HA's `--*-color` CSS variables closely enough for a preview. */
@@ -268,6 +268,8 @@ internal fun cardFieldsFor(type: String): List<CardField> = when (type) {
     "entities" -> listOf(
         IconFieldSpec("icon", "ICON"),
         TextFieldSpec("theme", "THEME", FieldSection.ADVANCED),
+        BespokeFieldSpec("header", "HEADER", BespokeKind.HEADER, FieldSection.APPEARANCE),
+        BespokeFieldSpec("footer", "FOOTER", BespokeKind.FOOTER, FieldSection.APPEARANCE),
     )
     "glance" -> listOf(
         NumberFieldSpec("columns", "COLUMNS", FieldSection.APPEARANCE, integer = true),
@@ -690,6 +692,77 @@ internal fun featureScalars(type: String): List<FeatureScalar> = when (type) {
         FeatureScalar("action_name", "ACTION NAME", FeatureScalarKind.TEXT),
     )
     else -> emptyList()
+}
+
+// ── Bespoke: entities header / footer ───────────────────────────────────────
+
+/**
+ * Editable model of an entities-card `header:` / `footer:` slot. The renderer
+ * supports the `graph`, `picture` and `buttons` slot types; this lifts their
+ * common options into friendly fields and keeps every other key (graph limits,
+ * picture tap_action, button object-entries) in [passthrough] for a lossless
+ * round-trip. [buttonEntities] is the comma form of a buttons slot whose entries
+ * are all plain ids; object entries stay in [passthrough] instead.
+ */
+internal data class HeaderFooterDraft(
+    val type: String = "none",
+    val entity: String = "",
+    val hoursToShow: String = "",
+    val detail: String = "",
+    val image: String = "",
+    val altText: String = "",
+    val buttonEntities: String = "",
+    val passthrough: JsonObject = JsonObject(emptyMap()),
+)
+
+/** Keys lifted into [HeaderFooterDraft]'s own fields (so they aren't duplicated
+ *  into passthrough). `entities` is handled specially for the buttons type. */
+private val HF_MODELED_KEYS = setOf("type", "entity", "hours_to_show", "detail", "image", "alt_text")
+
+internal fun parseHeaderFooterDraft(value: JsonElement?): HeaderFooterDraft {
+    val o = value as? JsonObject ?: return HeaderFooterDraft()
+    fun s(k: String) = (o[k] as? JsonPrimitive)?.content.orEmpty()
+    val type = s("type").ifBlank { "none" }.lowercase()
+    val entitiesArr = o["entities"] as? JsonArray
+    val allStringEntities = type == "buttons" && entitiesArr != null &&
+        entitiesArr.all { it is JsonPrimitive && it.isString }
+    val passKeys = HF_MODELED_KEYS + if (allStringEntities) setOf("entities") else emptySet()
+    return HeaderFooterDraft(
+        type = type,
+        entity = s("entity"),
+        hoursToShow = (o["hours_to_show"] as? JsonPrimitive)?.let { numberFieldText(it) }.orEmpty(),
+        detail = (o["detail"] as? JsonPrimitive)?.let { numberFieldText(it) }.orEmpty(),
+        image = s("image"),
+        altText = s("alt_text"),
+        buttonEntities = if (allStringEntities) entitiesArr!!.joinToString(", ") { (it as JsonPrimitive).content } else "",
+        passthrough = JsonObject(o.filterKeys { it !in passKeys }),
+    )
+}
+
+/** Build a header/footer slot object from the [draft], or null for "none" (which
+ *  clears the key). Modeled fields for the chosen type are emitted; everything
+ *  else passes through verbatim. */
+internal fun buildHeaderFooter(draft: HeaderFooterDraft): JsonObject? {
+    if (draft.type.isBlank() || draft.type == "none") return null
+    val m = LinkedHashMap<String, JsonElement>()
+    m["type"] = JsonPrimitive(draft.type)
+    when (draft.type) {
+        "graph" -> {
+            draft.entity.trim().takeIf { it.isNotEmpty() }?.let { m["entity"] = JsonPrimitive(it) }
+            draft.hoursToShow.trim().toLongOrNull()?.let { m["hours_to_show"] = JsonPrimitive(it) }
+            draft.detail.trim().toLongOrNull()?.let { m["detail"] = JsonPrimitive(it) }
+        }
+        "picture" -> {
+            draft.image.trim().takeIf { it.isNotEmpty() }?.let { m["image"] = JsonPrimitive(it) }
+            draft.altText.trim().takeIf { it.isNotEmpty() }?.let { m["alt_text"] = JsonPrimitive(it) }
+        }
+        "buttons" -> {
+            val ids = listSplit(draft.buttonEntities)
+            if (ids.isNotEmpty()) m["entities"] = ids
+        }
+    }
+    draft.passthrough.forEach { (k, v) -> if (k !in m) m[k] = v }
+    return JsonObject(m)
 }
 
 // ── Bespoke: gauge severity + segments ──────────────────────────────────────
