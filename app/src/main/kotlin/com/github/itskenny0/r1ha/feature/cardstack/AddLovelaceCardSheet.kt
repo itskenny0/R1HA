@@ -1936,6 +1936,20 @@ private fun CardFeaturesEditor(
                     ) { Text("✕", style = R1.labelMicro, color = R1.StatusRed) }
                 }
                 if (expanded == idx) {
+                    // Friendly comma field for the common list-option features
+                    // (mode pickers, command rows, select options, media controls);
+                    // the raw-JSON field below still exposes every other option.
+                    val featType = (feat["type"] as? JsonPrimitive)?.content.orEmpty()
+                    val listKey = featureListKey(featType)
+                    if (listKey != null) {
+                        Spacer(Modifier.height(4.dp))
+                        EditorField(
+                            label = listKey.uppercase().replace('_', ' '),
+                            value = featureListText(feat, listKey),
+                            onChange = { features[idx] = setFeatureList(feat, listKey, it) },
+                            monospace = true,
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     Text(text = "OPTIONS (JSON)", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.height(4.dp))

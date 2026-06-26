@@ -623,6 +623,43 @@ internal fun featureRowLabel(obj: JsonObject): String {
 internal fun buildFeaturesArray(features: List<JsonObject>): JsonArray? =
     if (features.isEmpty()) null else JsonArray(features)
 
+/**
+ * For features whose only meaningful option is a list of strings (mode pickers,
+ * command rows, select options, media controls), the config key that holds that
+ * list. The features editor offers a friendly comma field for it instead of
+ * forcing raw JSON. Null for features with no list option (or a richer one that
+ * stays on the raw-JSON path).
+ */
+internal fun featureListKey(type: String): String? = when (type) {
+    "climate-hvac-modes" -> "hvac_modes"
+    "alarm-modes", "humidifier-modes" -> "modes"
+    "climate-preset-modes", "fan-preset-modes" -> "preset_modes"
+    "climate-fan-modes" -> "fan_modes"
+    "climate-swing-modes" -> "swing_modes"
+    "climate-swing-horizontal-modes" -> "swing_horizontal_modes"
+    "water-heater-operation-modes" -> "operation_modes"
+    "lawn-mower-commands", "vacuum-commands" -> "commands"
+    "select-options" -> "options"
+    "counter-actions" -> "actions"
+    "media-player-playback" -> "controls"
+    "media-player-source" -> "sources"
+    "media-player-sound-mode" -> "sound_modes"
+    else -> null
+}
+
+/** Set (or clear, on blank) a feature's list-option key from comma text, keeping
+ *  every other key on the feature object intact. */
+internal fun setFeatureList(feature: JsonObject, key: String, text: String): JsonObject {
+    val m = LinkedHashMap<String, JsonElement>(feature)
+    val arr = listSplit(text)
+    if (arr.isEmpty()) m.remove(key) else m[key] = arr
+    return JsonObject(m)
+}
+
+/** Read a feature's list-option key as editable comma text. */
+internal fun featureListText(feature: JsonObject, key: String): String =
+    (feature[key] as? JsonArray)?.let { listJoin(it) }.orEmpty()
+
 // ── Bespoke: gauge severity + segments ──────────────────────────────────────
 
 /** Build a gauge `severity` object from green/yellow/red threshold text; null
