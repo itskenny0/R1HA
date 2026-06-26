@@ -361,6 +361,17 @@ val LocalOnCardMoreInfo = staticCompositionLocalOf<
 > { null }
 
 /**
+ * Open the long-press Quick Sheet for a card's entity. Provided by the card-stack
+ * screen; the decks wire it to a card's long-press (when the card has no
+ * [com.github.itskenny0.r1ha.core.prefs.EntityOverride.longPressTarget] scene/script
+ * override, which still wins). Null in previews / non-card contexts, where long-press
+ * has no Quick Sheet to open.
+ */
+val LocalOpenQuickActions = staticCompositionLocalOf<
+    ((com.github.itskenny0.r1ha.core.ha.EntityState) -> Unit)?
+> { null }
+
+/**
  * Generic service-call dispatch from inside a card panel. Dedicated panels
  * (VacuumPanel, ClimatePanel, LockPanel, ValvePanel, WaterHeaterPanel,
  * LawnMowerPanel, MediaExtrasPanel) build a [com.github.itskenny0.r1ha.core.ha.ServiceCall]
