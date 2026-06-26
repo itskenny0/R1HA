@@ -52,6 +52,7 @@ import com.github.itskenny0.r1ha.core.lovelace.strategies.StrategyEngine
 import com.github.itskenny0.r1ha.core.theme.R1
 import com.github.itskenny0.r1ha.core.util.R1Log
 import com.github.itskenny0.r1ha.ui.components.r1Pressable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -770,11 +771,7 @@ internal fun CardMiniEditor(
         initialObj != null && (
             type in SINGLE_ENTITY_TYPES || type in MULTI_ENTITY_TYPES ||
                 type == "iframe" || type == "markdown" || type == "heading"
-            ) &&
-            // Multi-entity editing only handles plain string entries; rows
-            // with per-entity options would be silently flattened, so those
-            // configs go straight to JSON.
-            (type !in MULTI_ENTITY_TYPES || entitiesAllPrimitive(initialObj))
+            )
     }
     // Invalid blobs (repair path) and structural types start in JSON mode.
     var jsonMode by remember { mutableStateOf(!structuredCapable) }
@@ -790,14 +787,29 @@ internal fun CardMiniEditor(
     // chips show how an omitting config actually renders.
     var name by remember { mutableStateOf(initialObj.str("name")) }
     var icon by remember { mutableStateOf(initialObj.str("icon")) }
-    var showName by remember { mutableStateOf(initialObj.boolOr("show_name", true)) }
-    var showIcon by remember { mutableStateOf(initialObj.boolOr("show_icon", true)) }
-    var showState by remember { mutableStateOf(initialObj.boolOr("show_state", false)) }
-    val multiEntities = remember(initialObj) {
-        androidx.compose.runtime.mutableStateListOf<String>().apply {
-            addAll(primitiveEntities(initialObj))
+    // Per-key show/hide state seeded from the config, keyed by the real JSON key
+    // and holding the real value (HIDE-sense resolved only on display).
+    val toggleState = remember(initialObj, type) {
+        androidx.compose.runtime.mutableStateMapOf<String, Boolean>().apply {
+            cardTogglesFor(type).forEach { t -> put(t.key, initialObj.boolOr(t.key, t.default)) }
         }
     }
+    val rows = remember(initialObj) {
+        androidx.compose.runtime.mutableStateListOf<CardEntityRow>().apply {
+            addAll(parseEntityRows(initialObj ?: JsonObject(emptyMap())))
+        }
+    }
+    // Generic field-schema values (cardFieldsFor): real config-key -> raw value.
+    // Seeded from the config so every present key round-trips; the editor adds a
+    // key here the moment a control is touched, which switches buildStructuredCard
+    // from passthrough to form-owned for that key (see its field loop).
+    val fieldValues = remember(initialObj, type) {
+        androidx.compose.runtime.mutableStateMapOf<String, kotlinx.serialization.json.JsonElement>().apply {
+            putAll(seedFieldValues(initialObj, type))
+        }
+    }
+    // Which action field (tap_action/…) the bespoke action editor is open for.
+    var actionEditorFor by remember { mutableStateOf<String?>(null) }
     // Raw JSON text (the escape hatch); kept in sync from the structured side
     // only when the user switches modes, so typing in one mode never fights
     // the other.
@@ -823,12 +835,11 @@ internal fun CardMiniEditor(
                 url = url,
                 aspect = aspect,
                 content = content,
-                entities = multiEntities.toList(),
+                rows = rows.toList(),
                 name = name,
                 icon = icon,
-                showName = showName,
-                showIcon = showIcon,
-                showState = showState,
+                toggles = toggleState.toMap(),
+                values = fieldValues.toMap(),
             ),
         )
     }
@@ -889,11 +900,14 @@ internal fun CardMiniEditor(
                                     content = parsed.str("content")
                                     name = parsed.str("name")
                                     icon = parsed.str("icon")
-                                    showName = parsed.boolOr("show_name", true)
-                                    showIcon = parsed.boolOr("show_icon", true)
-                                    showState = parsed.boolOr("show_state", false)
-                                    multiEntities.clear()
-                                    multiEntities.addAll(primitiveEntities(parsed))
+                                    toggleState.clear()
+                                    cardTogglesFor(type).forEach { t ->
+                                        toggleState[t.key] = parsed.boolOr(t.key, t.default)
+                                    }
+                                    rows.clear()
+                                    rows.addAll(parseEntityRows(parsed))
+                                    fieldValues.clear()
+                                    fieldValues.putAll(seedFieldValues(parsed, type))
                                     jsonMode = false
                                 }
                             }
@@ -936,12 +950,15 @@ internal fun CardMiniEditor(
                     color = if (parsed != null) R1.AccentGreen else R1.StatusRed,
                 )
             } else {
-                when (type) {
+                when {
                     // Headings label via `heading:`, buttons via `name:` (the
                     // button card has no `title:` key, so offering TITLE there
                     // edited a key the renderer never reads).
-                    "heading" -> EditorField(label = "HEADING", value = heading, onChange = { heading = it })
-                    "button" -> EditorField(label = "NAME", value = name, onChange = { name = it })
+                    type == "heading" -> EditorField(label = "HEADING", value = heading, onChange = { heading = it })
+                    type == "button" -> EditorField(label = "NAME", value = name, onChange = { name = it })
+                    // Name-primary cards (tile, light, gauge…) label via the
+                    // engine NAME field rendered below; no stray TITLE here.
+                    typeOwnsNameField(type) -> Unit
                     else -> EditorField(label = "TITLE", value = title, onChange = { title = it })
                 }
                 if (type == "button") {
@@ -952,14 +969,6 @@ internal fun CardMiniEditor(
                         onChange = { icon = it },
                         monospace = true,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(text = "SHOW", style = R1.labelMicro, color = R1.InkSoft)
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        EditorToggleChip(label = "NAME", selected = showName, onClick = { showName = !showName })
-                        EditorToggleChip(label = "ICON", selected = showIcon, onClick = { showIcon = !showIcon })
-                        EditorToggleChip(label = "STATE", selected = showState, onClick = { showState = !showState })
-                    }
                 }
                 if (type in SINGLE_ENTITY_TYPES) {
                     Spacer(Modifier.height(8.dp))
@@ -974,19 +983,50 @@ internal fun CardMiniEditor(
                     Spacer(Modifier.height(8.dp))
                     Text(text = "ENTITIES", style = R1.labelMicro, color = R1.InkSoft)
                     Spacer(Modifier.height(4.dp))
-                    multiEntities.forEachIndexed { idx, id ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(modifier = Modifier.weight(1f)) { EntityChip(entityId = id, onClick = null) }
-                            Spacer(Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(R1.ShapeS)
-                                    .r1Pressable(onClick = { multiEntities.removeAt(idx) })
-                                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                            ) { Text(text = "✕", style = R1.labelMicro, color = R1.StatusRed) }
+                    var expandedRow by remember { mutableStateOf(-1) }
+                    rows.forEachIndexed { idx, row ->
+                        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = if (row.special == null) {
+                                        Modifier.weight(1f).clip(R1.ShapeS).r1Pressable(
+                                            onClick = { expandedRow = if (expandedRow == idx) -1 else idx },
+                                        )
+                                    } else {
+                                        Modifier.weight(1f)
+                                    },
+                                ) {
+                                    EntityChip(
+                                        entityId = if (row.special != null) "ADVANCED ROW (KEPT AS-IS)" else row.entityId,
+                                        onClick = null,
+                                    )
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(R1.ShapeS)
+                                        .r1Pressable(
+                                            onClick = {
+                                                rows.removeAt(idx)
+                                                // Keep the expansion pointing at the same row when an
+                                                // earlier row is removed; collapse if it was this one.
+                                                expandedRow = when {
+                                                    expandedRow == idx -> -1
+                                                    expandedRow > idx -> expandedRow - 1
+                                                    else -> expandedRow
+                                                }
+                                            },
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                ) { Text(text = "✕", style = R1.labelMicro, color = R1.StatusRed) }
+                            }
+                            if (expandedRow == idx && row.special == null) {
+                                RowOptionsEditor(
+                                    type = type,
+                                    row = row,
+                                    onChange = { rows[idx] = it },
+                                )
+                            }
                         }
                     }
                     SheetButton(
@@ -1050,6 +1090,29 @@ internal fun CardMiniEditor(
                         ),
                     )
                 }
+                val showToggles = cardTogglesFor(type)
+                if (showToggles.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = "SHOW", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        showToggles.forEach { t ->
+                            val raw = toggleState[t.key] ?: t.default
+                            val shown = toggleChipShown(raw, t.sense)
+                            EditorToggleChip(
+                                label = t.label,
+                                selected = shown,
+                                onClick = { toggleState[t.key] = toggleStoredValue(!shown, t.sense) },
+                            )
+                        }
+                    }
+                }
+                CardFieldsSection(
+                    type = type,
+                    values = fieldValues,
+                    onPickEntity = { key -> entityPickerFor = EntityPickTarget.Field(key) },
+                    onEditAction = { key -> actionEditorFor = key },
+                )
                 if (!structuredCapable) {
                     Text(
                         text = "This card type edits as raw JSON.",
@@ -1083,30 +1146,40 @@ internal fun CardMiniEditor(
             onPick = { id ->
                 when (pickTarget) {
                     EntityPickTarget.Single -> entity = id
-                    EntityPickTarget.Multi -> multiEntities.add(id)
+                    EntityPickTarget.Multi -> rows.add(CardEntityRow(entityId = id))
+                    is EntityPickTarget.Field -> fieldValues[pickTarget.key] = JsonPrimitive(id)
                 }
                 entityPickerFor = null
             },
             onDismiss = { entityPickerFor = null },
         )
     }
+
+    val actionKey = actionEditorFor
+    if (actionKey != null) {
+        CardActionEditor(
+            label = cardFieldsFor(type).firstOrNull { it.key == actionKey }?.label ?: "ACTION",
+            initial = actionFieldObject(fieldValues[actionKey]),
+            onSave = { obj ->
+                if (obj == null) fieldValues.remove(actionKey) else fieldValues[actionKey] = obj
+                actionEditorFor = null
+            },
+            onDismiss = { actionEditorFor = null },
+        )
+    }
 }
 
-private enum class EntityPickTarget { Single, Multi }
+private sealed interface EntityPickTarget {
+    object Single : EntityPickTarget
+    object Multi : EntityPickTarget
+
+    /** Bind the picked entity into a generic schema field (e.g. a map/area card's
+     *  `entity:` when modelled as an [EntityFieldSpec]). */
+    data class Field(val key: String) : EntityPickTarget
+}
 
 private fun JsonObject?.str(key: String): String =
     (this?.get(key) as? JsonPrimitive)?.content.orEmpty()
-
-/** True when the config's `entities:` array contains only plain string ids. */
-internal fun entitiesAllPrimitive(obj: JsonObject): Boolean {
-    val arr = obj["entities"] as? kotlinx.serialization.json.JsonArray ?: return true
-    return arr.all { it is JsonPrimitive && it.isString }
-}
-
-private fun primitiveEntities(obj: JsonObject?): List<String> {
-    val arr = obj?.get("entities") as? kotlinx.serialization.json.JsonArray ?: return emptyList()
-    return arr.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
-}
 
 @Composable
 private fun EditorField(
@@ -1125,8 +1198,8 @@ private fun EditorField(
     )
 }
 
-/** On/off chip for the button card's show_name / show_icon / show_state
- *  toggles; same visual language as the iframe aspect presets. */
+/** On/off chip for a card's native show/hide toggles (driven by cardTogglesFor);
+ *  same visual language as the iframe aspect presets. */
 @Composable
 private fun EditorToggleChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
@@ -1257,6 +1330,420 @@ private fun EntityPickerOverlay(
             Spacer(Modifier.height(10.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 SheetButton(label = "CANCEL", accent = false, onClick = onDismiss)
+            }
+        }
+    }
+}
+
+/** secondary_info values the entities renderer understands (plus NONE). */
+private val SECONDARY_INFO_OPTIONS = listOf(
+    null, "entity-id", "area", "state", "last-changed", "last-updated",
+    "last-triggered", "position", "tilt-position", "brightness",
+)
+
+/** Per-row native sub-element editor for entities/glance rows: a secondary_info
+ *  selector (entities only) plus tri-state (AUTO / ON / OFF) chips driven by
+ *  rowTogglesFor. */
+@Composable
+private fun RowOptionsEditor(
+    type: String,
+    row: CardEntityRow,
+    onChange: (CardEntityRow) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 4.dp, bottom = 6.dp)) {
+        if (type == "entities") {
+            Text(text = "SECONDARY INFO", style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                SECONDARY_INFO_OPTIONS.forEach { opt ->
+                    EditorToggleChip(
+                        label = (opt ?: "none").uppercase().replace('-', ' '),
+                        selected = row.secondaryInfo == opt,
+                        onClick = { onChange(row.copy(secondaryInfo = opt)) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+        Text(text = "ROW SHOW", style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            rowTogglesFor(type).forEach { t ->
+                val current: Boolean? = when (t.key) {
+                    "show_state" -> row.showState
+                    "state_color" -> row.stateColor
+                    "show_last_changed" -> row.showLastChanged
+                    else -> null
+                }
+                val suffix = when (current) {
+                    null -> "AUTO"
+                    true -> "ON"
+                    false -> "OFF"
+                }
+                EditorToggleChip(
+                    label = "${t.label}: $suffix",
+                    selected = current != null,
+                    onClick = {
+                        val next = triStateNext(current)
+                        onChange(
+                            when (t.key) {
+                                "show_state" -> row.copy(showState = next)
+                                "state_color" -> row.copy(stateColor = next)
+                                "show_last_changed" -> row.copy(showLastChanged = next)
+                                else -> row
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Generic schema-field section of the structured editor: renders every field of
+ * [cardFieldsFor] grouped under its [FieldSection], reading/writing the live
+ * [values] map (real config key -> raw value). Bool/enum/colour/action each get a
+ * fit-for-purpose control; together with the hand-rendered primaries and the SHOW
+ * toggles this is the full visual configurator for the card type.
+ */
+@Composable
+private fun CardFieldsSection(
+    type: String,
+    values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
+    onPickEntity: (String) -> Unit,
+    onEditAction: (String) -> Unit,
+) {
+    val fields = cardFieldsFor(type)
+    if (fields.isEmpty()) return
+    for (section in FIELD_SECTION_ORDER) {
+        val inSection = fields.filter { it.section == section }
+        if (inSection.isEmpty()) continue
+        Spacer(Modifier.height(12.dp))
+        Text(text = section, style = R1.labelMicro, color = R1.InkSoft)
+        Spacer(Modifier.height(6.dp))
+        inSection.forEach { field ->
+            CardFieldControl(field, values, onPickEntity, onEditAction)
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun CardFieldControl(
+    field: CardField,
+    values: androidx.compose.runtime.snapshots.SnapshotStateMap<String, JsonElement>,
+    onPickEntity: (String) -> Unit,
+    onEditAction: (String) -> Unit,
+) {
+    val raw = values[field.key]
+    when (field) {
+        is TextFieldSpec -> EditorField(
+            label = field.label,
+            value = stringFieldText(raw),
+            onChange = { values[field.key] = JsonPrimitive(it) },
+            monospace = field.monospace,
+        )
+        is IconFieldSpec -> EditorField(
+            label = field.label,
+            value = stringFieldText(raw),
+            onChange = { values[field.key] = JsonPrimitive(it) },
+            monospace = true,
+        )
+        is NumberFieldSpec -> EditorField(
+            label = field.label,
+            value = numberFieldText(raw),
+            onChange = { values[field.key] = JsonPrimitive(it) },
+            monospace = true,
+        )
+        is BoolFieldSpec -> {
+            val cur = boolFieldValue(raw, field.default)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = field.label,
+                    style = R1.labelMicro,
+                    color = R1.InkSoft,
+                    modifier = Modifier.weight(1f),
+                )
+                EditorToggleChip(
+                    label = if (cur) "ON" else "OFF",
+                    selected = cur,
+                    onClick = { values[field.key] = JsonPrimitive(!cur) },
+                )
+            }
+        }
+        is EnumFieldSpec -> {
+            val selected = enumFieldValue(raw, field.default)
+            Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                field.options.forEach { opt ->
+                    EditorToggleChip(
+                        label = opt.label,
+                        selected = selected == opt.value,
+                        onClick = { values[field.key] = JsonPrimitive(opt.value) },
+                    )
+                }
+            }
+        }
+        is ColorFieldSpec -> ColorFieldControl(
+            field = field,
+            value = stringFieldText(raw),
+            onChange = { values[field.key] = JsonPrimitive(it) },
+        )
+        is EntityFieldSpec -> {
+            Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
+            Spacer(Modifier.height(4.dp))
+            EntityChip(entityId = stringFieldText(raw), onClick = { onPickEntity(field.key) })
+        }
+        is ActionFieldSpec -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(R1.ShapeS)
+                    .background(R1.SurfaceMuted)
+                    .border(1.dp, R1.Hairline, R1.ShapeS)
+                    .r1Pressable(onClick = { onEditAction(field.key) })
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
+                        Text(
+                            text = actionSummary(actionFieldObject(raw)),
+                            style = R1.body,
+                            color = R1.Ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(text = "EDIT ›", style = R1.labelMicro, color = R1.AccentWarm)
+                }
+            }
+        }
+    }
+}
+
+/** Colour field: HA named-colour swatch quick-picks plus a free hex/name field. */
+@Composable
+private fun ColorFieldControl(
+    field: ColorFieldSpec,
+    value: String,
+    onChange: (String) -> Unit,
+) {
+    Text(text = field.label, style = R1.labelMicro, color = R1.InkSoft)
+    Spacer(Modifier.height(4.dp))
+    androidx.compose.foundation.layout.FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        HA_NAMED_COLORS.forEach { (name, argb) ->
+            val selected = value == name
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(androidx.compose.ui.graphics.Color(argb))
+                    .border(
+                        if (selected) 2.dp else 1.dp,
+                        if (selected) R1.AccentWarm else R1.Hairline,
+                        androidx.compose.foundation.shape.CircleShape,
+                    )
+                    .r1Pressable(
+                        onClick = { onChange(if (selected) "" else name) },
+                        contentDescription = "Colour $name",
+                    ),
+            )
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+    com.github.itskenny0.r1ha.ui.components.R1TextField(
+        value = value,
+        onValueChange = onChange,
+        placeholder = "name or #rrggbb",
+        monospace = true,
+    )
+}
+
+/** One-line summary of an action config for the [ActionFieldSpec] row. */
+private fun actionSummary(obj: JsonObject?): String {
+    if (obj == null) return "DEFAULT"
+    val action = (obj["action"] as? JsonPrimitive)?.content ?: return "CUSTOM"
+    fun s(key: String) = (obj[key] as? JsonPrimitive)?.content.orEmpty()
+    return when (action) {
+        "more-info" -> "MORE INFO"
+        "toggle" -> "TOGGLE"
+        "none" -> "NONE"
+        "assist" -> "ASSIST"
+        "navigate" -> "NAVIGATE → ${s("navigation_path")}"
+        "url" -> "URL → ${s("url_path")}"
+        "perform-action", "call-service" -> {
+            val svc = (obj["perform_action"] ?: obj["service"]) as? JsonPrimitive
+            "PERFORM ${svc?.content.orEmpty()}"
+        }
+        else -> action.uppercase()
+    }
+}
+
+/** Action types offered by [CardActionEditor], in display order. The value is the
+ *  HA `action:` key; "default" is the synthetic "no override" choice (removes the
+ *  key so the card's domain-default gesture applies). */
+private val ACTION_TYPE_OPTIONS = listOf(
+    "default" to "DEFAULT",
+    "more-info" to "MORE INFO",
+    "toggle" to "TOGGLE",
+    "navigate" to "NAVIGATE",
+    "url" to "URL",
+    "perform-action" to "PERFORM",
+    "assist" to "ASSIST",
+    "none" to "NONE",
+)
+
+/**
+ * Bespoke editor for an HA action object (tap_action / hold_action / …). Mirrors
+ * HA's action editor: an action-type selector plus the per-action parameters
+ * (navigation path, url, perform-action + target + data, confirmation). Saves a
+ * JSON object, or null to clear the key back to the card's default gesture.
+ */
+@Composable
+private fun CardActionEditor(
+    label: String,
+    initial: JsonObject?,
+    onSave: (JsonObject?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    fun str(key: String) = (initial?.get(key) as? JsonPrimitive)?.content.orEmpty()
+    val initialType = (initial?.get("action") as? JsonPrimitive)?.content
+        ?.let { if (it == "call-service") "perform-action" else it }
+        ?: "default"
+    var actionType by remember { mutableStateOf(initialType) }
+    var navPath by remember { mutableStateOf(str("navigation_path")) }
+    var urlPath by remember { mutableStateOf(str("url_path")) }
+    var perform by remember {
+        mutableStateOf(
+            ((initial?.get("perform_action") ?: initial?.get("service")) as? JsonPrimitive)?.content.orEmpty(),
+        )
+    }
+    var targetEntity by remember {
+        mutableStateOf(
+            ((initial?.get("target") as? JsonObject)?.get("entity_id") as? JsonPrimitive)?.content.orEmpty(),
+        )
+    }
+    var dataJson by remember {
+        mutableStateOf(
+            (initial?.get("data") as? JsonObject)
+                ?.let { LOVELACE_EDIT_JSON.encodeToString(JsonObject.serializer(), it) }
+                .orEmpty(),
+        )
+    }
+    var confirm by remember { mutableStateOf(initial?.containsKey("confirmation") == true) }
+
+    fun build(): JsonObject? {
+        if (actionType == "default") return null
+        val m = linkedMapOf<String, JsonElement>("action" to JsonPrimitive(actionType))
+        when (actionType) {
+            "navigate" -> if (navPath.isNotBlank()) m["navigation_path"] = JsonPrimitive(navPath)
+            "url" -> if (urlPath.isNotBlank()) m["url_path"] = JsonPrimitive(urlPath)
+            "perform-action" -> {
+                if (perform.isNotBlank()) m["perform_action"] = JsonPrimitive(perform)
+                if (targetEntity.isNotBlank()) {
+                    m["target"] = JsonObject(mapOf("entity_id" to JsonPrimitive(targetEntity)))
+                }
+                val parsedData = runCatching {
+                    if (dataJson.isBlank()) null else LOVELACE_EDIT_JSON.parseToJsonElement(dataJson) as? JsonObject
+                }.getOrNull()
+                parsedData?.let { m["data"] = it }
+            }
+        }
+        if (confirm) m["confirmation"] = JsonPrimitive(true)
+        return JsonObject(m)
+    }
+
+    androidx.activity.compose.BackHandler(onBack = onDismiss)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(R1.Bg.copy(alpha = 0.96f))
+            .r1Pressable(onClick = onDismiss, hapticOnClick = false)
+            .imePadding(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 18.dp)
+                .clip(R1.ShapeM)
+                .background(R1.Surface)
+                .border(1.dp, R1.Hairline, R1.ShapeM)
+                .r1Pressable(onClick = {}, hapticOnClick = false)
+                .padding(14.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(text = "ACTION · $label", style = R1.sectionHeader, color = R1.AccentWarm)
+            Spacer(Modifier.height(10.dp))
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ACTION_TYPE_OPTIONS.forEach { (value, lbl) ->
+                    EditorToggleChip(
+                        label = lbl,
+                        selected = actionType == value,
+                        onClick = { actionType = value },
+                    )
+                }
+            }
+            when (actionType) {
+                "navigate" -> {
+                    Spacer(Modifier.height(10.dp))
+                    EditorField(label = "NAVIGATION PATH", value = navPath, onChange = { navPath = it }, monospace = true)
+                }
+                "url" -> {
+                    Spacer(Modifier.height(10.dp))
+                    EditorField(label = "URL", value = urlPath, onChange = { urlPath = it }, monospace = true)
+                }
+                "perform-action" -> {
+                    Spacer(Modifier.height(10.dp))
+                    EditorField(label = "ACTION (domain.service)", value = perform, onChange = { perform = it }, monospace = true)
+                    Spacer(Modifier.height(8.dp))
+                    EditorField(label = "TARGET ENTITY", value = targetEntity, onChange = { targetEntity = it }, monospace = true)
+                    Spacer(Modifier.height(8.dp))
+                    Text(text = "DATA (JSON)", style = R1.labelMicro, color = R1.InkSoft)
+                    Spacer(Modifier.height(4.dp))
+                    com.github.itskenny0.r1ha.ui.components.R1TextField(
+                        value = dataJson,
+                        onValueChange = { dataJson = it },
+                        placeholder = "{ \"brightness\": 128 }",
+                        monospace = true,
+                    )
+                }
+            }
+            if (actionType != "default") {
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "CONFIRMATION", style = R1.labelMicro, color = R1.InkSoft, modifier = Modifier.weight(1f))
+                    EditorToggleChip(
+                        label = if (confirm) "ON" else "OFF",
+                        selected = confirm,
+                        onClick = { confirm = !confirm },
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                SheetButton(label = "CANCEL", accent = false, onClick = onDismiss)
+                Spacer(Modifier.width(8.dp))
+                SheetButton(label = "SAVE", accent = true, onClick = { onSave(build()) })
             }
         }
     }

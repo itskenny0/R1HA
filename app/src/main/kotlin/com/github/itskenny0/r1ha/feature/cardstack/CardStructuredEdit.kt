@@ -1,6 +1,7 @@
 package com.github.itskenny0.r1ha.feature.cardstack
 
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -25,12 +26,89 @@ internal val SINGLE_ENTITY_TYPES = setOf(
 /** Multi-entity list (plain `entities:` array) applies to these. */
 internal val MULTI_ENTITY_TYPES = setOf("entities", "glance")
 
+/** Row-list keys the editor models; everything else on a row is passthrough. */
+private val ROW_OWNED_KEYS = setOf("entity", "secondary_info", "show_state", "state_color", "show_last_changed")
+
+/** Special (non-entity) entities-row types preserved verbatim, mirroring the parser. */
+private val SPECIAL_ROW_TYPES_EDIT = setOf(
+    "section", "divider", "attribute", "button", "buttons",
+    "call-service", "perform-action", "conditional", "text", "weblink", "cast",
+)
+
+internal data class CardEntityRow(
+    val entityId: String,
+    val secondaryInfo: String? = null,
+    val showState: Boolean? = null,
+    val stateColor: Boolean? = null,
+    val showLastChanged: Boolean? = null,
+    /** Every non-owned key on the row object, kept for lossless round-trip. */
+    val passthrough: JsonObject = JsonObject(emptyMap()),
+    /** A non-entity special/divider/section row, kept verbatim and non-editable. */
+    val special: JsonObject? = null,
+)
+
+/** Parse the `entities:` array into the editor's row model. Bare string ids,
+ *  entity-row objects (owned sub-keys lifted out, the rest stashed in
+ *  passthrough), and special/non-entity rows (kept verbatim in [CardEntityRow.special]). */
+internal fun parseEntityRows(base: JsonObject): List<CardEntityRow> {
+    val arr = base["entities"] as? JsonArray ?: return emptyList()
+    fun bool(o: JsonObject, k: String): Boolean? =
+        (o[k] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+    fun str(o: JsonObject, k: String): String? = (o[k] as? JsonPrimitive)?.content
+    return arr.mapNotNull { el ->
+        when (el) {
+            is JsonPrimitive -> if (el.isString) CardEntityRow(entityId = el.content) else null
+            is JsonObject -> {
+                val rowType = (el["type"] as? JsonPrimitive)?.content?.lowercase()
+                val entity = str(el, "entity")
+                if (entity == null || (rowType != null && rowType in SPECIAL_ROW_TYPES_EDIT)) {
+                    CardEntityRow(entityId = entity.orEmpty(), special = el)
+                } else {
+                    CardEntityRow(
+                        entityId = entity,
+                        secondaryInfo = str(el, "secondary_info"),
+                        showState = bool(el, "show_state"),
+                        stateColor = bool(el, "state_color"),
+                        showLastChanged = bool(el, "show_last_changed"),
+                        passthrough = JsonObject(el.filterKeys { it !in ROW_OWNED_KEYS }),
+                    )
+                }
+            }
+            else -> null
+        }
+    }
+}
+
+/** Re-emit the `entities:` array from the row model. Bare rows stay bare
+ *  strings; rows with owned sub-keys or passthrough become objects (passthrough
+ *  first, owned values last so edits win); special rows pass through verbatim. */
+internal fun buildEntitiesArray(form: CardEditorForm): JsonArray {
+    val out = form.rows.filter { it.special != null || it.entityId.isNotBlank() }.map { row ->
+        row.special?.let { return@map it }
+        val owned = buildJsonObject {
+            row.secondaryInfo?.takeIf { it.isNotBlank() }?.let { put("secondary_info", JsonPrimitive(it)) }
+            row.showState?.let { put("show_state", JsonPrimitive(it)) }
+            row.stateColor?.let { put("state_color", JsonPrimitive(it)) }
+            row.showLastChanged?.let { put("show_last_changed", JsonPrimitive(it)) }
+        }
+        if (owned.isEmpty() && row.passthrough.isEmpty()) {
+            JsonPrimitive(row.entityId)
+        } else {
+            buildJsonObject {
+                put("entity", JsonPrimitive(row.entityId))
+                row.passthrough.forEach { (k, v) -> put(k, v) }
+                owned.forEach { (k, v) -> put(k, v) }
+            }
+        }
+    }
+    return JsonArray(out)
+}
+
 /**
  * Everything the structured form can hold, regardless of card type;
  * [buildStructuredCard] only consults the fields the [type] actually edits.
- * Defaults mirror HA's button-card defaults (show_name / show_icon on,
- * show_state off) so a config that omits the keys seeds the toggles the way
- * the card actually renders.
+ * Show/hide toggles live in [toggles], keyed by real config key; their per-key
+ * defaults come from [cardTogglesFor] so a config that omits a key emits nothing.
  */
 internal data class CardEditorForm(
     val type: String,
@@ -40,13 +118,21 @@ internal data class CardEditorForm(
     val url: String = "",
     val aspect: String = "",
     val content: String = "",
-    val entities: List<String> = emptyList(),
+    val rows: List<CardEntityRow> = emptyList(),
     val name: String = "",
     val icon: String = "",
-    val showName: Boolean = true,
-    val showIcon: Boolean = true,
-    val showState: Boolean = false,
+    /** Real config-key -> value (HIDE-sense already resolved). Driven by [cardTogglesFor]. */
+    val toggles: Map<String, Boolean> = emptyMap(),
+    /** Real config-key -> raw value for the generic field schema ([cardFieldsFor]):
+     *  text/number(as text)/enum/colour/icon as string primitives, bools as
+     *  boolean primitives, actions as objects. Emitted by [emitCardField]. */
+    val values: Map<String, JsonElement> = emptyMap(),
 )
+
+/** True when [type]'s primary label is edited via the engine `name` field (so the
+ *  hand-rendered TITLE field is suppressed and `title` is not owned here). */
+internal fun typeOwnsNameField(type: String): Boolean =
+    cardFieldsFor(type).any { it.key == "name" }
 
 /** The config keys the form owns (re-emits) for this card type. */
 private fun editedKeysFor(type: String): Set<String> = buildSet {
@@ -55,7 +141,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
         // has no `title:` key, so a stray one passes through untouched).
         "heading" -> add("heading")
         "button" -> Unit
-        else -> add("title")
+        // Name-primary cards (tile, light, gauge…) label via the engine `name`
+        // field; they have no `title:` key, so leave a stray one to pass through.
+        else -> if (!typeOwnsNameField(type)) add("title")
     }
     if (type in SINGLE_ENTITY_TYPES) add("entity")
     if (type == "iframe") {
@@ -67,10 +155,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
     if (type == "button") {
         add("name")
         add("icon")
-        add("show_name")
-        add("show_icon")
-        add("show_state")
     }
+    cardTogglesFor(type).forEach { add(it.key) }
+    cardFieldsFor(type).forEach { add(it.key) }
 }
 
 /**
@@ -79,9 +166,9 @@ private fun editedKeysFor(type: String): Set<String> = buildSet {
  * re-emitted from the form (blank string = key removed, matching how the
  * form clears a field).
  *
- * Button toggles emit when they deviate from HA's default OR the key was
- * already present (so flipping a stored `show_state: false` to true and back
- * keeps the explicit key instead of silently dropping it).
+ * Show/hide toggles ([cardTogglesFor]) emit when they deviate from the key's
+ * default OR the key was already present (so flipping a stored `show_state: false`
+ * to true and back keeps the explicit key instead of silently dropping it).
  */
 internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonObject {
     val type = form.type
@@ -96,7 +183,7 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
         when (type) {
             "heading" -> putIfSet("heading", form.heading)
             "button" -> Unit
-            else -> putIfSet("title", form.title)
+            else -> if (!typeOwnsNameField(type)) putIfSet("title", form.title)
         }
         if (type in SINGLE_ENTITY_TYPES) putIfSet("entity", form.entity)
         if (type == "iframe") {
@@ -104,21 +191,30 @@ internal fun buildStructuredCard(base: JsonObject, form: CardEditorForm): JsonOb
             putIfSet("aspect_ratio", form.aspect)
         }
         if (type == "markdown") putIfSet("content", form.content)
-        if (type in MULTI_ENTITY_TYPES) {
-            put(
-                "entities",
-                JsonArray(form.entities.filter { it.isNotBlank() }.map { JsonPrimitive(it) }),
-            )
-        }
+        if (type in MULTI_ENTITY_TYPES) put("entities", buildEntitiesArray(form))
         if (type == "button") {
             putIfSet("name", form.name)
             putIfSet("icon", form.icon)
-            fun putToggle(key: String, value: Boolean, default: Boolean) {
-                if (value != default || base.containsKey(key)) put(key, JsonPrimitive(value))
+        }
+        // Generic native show/hide toggles for the card type. Emit only when the
+        // value deviates from the app default OR the key was already present, so
+        // round-trips stay lossless and configs stay clean.
+        for (t in cardTogglesFor(type)) {
+            val v = form.toggles[t.key] ?: t.default
+            if (v != t.default || base.containsKey(t.key)) put(t.key, JsonPrimitive(v))
+        }
+        // Generic schema fields (name, colour, min/max, actions…). A field key
+        // the form actually LOADED (present in `values`, even as a cleared blank)
+        // is re-emitted by its kind rule; a key the form never modelled passes
+        // through verbatim from base, so an editor instance that didn't seed a
+        // field (or a programmatic form) never silently drops a stored
+        // tap_action / hold_action / colour.
+        for (f in cardFieldsFor(type)) {
+            if (form.values.containsKey(f.key)) {
+                emitCardField(this, base, f, form.values[f.key])
+            } else {
+                base[f.key]?.let { put(f.key, it) }
             }
-            putToggle("show_name", form.showName, default = true)
-            putToggle("show_icon", form.showIcon, default = true)
-            putToggle("show_state", form.showState, default = false)
         }
     }
 }

@@ -31,7 +31,7 @@ class CardStructuredEditTest {
         val base = broadlinkCommandCard()
         val edited = buildStructuredCard(
             base,
-            CardEditorForm(type = "button", name = "Telly", icon = "mdi:power", showState = false),
+            CardEditorForm(type = "button", name = "Telly", icon = "mdi:power"),
         )
         // The call-service block (service, target, data incl. num_repeats)
         // must survive untouched: the form doesn't model it.
@@ -56,9 +56,7 @@ class CardStructuredEditTest {
             CardEditorForm(
                 type = "button",
                 name = "TV Power",
-                showName = false,
-                showIcon = false,
-                showState = true,
+                toggles = mapOf("show_name" to false, "show_icon" to false, "show_state" to true),
             ),
         )
         assertThat(edited["show_name"]).isEqualTo(JsonPrimitive(false))
@@ -129,16 +127,39 @@ class CardStructuredEditTest {
     }
 
     @Test
-    fun titleAppliesToNonButtonTypes() {
+    fun titleAppliesToTitleCards() {
+        // entities is a title-bearing card (not name-primary), so the form owns title.
         val base = buildJsonObject {
-            put("type", "tile")
-            put("entity", "light.kitchen")
+            put("type", "entities")
+            put("entities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("light.kitchen"))))
         }
         val edited = buildStructuredCard(
             base,
-            CardEditorForm(type = "tile", title = "Kitchen", entity = "light.kitchen"),
+            CardEditorForm(type = "entities", title = "Kitchen", rows = listOf(CardEntityRow("light.kitchen"))),
         )
         assertThat(edited["title"]).isEqualTo(JsonPrimitive("Kitchen"))
+    }
+
+    @Test
+    fun tileLabelsViaNameNotTitle() {
+        // tile is name-primary: it carries `name`, not `title`. The form must not
+        // own `title` for it (a stray one passes through), and `name` comes from
+        // the generic field engine.
+        val base = buildJsonObject {
+            put("type", "tile")
+            put("entity", "light.kitchen")
+            put("title", "legacy")
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "tile",
+                entity = "light.kitchen",
+                values = mapOf("name" to JsonPrimitive("Kitchen")),
+            ),
+        )
+        assertThat(edited["name"]).isEqualTo(JsonPrimitive("Kitchen"))
+        assertThat(edited["title"]).isEqualTo(JsonPrimitive("legacy"))
         assertThat(edited["entity"]).isEqualTo(JsonPrimitive("light.kitchen"))
     }
 
@@ -174,7 +195,10 @@ class CardStructuredEditTest {
         }
         val edited = buildStructuredCard(
             base,
-            CardEditorForm(type = "entities", entities = listOf("light.a", "", "switch.b")),
+            CardEditorForm(
+                type = "entities",
+                rows = listOf(CardEntityRow("light.a"), CardEntityRow(""), CardEntityRow("switch.b")),
+            ),
         )
         assertThat(edited["entities"]).isEqualTo(
             kotlinx.serialization.json.JsonArray(
@@ -193,5 +217,86 @@ class CardStructuredEditTest {
         assertThat(obj.boolOr("show_icon", false)).isTrue()
         assertThat(obj.boolOr("show_name", true)).isTrue()
         assertThat((null as JsonObject?).boolOr("show_name", false)).isFalse()
+    }
+
+    @Test
+    fun glanceTogglesEmitWhenDeviating() {
+        val base = buildJsonObject {
+            put("type", "glance")
+            put("entities", kotlinx.serialization.json.JsonArray(listOf(JsonPrimitive("light.a"))))
+        }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "glance", rows = listOf(CardEntityRow("light.a")), toggles = mapOf("show_name" to false)),
+        )
+        assertThat(edited["show_name"]).isEqualTo(JsonPrimitive(false))
+        // show_state default (true) untouched and absent in base -> stays absent.
+        assertThat(edited.containsKey("show_state")).isFalse()
+    }
+
+    @Test
+    fun tileHideStateEmitsRealKey() {
+        // The editor stores the real key value; hide_state default is false.
+        val base = buildJsonObject { put("type", "tile"); put("entity", "light.k") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(type = "tile", entity = "light.k", toggles = mapOf("hide_state" to true)),
+        )
+        assertThat(edited["hide_state"]).isEqualTo(JsonPrimitive(true))
+    }
+
+    @Test
+    fun bareRowStaysBareObjectGainsKeys() {
+        val base = buildJsonObject { put("type", "entities") }
+        val edited = buildStructuredCard(
+            base,
+            CardEditorForm(
+                type = "entities",
+                rows = listOf(
+                    CardEntityRow("light.a"),
+                    CardEntityRow("switch.b", secondaryInfo = "last-changed", showState = false),
+                ),
+            ),
+        )
+        val arr = edited["entities"] as kotlinx.serialization.json.JsonArray
+        assertThat(arr[0]).isEqualTo(JsonPrimitive("light.a"))
+        val row = arr[1] as JsonObject
+        assertThat(row["entity"]).isEqualTo(JsonPrimitive("switch.b"))
+        assertThat(row["secondary_info"]).isEqualTo(JsonPrimitive("last-changed"))
+        assertThat(row["show_state"]).isEqualTo(JsonPrimitive(false))
+    }
+
+    @Test
+    fun parseEntityRowsPreservesUnknownKeysAndSpecialRows() {
+        val base = buildJsonObject {
+            put("type", "entities")
+            put(
+                "entities",
+                kotlinx.serialization.json.JsonArray(
+                    listOf(
+                        JsonPrimitive("light.a"),
+                        buildJsonObject {
+                            put("entity", "switch.b")
+                            put("secondary_info", "area")
+                            putJsonObject("tap_action") { put("action", "toggle") }
+                        },
+                        buildJsonObject { put("type", "divider") },
+                    ),
+                ),
+            )
+        }
+        val rows = parseEntityRows(base)
+        assertThat(rows).hasSize(3)
+        assertThat(rows[0].entityId).isEqualTo("light.a")
+        assertThat(rows[1].secondaryInfo).isEqualTo("area")
+        assertThat(rows[2].special).isNotNull()
+
+        // Round-trip: tap_action survives via passthrough, divider survives via special.
+        val edited = buildStructuredCard(base, CardEditorForm(type = "entities", rows = rows))
+        val arr = edited["entities"] as kotlinx.serialization.json.JsonArray
+        val originalArr = base["entities"] as kotlinx.serialization.json.JsonArray
+        val row = arr[1] as JsonObject
+        assertThat(row["tap_action"]).isEqualTo((originalArr[1] as JsonObject)["tap_action"])
+        assertThat(arr[2]).isEqualTo(originalArr[2])
     }
 }

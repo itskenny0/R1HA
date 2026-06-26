@@ -49,9 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Long-press a button or glance tile to open its details, just like the Home Assistant app.",
-    "Text, date and time entities can now be edited from a list instead of only being shown.",
-    "Richer entity details: a simple on/off light shows a toggle, fans gain horizontal swing, sirens a duration.",
-    "Controls now follow state: vacuum start/pause, update install, and steppers grey out when they cannot act.",
-    "Tapping a weather forecast no longer opens the wrong dialog, and map entities open from the legend.",
+    "Editing a card now lays out its full options: name, colour, icon, ranges, units and graph settings.",
+    "Set what a card does on tap, hold or double tap from the editor, with no YAML to write.",
+    "Card edits cover the show and hide switches and per row secondary info, as before.",
 )
