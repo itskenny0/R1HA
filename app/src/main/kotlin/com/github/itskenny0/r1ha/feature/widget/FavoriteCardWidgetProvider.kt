@@ -45,7 +45,7 @@ import kotlinx.serialization.json.buildJsonObject
  * broadcast that fires the REST service call and repaints; read-only domains,
  * signed-out installs and unconfigured instances open the app instead.
  */
-class FavoriteCardWidgetProvider : AppWidgetProvider() {
+open class FavoriteCardWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,

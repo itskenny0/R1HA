@@ -309,6 +309,21 @@
                 android:resource="@xml/favorite_card_widget_info"/>
         </receiver>
 
+        <!-- Compact favorite tile: same favorite card with a single-cell default
+             footprint. Shares the configure activity, store and live refresh;
+             only the default size and picker label differ. -->
+        <receiver
+            android:name=".feature.widget.FavoriteCardWidgetProviderCompact"
+            android:exported="true"
+            android:label="@string/widget_favorite_tile_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/favorite_card_widget_compact_info"/>
+        </receiver>
+
         <!-- Configuration activity for the favorite-card widget. Launched by
              the widget host (the launcher), so it must be exported with the
              APPWIDGET_CONFIGURE filter. -->
