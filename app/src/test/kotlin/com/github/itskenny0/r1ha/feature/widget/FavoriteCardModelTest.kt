@@ -197,4 +197,33 @@ class FavoriteCardModelTest {
         assertThat(widgetTapActsInPlace(Domain.MEDIA_PLAYER)).isFalse()
         assertThat(widgetTapActsInPlace(Domain.OTHER)).isFalse()
     }
+
+    @Test fun onToggleIsOnAndActsInPlace() {
+        val model = buildFavoriteCardModel(
+            "switch.heater",
+            state("switch.heater", isOn = true, rawState = "on"),
+            defaults,
+        )
+        assertThat(model.isOn).isTrue()
+        assertThat(model.actsInPlace).isTrue()
+    }
+
+    @Test fun offToggleActsInPlaceButIsNotOn() {
+        val model = buildFavoriteCardModel(
+            "switch.heater",
+            state("switch.heater", isOn = false, rawState = "off"),
+            defaults,
+        )
+        assertThat(model.isOn).isFalse()
+        assertThat(model.actsInPlace).isTrue()
+    }
+
+    @Test fun sensorDoesNotActInPlace() {
+        val model = buildFavoriteCardModel(
+            "sensor.office_temp",
+            state("sensor.office_temp", rawState = "21.7", unit = "°C", deviceClass = "temperature"),
+            defaults,
+        )
+        assertThat(model.actsInPlace).isFalse()
+    }
 }

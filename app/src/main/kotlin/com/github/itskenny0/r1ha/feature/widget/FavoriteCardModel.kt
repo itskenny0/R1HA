@@ -30,6 +30,14 @@ data class FavoriteCardModel(
     val accentArgb: Int,
     /** False for unavailable/unknown entities — the renderer dims the whole card. */
     val available: Boolean,
+    /** Entity is on/active now: drives the compact tile's accent-vs-dim glyph tint. */
+    val isOn: Boolean = false,
+    /**
+     * Tap acts in place (toggle / action). The compact tile paints a glyph + state
+     * tint for these and a value readout for read-only entities (sensors), where the
+     * number carries meaning the tint cannot.
+     */
+    val actsInPlace: Boolean = false,
 )
 
 /**
@@ -73,6 +81,8 @@ fun buildFavoriteCardModel(
         stateText = widgetStateText(entityId, domain, state, settings),
         accentArgb = accent,
         available = available,
+        isOn = state?.isOn == true,
+        actsInPlace = widgetTapActsInPlace(domain),
     )
 }
 
