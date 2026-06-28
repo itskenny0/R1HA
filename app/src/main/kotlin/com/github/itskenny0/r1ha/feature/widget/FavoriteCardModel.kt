@@ -38,6 +38,8 @@ data class FavoriteCardModel(
      * number carries meaning the tint cannot.
      */
     val actsInPlace: Boolean = false,
+    /** Fire-and-forget action domain (scene / script / button): the compact tile keeps the accent since it has no off-state. */
+    val isAction: Boolean = false,
 )
 
 /**
@@ -83,6 +85,7 @@ fun buildFavoriteCardModel(
         available = available,
         isOn = state?.isOn == true,
         actsInPlace = widgetTapActsInPlace(domain),
+        isAction = domain.isAction,
     )
 }
 

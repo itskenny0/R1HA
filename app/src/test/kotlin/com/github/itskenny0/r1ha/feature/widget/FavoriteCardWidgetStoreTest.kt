@@ -69,4 +69,12 @@ class FavoriteCardWidgetStoreTest {
         FavoriteCardWidgetStore.clearAll(context)
         assertThat(FavoriteCardWidgetStore.allBindings(context)).isEmpty()
     }
+
+    @Test fun retainOnlyDropsIdsNotKept() {
+        FavoriteCardWidgetStore.bind(context, 41, "light.kitchen")
+        FavoriteCardWidgetStore.bind(context, 42, "sensor.temp")
+        FavoriteCardWidgetStore.retainOnly(context, setOf(41))
+        assertThat(FavoriteCardWidgetStore.entityFor(context, 41)).isEqualTo("light.kitchen")
+        assertThat(FavoriteCardWidgetStore.entityFor(context, 42)).isNull()
+    }
 }

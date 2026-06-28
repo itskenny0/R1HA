@@ -226,4 +226,22 @@ class FavoriteCardModelTest {
         )
         assertThat(model.actsInPlace).isFalse()
     }
+
+    @Test fun sceneIsAnAction() {
+        val model = buildFavoriteCardModel(
+            "scene.movie_night",
+            state("scene.movie_night", rawState = "scening"),
+            defaults,
+        )
+        assertThat(model.isAction).isTrue()
+    }
+
+    @Test fun switchIsNotAnAction() {
+        val model = buildFavoriteCardModel(
+            "switch.heater",
+            state("switch.heater", isOn = false, rawState = "off"),
+            defaults,
+        )
+        assertThat(model.isAction).isFalse()
+    }
 }

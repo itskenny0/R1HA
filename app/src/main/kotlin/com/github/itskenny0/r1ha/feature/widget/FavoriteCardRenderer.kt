@@ -213,7 +213,7 @@ internal object FavoriteCardRenderer {
      */
     private fun drawCompact(canvas: Canvas, w: Int, h: Int, density: Float, model: FavoriteCardModel, accent: Int) {
         fun dp(value: Float) = value * density
-        val active = model.available && (!model.actsInPlace || model.isOn)
+        val active = model.available && (model.isAction || !model.actsInPlace || model.isOn)
         val tint = if (active) accent else INK_MUTED
         val showValue = model.available && !model.actsInPlace
 
