@@ -3,6 +3,7 @@ package com.github.itskenny0.r1ha.feature.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -45,7 +46,7 @@ import kotlinx.serialization.json.buildJsonObject
  * broadcast that fires the REST service call and repaints; read-only domains,
  * signed-out installs and unconfigured instances open the app instead.
  */
-class FavoriteCardWidgetProvider : AppWidgetProvider() {
+open class FavoriteCardWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,
@@ -70,7 +71,16 @@ class FavoriteCardWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onDisabled(context: Context) {
-        FavoriteCardWidgetStore.clearAll(context)
+        // Two provider components (standard + compact) share one binding store,
+        // so the last instance of THIS component disappearing does not mean no
+        // favorite widgets remain. Prune only ids no host still owns instead of
+        // clearing every binding.
+        val manager = AppWidgetManager.getInstance(context)
+        val live = (
+            manager.getAppWidgetIds(ComponentName(context, FavoriteCardWidgetProvider::class.java)) +
+                manager.getAppWidgetIds(ComponentName(context, FavoriteCardWidgetProviderCompact::class.java))
+            ).toSet()
+        FavoriteCardWidgetStore.retainOnly(context, live)
     }
 
     override fun onReceive(context: Context, intent: Intent) {

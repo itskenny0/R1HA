@@ -4,8 +4,11 @@
   Canvas-drawn Bitmap (RemoteViews can't host Compose and a TextView stack
   can't reproduce the in-app card chrome); the provider swaps the bitmap on
   every refresh via setImageViewBitmap and keeps the contentDescription in
-  sync with the rendered name + state for accessibility. The root carries
-  the single tap target so the whole cell, padding included, responds.
+  sync with the rendered name and state for accessibility. The image scales
+  with fitCenter, not fitXY, so a launcher that mis-reports the cell aspect
+  (some FireOS launchers do) letterboxes the card against the transparent
+  background instead of stretching it vertically. The root carries the single
+  tap target so the whole cell, padding included, responds.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/favorite_card_root"
@@ -17,6 +20,6 @@
         android:id="@+id/favorite_card_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="fitXY"
+        android:scaleType="fitCenter"
         android:contentDescription="@string/widget_favorite_card_label"/>
 </FrameLayout>

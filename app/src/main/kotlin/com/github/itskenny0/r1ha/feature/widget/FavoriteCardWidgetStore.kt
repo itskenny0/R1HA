@@ -49,6 +49,25 @@ object FavoriteCardWidgetStore {
         prefs(context).edit().clear().commit()
     }
 
+    /**
+     * Drop bindings for any widget id not in [keepIds]. Used by onDisabled:
+     * more than one widget provider component shares this store, so the last
+     * instance of one component going away must not wipe the other component's
+     * live bindings. Prune by what the hosts still own instead of clearing all.
+     */
+    fun retainOnly(context: Context, keepIds: Set<Int>) {
+        val editor = prefs(context).edit()
+        var changed = false
+        for (key in prefs(context).all.keys.toList()) {
+            val id = key.toIntOrNull()
+            if (id == null || id !in keepIds) {
+                editor.remove(key)
+                changed = true
+            }
+        }
+        if (changed) editor.commit()
+    }
+
     /** Every current binding, keyed by widgetId. Skips non-numeric keys defensively. */
     fun allBindings(context: Context): Map<Int, String> =
         prefs(context).all.entries.mapNotNull { (key, value) ->

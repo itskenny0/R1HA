@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AppWidget metadata for the compact favorite tile. Defaults to a single cell
+  and resizes up; the renderer paints the glyph-and-tint compact face at this
+  size automatically (see FavoriteCardRenderer + widgetRenderTier). It shares
+  the favorite-card configure activity, store, and live refresh: only the
+  default footprint and label differ from the standard favorite card.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="40dp"
+    android:minHeight="40dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
+    android:targetCellWidth="1"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/favorite_card_widget"
+    android:configure="com.github.itskenny0.r1ha.feature.widget.FavoriteCardWidgetConfigActivity"
+    android:previewImage="@mipmap/ic_launcher"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/widget_favorite_tile_description"/>

@@ -54,6 +54,8 @@
          swaps in the live "name: state" description at first paint. -->
     <string name="widget_favorite_card_label">Favorite card</string>
     <string name="widget_favorite_card_description">A favorite as a live card: name, state and accent</string>
+    <string name="widget_favorite_tile_label">Favorite tile (compact)</string>
+    <string name="widget_favorite_tile_description">A favorite as a single-cell tile: glyph, state tint and value</string>
 
     <!-- ── Dialog buttons ─────────────────────────────────────────── -->
     <string name="dialog_cancel">CANCEL</string>

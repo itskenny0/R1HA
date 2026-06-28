@@ -8,17 +8,15 @@ import android.graphics.Typeface
 
 /**
  * Paints a [FavoriteCardModel] into a Bitmap with android.graphics so the
- * widget can echo the in-app card idiom (near-black rounded card, accent-
- * tinted glyph disc, ink name, big monospace readout) despite RemoteViews
- * having no Compose surface. Colours are literal copies of the R1 design
- * tokens rather than reads of the Compose objects: the renderer must work
- * on the RemoteViews path with no composition alive, and the card-surface
- * greys are static in DesignTokens anyway.
+ * widget can echo the in-app card idiom despite RemoteViews having no Compose
+ * surface. The face adapts to the cell size (see [widgetRenderTier]): a roomy
+ * cell gets the full card; a short cell gets a glyph + name + value row; a
+ * single-cell tile gets a centred glyph tinted by state, with a tiny value for
+ * read-only entities. Colours are literal copies of the R1 design tokens
+ * because the RemoteViews path has no composition alive.
  */
 internal object FavoriteCardRenderer {
 
-    // R1 palette mirror (DesignTokens.kt). Surface/hairline/ink are static
-    // there; the accent arrives per-card via the model.
     private const val SURFACE = 0xFF141414.toInt()
     private const val HAIRLINE = 0xFF2A2A2A.toInt()
     private const val INK = 0xFFEDEDED.toInt()
@@ -28,13 +26,9 @@ internal object FavoriteCardRenderer {
     /**
      * Render the card at [widthPx] x [heightPx]. [density] converts the dp
      * design measurements; callers clamp the pixel size before invoking so a
-     * giant resize can't allocate a RemoteViews-rejecting bitmap.
-     *
-     * [cornerPx] is the launcher's widget corner radius: Android 12+ clips every
-     * widget to `system_app_widget_background_radius`, so the card's own corners
-     * must match or the border gets sliced off at the corners and reads broken.
-     * Callers resolve it from the system resource (see the provider) and pass a
-     * pre-31 fallback elsewhere.
+     * giant resize can't allocate a RemoteViews-rejecting bitmap. [cornerPx] is
+     * the launcher's widget corner radius (see the provider) so the card's own
+     * corners match the launcher clip.
      */
     fun render(
         model: FavoriteCardModel,
@@ -47,61 +41,87 @@ internal object FavoriteCardRenderer {
         val h = heightPx.coerceAtLeast(48)
         val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        fun dp(value: Float) = value * density
 
-        // Unavailable cards keep their layout but drop to the muted greys, the
-        // same dimmed treatment the in-app deck applies.
         val accent = if (model.available) model.accentArgb else INK_MUTED
-        val nameInk = if (model.available) INK else INK_SOFT
-        val stateInk = if (model.available) accent else INK_MUTED
-
-        val pad = dp(10f)
         val corner = cornerPx.coerceIn(0f, minOf(w, h) / 2f)
-        val card = RectF(dp(0.5f), dp(0.5f), w - dp(0.5f), h - dp(0.5f))
+        drawCardChrome(canvas, w, h, density, corner, accent, model.available)
 
+        val wDp = (w / density).toInt()
+        val hDp = (h / density).toInt()
+        when (widgetRenderTier(wDp, hDp)) {
+            RenderTier.COMPACT -> drawCompact(canvas, w, h, density, model, accent)
+            RenderTier.MEDIUM -> drawMedium(canvas, w, h, density, model, accent)
+            RenderTier.FULL -> drawFull(canvas, w, h, density, model, accent)
+        }
+        return bitmap
+    }
+
+    /** Near-black rounded card + accent-tinted border, shared by every face. */
+    private fun drawCardChrome(
+        canvas: Canvas,
+        w: Int,
+        h: Int,
+        density: Float,
+        corner: Float,
+        accent: Int,
+        available: Boolean,
+    ) {
+        val card = RectF(0.5f * density, 0.5f * density, w - 0.5f * density, h - 0.5f * density)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = SURFACE
         }
         canvas.drawRoundRect(card, corner, corner, fill)
-
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = dp(1f)
-            color = if (model.available) withAlpha(accent, 0.45f) else HAIRLINE
+            strokeWidth = 1f * density
+            color = if (available) withAlpha(accent, 0.45f) else HAIRLINE
         }
         canvas.drawRoundRect(card, corner, corner, border)
+    }
 
-        // Accent glyph disc, top-left — the CardIconDisc idiom (18% fill, 40%
-        // ring, accent glyph centred).
-        val discR = dp(13f)
-        val discCx = pad + discR
-        val discCy = pad + discR
+    /** The CardIconDisc idiom: 18% accent fill, 40% ring, accent glyph centred. */
+    private fun drawGlyphDisc(
+        canvas: Canvas,
+        cx: Float,
+        cy: Float,
+        radius: Float,
+        density: Float,
+        glyph: String,
+        accent: Int,
+        glyphSizePx: Float,
+    ) {
         val discFill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.FILL
             color = withAlpha(accent, 0.18f)
         }
-        canvas.drawCircle(discCx, discCy, discR, discFill)
+        canvas.drawCircle(cx, cy, radius, discFill)
         val discRing = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = dp(1f)
+            strokeWidth = 1f * density
             color = withAlpha(accent, 0.4f)
         }
-        canvas.drawCircle(discCx, discCy, discR, discRing)
-
+        canvas.drawCircle(cx, cy, radius, discRing)
         val glyphPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = accent
-            textSize = dp(14f)
+            textSize = glyphSizePx
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText(
-            model.glyph,
-            discCx,
-            discCy - (glyphPaint.ascent() + glyphPaint.descent()) / 2f,
-            glyphPaint,
-        )
+        canvas.drawText(glyph, cx, cy - (glyphPaint.ascent() + glyphPaint.descent()) / 2f, glyphPaint)
+    }
 
-        // Display name, vertically centred on the disc, ellipsized to the card edge.
+    /** Full card: disc + name top-left, big monospace readout bottom-left. */
+    private fun drawFull(canvas: Canvas, w: Int, h: Int, density: Float, model: FavoriteCardModel, accent: Int) {
+        fun dp(value: Float) = value * density
+        val nameInk = if (model.available) INK else INK_SOFT
+        val stateInk = if (model.available) accent else INK_MUTED
+        val pad = dp(10f)
+
+        val discR = dp(13f)
+        val discCx = pad + discR
+        val discCy = pad + discR
+        drawGlyphDisc(canvas, discCx, discCy, discR, density, model.glyph, accent, dp(14f))
+
         val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = nameInk
             textSize = dp(13f)
@@ -116,8 +136,6 @@ internal object FavoriteCardRenderer {
             namePaint,
         )
 
-        // Big monospace readout, bottom-left — shrinks to fit the card width
-        // (long sensor strings) but never below a legible floor, then ellipsizes.
         val statePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = stateInk
             typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
@@ -136,8 +154,96 @@ internal object FavoriteCardRenderer {
             h - pad - statePaint.descent(),
             statePaint,
         )
+    }
 
-        return bitmap
+    /** Short row: disc on the left, name over value on the right. */
+    private fun drawMedium(canvas: Canvas, w: Int, h: Int, density: Float, model: FavoriteCardModel, accent: Int) {
+        fun dp(value: Float) = value * density
+        val nameInk = if (model.available) INK else INK_SOFT
+        val stateInk = if (model.available) accent else INK_MUTED
+        val pad = dp(8f)
+
+        val discR = (h * 0.30f).coerceIn(dp(10f), dp(16f))
+        val discCx = pad + discR
+        val discCy = h / 2f
+        drawGlyphDisc(canvas, discCx, discCy, discR, density, model.glyph, accent, discR * 1.05f)
+
+        val textX = discCx + discR + dp(8f)
+        val textAvail = w - pad - textX
+        val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = nameInk
+            textSize = dp(12f)
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val statePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = stateInk
+            textSize = dp(13f)
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        var stateSize = dp(13f)
+        val floor = dp(10f)
+        while (statePaint.measureText(model.stateText) > textAvail && stateSize > floor) {
+            stateSize = (stateSize - dp(1f)).coerceAtLeast(floor)
+            statePaint.textSize = stateSize
+        }
+
+        val nameH = namePaint.descent() - namePaint.ascent()
+        val stateH = statePaint.descent() - statePaint.ascent()
+        val gap = dp(2f)
+        val blockTop = (h - (nameH + gap + stateH)) / 2f
+        canvas.drawText(
+            ellipsize(model.name, namePaint, textAvail),
+            textX,
+            blockTop - namePaint.ascent(),
+            namePaint,
+        )
+        canvas.drawText(
+            ellipsize(model.stateText, statePaint, textAvail),
+            textX,
+            blockTop + nameH + gap - statePaint.ascent(),
+            statePaint,
+        )
+    }
+
+    /**
+     * Single-cell tile: a centred glyph tinted by state (accent when a read-only
+     * value or an on-toggle; muted when an off-toggle or unavailable). Read-only
+     * entities (sensors) also get a tiny value line, since their tint can't
+     * convey a number; toggles and actions are glyph + tint only.
+     */
+    private fun drawCompact(canvas: Canvas, w: Int, h: Int, density: Float, model: FavoriteCardModel, accent: Int) {
+        fun dp(value: Float) = value * density
+        val active = model.available && (model.isAction || !model.actsInPlace || model.isOn)
+        val tint = if (active) accent else INK_MUTED
+        val showValue = model.available && !model.actsInPlace
+
+        val cx = w / 2f
+        val discR = (minOf(w, h) * 0.26f).coerceIn(dp(10f), dp(22f))
+        val discCy = if (showValue) h * 0.40f else h / 2f
+        drawGlyphDisc(canvas, cx, discCy, discR, density, model.glyph, tint, discR * 1.05f)
+
+        if (showValue) {
+            val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = INK
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            }
+            val avail = w - dp(8f)
+            var size = (h * 0.22f).coerceIn(dp(9f), dp(15f))
+            valuePaint.textSize = size
+            val floor = dp(8f)
+            while (valuePaint.measureText(model.stateText) > avail && size > floor) {
+                size = (size - dp(1f)).coerceAtLeast(floor)
+                valuePaint.textSize = size
+            }
+            val top = discCy + discR + dp(3f)
+            canvas.drawText(
+                ellipsize(model.stateText, valuePaint, avail),
+                cx,
+                top - valuePaint.ascent(),
+                valuePaint,
+            )
+        }
     }
 
     private fun withAlpha(argb: Int, alpha: Float): Int {
