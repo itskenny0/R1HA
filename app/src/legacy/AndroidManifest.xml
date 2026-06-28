@@ -60,11 +60,6 @@
         <service android:name=".core.webhook.WebhookListenerService" tools:node="remove"/>
         <service android:name=".core.background.BackgroundRefreshJob" tools:node="remove"/>
 
-        <!-- Home-screen widgets — dropped. -->
-        <receiver android:name=".feature.widget.R1haWidgetProvider" tools:node="remove"/>
-        <receiver android:name=".feature.widget.FavoriteCardWidgetProvider" tools:node="remove"/>
-        <activity android:name=".feature.widget.FavoriteCardWidgetConfigActivity" tools:node="remove"/>
-
         <!-- HA notification-mirror dismiss receiver + external-automation receiver — dropped. -->
         <receiver
             android:name=".core.notifications.HaNotificationMirror$DismissActionReceiver"
