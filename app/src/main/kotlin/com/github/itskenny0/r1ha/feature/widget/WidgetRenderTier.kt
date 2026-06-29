@@ -19,3 +19,26 @@ internal fun widgetRenderTier(widthDp: Int, heightDp: Int): RenderTier {
         else -> RenderTier.FULL
     }
 }
+
+/**
+ * The widget's cell size in dp for the current orientation, from the host's
+ * options. Android reports MIN_WIDTH x MAX_HEIGHT as the portrait extents and
+ * MAX_WIDTH x MIN_HEIGHT as the landscape extents, so a landscape launcher (an
+ * Echo Show, for example) must read the landscape pair: reading the portrait
+ * pair on a wide cell sizes the card for a tall cell, and it then renders narrow
+ * with empty margins on either side. Zero or missing values (older launchers
+ * right after placement) fall back to the provider's default footprint.
+ */
+internal fun widgetCellDp(
+    isLandscape: Boolean,
+    minWidthDp: Int,
+    maxWidthDp: Int,
+    minHeightDp: Int,
+    maxHeightDp: Int,
+    defaultWidthDp: Int,
+    defaultHeightDp: Int,
+): Pair<Int, Int> {
+    val wDp = (if (isLandscape) maxWidthDp else minWidthDp).takeIf { it > 0 } ?: defaultWidthDp
+    val hDp = (if (isLandscape) minHeightDp else maxHeightDp).takeIf { it > 0 } ?: defaultHeightDp
+    return wDp to hDp
+}

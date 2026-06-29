@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.widget.RemoteViews
 import com.github.itskenny0.r1ha.App
@@ -237,11 +238,14 @@ open class FavoriteCardWidgetProvider : AppWidgetProvider() {
     )
 
     /**
-     * Current widget cell size in pixels, from the host's options bundle.
-     * minWidth x maxHeight is the portrait-orientation convention; zero /
-     * missing options (older launchers right after placement) fall back to
-     * the provider XML's default 3x2-cell footprint. Capped so a maximal
-     * resize can't exceed the RemoteViews bitmap transport budget.
+     * Current widget cell size in pixels, from the host's options bundle, read
+     * for the current orientation (see [widgetCellDp]): a landscape launcher
+     * such as an Echo Show reports its wide cell as MAX_WIDTH x MIN_HEIGHT, so
+     * reading the portrait pair there would size the card narrow and leave empty
+     * margins on a wide cell. Zero / missing options (older launchers right after
+     * placement) fall back to the provider XML's default 3x2-cell footprint.
+     * Capped so a maximal resize can't exceed the RemoteViews bitmap transport
+     * budget.
      */
     private fun widgetSizePx(
         context: Context,
@@ -249,10 +253,17 @@ open class FavoriteCardWidgetProvider : AppWidgetProvider() {
         widgetId: Int,
     ): Pair<Int, Int> {
         val options = manager.getAppWidgetOptions(widgetId)
-        val wDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
-            .takeIf { it > 0 } ?: DEFAULT_WIDTH_DP
-        val hDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
-            .takeIf { it > 0 } ?: DEFAULT_HEIGHT_DP
+        val isLandscape =
+            context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val (wDp, hDp) = widgetCellDp(
+            isLandscape = isLandscape,
+            minWidthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH),
+            maxWidthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH),
+            minHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT),
+            maxHeightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT),
+            defaultWidthDp = DEFAULT_WIDTH_DP,
+            defaultHeightDp = DEFAULT_HEIGHT_DP,
+        )
         val density = context.resources.displayMetrics.density
         val w = (wDp * density).toInt().coerceIn(48, 1200)
         val h = (hDp * density).toInt().coerceIn(48, 800)
