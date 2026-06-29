@@ -49,6 +49,7 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
+    "Widget cards now fill landscape home-screen cells correctly, with no empty side margins.",
     "Ambient display (opt-in): dims to a glance panel when idle and wakes on touch. Turn it on in Settings, Ambient display.",
     "New compact favorite tile widget, a fix for stretched widget cards, and home-screen widgets now in the legacy build.",
     "Long-press a hardware button to run a shortcut you choose in Settings, Card surfaces.",

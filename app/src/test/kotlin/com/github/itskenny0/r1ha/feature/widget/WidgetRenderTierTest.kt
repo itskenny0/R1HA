@@ -47,4 +47,29 @@ class WidgetRenderTierTest {
     @Test fun `negative size falls back to full`() {
         assertThat(widgetRenderTier(-5, 200)).isEqualTo(RenderTier.FULL)
     }
+
+    // ── widgetCellDp: orientation-correct cell size ──────────────────────────
+
+    @Test fun `portrait reads min-width by max-height`() {
+        // Android reports the portrait extents as MIN_WIDTH x MAX_HEIGHT.
+        assertThat(widgetCellDp(false, 110, 250, 70, 180, 180, 110))
+            .isEqualTo(110 to 180)
+    }
+
+    @Test fun `landscape reads max-width by min-height`() {
+        // A landscape launcher (an Echo Show) reports MAX_WIDTH x MIN_HEIGHT;
+        // reading the portrait pair there leaves the card narrow on a wide cell.
+        assertThat(widgetCellDp(true, 110, 250, 70, 180, 180, 110))
+            .isEqualTo(250 to 70)
+    }
+
+    @Test fun `portrait falls back to defaults when options are zero`() {
+        assertThat(widgetCellDp(false, 0, 0, 0, 0, 180, 110))
+            .isEqualTo(180 to 110)
+    }
+
+    @Test fun `landscape falls back to defaults when options are zero`() {
+        assertThat(widgetCellDp(true, 0, 0, 0, 0, 180, 110))
+            .isEqualTo(180 to 110)
+    }
 }
