@@ -122,10 +122,6 @@ class SettingsViewModel(
         update { it.copy(ui = it.ui.copy(showFaceSparkline = enabled)) }
     fun setShowStatusBadges(enabled: Boolean) =
         update { it.copy(ui = it.ui.copy(showStatusBadges = enabled)) }
-    fun setFaceQuickControls(enabled: Boolean) =
-        update { it.copy(ui = it.ui.copy(faceQuickControls = enabled)) }
-    fun setSecondaryInfoDefault(kind: com.github.itskenny0.r1ha.core.prefs.SecondaryInfo) =
-        update { it.copy(ui = it.ui.copy(secondaryInfoDefault = kind)) }
     fun setDoubleTapMoreInfoDefault(enabled: Boolean) =
         update { it.copy(ui = it.ui.copy(doubleTapMoreInfoDefault = enabled)) }
     fun setHardwareLongPressTarget(action: com.github.itskenny0.r1ha.core.input.KeyAction?) =

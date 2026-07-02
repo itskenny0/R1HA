@@ -225,17 +225,15 @@ data class EntityOverride(
      */
     val sparkline: Boolean? = null,
     /**
-     * Per-card override for the small secondary-info line under the card's main
-     * readout. Null = inherit the global [UiOptions.secondaryInfoDefault]; an
-     * explicit value (including [SecondaryInfo.NONE]) pins this card's secondary
-     * line regardless of the global. See [SecondaryInfo] for the options.
+     * Retained for pipe-codec slot stability. The focused-card secondary-info
+     * line was removed, so this per-card value is no longer rendered; the field
+     * and its codec slot persist so older stored overrides still decode cleanly.
      */
     val secondaryInfo: SecondaryInfo? = null,
     /**
-     * Per-card override for the inline quick-control row surfaced on the focused
-     * card face (climate presets, media transport, cover open/stop/close, etc.).
-     * Three-state: null = inherit the global [UiOptions.faceQuickControls];
-     * true / false force the row on / off for this card.
+     * Retained for pipe-codec slot stability. The inline face-control row was
+     * removed, so this per-card value is no longer rendered; the field and its
+     * codec slot persist so older stored overrides still decode cleanly.
      */
     val faceControls: Boolean? = null,
     /**
@@ -316,14 +314,8 @@ data class EntityOverride(
     /** Effective face-sparkline flag: per-card override wins, else the global. */
     fun resolvedSparkline(global: Boolean): Boolean = sparkline ?: global
 
-    /** Effective inline-face-controls flag: per-card override wins, else the global. */
-    fun resolvedFaceControls(global: Boolean): Boolean = faceControls ?: global
-
     /** Effective double-tap-more-info flag: per-card override wins, else the global. */
     fun resolvedDoubleTapMoreInfo(global: Boolean): Boolean = doubleTapMoreInfo ?: global
-
-    /** Effective secondary-info kind: per-card override wins, else the global. */
-    fun resolvedSecondaryInfo(global: SecondaryInfo): SecondaryInfo = secondaryInfo ?: global
 }
 
 /**

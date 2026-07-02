@@ -17,12 +17,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ha.Domain
 import com.github.itskenny0.r1ha.core.ha.EntityState
-import com.github.itskenny0.r1ha.core.prefs.SecondaryInfo
-import com.github.itskenny0.r1ha.core.theme.LocalUiOptions
 import com.github.itskenny0.r1ha.core.theme.R1
 
 // ---- internal data model -------------------------------------------------------
@@ -136,47 +133,4 @@ fun StatusBadges(state: EntityState, modifier: Modifier = Modifier) {
             }
         }
     }
-}
-
-/**
- * A single-line secondary-info label rendered under a card's main readout.
- *
- * Emits no layout when [kind] is [SecondaryInfo.NONE] or when the backing data is
- * absent for this entity at this moment (null / blank result from [secondaryInfoText]).
- *
- * Text derivation is delegated to [secondaryInfoText], the same pure function used by
- * GlanceData and test harnesses. The [rememberNowTick] ticker drives recomposition so
- * RELATIVE timestamps advance in real time without the caller having to manage a clock.
- *
- * Style: [R1.labelMicro], [R1.InkMuted], single line with ellipsis truncation.
- */
-@Composable
-fun SecondaryInfoLine(
-    state: EntityState,
-    kind: SecondaryInfo,
-    modifier: Modifier = Modifier,
-) {
-    if (kind == SecondaryInfo.NONE) return
-
-    val ui = LocalUiOptions.current
-    val now by rememberNowTick()
-    val use24h = rememberUse24HourClock()
-    val text = secondaryInfoText(
-        state = state,
-        kind = kind,
-        now = now,
-        timestampStyle = ui.timestampStyle,
-        use24h = use24h,
-    )
-
-    if (text.isNullOrBlank()) return
-
-    Text(
-        text = text,
-        style = R1.labelMicro,
-        color = R1.InkMuted,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier,
-    )
 }
