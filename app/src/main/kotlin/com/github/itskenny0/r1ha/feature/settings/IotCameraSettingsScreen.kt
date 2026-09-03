@@ -123,7 +123,14 @@ fun IotCameraSettingsScreen(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         hasCameraPermission = granted
-        if (!granted) Toaster.error("Camera permission denied; sinks can't start")
+        if (!granted) {
+            Toaster.error("Camera permission denied; sinks can't start")
+        } else if (cam.enabled) {
+            // The master toggle may already be on (enable + grant happen in one
+            // tap, or the grant was revoked and re-issued later). The service
+            // refuses to start without the grant, so kick it now that we have it.
+            com.github.itskenny0.r1ha.core.iotcamera.IotCameraService.start(context)
+        }
     }
 
     var advancedExpanded by remember { mutableStateOf(false) }

@@ -65,7 +65,14 @@ class IotCameraService : Service() {
     override fun onCreate() {
         super.onCreate()
         ensureChannel(this)
-        startInForeground(buildNotification(initial = true))
+        if (!startInForeground(buildNotification(initial = true))) {
+            // Promotion refused (see startInForeground). Bail before any
+            // collector or ticker is launched so onDestroy has nothing to
+            // unwind; stopSelf() from onCreate is allowed and delivers
+            // onDestroy right after.
+            stopSelf()
+            return
+        }
         // Observe the live settings flow ourselves so the user can edit
         // resolution / fps / sink toggles from the settings screen and
         // see the stream re-spin without toggling the master switch off
@@ -399,15 +406,37 @@ class IotCameraService : Service() {
         }
     }
 
-    private fun startInForeground(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIF_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
-            )
-        } else {
-            startForeground(NOTIF_ID, notification)
+    /**
+     * Promote to a foreground service. Returns false when the OS refuses.
+     *
+     * On Android 14+ a `camera`-typed FGS is only allowed while the CAMERA
+     * runtime permission is granted AND the app is in an eligible (foreground
+     * / recently-foreground) state. Both fail in practice: the system can
+     * auto-revoke CAMERA on an unused app, and App.onCreate restarts this
+     * service on every process launch, including background restarts, when
+     * the master toggle is persisted on. Either case used to throw a
+     * SecurityException out of onCreate and take the whole process down
+     * ("Unable to create service ... IotCameraService" crash reports).
+     */
+    private fun startInForeground(notification: Notification): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIF_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
+                )
+            } else {
+                startForeground(NOTIF_ID, notification)
+            }
+            true
+        } catch (e: SecurityException) {
+            R1Log.w("IotCamera.service", "foreground promotion refused: ${e.message}")
+            false
+        } catch (e: IllegalStateException) {
+            // ForegroundServiceStartNotAllowedException and friends extend this.
+            R1Log.w("IotCamera.service", "foreground start not allowed: ${e.message}")
+            false
         }
     }
 
@@ -570,6 +599,16 @@ class IotCameraService : Service() {
         }
 
         fun start(context: Context) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                // A camera-typed FGS cannot be promoted without the runtime grant
+                // (Android 14+ throws at startForeground). The settings screen
+                // re-requests the permission and flips the toggle again once
+                // granted, which lands here a second time.
+                R1Log.w("IotCamera.service", "not starting: CAMERA permission not granted")
+                return
+            }
             ensureChannel(context)
             val intent = Intent(context, IotCameraService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
