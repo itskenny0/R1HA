@@ -133,12 +133,11 @@ class HaWebSocketClient internal constructor(
                 // connection has replaced this one, don't bump state to Authenticating.
                 if (this@HaWebSocketClient.webSocket !== ws) return
                 _state.value = ConnectionState.Authenticating
-                // Drain outgoing on a regular dispatched coroutine so the for-loop doesn't
-                // park OkHttp's listener thread; UNDISPATCHED would force the first iteration
-                // to run on the WS callback thread, blocking it until the channel suspends.
-                receiverJob = scope.launch {
-                    for (msg in outgoing) ws.send(HaJson.encodeToString(msg))
-                }
+                // The outgoing queue is NOT drained here. HA treats the first client frame
+                // on a fresh socket as the auth message; anything queued before the
+                // handshake (a tap that landed mid-reconnect) would go out ahead of the
+                // auth frame and be rejected with "Auth message incorrectly formatted",
+                // dropping the connection into AuthLost. Draining starts on auth_ok.
             }
             override fun onMessage(ws: WebSocket, text: String) {
                 // Ignore messages from a WebSocket that has been replaced or torn down: without
@@ -161,6 +160,15 @@ class HaWebSocketClient internal constructor(
                         // Handshake completed — disarm the watchdog before it can fire.
                         handshakeWatchdogJob?.cancel()
                         _state.value = ConnectionState.Connected(msg.haVersion)
+                        // Only now is the socket allowed to carry commands. Drain outgoing
+                        // on a regular dispatched coroutine so the for-loop doesn't park
+                        // OkHttp's listener thread; UNDISPATCHED would force the first
+                        // iteration to run on the WS callback thread, blocking it until
+                        // the channel suspends.
+                        receiverJob?.cancel()
+                        receiverJob = scope.launch {
+                            for (m in outgoing) ws.send(HaJson.encodeToString(m))
+                        }
                     }
                     is HaInbound.AuthInvalid -> {
                         // A definitive auth rejection IS a settled handshake; disarm.
@@ -267,6 +275,9 @@ class HaWebSocketClient internal constructor(
      */
     fun sendRawText(text: String): Boolean {
         val ws = webSocket ?: return false
+        // Same rule as the queued path: nothing but the auth frame may go out before
+        // auth_ok, or HA rejects it as a malformed auth message.
+        if (_state.value !is ConnectionState.Connected) return false
         return ws.send(text)
     }
 
@@ -282,6 +293,7 @@ class HaWebSocketClient internal constructor(
      */
     fun sendRawBytes(bytes: ByteArray): Boolean {
         val ws = webSocket ?: return false
+        if (_state.value !is ConnectionState.Connected) return false
         return ws.send(ByteString.of(*bytes))
     }
 

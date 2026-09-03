@@ -5,6 +5,7 @@ import com.github.itskenny0.r1ha.core.ha.testing.ServerRecorder
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -102,6 +103,47 @@ class HaWebSocketClientTest {
         val frame2 = recorder.awaitTextMessage()
         assertThat(frame1).contains("\"type\":\"subscribe_trigger\"")
         assertThat(frame2).contains("\"type\":\"call_service\"")
+        client.disconnect(); client.scope.cancel()
+    }
+
+    /**
+     * A command queued while the socket is still handshaking must not go out
+     * ahead of the auth frame. HA parses the first client frame as the auth
+     * message, so a leaked call_service produced "Auth message incorrectly
+     * formatted: extra keys not allowed @ data['domain']" and an AuthLost
+     * bounce on every tap that landed mid-reconnect.
+     */
+    @Test fun `sends queued before auth_ok are held until the handshake completes`() = runTest {
+        server.enqueue(MockResponse().withWebSocketUpgrade(recorder))
+        server.start()
+        val url = server.url("/api/websocket").toString().replace("http", "ws")
+        val client = HaWebSocketClient(
+            http = http(),
+            scope = TestScope(StandardTestDispatcher(testScheduler)),
+            handshakeWatchdogMillis = 0,
+        )
+
+        // Queue the call BEFORE the socket even opens.
+        val callId = client.nextRequestId()
+        client.send(HaOutbound.CallService(callId, "light", "turn_on", "light.kitchen", null))
+        client.connect(url, accessToken = "TOK")
+        val opened = recorder.awaitOpen()
+        advanceUntilIdle()
+        // Raw sends are refused until Connected too.
+        assertThat(client.sendRawText("""{"id":99,"type":"ping"}""")).isFalse()
+
+        opened.send("""{"type":"auth_required"}""")
+        val first = recorder.awaitTextMessage()
+        assertThat(first).contains("\"type\":\"auth\"")
+        assertThat(first).doesNotContain("call_service")
+
+        opened.send("""{"type":"auth_ok","ha_version":"x"}""")
+        // The drain coroutine is launched from OkHttp's reader thread when auth_ok
+        // lands; wait for that before advancing the test scheduler.
+        client.state.first { it is ConnectionState.Connected }
+        advanceUntilIdle()
+        val second = recorder.awaitTextMessage()
+        assertThat(second).contains("\"type\":\"call_service\"")
         client.disconnect(); client.scope.cancel()
     }
 
