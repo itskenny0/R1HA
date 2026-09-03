@@ -261,6 +261,38 @@ class SettingsRepositoryTest {
         }
     }
 
+    /** Regression for issue #11: ambient edits were never written to DataStore,
+     *  so every toggle on the Ambient Display screen snapped back to default. */
+    @Test fun ambientRoundTrips() = runTest {
+        val repo = newRepo()
+        repo.settings.test {
+            val s = awaitItem()
+            assertThat(s.ambient.enabled).isFalse()
+            assertThat(s.ambient.idleTimeoutSec).isEqualTo(60)
+            cancelAndConsumeRemainingEvents()
+        }
+        repo.update {
+            it.copy(
+                ambient = it.ambient.copy(
+                    enabled = true,
+                    idleTimeoutSec = 300,
+                    scope = AmbientScope.TODAY_ONLY,
+                    nightBrightnessPct = 3,
+                    showWeather = false,
+                ),
+            )
+        }
+        repo.settings.test {
+            val s = awaitItem()
+            assertThat(s.ambient.enabled).isTrue()
+            assertThat(s.ambient.idleTimeoutSec).isEqualTo(300)
+            assertThat(s.ambient.scope).isEqualTo(AmbientScope.TODAY_ONLY)
+            assertThat(s.ambient.nightBrightnessPct).isEqualTo(3)
+            assertThat(s.ambient.showWeather).isFalse()
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     /**
      * Slot B/C/D quick-tile entity ids round-trip alongside the legacy slot-A
      * field. Each slot is independent — saving slot B doesn't touch A/C/D.

@@ -178,6 +178,7 @@ class SettingsRepository private constructor(
         val advancedJson = stringPreferencesKey("advanced.json")
         val dashboardJson = stringPreferencesKey("dashboard.json")
         val navpanelJson = stringPreferencesKey("navpanel.json")
+        val ambientJson = stringPreferencesKey("ambient.json")
         val integrationsJson = stringPreferencesKey("integrations.json")
         /** One-shot guard for the 12 h -> 1 h logbook default change. The
          *  integrations blob is written with encodeDefaults, so every
@@ -484,6 +485,13 @@ class SettingsRepository private constructor(
                         }.getOrNull()
                     }
                     ?: NavPanelSettings(),
+                ambient = p[K.ambientJson]
+                    ?.let {
+                        runCatching {
+                            advancedJson.decodeFromString(AmbientSettings.serializer(), it)
+                        }.getOrNull()
+                    }
+                    ?: AmbientSettings(),
                 integrations = (
                     p[K.integrationsJson]
                         ?.let {
@@ -695,6 +703,10 @@ class SettingsRepository private constructor(
                 p[K.navpanelJson] = advancedJson.encodeToString(
                     NavPanelSettings.serializer(),
                     next.navPanel,
+                )
+                p[K.ambientJson] = advancedJson.encodeToString(
+                    AmbientSettings.serializer(),
+                    next.ambient,
                 )
                 p[K.logbookWindowMigrated] = true
                 p[K.integrationsJson] = advancedJson.encodeToString(
