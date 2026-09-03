@@ -91,6 +91,9 @@ class HaWebSocketClientTest {
         opened.send("""{"type":"auth_required"}""")
         recorder.awaitTextMessage()                              // auth frame
         opened.send("""{"type":"auth_ok","ha_version":"x"}""")
+        // The drain coroutine is launched from OkHttp's reader thread when auth_ok
+        // lands; wait for Connected before advancing the test scheduler.
+        client.state.first { it is ConnectionState.Connected }
 
         // Now queue subscribe + call_service and verify they hit the wire
         val subId = client.nextRequestId()
