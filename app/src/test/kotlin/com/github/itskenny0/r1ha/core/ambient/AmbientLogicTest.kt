@@ -99,4 +99,19 @@ class AmbientLogicTest {
         assertThat(AmbientLogic.powerSeverity(null, amberW = 500, redW = 2000))
             .isEqualTo(AmbientLogic.PowerSeverity.NORMAL)
     }
+
+    @Test fun `refresh period follows the dashboard interval but never below the floor`() {
+        assertThat(AmbientLogic.refreshPeriodSec(120)).isEqualTo(120)
+        assertThat(AmbientLogic.refreshPeriodSec(5)).isEqualTo(AmbientLogic.MIN_REFRESH_SEC)
+        assertThat(AmbientLogic.refreshPeriodSec(0)).isEqualTo(60)
+        assertThat(AmbientLogic.refreshPeriodSec(-3)).isEqualTo(60)
+    }
+
+    @Test fun `system brightness maps 0-255 to a fraction and rejects garbage`() {
+        assertThat(AmbientLogic.systemBrightnessFraction(255)).isEqualTo(1f)
+        assertThat(AmbientLogic.systemBrightnessFraction(0)).isEqualTo(0f)
+        assertThat(AmbientLogic.systemBrightnessFraction(51)).isWithin(0.001f).of(0.2f)
+        assertThat(AmbientLogic.systemBrightnessFraction(null)).isNull()
+        assertThat(AmbientLogic.systemBrightnessFraction(300)).isNull()
+    }
 }

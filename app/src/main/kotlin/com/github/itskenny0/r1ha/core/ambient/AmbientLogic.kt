@@ -73,4 +73,18 @@ object AmbientLogic {
         watts >= amberW -> PowerSeverity.AMBER
         else -> PowerSeverity.NORMAL
     }
+
+    /** Minimum glance-refresh period, seconds. */
+    const val MIN_REFRESH_SEC = 30
+
+    /** Refresh cadence for the idle-face summary, derived from the dashboard
+     *  interval but never faster than [MIN_REFRESH_SEC]; 0 / negative means
+     *  "default" (60 s). */
+    fun refreshPeriodSec(dashboardIntervalSec: Int): Int =
+        (if (dashboardIntervalSec > 0) dashboardIntervalSec else 60).coerceAtLeast(MIN_REFRESH_SEC)
+
+    /** Maps a raw Settings.System.SCREEN_BRIGHTNESS value (0..255) to the
+     *  0f..1f window-brightness scale; null when unavailable or out of range. */
+    fun systemBrightnessFraction(raw: Int?): Float? =
+        raw?.takeIf { it in 0..255 }?.let { it / 255f }
 }

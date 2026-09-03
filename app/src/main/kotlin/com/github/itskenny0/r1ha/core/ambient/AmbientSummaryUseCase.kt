@@ -11,17 +11,29 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Fetches the small at-a-glance set the ambient idle face shows: weather,
  * lights-on count, persons-home count, total power draw, persistent-alert
- * count, and the soonest active timer. Each piece is fetched in parallel and
- * tolerates its own failure (the field stays null), so the idle face never
- * blanks wholesale on a flaky network.
+ * count, and the soonest active timer. The weather / person / timer rows come
+ * from ONE `/api/states` download partitioned locally (this runs for as long
+ * as the device sits idle, so per-domain fetches would triple the traffic);
+ * the remaining pieces are fetched in parallel. Each part tolerates its own
+ * failure (the field stays null), so the idle face never blanks wholesale on
+ * a flaky network.
  */
 class AmbientSummaryUseCase(private val haRepository: HaRepository) {
 
     suspend fun fetch(settings: AppSettings): AmbientSummary = coroutineScope {
         val a = settings.ambient
-        val weatherJob = async { if (a.showWeather) haRepository.listRawEntitiesByDomain("weather").getOrNull() else null }
-        val personJob = async { if (a.showPersons) haRepository.listRawEntitiesByDomain("person").getOrNull() else null }
-        val timerJob = async { if (a.showAlerts) haRepository.listRawEntitiesByDomain("timer").getOrNull() else null }
+        val wantedDomains = buildSet {
+            if (a.showWeather) add("weather")
+            if (a.showPersons) add("person")
+            if (a.showAlerts) add("timer")
+        }
+        val rowsJob = async {
+            if (wantedDomains.isEmpty()) null
+            else haRepository.listRawEntitiesByDomains(wantedDomains).getOrNull()
+        }
+        val weatherJob = async { rowsJob.await()?.get("weather") }
+        val personJob = async { rowsJob.await()?.get("person") }
+        val timerJob = async { rowsJob.await()?.get("timer") }
         val notifJob = async { if (a.showAlerts) haRepository.listPersistentNotifications().getOrNull() else null }
         val lightsJob = async {
             if (a.showLights) {

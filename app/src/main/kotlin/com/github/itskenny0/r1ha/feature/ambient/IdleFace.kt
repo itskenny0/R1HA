@@ -17,13 +17,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.github.itskenny0.r1ha.core.ambient.AmbientLogic
 import com.github.itskenny0.r1ha.core.ambient.AmbientSummary
 import com.github.itskenny0.r1ha.core.prefs.AmbientSettings
+import com.github.itskenny0.r1ha.core.theme.R1
+import com.github.itskenny0.r1ha.ui.components.clockPattern
+import com.github.itskenny0.r1ha.ui.components.rememberUse24HourClock
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -32,8 +34,9 @@ import java.util.Locale
  * The dimmed glance panel shown while the device is idle: clock, date, weather,
  * a compact stats row (lights / people / power), and an alert line that only
  * appears when something needs attention. Full-bleed and themed (so at night it
- * picks up the night theme). The first touch wakes via [onWake] and is consumed
- * so it does not actuate a control underneath.
+ * picks up the night theme). The first touch wakes via [onWake]; it is consumed
+ * (so it does not actuate a control underneath) only when
+ * [AmbientSettings.consumeWakeEvent] is on.
  */
 @Composable
 fun IdleFace(
@@ -71,7 +74,10 @@ fun IdleFace(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    down.consume()
+                    // Leaving the DOWN unconsumed lets the control underneath
+                    // receive the same press, which is what "wake tap also
+                    // acts" promises when the consume toggle is off.
+                    if (ambient.consumeWakeEvent) down.consume()
                     onWake()
                 }
             }
@@ -81,8 +87,9 @@ fun IdleFace(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         if (ambient.showClock) {
+            val use24h = rememberUse24HourClock()
             Text(
-                text = now.format(DateTimeFormatter.ofPattern("HH:mm")),
+                text = now.format(DateTimeFormatter.ofPattern(clockPattern(use24h), Locale.getDefault())),
                 style = MaterialTheme.typography.displayLarge,
                 color = MaterialTheme.colorScheme.onBackground,
             )
@@ -118,8 +125,8 @@ fun IdleFace(
         if (stats.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             val powerColor = when (AmbientLogic.powerSeverity(summary.powerWatts, powerAmberW, powerRedW)) {
-                AmbientLogic.PowerSeverity.RED -> Color(0xFFE53935)
-                AmbientLogic.PowerSeverity.AMBER -> Color(0xFFFFB300)
+                AmbientLogic.PowerSeverity.RED -> R1.StatusRed
+                AmbientLogic.PowerSeverity.AMBER -> R1.StatusAmber
                 AmbientLogic.PowerSeverity.NORMAL -> MaterialTheme.colorScheme.onBackground.copy(alpha = 0.85f)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

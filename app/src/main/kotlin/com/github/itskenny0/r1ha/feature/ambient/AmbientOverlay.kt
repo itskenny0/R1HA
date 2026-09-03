@@ -106,7 +106,21 @@ fun AmbientOverlay(
             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             w.attributes = lp
         } else {
-            val start = if (lp.screenBrightness in 0f..1f) lp.screenBrightness else 1f
+            // Before the first dim the window carries the -1 "no override"
+            // sentinel; assuming 1f there flashed the panel to full brightness
+            // on frame 1 before fading down. Start from the real system level.
+            val start = if (lp.screenBrightness in 0f..1f) {
+                lp.screenBrightness
+            } else {
+                AmbientLogic.systemBrightnessFraction(
+                    runCatching {
+                        android.provider.Settings.System.getInt(
+                            context.contentResolver,
+                            android.provider.Settings.System.SCREEN_BRIGHTNESS,
+                        )
+                    }.getOrNull(),
+                ) ?: target
+            }
             val frames = 16
             for (i in 1..frames) {
                 lp.screenBrightness = start + (target - start) * (i / frames.toFloat())
@@ -120,7 +134,10 @@ fun AmbientOverlay(
     var summary by remember { mutableStateOf(AmbientSummary()) }
     LaunchedEffect(idle, refreshIntervalSec) {
         if (!idle) return@LaunchedEffect
-        val periodMs = (if (refreshIntervalSec > 0) refreshIntervalSec else 60) * 1000L
+        // Each refresh is a full /api/states pull plus template renders; a
+        // dashboard tuned to a few seconds must not turn the screensaver into
+        // the app's heaviest network consumer, so floor the period.
+        val periodMs = AmbientLogic.refreshPeriodSec(refreshIntervalSec) * 1000L
         while (true) {
             summary = runCatching { fetchSummary() }.getOrDefault(summary)
             kotlinx.coroutines.delay(periodMs)

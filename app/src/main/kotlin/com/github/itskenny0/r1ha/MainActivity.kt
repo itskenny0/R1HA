@@ -714,6 +714,10 @@ class MainActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // Coming back to the foreground is interaction: the idle countdown kept
+        // running while we were stopped, so without this an app backgrounded
+        // for longer than the timeout resumed straight into the idle face.
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
         if (!::graph.isInitialized) return
         // Delegate the resume-reconnect decision to the repository. It kicks out of
         // Idle / Disconnected, leaves AuthLost to its own refresh loop, leaves a healthy
@@ -760,6 +764,18 @@ class MainActivity : ComponentActivity() {
         super.onUserInteraction()
         com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
     }
+
+    /**
+     * [onUserInteraction] only fires on ACTION_DOWN, so one long continuous
+     * gesture (holding a dimmer slider, a long press) never re-marked and the
+     * idle face could drop in mid-gesture. Mark on every touch event instead.
+     */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private val wakeKeySwallow = com.github.itskenny0.r1ha.core.ambient.WakeKeySwallow()
 
     private fun handleOAuthCallback(intent: Intent?) {
         val data = intent?.data ?: return
@@ -818,7 +834,12 @@ class MainActivity : ComponentActivity() {
         // swallow this one event so the waking press does not also scroll / fire
         // a binding, unless the user opted to let wake events pass through.
         com.github.itskenny0.r1ha.core.ambient.ActivityMonitor.markInteraction(android.os.SystemClock.uptimeMillis())
-        if (graph.ambientIsIdle && graph.ambientConsumeWakeEvent) {
+        if (wakeKeySwallow.shouldSwallow(
+                keyCode = event.keyCode,
+                isDown = isDown,
+                swallowNow = graph.ambientIsIdle && graph.ambientConsumeWakeEvent,
+            )
+        ) {
             return true
         }
         // Software-keyboard events NEVER trigger bindings. The user's

@@ -49,11 +49,9 @@ fun whatsNewAction(
  * portrait panel.
  */
 val WHATS_NEW_ENTRIES: List<String> = listOf(
-    "Card faces are cleaner: the inline controls and extra info line that could overlap the on/off indicator are gone.",
-    "Widget cards now fill landscape home-screen cells correctly, with no empty side margins.",
-    "Ambient display (opt-in): dims to a glance panel when idle and wakes on touch. Turn it on in Settings, Ambient display.",
-    "New compact favorite tile widget, a fix for stretched widget cards, and home-screen widgets now in the legacy build.",
-    "Long-press a hardware button to run a shortcut you choose in Settings, Card surfaces.",
-    "Long-press any card for the Quick Sheet: top domain controls plus more info, history, customize and move.",
-    "Card faces show battery, charging, offline and update badges; opt-in double-tap opens details.",
+    "Ambient display settings now save properly and travel with backups and sync (issue #11).",
+    "Ambient display: no bright flash when dimming, wake key no longer also acts, clock follows 12/24h.",
+    "Restoring a backup or pulling a settings sync no longer resets card options it did not carry.",
+    "Taps during a reconnect no longer trigger a sign-in error; they wait until Home Assistant is ready.",
+    "IoT Camera Mode no longer crashes the app when the camera permission is missing.",
 )

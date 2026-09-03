@@ -2359,7 +2359,24 @@ class DefaultHaRepository(
      *  entity_id starts with `<domainPrefix>.`. Returns a stable
      *  [RawEntityRow] shape regardless of the HA-side domain — callers
      *  pick the attributes they care about. */
+    override suspend fun listRawEntitiesByDomains(
+        domainPrefixes: Set<String>,
+    ): Result<Map<String, List<RawEntityRow>>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val rows = fetchRawRows { eid -> domainPrefixes.any { eid.startsWith("$it.") } }
+            domainPrefixes.associateWith { prefix -> rows.filter { it.entityId.startsWith("$prefix.") } }
+        }.onFailure { t ->
+            R1Log.w("HaRepo.raw", "${domainPrefixes.joinToString("+")} fetch failed: ${t.message}")
+        }
+    }
+
     private suspend fun fetchRawRowsForDomain(domainPrefix: String): List<RawEntityRow> {
+        val prefixDot = "$domainPrefix."
+        return fetchRawRows { eid -> eid.startsWith(prefixDot) }
+    }
+
+    /** One `/api/states` download, filtered by [keep] on the entity id. */
+    private suspend fun fetchRawRows(keep: (String) -> Boolean): List<RawEntityRow> {
         val s = settings.settings.first()
         val server = s.server ?: error("Server URL not configured.")
         refresher?.ensureFresh()
@@ -2373,11 +2390,10 @@ class DefaultHaRepository(
             }
         }
         val rowsJson = listStatesJson.decodeFromString<List<kotlinx.serialization.json.JsonElement>>(body)
-        val prefixDot = "$domainPrefix."
         return rowsJson.mapNotNull { el ->
             val obj = el as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
             val eid = (obj["entity_id"] as? JsonPrimitive)?.content ?: return@mapNotNull null
-            if (!eid.startsWith(prefixDot)) return@mapNotNull null
+            if (!keep(eid)) return@mapNotNull null
             val state = (obj["state"] as? JsonPrimitive)?.content ?: ""
             val attrs = (obj["attributes"] as? kotlinx.serialization.json.JsonObject)
                 ?: kotlinx.serialization.json.JsonObject(emptyMap())

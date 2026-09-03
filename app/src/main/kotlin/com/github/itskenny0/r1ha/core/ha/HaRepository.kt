@@ -304,6 +304,14 @@ interface HaRepository {
      * client-side by [domainPrefix] (e.g. "camera"). */
     suspend fun listRawEntitiesByDomain(domainPrefix: String): Result<List<RawEntityRow>>
 
+    /** Same as [listRawEntitiesByDomain] for several domains at once, keyed by
+     *  domain. Implementations should fetch `/api/states` once and partition
+     *  locally; the default here just fans out per domain. */
+    suspend fun listRawEntitiesByDomains(domainPrefixes: Set<String>): Result<Map<String, List<RawEntityRow>>> =
+        runCatching {
+            domainPrefixes.associateWith { listRawEntitiesByDomain(it).getOrThrow() }
+        }
+
     /**
      * GET `/api/config` — HA's server metadata (version, location name,
      * timezone, components list, unit system, internal/external URLs).
