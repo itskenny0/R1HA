@@ -63,6 +63,77 @@ class AppBackupTest {
         assertThat(applied.logShipping.endpoint).isEqualTo("http://10.0.0.5:19192/log")
     }
 
+    @Test fun `ambient round-trips through encode and apply`() {
+        val source = AppSettings(
+            ambient = AmbientSettings(enabled = true, idleTimeoutSec = 120, scope = AmbientScope.TODAY_PLUS_CARDSTACK),
+        )
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-06-10T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(AppSettings())
+
+        assertThat(applied.ambient.enabled).isTrue()
+        assertThat(applied.ambient.idleTimeoutSec).isEqualTo(120)
+        assertThat(applied.ambient.scope).isEqualTo(AmbientScope.TODAY_PLUS_CARDSTACK)
+    }
+
+    /** Restore / sync-pull must not reset card-UI fields the older backup format
+     *  never carried. The fresh UiOptions() construct used to wipe them. */
+    @Test fun `applyOnto keeps ui fields absent from an older backup`() {
+        val prev = AppSettings(
+            ui = UiOptions(
+                lowPerfMode = LowPerfMode.ON,
+                showStatusBadges = false,
+                hardwareLongPressTarget = "assist",
+                valueBarTapTargetDp = 48,
+            ),
+            themeAccentArgb = 0x11223344,
+            guestModeEnabled = true,
+            behavior = Behavior(assistMacros = listOf("lights off"), orientationMode = OrientationMode.PORTRAIT_ONLY),
+        )
+        // Hand-written pre-2026-09 payload: none of the new slots present.
+        val raw = """{"createdAt":"2026-06-10T00:00:00Z","uiShowOnOffPill":false}"""
+
+        val applied = decodeBackup(raw).applyOnto(prev)
+
+        assertThat(applied.ui.showOnOffPill).isFalse()
+        assertThat(applied.ui.lowPerfMode).isEqualTo(LowPerfMode.ON)
+        assertThat(applied.ui.showStatusBadges).isFalse()
+        assertThat(applied.ui.hardwareLongPressTarget).isEqualTo("assist")
+        assertThat(applied.ui.valueBarTapTargetDp).isEqualTo(48)
+        assertThat(applied.themeAccentArgb).isEqualTo(0x11223344)
+        assertThat(applied.guestModeEnabled).isTrue()
+        assertThat(applied.behavior.assistMacros).containsExactly("lights off")
+        assertThat(applied.behavior.orientationMode).isEqualTo(OrientationMode.PORTRAIT_ONLY)
+    }
+
+    @Test fun `newer ui and behavior fields round-trip through encode and apply`() {
+        val source = AppSettings(
+            ui = UiOptions(
+                lowPerfMode = LowPerfMode.OFF,
+                showFaceSparkline = false,
+                doubleTapMoreInfoDefault = true,
+                hardwareLongPressTarget = "search",
+            ),
+            themeAccentArgb = null,
+            guestModeEnabled = true,
+            behavior = Behavior(assistAgentId = "conversation.home", assistMacros = listOf("a", "b")),
+        )
+        val prev = AppSettings(themeAccentArgb = 0x55667788, behavior = Behavior(assistAgentId = "old"))
+        val raw = encodeBackup(source.toBackup(createdAt = "2026-09-03T00:00:00Z"))
+
+        val applied = decodeBackup(raw).applyOnto(prev)
+
+        assertThat(applied.ui.lowPerfMode).isEqualTo(LowPerfMode.OFF)
+        assertThat(applied.ui.showFaceSparkline).isFalse()
+        assertThat(applied.ui.doubleTapMoreInfoDefault).isTrue()
+        assertThat(applied.ui.hardwareLongPressTarget).isEqualTo("search")
+        // An explicit "no accent override" in the backup wins over prev.
+        assertThat(applied.themeAccentArgb).isNull()
+        assertThat(applied.guestModeEnabled).isTrue()
+        assertThat(applied.behavior.assistAgentId).isEqualTo("conversation.home")
+        assertThat(applied.behavior.assistMacros).containsExactly("a", "b").inOrder()
+    }
+
     /** Older backups predate the field; they must decode as the disabled default. */
     @Test fun `backups without logShipping decode as disabled`() {
         val raw = encodeBackup(AppSettings().toBackup(createdAt = "2026-06-10T00:00:00Z"))

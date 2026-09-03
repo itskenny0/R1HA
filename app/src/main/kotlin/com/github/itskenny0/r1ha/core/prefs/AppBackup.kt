@@ -114,6 +114,25 @@ data class AppBackup(
     /** Skip nav transitions + skeleton pulse. Older backups without this
      *  field decode as false (full motion). */
     val uiReduceMotion: Boolean = false,
+    /** Card-UI fields added to the backup after the format shipped. All
+     *  nullable: a backup produced before they existed decodes as null and
+     *  [applyOnto] keeps whatever the device already has, instead of
+     *  snapping the field back to its data-class default. */
+    val uiChromeButtons: List<ChromeButtonConfig>? = null,
+    val uiShowZeroPercentWhenOff: Boolean? = null,
+    val uiLowPerfMode: LowPerfMode? = null,
+    val uiValueBarTapTargetDp: Int? = null,
+    val uiShowFaceSparkline: Boolean? = null,
+    val uiShowStatusBadges: Boolean? = null,
+    val uiFaceQuickControls: Boolean? = null,
+    val uiSecondaryInfoDefault: SecondaryInfo? = null,
+    val uiDoubleTapMoreInfoDefault: Boolean? = null,
+    val uiHardwareLongPressTarget: String? = null,
+    /** Theme accent override. Wrapped so "not in this backup" (null) is
+     *  distinguishable from "explicitly no override" (a set with a null). */
+    val themeAccentArgb: Int? = null,
+    val themeAccentArgbPresent: Boolean = false,
+    val guestModeEnabled: Boolean? = null,
 
     val behaviorHaptics: Boolean = true,
     val behaviorKeepScreenOn: Boolean = true,
@@ -126,12 +145,24 @@ data class AppBackup(
     /** What's-new opt-in. Older backups without this field decode as true
      *  (the panel shows after updates), the historical behaviour. */
     val behaviorShowWhatsNew: Boolean = true,
+    /** Behaviour fields added after the format shipped; same nullable
+     *  keep-previous contract as the ui* slots above. */
+    val behaviorAssistAutoOpenKeyboard: Boolean? = null,
+    val behaviorAssistAgentId: String? = null,
+    val behaviorAssistAgentIdPresent: Boolean = false,
+    val behaviorVoiceSatellitePipelineId: String? = null,
+    val behaviorVoiceSatellitePipelineIdPresent: Boolean = false,
+    val behaviorAssistMacros: List<String>? = null,
+    val behaviorOrientationMode: OrientationMode? = null,
 
     val advanced: AdvancedSettings = AdvancedSettings(),
     val dashboard: DashboardSettings = DashboardSettings(),
     /** Side navigation panel enable + per-item visibility. Older backup files
      *  without this field decode as the default (panel on, nothing hidden). */
     val navPanel: NavPanelSettings = NavPanelSettings(),
+    /** Ambient screensaver prefs. Older backups without this field decode as
+     *  the default (feature off). */
+    val ambient: AmbientSettings = AmbientSettings(),
     val integrations: IntegrationsSettings = IntegrationsSettings(),
     /** Connection-hardening (breaker + polling) prefs. Older backups without this
      *  field decode as the default (strict mode off, conservative breaker dials). */
@@ -214,6 +245,19 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     uiListDensity = ui.listDensity,
     uiTimestampStyle = ui.timestampStyle,
     uiReduceMotion = ui.reduceMotion,
+    uiChromeButtons = ui.chromeButtons,
+    uiShowZeroPercentWhenOff = ui.showZeroPercentWhenOff,
+    uiLowPerfMode = ui.lowPerfMode,
+    uiValueBarTapTargetDp = ui.valueBarTapTargetDp,
+    uiShowFaceSparkline = ui.showFaceSparkline,
+    uiShowStatusBadges = ui.showStatusBadges,
+    uiFaceQuickControls = ui.faceQuickControls,
+    uiSecondaryInfoDefault = ui.secondaryInfoDefault,
+    uiDoubleTapMoreInfoDefault = ui.doubleTapMoreInfoDefault,
+    uiHardwareLongPressTarget = ui.hardwareLongPressTarget,
+    themeAccentArgb = themeAccentArgb,
+    themeAccentArgbPresent = true,
+    guestModeEnabled = guestModeEnabled,
     behaviorHaptics = behavior.haptics,
     behaviorKeepScreenOn = behavior.keepScreenOn,
     behaviorTapToToggle = behavior.tapToToggle,
@@ -223,9 +267,17 @@ fun AppSettings.toBackup(createdAt: String): AppBackup = AppBackup(
     behaviorWheelTogglesSwitches = behavior.wheelTogglesSwitches,
     behaviorToastLogLevel = behavior.toastLogLevel,
     behaviorShowWhatsNew = behavior.showWhatsNew,
+    behaviorAssistAutoOpenKeyboard = behavior.assistAutoOpenKeyboard,
+    behaviorAssistAgentId = behavior.assistAgentId,
+    behaviorAssistAgentIdPresent = true,
+    behaviorVoiceSatellitePipelineId = behavior.voiceSatellitePipelineId,
+    behaviorVoiceSatellitePipelineIdPresent = true,
+    behaviorAssistMacros = behavior.assistMacros,
+    behaviorOrientationMode = behavior.orientationMode,
     advanced = advanced,
     dashboard = dashboard,
     navPanel = navPanel,
+    ambient = ambient,
     integrations = integrations,
     connection = connection,
     logShipping = logShipping,
@@ -276,7 +328,13 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             accelerationCurve = wheelAccelerationCurve,
         ),
         keyBindings = keyBindings,
-        ui = UiOptions(
+        themeAccentArgb = if (themeAccentArgbPresent) themeAccentArgb else prev.themeAccentArgb,
+        guestModeEnabled = guestModeEnabled ?: prev.guestModeEnabled,
+        // copy() from prev, not UiOptions(): a fresh construct silently reset
+        // every field this format did not carry (chrome buttons, low-perf
+        // mode, glance toggles, the hardware long-press target, ...) on each
+        // restore AND on each HA settings-sync pull, which rides this codec.
+        ui = prev.ui.copy(
             displayMode = uiDisplayMode,
             showOnOffPill = uiShowOnOffPill,
             showAreaLabel = uiShowAreaLabel,
@@ -309,6 +367,16 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             listDensity = uiListDensity,
             timestampStyle = uiTimestampStyle,
             reduceMotion = uiReduceMotion,
+            chromeButtons = uiChromeButtons ?: prev.ui.chromeButtons,
+            showZeroPercentWhenOff = uiShowZeroPercentWhenOff ?: prev.ui.showZeroPercentWhenOff,
+            lowPerfMode = uiLowPerfMode ?: prev.ui.lowPerfMode,
+            valueBarTapTargetDp = uiValueBarTapTargetDp ?: prev.ui.valueBarTapTargetDp,
+            showFaceSparkline = uiShowFaceSparkline ?: prev.ui.showFaceSparkline,
+            showStatusBadges = uiShowStatusBadges ?: prev.ui.showStatusBadges,
+            faceQuickControls = uiFaceQuickControls ?: prev.ui.faceQuickControls,
+            secondaryInfoDefault = uiSecondaryInfoDefault ?: prev.ui.secondaryInfoDefault,
+            doubleTapMoreInfoDefault = uiDoubleTapMoreInfoDefault ?: prev.ui.doubleTapMoreInfoDefault,
+            hardwareLongPressTarget = uiHardwareLongPressTarget ?: prev.ui.hardwareLongPressTarget,
         ),
         // copy() from prev, not Behavior(): fields this format doesn't
         // serialize (quick-tile bindings, the per-device what's-new stamp,
@@ -325,10 +393,17 @@ fun AppBackup.applyOnto(prev: AppSettings): AppSettings {
             wheelTogglesSwitches = behaviorWheelTogglesSwitches,
             toastLogLevel = behaviorToastLogLevel,
             showWhatsNew = behaviorShowWhatsNew,
+            assistAutoOpenKeyboard = behaviorAssistAutoOpenKeyboard ?: prev.behavior.assistAutoOpenKeyboard,
+            assistAgentId = if (behaviorAssistAgentIdPresent) behaviorAssistAgentId else prev.behavior.assistAgentId,
+            voiceSatellitePipelineId = if (behaviorVoiceSatellitePipelineIdPresent) behaviorVoiceSatellitePipelineId
+                else prev.behavior.voiceSatellitePipelineId,
+            assistMacros = behaviorAssistMacros ?: prev.behavior.assistMacros,
+            orientationMode = behaviorOrientationMode ?: prev.behavior.orientationMode,
         ),
         advanced = advanced,
         dashboard = dashboard,
         navPanel = navPanel,
+        ambient = ambient,
         integrations = integrations,
         connection = connection,
         logShipping = logShipping,
